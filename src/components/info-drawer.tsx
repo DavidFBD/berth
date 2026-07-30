@@ -1,0 +1,106 @@
+"use client";
+
+import { useState } from "react";
+import { ArrowSquareOut, Info, Robot, Sparkle, Wrench } from "@phosphor-icons/react";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { Button } from "@/components/ui/button";
+
+const STATS = [
+  {
+    icon: Robot,
+    stat: "25+ AI agents",
+    detail:
+      "7 researchers read the SDK source in parallel, 3 builders wrote the UI simultaneously, and 15 reviewers adversarially cross-examined every line — orchestrated by one Claude session.",
+  },
+  {
+    icon: Wrench,
+    stat: "1 MCP server",
+    detail:
+      "The SODAX Builders MCP served live protocol data — supported chains, solver token lists, vault registries, docs — straight into the agents' hands while they worked.",
+  },
+  {
+    icon: Sparkle,
+    stat: "~1 afternoon",
+    detail:
+      "From an empty folder to a reviewed, cross-chain vault app: scaffolded, built, adversarially reviewed, and fixed — all vibed, no hand-written boilerplate.",
+  },
+];
+
+/** Header info button + drawer: the story of how this app was vibed together. */
+export function InfoDrawer() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="About this app"
+        onClick={() => setOpen(true)}
+      >
+        <Info className="size-5" />
+      </Button>
+
+      <Drawer open={open} onOpenChange={setOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Vibed with SODAX</DrawerTitle>
+            <DrawerDescription>
+              This entire app was built by AI agents on the SODAX SDK.
+            </DrawerDescription>
+          </DrawerHeader>
+
+          <div className="flex flex-col gap-4 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+            {STATS.map(({ icon: StatIcon, stat, detail }) => (
+              <div key={stat} className="flex gap-3">
+                <StatIcon className="mt-0.5 size-6 shrink-0 text-primary" />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold text-foreground">
+                    {stat}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {detail}
+                  </span>
+                </div>
+              </div>
+            ))}
+
+            <p className="text-sm text-muted-foreground">
+              Under the hood: <span className="text-foreground">@sodax/dapp-kit</span>{" "}
+              turns every deposit into an intent-based cross-chain swap — any
+              asset on any of 20 networks in, leveraged staked-yield vault
+              shares on Sonic out, one signature.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <a
+                href="https://builders.sodax.com"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                Build your own — SODAX Builders
+                <ArrowSquareOut className="size-4 text-muted-foreground" />
+              </a>
+              <a
+                href="https://docs.sodax.com"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                SODAX developer docs
+                <ArrowSquareOut className="size-4 text-muted-foreground" />
+              </a>
+            </div>
+          </div>
+        </DrawerContent>
+      </Drawer>
+    </>
+  );
+}

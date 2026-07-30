@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, Search } from "lucide-react";
+import { CaretLeft, MagnifyingGlass } from "@phosphor-icons/react";
 import { useXBalances } from "@sodax/dapp-kit";
 import { getXChainType, useXAccount, useXService } from "@sodax/wallet-sdk-react";
 import type { SpokeChainKey, XToken } from "@sodax/sdk";
@@ -167,7 +167,7 @@ export function TokenPicker({
                   setSearch("");
                 }}
               >
-                <ChevronLeft className="size-4" />
+                <CaretLeft className="size-4" />
               </Button>
             )}
             <DrawerTitle className="flex-1">
@@ -205,7 +205,7 @@ export function TokenPicker({
           ) : (
             <>
               <div className="relative shrink-0">
-                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}

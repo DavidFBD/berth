@@ -1,5 +1,15 @@
-import { ChainKeys, type SodaxOptions } from "@sodax/sdk";
+import { ChainKeys, type PartnerFee, type SodaxOptions } from "@sodax/sdk";
 import type { SodaxWalletConfig } from "@sodax/wallet-sdk-react";
+
+/**
+ * Partner fee on every vault swap (deposit + withdraw intents). Percentage is
+ * in basis points: 10 = 0.1%. The SDK deducts it from the input amount before
+ * the swap, so quotes must run on the post-fee amount (adjustAmountByFee).
+ */
+export const PARTNER_FEE: PartnerFee = {
+  address: "0xbe59D5bf40Ac4A349bD748E0d7c19eF27Ad3Ca23",
+  percentage: 10,
+};
 
 /**
  * SDK config. SodaxOptions is a DeepPartial over the SDK's baked-in mainnet
@@ -7,7 +17,24 @@ import type { SodaxWalletConfig } from "@sodax/wallet-sdk-react";
  * must. Both configs are module constants on purpose: SodaxProvider tracks
  * its config by reference and SodaxWalletProvider freezes it on first render.
  */
-export const sodaxConfig: SodaxOptions = {};
+export const sodaxConfig: SodaxOptions = {
+  fee: PARTNER_FEE,
+  chains: {
+    [ChainKeys.BITCOIN_MAINNET]: {
+      radfi: {
+        // USER mode: deposits build a PSBT straight from the personal
+        // wallet's UTXOs — one signature, no Bound Exchange trading-wallet
+        // funding step, and the hub wallet derives from the personal address
+        // (which keeps our share-balance holders consistent). The SDK's
+        // default TRADING mode would require funding a separate trading
+        // wallet on-chain before every first deposit. Note: the SDK still
+        // requests a one-time BIP322 auth signature per session for BTC
+        // sources in either mode.
+        walletMode: "USER",
+      },
+    },
+  },
+};
 
 const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 const solanaRpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;

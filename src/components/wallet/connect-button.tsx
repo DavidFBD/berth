@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useConnectedChains } from "@sodax/wallet-sdk-react";
-import { Wallet } from "lucide-react";
+import { Wallet } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";

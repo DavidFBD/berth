@@ -7,7 +7,7 @@ import {
   useLeverageYieldTotalAssets,
   type LeverageYieldVault,
 } from "@sodax/dapp-kit";
-import { ChevronDown } from "lucide-react";
+import { CaretDown } from "@phosphor-icons/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -154,7 +154,7 @@ export function VaultCard({
           className="flex w-full items-center justify-between rounded-lg py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
           APR breakdown
-          <ChevronDown
+          <CaretDown
             className={cn(
               "size-4 transition-transform",
               breakdownOpen && "rotate-180",

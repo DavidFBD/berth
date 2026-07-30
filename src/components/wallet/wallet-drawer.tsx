@@ -11,15 +11,7 @@ import {
   type IXConnector,
   type WalletModalState,
 } from "@sodax/wallet-sdk-react";
-import {
-  ArrowLeft,
-  Check,
-  ChevronRight,
-  ExternalLink,
-  TriangleAlert,
-  Unplug,
-  Wallet,
-} from "lucide-react";
+import { ArrowLeft, ArrowSquareOut, CaretRight, Check, Plugs, Wallet, Warning } from "@phosphor-icons/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -207,7 +199,7 @@ function FamilyList({
                 onClick={() => onDisconnect(group.chainType)}
                 className="text-muted-foreground hover:text-destructive"
               >
-                {disconnecting === group.chainType ? <Spinner /> : <Unplug />}
+                {disconnecting === group.chainType ? <Spinner /> : <Plugs />}
               </Button>
             </div>
           ) : (
@@ -221,7 +213,7 @@ function FamilyList({
               <span className="flex-1 text-sm font-medium text-foreground">
                 {group.displayName}
               </span>
-              <ChevronRight className="size-4 text-muted-foreground" />
+              <CaretRight className="size-4 text-muted-foreground" />
             </button>
           ),
         )}
@@ -298,7 +290,7 @@ function ConnectorLevel({
       <StatusPanel
         icon={
           <span className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-            <TriangleAlert className="size-5" />
+            <Warning className="size-5" />
           </span>
         }
         title={title}
@@ -389,7 +381,7 @@ function ConnectorRow({
           className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
         >
           Get
-          <ExternalLink className="size-3.5" />
+          <ArrowSquareOut className="size-3.5" />
         </a>
       </div>
     );
@@ -409,7 +401,7 @@ function ConnectorRow({
       <span className="flex-1 truncate text-sm font-medium text-foreground">
         {connector.name}
       </span>
-      <ChevronRight className="size-4 text-muted-foreground" />
+      <CaretRight className="size-4 text-muted-foreground" />
     </button>
   );
 }

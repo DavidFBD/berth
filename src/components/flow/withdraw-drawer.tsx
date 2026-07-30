@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { formatUnits } from "viem";
 import { toast } from "sonner";
-import { ChevronDown } from "lucide-react";
-import { ChainKeys, type LeverageYieldVault, type SpokeChainKey, type XToken } from "@sodax/sdk";
-import { useQuote, useStatus } from "@sodax/dapp-kit";
+import { CaretDown } from "@phosphor-icons/react";
 import {
-  useEvmSwitchChain,
-  useWalletProvider,
-  useXAccount,
-} from "@sodax/wallet-sdk-react";
+  ChainKeys,
+  adjustAmountByFee,
+  type LeverageYieldVault,
+  type SpokeChainKey,
+  type XToken,
+} from "@sodax/sdk";
+import { useQuote, useStatus } from "@sodax/dapp-kit";
 import {
   Drawer,
   DrawerContent,
@@ -23,10 +24,11 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { getChainName } from "@/lib/chains";
-import { DEFAULT_SLIPPAGE_PCT } from "@/lib/sodax-config";
+import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
 import { useVaultAction } from "@/hooks/use-vault-action";
+import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { ActionStepper, IntentTracking } from "./action-stepper";
 import { ChainLogo, TokenPicker } from "./token-picker";
 
@@ -77,29 +79,32 @@ export function WithdrawDrawer({
     action.step === "approving" ||
     action.step === "signing";
 
-  const account = useXAccount({ xChainId: srcChainKey });
-  const walletProvider = useWalletProvider({ xChainId: srcChainKey });
-  const { isWrongChain, handleSwitchChain } = useEvmSwitchChain({
-    xChainId: srcChainKey,
-  });
+  // Privy embedded wallet on EVM chains when signed in via email; external
+  // wallets otherwise. Email mode switches chains silently.
+  const { address, walletProvider, isWrongChain, handleSwitchChain } =
+    useVaultWallet(srcChainKey);
   // Funds are delivered to the user's wallet ON the destination chain. The
   // SDK would otherwise default the recipient to `srcAddress`, which is the
   // wrong address format whenever the destination is another chain family.
-  const dstAccount = useXAccount({ xChainId: dstChainKey ?? srcChainKey });
-  const recipient = dstChainKey ? dstAccount.address : undefined;
+  const recipient = useVaultWallet(dstChainKey).address;
 
   const parsed = parseAmount(amount, SHARE_DECIMALS);
+  // The partner fee is deducted from the input shares before the swap —
+  // quote on the post-fee amount or minOutputAmount is unfillable.
+  const quoteAmount = parsed
+    ? adjustAmountByFee(parsed, PARTNER_FEE, "exact_input")
+    : undefined;
 
   const quoteQuery = useQuote({
     params: {
       payload:
-        open && vault && dstChainKey && outputToken && parsed
+        open && vault && dstChainKey && outputToken && quoteAmount
           ? {
               token_src: vault.vault,
               token_src_blockchain_id: ChainKeys.SONIC_MAINNET,
               token_dst: outputToken.address,
               token_dst_blockchain_id: dstChainKey,
-              amount: parsed,
+              amount: quoteAmount,
               quote_type: "exact_input",
             }
           : undefined,
@@ -196,7 +201,7 @@ export function WithdrawDrawer({
       !outputToken ||
       !parsed ||
       minReceived === undefined ||
-      !account.address ||
+      !address ||
       !recipient ||
       !walletProvider
     ) {
@@ -205,7 +210,7 @@ export function WithdrawDrawer({
     await action.runWithdraw({
       vault: vault.vault,
       srcChainKey,
-      srcAddress: account.address,
+      srcAddress: address,
       dstChainKey,
       outputToken: outputToken.address,
       inputAmount: parsed,
@@ -221,7 +226,7 @@ export function WithdrawDrawer({
     busy?: boolean;
     onClick?: () => void;
   };
-  const cta: Cta = !account.address
+  const cta: Cta = !address
     ? {
         label: `Connect ${getChainName(srcChainKey)} wallet`,
         disabled: !onConnectWallet,
@@ -375,7 +380,7 @@ export function WithdrawDrawer({
                       Select destination chain &amp; token
                     </span>
                   )}
-                  <ChevronDown className="size-4 text-muted-foreground" />
+                  <CaretDown className="size-4 text-muted-foreground" />
                 </button>
 
                 {/* Live quote */}

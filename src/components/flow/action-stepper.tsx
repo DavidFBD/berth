@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleAlert } from "lucide-react";
+import { Check, WarningCircle } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -151,7 +151,7 @@ export function IntentTracking({
     return (
       <div className={cn("flex flex-col items-center gap-4 py-6 text-center", className)}>
         <div className="flex size-14 items-center justify-center rounded-full bg-destructive/10">
-          <CircleAlert className="size-7 text-destructive" />
+          <WarningCircle className="size-7 text-destructive" />
         </div>
         <div className="flex flex-col gap-1">
           <p className="text-base font-semibold text-foreground">

@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import type { LeverageYieldVault } from "@sodax/dapp-kit";
-import { ConnectButton, WalletDrawer } from "@/components/wallet";
+import { WalletDrawer } from "@/components/wallet";
+import { AccountButton } from "@/components/account-button";
+import { InfoDrawer } from "@/components/info-drawer";
 import { VaultList } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
+import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 
 export default function Home() {
   const [depositVault, setDepositVault] = useState<LeverageYieldVault | null>(
@@ -16,8 +19,17 @@ export default function Home() {
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
+  const privy = usePrivyEmbeddedWallet();
 
-  const openWallet = () => setWalletOpen(true);
+  // Email login is the primary path; the external wallet drawer is the
+  // fallback for signed-in users reaching for a non-EVM source chain.
+  const openWallet = () => {
+    if (privy.enabled && !privy.authenticated) {
+      privy.login();
+      return;
+    }
+    setWalletOpen(true);
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-12 sm:max-w-lg">
@@ -30,7 +42,10 @@ export default function Home() {
             Leveraged Staked Yield
           </h1>
         </div>
-        <ConnectButton />
+        <div className="flex items-center gap-1">
+          <InfoDrawer />
+          <AccountButton />
+        </div>
       </header>
 
       <p className="mb-6 text-sm text-muted-foreground">
