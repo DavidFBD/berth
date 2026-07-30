@@ -94,7 +94,7 @@ function extractErrorCode(error: unknown): string | undefined {
 
 /** Map SDK error codes to human copy per the shared error-handling contract. */
 /** Cancel copy is compared by identity in the drawers to style it gently. */
-export const CANCELLED_MESSAGE = "No worries — the tea's still warm.";
+export const CANCELLED_MESSAGE = "No worries, the tea's still warm.";
 
 function friendlyError(error: unknown, fallback: string): string {
   if (isUserRejectedError(error)) return CANCELLED_MESSAGE;
@@ -105,10 +105,10 @@ function friendlyError(error: unknown, fallback: string): string {
     case "RELAY_FAILED":
     case "TX_SUBMIT_FAILED":
     case "TX_VERIFICATION_FAILED":
-      return "Your pour was sent but the tray is taking a while — funds are safe, this usually resolves itself.";
+      return "Your pour was sent but the tray is taking a while. Funds are safe, this usually resolves itself.";
     case "EXECUTION_FAILED":
     case "EXTERNAL_API_ERROR":
-      return "Your pour is on the counter but the solver hasn't confirmed — it's safe to retry.";
+      return "Your pour is on the counter but the solver hasn't confirmed. It's safe to retry.";
     default:
       return fallback;
   }
@@ -224,7 +224,7 @@ export function useVaultAction(): UseVaultActionResult {
           );
           if (!confirmed) {
             fail(
-              "The pot is still warming — wait a few seconds and try again.",
+              "The pot is still warming. Wait a few seconds and try again.",
             );
             return false;
           }
@@ -252,7 +252,7 @@ export function useVaultAction(): UseVaultActionResult {
         });
         if (!swapped.ok) {
           fail(
-            friendlyError(swapped.error, "The kettle's acting up — try again."),
+            friendlyError(swapped.error, "The kettle's acting up. Try again."),
           );
           return false;
         }
@@ -307,7 +307,7 @@ export function useVaultAction(): UseVaultActionResult {
           fail(
             friendlyError(
               swapped.error,
-              "The kettle's acting up — try again.",
+              "The kettle's acting up. Try again.",
             ),
           );
           return false;

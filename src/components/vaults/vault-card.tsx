@@ -249,7 +249,7 @@ export function VaultCard({
               />
               {apr.lsdApr.stale && (
                 <p className="mt-1.5 text-[11.5px] text-muted-foreground">
-                  The staking number is an estimate right now — the live feed
+                  The staking number is an estimate right now; the live feed
                   is having a lie-down.
                 </p>
               )}

@@ -302,7 +302,7 @@ export function WithdrawDrawer({
             </DrawerTitle>
             <DrawerDescription>
               {vault
-                ? "Back to any asset, on any network — the tea keeps its warmth."
+                ? "Back to any asset, on any network. The tea keeps its warmth."
                 : "Pick a cup to pour back from."}
             </DrawerDescription>
           </DrawerHeader>
@@ -315,7 +315,7 @@ export function WithdrawDrawer({
                 successTitle="Back in your teapot."
                 successBody={
                   dstChainKey && outputToken
-                    ? `${outputToken.symbol} is on its way to you on ${getChainName(dstChainKey)} — ready when you are.`
+                    ? `${outputToken.symbol} is on its way to you on ${getChainName(dstChainKey)}, ready when you are.`
                     : "Ready when you are."
                 }
                 onDone={() => {
@@ -360,7 +360,7 @@ export function WithdrawDrawer({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    You&apos;ll sign once on {getChainName(srcChainKey)} — the
+                    You&apos;ll sign once on {getChainName(srcChainKey)}, the
                     chain you deposited from.
                   </p>
                   {totalShares !== undefined &&
@@ -368,8 +368,8 @@ export function WithdrawDrawer({
                       <p className="text-xs text-muted-foreground">
                         {formatTokenAmount(availableShares, SHARE_DECIMALS)} of
                         your {formatTokenAmount(totalShares, SHARE_DECIMALS)}{" "}
-                        total shares sit under {getChainName(srcChainKey)} —
-                        the rest were deposited via other chains and become
+                        total shares sit under {getChainName(srcChainKey)}. The
+                        rest were deposited via other chains and become
                         withdrawable in a follow-up pass.
                       </p>
                     )}
@@ -433,7 +433,7 @@ export function WithdrawDrawer({
                         />
                         <p className="text-[11.5px] leading-snug text-destructive">
                           Triple-check this. Tea poured to the wrong address is
-                          gone for good — and the receiving side (your
+                          gone for good, and the receiving side (your
                           exchange) must accept {outputToken.symbol} on{" "}
                           {getChainName(dstChainKey)}.
                         </p>

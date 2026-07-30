@@ -16,13 +16,13 @@ const STATS = [
     icon: Robot,
     stat: "25+ AI agents",
     detail:
-      "One measured the leaves, one warmed the pot, several argued about steam: researchers, builders, and reviewers — orchestrated by one Claude session.",
+      "One measured the leaves, one warmed the pot, several argued about steam. Researchers, builders, and reviewers, all orchestrated by one Claude session.",
   },
   {
     icon: Wrench,
     stat: "1 MCP server",
     detail:
-      "The SODAX Builders MCP poured live protocol data — chains, tokens, vaults, docs — straight into the agents' cups while they worked.",
+      "The SODAX Builders MCP poured live protocol data (chains, tokens, vaults, docs) straight into the agents' cups while they worked.",
   },
   {
     icon: Sparkle,
@@ -73,7 +73,7 @@ export function InfoDrawer() {
 
             <p className="text-sm text-muted-foreground">
               Under the porcelain: <span className="text-foreground">@sodax/dapp-kit</span>{" "}
-              turns every pour into an intent-based cross-chain swap — any
+              turns every pour into an intent-based cross-chain swap. Any
               asset on any of 20 networks in, leveraged staked-yield tea on
               Sonic out, one signature.
             </p>
@@ -85,7 +85,7 @@ export function InfoDrawer() {
                 rel="noreferrer"
                 className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
-                See how it&apos;s brewed — SODAX Builders
+                See how it&apos;s brewed at SODAX Builders
                 <ArrowSquareOut className="size-4 text-muted-foreground" />
               </a>
               <a

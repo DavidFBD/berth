@@ -61,6 +61,8 @@ Tone: self-aware, gentle, proud of its own tameness. The user is in on the joke 
 
 ### Hard constraints
 
+- **No em dashes or dashes as punctuation, anywhere in copy.** Use commas, periods, colons, semicolons, or parentheses instead. Hyphens inside compound words (pour-back, cross-chain) and minus signs on negative numbers are fine.
+
 - Mobile-first (390px design width), works to desktop.
 - Implementation target: Tailwind v4 + shadcn/ui + Phosphor Duotone icons + Next.js — deliver tokens as CSS variables ready to paste into globals.css.
 - Real money is involved: numbers (balances, yield, projections) must always be legible, tabular, and honest — the playfulness lives around the numbers, never instead of them.

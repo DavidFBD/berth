@@ -26,7 +26,7 @@ const moneyFont = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "LSTeaTime",
   description:
-    "A calming little game of filling up tea cups — leveraged staked yield on Sonic, poured from any asset on any network. Tea is the way.",
+    "A calming little game of filling up tea cups. Leveraged staked yield on Sonic, poured from any asset on any network. Tea is the way.",
   icons: { icon: "/lsteatime-mark.svg" },
 };
 

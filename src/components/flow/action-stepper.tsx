@@ -18,8 +18,8 @@ type StepKey = (typeof STEPS)[number]["key"];
 /* The brewing ritual — per the design system's pour flow microcopy. */
 const STEP_MESSAGE: Record<StepKey, string> = {
   building: "Measuring the leaves…",
-  approving: "Warming the pot — approve in your wallet…",
-  signing: "One gentle stir — confirm in your wallet…",
+  approving: "Warming the pot. Approve in your wallet…",
+  signing: "One gentle stir. Confirm in your wallet…",
 };
 
 /**
@@ -108,7 +108,7 @@ export function ActionStepper({
           {STEP_MESSAGE[STEPS[activeIndex].key]}
         </p>
         <p className="text-xs text-muted-foreground">
-          Keep this open — good tea takes a minute.
+          Keep this open, good tea takes a minute.
         </p>
       </div>
     </div>
@@ -173,7 +173,7 @@ export function IntentTracking({
             The kettle&apos;s acting up.
           </p>
           <p className="text-sm text-muted-foreground">
-            Nothing was lost — your funds are safe. If they don&apos;t reappear
+            Nothing was lost and your funds are safe. If they don&apos;t reappear
             shortly, keep the fill hash handy for support.
           </p>
         </div>
@@ -197,8 +197,8 @@ export function IntentTracking({
         </p>
         <p className="text-xs text-muted-foreground">
           {filling
-            ? "Good tea takes a minute — usually less."
-            : "Carrying the tray over — waiting for the solver network."}
+            ? "Good tea takes a minute, usually less."
+            : "Carrying the tray over to the solver network."}
         </p>
       </div>
       <div className="mt-1 h-1 w-40 overflow-hidden rounded-full bg-muted">

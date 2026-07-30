@@ -82,7 +82,7 @@ export default function Home() {
           LSTeaTime is the best time.
         </span>
         <span className="mt-1 block text-[10.5px] text-muted-foreground/70">
-          Powered by SODAX · real funds, real tea — no testnet
+          Powered by SODAX · real funds, real tea, no testnet
         </span>
       </footer>
     </div>

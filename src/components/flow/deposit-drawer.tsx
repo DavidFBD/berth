@@ -149,7 +149,7 @@ export function DepositDrawer({
     } else if (statusCode === 4) {
       toastedRef.current = true;
       toast.error("The kettle's acting up.", {
-        description: "The pour couldn't be filled — nothing was lost. Try again.",
+        description: "The pour couldn't be filled. Nothing was lost, try again.",
       });
     }
   }, [statusCode]);
@@ -286,7 +286,7 @@ export function DepositDrawer({
             </DrawerTitle>
             <DrawerDescription>
               {vault
-                ? "Any asset, any network — it all becomes tea."
+                ? "Any asset, any network. It all becomes tea."
                 : "Pick a cup to pour into."}
             </DrawerDescription>
           </DrawerHeader>
@@ -297,7 +297,7 @@ export function DepositDrawer({
                 statusCode={statusCode}
                 fillTxHash={fillTxHash}
                 successTitle="Your cup is poured."
-                successBody={meta ? `${meta.teaName} is steeping — the steam does the rest.` : "Your tea is steeping."}
+                successBody={meta ? `${meta.teaName} is steeping. The steam does the rest.` : "Your tea is steeping."}
                 onDone={() => {
                   onOpenChange(false);
                   finish();

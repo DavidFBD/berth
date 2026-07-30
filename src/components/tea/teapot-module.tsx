@@ -25,8 +25,8 @@ export function TeapotModule({ onTopUp }: { onTopUp: () => void }) {
         </div>
         <div className="mt-0.5 text-[13px] text-muted-foreground">
           {signedIn
-            ? "Send anything from ~200 assets across 20 networks — it waits here."
-            : "Sign in and the pot warms itself — email is all it takes."}
+            ? "Send anything from ~200 assets across 20 networks. It waits here."
+            : "Sign in and the pot warms itself. Email is all it takes."}
         </div>
       </div>
       <Button

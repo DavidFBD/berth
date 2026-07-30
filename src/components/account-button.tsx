@@ -98,9 +98,9 @@ export function AccountButton({
                   <QRCodeSVG value={address} size={144} marginSize={1} />
                 </div>
                 <ReceiveRow
-                  label="Fill your teapot — one address, every EVM network"
+                  label="Fill your teapot: one address, every EVM network"
                   address={address}
-                  copyToast="Works on every EVM network SODAX supports — send funds here to top up."
+                  copyToast="Works on every EVM network SODAX supports. Send funds here to top up."
                 />
                 {/* Privy's /solana hooks are not SSR-safe — client-only. */}
                 {mounted && <SolanaReceive />}
@@ -162,7 +162,7 @@ function SolanaReceive() {
   if (!solanaAddress) return null;
   return (
     <ReceiveRow
-      label="Fill your teapot — Solana"
+      label="Fill your teapot: Solana"
       address={solanaAddress}
       copyToast="Only send Solana assets (SOL, JitoSOL, USDC…) to this one."
     />
