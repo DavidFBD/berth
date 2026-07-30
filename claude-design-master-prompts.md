@@ -38,6 +38,14 @@ A user signs in with email, funds their account by sending any of ~200 supported
 6. **States**: loading (skeletons styled as e.g. faint tea-ring stains, not gray boxes), empty (cups empty, inviting first pour), error ("the kettle's acting up — try again"), cancelled ("no worries, the tea's still warm"), in-flight cross-chain ("steeping, usually under a minute").
 7. **Desktop presentation** — the mobile app renders inside an iPhone held by a hand, over a calm looping background video (tea room / pouring tea in soft focus). Design the desktop frame: video treatment (color grade, blur/vignette so the phone pops), phone placement, and what if anything lives outside the phone (logo, one-line tagline, info button).
 
+### The lore (canon — weave it through everything)
+
+LSTeaTime has a creation myth, and the design must carry it:
+
+Staking is the purest form of yield on apex networks like ETH and SOL — steady, stable, the network paying you for keeping it honest. Liquid staking tokens were the evolutionary DeFi primitive that opened staking to everyone who still wanted to *use* their asset. And leveraging up on a liquid staking token? That's the ultimate tea-sipping vanilla degen move — someone who dreams of one day trying LSD but knows, deep down, they'll never be cool enough or dare to. And that's fine. Better than fine. **Tea is the way. LSTeaTime is the best time.**
+
+Tone: self-aware, gentle, proud of its own tameness. The user is in on the joke — they're the sensible one at the party, and the app celebrates that. Deliverable: a **lore page/moment** (could be the onboarding first-pour screen, an "our story" panel, or the empty-state copy) that tells this story in ≤120 words of finished copy, plus guidance for sprinkling lore fragments through microcopy (loading lines, empty states, the steeping tracker).
+
 ### Deliverables (the complete design system)
 
 1. **Brand**: logo (wordmark + a mark that works as favicon — a teacup with steam that subtly forms an upward yield arrow or a very subtle paisley curl), tagline options, voice & tone guide with a translation table (crypto term → LSTeaTime term) covering at least: deposit, withdraw, APR, vault, wallet, network, token, slippage, transaction pending/failed.
