@@ -7,6 +7,7 @@ import { CaretDown } from "@phosphor-icons/react";
 import {
   ChainKeys,
   adjustAmountByFee,
+  isEvmChainKeyType,
   type LeverageYieldVault,
   type SpokeChainKey,
   type XToken,
@@ -71,6 +72,9 @@ export function WithdrawDrawer({
   const [outputToken, setOutputToken] = useState<XToken | null>(null);
   const [amount, setAmount] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Optional: pour to somebody else's address (e.g. an exchange deposit
+  // address — the no-bank-rails cash-out path). null = own wallet.
+  const [customRecipient, setCustomRecipient] = useState<string | null>(null);
 
   const meta = vault ? getVaultMeta(vault.name) : null;
   const action = useVaultAction();
@@ -83,10 +87,21 @@ export function WithdrawDrawer({
   // wallets otherwise. Email mode switches chains silently.
   const { address, walletProvider, isWrongChain, handleSwitchChain } =
     useVaultWallet(srcChainKey);
-  // Funds are delivered to the user's wallet ON the destination chain. The
-  // SDK would otherwise default the recipient to `srcAddress`, which is the
-  // wrong address format whenever the destination is another chain family.
-  const recipient = useVaultWallet(dstChainKey).address;
+  // Funds are delivered to the user's wallet ON the destination chain (the
+  // SDK would otherwise default to `srcAddress`, the wrong format across
+  // chain families) — unless the user typed a custom cash-out address.
+  const ownRecipient = useVaultWallet(dstChainKey).address;
+  const trimmedCustom = customRecipient?.trim() ?? "";
+  const dstIsEvm = dstChainKey ? isEvmChainKeyType(dstChainKey) : false;
+  const customLooksValid =
+    trimmedCustom.length > 0 &&
+    (!dstIsEvm || /^0x[a-fA-F0-9]{40}$/.test(trimmedCustom));
+  const usingCustom = customRecipient !== null;
+  const recipient = usingCustom
+    ? customLooksValid
+      ? trimmedCustom
+      : undefined
+    : ownRecipient;
 
   const parsed = parseAmount(amount, SHARE_DECIMALS);
   // The partner fee is deducted from the input shares before the swap —
@@ -162,6 +177,7 @@ export function WithdrawDrawer({
   const finish = () => {
     action.reset();
     setAmount("");
+    setCustomRecipient(null);
     toastedRef.current = false;
     setTrackingTimedOut(false);
   };
@@ -239,11 +255,13 @@ export function WithdrawDrawer({
           onClick: () => setPickerOpen(true),
         }
       : !recipient
-        ? {
-            label: `Connect ${getChainName(dstChainKey)} wallet`,
-            disabled: !onConnectWallet,
-            onClick: onConnectWallet,
-          }
+        ? usingCustom
+          ? { label: "That address looks off", disabled: true }
+          : {
+              label: `Connect ${getChainName(dstChainKey)} wallet`,
+              disabled: !onConnectWallet,
+              onClick: onConnectWallet,
+            }
         : !parsed
           ? { label: "Pour back how much?", disabled: true }
           : parsed > availableShares
@@ -382,6 +400,55 @@ export function WithdrawDrawer({
                   )}
                   <CaretDown className="size-4 text-muted-foreground" />
                 </button>
+
+                {/* Cash-out path: pour to a different address (e.g. an
+                    exchange deposit address) instead of your own wallet. */}
+                {dstChainKey && outputToken && (
+                  <div className="flex flex-col gap-1.5">
+                    {usingCustom ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-muted-foreground">
+                            Pouring to a different address
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => setCustomRecipient(null)}
+                          >
+                            Use my wallet
+                          </Button>
+                        </div>
+                        <input
+                          value={customRecipient}
+                          onChange={(event) =>
+                            setCustomRecipient(event.target.value)
+                          }
+                          placeholder={`${getChainName(dstChainKey)} address`}
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          aria-label="Custom destination address"
+                          className="money w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
+                        />
+                        <p className="text-[11.5px] leading-snug text-destructive">
+                          Triple-check this. Tea poured to the wrong address is
+                          gone for good — and the receiving side (your
+                          exchange) must accept {outputToken.symbol} on{" "}
+                          {getChainName(dstChainKey)}.
+                        </p>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setCustomRecipient("")}
+                        className="self-start py-1 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        Cash out? Pour to an exchange address instead →
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Live quote */}
                 {dstChainKey && outputToken && parsed ? (

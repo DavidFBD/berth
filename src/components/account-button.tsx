@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { useFundWallet } from "@privy-io/react-auth";
+import { useAddFunds } from "@privy-io/react-auth";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -199,20 +199,40 @@ function ReceiveRow({
   );
 }
 
-/** Privy's hosted funding modal (card / bank / cross-chain deposit). */
+/** USDC on Base — cheap, every onramp speaks it; the default landing asset. */
+const FUND_DESTINATION_CHAIN = "eip155:8453" as const;
+const FUND_DESTINATION_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+/**
+ * Privy's unified funding modal (useAddFunds): surfaces every method enabled
+ * in the dashboard — card/Apple/Google Pay onramps (incl. Stripe), external
+ * wallet transfer, cross-chain deposit — no code changes when toggles flip.
+ */
 function FundButton({ address }: { address: string }) {
-  const { fundWallet } = useFundWallet();
+  const { addFunds } = useAddFunds();
 
   return (
     <button
       type="button"
       onClick={() => {
-        void fundWallet({ address }).catch(() => {
-          toast.error("Funding isn't configured yet", {
-            description:
-              "Enable funding methods in the Privy dashboard, or send crypto to your deposit address above.",
+        addFunds({
+          destination: {
+            address,
+            chain: FUND_DESTINATION_CHAIN,
+            asset: FUND_DESTINATION_ASSET,
+          },
+          fiat: {},
+          crypto: {},
+        })
+          .then(() => {
+            toast.success("Teapot topped up", {
+              description: "USDC is on its way to your pantry.",
+            });
+          })
+          .catch(() => {
+            // Rejection includes plain user exit — stay quiet unless nothing
+            // is configured, which Privy surfaces inside its own modal.
           });
-        });
       }}
       className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted"
     >
