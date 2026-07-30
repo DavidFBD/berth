@@ -1,0 +1,88 @@
+# ICON — `IconWalletProvider`
+
+Backed by `icon-sdk-js`. Browser-extension mode talks to the Hana wallet over the ICONEX relay — an in-page message bridge built on `window.dispatchEvent(new CustomEvent('ICONEX_RELAY_REQUEST', …))` + `window.addEventListener('ICONEX_RELAY_RESPONSE', …)`.
+
+| | |
+|---|---|
+| Class | `IconWalletProvider` |
+| Interface | `IIconWalletProvider` (from `@sodax/types`) |
+| Discriminant style | **Field presence** (no `type` field) |
+| Underlying SDK | `icon-sdk-js` |
+
+---
+
+## Config
+
+```ts
+type IconWalletConfig = PrivateKeyIconWalletConfig | BrowserExtensionIconWalletConfig;
+
+type PrivateKeyIconWalletConfig = {
+  privateKey: `0x${string}`;
+  rpcUrl: `http${string}`;
+  defaults?: IconWalletDefaults;
+};
+
+type BrowserExtensionIconWalletConfig = {
+  walletAddress?: IconEoaAddress;      // `hx…` — supplied by the consumer (the provider never auto-resolves it)
+  rpcUrl: `http${string}`;
+  defaults?: IconWalletDefaults;
+};
+```
+
+| Mode discriminant | How to detect |
+|---|---|
+| Private-key | `'privateKey' in config` |
+| Browser-extension | `'walletAddress' in config` |
+
+> `rpcUrl` is **required in both modes** — ICON has no public-RPC fallback in the provider.
+
+---
+
+## `IconWalletDefaults`
+
+```ts
+type IconWalletDefaults = {
+  stepLimit?: number;                  // default 3_000_000
+  version?: string;                    // default '0x3'
+  timestampProvider?: () => number;    // default Date.now() * 1000 (microseconds)
+  jsonRpcId?: number;                  // default 99999 (browser-extension event ID)
+};
+```
+
+---
+
+## Methods
+
+| Method | Signature | Returns | Default slice merged |
+|---|---|---|---|
+| `getWalletAddress` | `() => Promise<IconEoaAddress>` | `hx…` address | — |
+| `sendTransaction` | `(tx: IcxCallTransaction, options?: IconWalletDefaults) => Promise<Hash>` | tx hash | `defaults` (flat merge via `mergeDefaults`) |
+| `waitForTransactionReceipt` | `(txHash: Hash) => Promise<IconTransactionResult>` | tx result | — |
+
+---
+
+## Public fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `chainType` | `'ICON'` (literal) | Discriminant. |
+| `iconService` | `IconService` | Underlying SDK service — exposed for advanced use. |
+
+`wallet` is private.
+
+---
+
+## Gotchas
+
+- **Browser-extension mode talks to Hana via the ICONEX relay** — `window.dispatchEvent(new CustomEvent('ICONEX_RELAY_REQUEST', …))` + `window.addEventListener('ICONEX_RELAY_RESPONSE', …)`, not `window.postMessage`. The relay is one shared window channel; the SDK serializes requests so at most one is in flight and concurrent calls no longer cross-resolve. They run one at a time, and each call times out after ~5 min if the wallet never answers.
+- **`walletAddress` is optional in browser-extension mode, but the provider never auto-resolves it.** The consumer must supply it (or resolve it themselves via the exported `requestAddress` helper, which performs the ICONEX `REQUEST_ADDRESS` round-trip). If the wallet isn't set, `getWalletAddress()` throws `Error('Wallet not initialized')`.
+- **Address type is branded — `IconEoaAddress` (`hx…`) vs `IconAddress` (`hx… | cx…`).** EOA only at the wallet level; contracts (`cx…`) appear inside tx params, not as the signer.
+- **Timestamps are microseconds.** `timestampProvider` returns microseconds, not milliseconds — the default is `Date.now() * 1000`.
+
+---
+
+## See also
+
+- [`recipes/setup-private-key.md`](../recipes/setup-private-key.md)
+- [`recipes/setup-browser-extension.md`](../recipes/setup-browser-extension.md)
+- [`recipes/sign-and-broadcast.md`](../recipes/sign-and-broadcast.md)

@@ -1,0 +1,72 @@
+import { formatUnits, parseUnits } from "viem";
+
+/** RAY = 1e27 = 100% (AAVE rate convention used by the SDK's APR fields). */
+const RAY_PER_PERCENT = 10n ** 25n;
+
+/**
+ * Format a RAY-scaled rate (1e27 = 100%) as a percentage string, e.g. "7.42%".
+ * Keeps the math in bigint until the final 4-decimal division so huge rates
+ * can't lose precision through an intermediate float.
+ */
+export function formatRayAsPercent(ray: bigint, digits = 2): string {
+  const scaled = Number((ray * 10_000n) / RAY_PER_PERCENT) / 10_000;
+  return `${scaled.toFixed(digits)}%`;
+}
+
+/** WAD = 1e18. Used for the vault leverage multiplier, e.g. "3.2x". */
+export function formatWadAsMultiplier(wad: bigint, digits = 1): string {
+  const scaled = Number((wad * 1_000n) / 10n ** 18n) / 1_000;
+  return `${scaled.toFixed(digits)}x`;
+}
+
+/** Basis points out of 10_000 → "65%" style display. */
+export function formatBps(bps: bigint, digits = 0): string {
+  return `${(Number(bps) / 100).toFixed(digits)}%`;
+}
+
+/**
+ * Human display for a token amount: trims trailing zeros and caps fraction
+ * digits, switching to compact notation for large values.
+ */
+export function formatTokenAmount(
+  value: bigint,
+  decimals: number,
+  maxFractionDigits = 4,
+): string {
+  const asNumber = Number(formatUnits(value, decimals));
+  if (asNumber === 0) return "0";
+  if (asNumber > 0 && asNumber < 1 / 10 ** maxFractionDigits) {
+    return `<${(1 / 10 ** maxFractionDigits).toFixed(maxFractionDigits)}`;
+  }
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: maxFractionDigits,
+    notation: asNumber >= 1_000_000 ? "compact" : "standard",
+  }).format(asNumber);
+}
+
+/**
+ * Parse user text input into token base units. Returns undefined for
+ * anything that isn't a plain positive decimal number (parseUnits throws
+ * on malformed input, and negative/zero amounts are never valid here).
+ */
+export function parseAmount(input: string, decimals: number): bigint | undefined {
+  const trimmed = input.trim();
+  if (!/^\d*\.?\d+$/.test(trimmed)) return undefined;
+  try {
+    const value = parseUnits(trimmed, decimals);
+    return value > 0n ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function shortenAddress(address: string, chars = 4): string {
+  if (address.length <= chars * 2 + 2) return address;
+  return `${address.slice(0, chars + 2)}…${address.slice(-chars)}`;
+}
+
+/** Apply slippage tolerance (in percent, e.g. 0.5) to a quoted output. */
+export function applySlippage(quoted: bigint, slippagePct: number): bigint {
+  const bps = BigInt(Math.round(slippagePct * 100));
+  return (quoted * (10_000n - bps)) / 10_000n;
+}
