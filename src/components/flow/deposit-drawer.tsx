@@ -32,7 +32,7 @@ import { DEPOSIT_SOURCE_CHAINS, getChainName } from "@/lib/chains";
 import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
-import { useVaultAction } from "@/hooks/use-vault-action";
+import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { ActionStepper, IntentTracking } from "./action-stepper";
 import { ChainLogo, TokenPicker } from "./token-picker";
@@ -143,13 +143,13 @@ export function DepositDrawer({
     if (toastedRef.current) return;
     if (statusCode === 3) {
       toastedRef.current = true;
-      toast.success("Deposit filled", {
-        description: "Shares delivered to your Sonic hub wallet.",
+      toast.success("Your cup is poured.", {
+        description: "The steam does the rest.",
       });
     } else if (statusCode === 4) {
       toastedRef.current = true;
-      toast.error("Deposit fill failed", {
-        description: "The solver couldn't fill this order. Please try again.",
+      toast.error("The kettle's acting up.", {
+        description: "The pour couldn't be filled — nothing was lost. Try again.",
       });
     }
   }, [statusCode]);
@@ -197,7 +197,7 @@ export function DepositDrawer({
       max = max > buffer ? max - buffer : 0n;
     }
     if (max <= 0n) {
-      toast.info("Balance too low to cover network fees");
+      toast.info("Not enough left over for the kettle (network fees)");
       return;
     }
     setAmount(formatUnits(max, token.decimals));
@@ -236,22 +236,22 @@ export function DepositDrawer({
   // connected — the source chain defaults to Ethereum until they pick.
   const cta: Cta = !token
     ? {
-        label: "Select a token",
+        label: "What are you pouring?",
         disabled: false,
         onClick: () => setPickerOpen(true),
       }
     : !address
       ? {
-          label: `Connect ${getChainName(srcChainKey)} wallet`,
+          label: `Connect a ${getChainName(srcChainKey)} wallet`,
           disabled: !onConnectWallet,
           onClick: onConnectWallet,
         }
       : !parsed
-        ? { label: "Enter amount", disabled: true }
+        ? { label: "Pour how much?", disabled: true }
         : balance === undefined
-          ? { label: "Checking balance…", disabled: true, busy: true }
+          ? { label: "Peeking in the teapot…", disabled: true, busy: true }
           : parsed > balance
-            ? { label: "Insufficient balance", disabled: true }
+            ? { label: "A touch more than your teapot holds", disabled: true }
             : isWrongChain
               ? {
                   label: "Switch network",
@@ -259,13 +259,13 @@ export function DepositDrawer({
                   onClick: handleSwitchChain,
                 }
               : noRoute
-                ? { label: "No route for this pair", disabled: true }
+                ? { label: "No blend path for this pair", disabled: true }
                 : quoted === undefined ||
                     minReceived === undefined ||
                     !walletProvider
-                  ? { label: "Fetching quote…", disabled: true, busy: true }
+                  ? { label: "Reading the leaves…", disabled: true, busy: true }
                   : {
-                      label: "Deposit",
+                      label: "Pour",
                       disabled: false,
                       onClick: () => void handleDeposit(),
                     };
@@ -282,12 +282,12 @@ export function DepositDrawer({
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>
-              {meta ? `Deposit into ${meta.title}` : "Deposit"}
+              {meta ? `Pour into ${meta.teaName}` : "Pour a cup"}
             </DrawerTitle>
             <DrawerDescription>
               {vault
-                ? `Swap any token into ${vault.name} shares on Sonic.`
-                : "Select a vault to deposit."}
+                ? "Any asset, any network — it all becomes tea."
+                : "Pick a cup to pour into."}
             </DrawerDescription>
           </DrawerHeader>
 
@@ -296,8 +296,8 @@ export function DepositDrawer({
               <IntentTracking
                 statusCode={statusCode}
                 fillTxHash={fillTxHash}
-                successTitle="Deposited!"
-                successBody="Shares delivered to your Sonic hub wallet."
+                successTitle="Your cup is poured."
+                successBody={meta ? `${meta.teaName} is steeping — the steam does the rest.` : "Your tea is steeping."}
                 onDone={() => {
                   onOpenChange(false);
                   finish();
@@ -334,7 +334,7 @@ export function DepositDrawer({
                     </>
                   ) : (
                     <span className="flex-1 text-sm text-muted-foreground">
-                      Select chain &amp; token
+                      What are you pouring?
                     </span>
                   )}
                   <CaretDown className="size-4 text-muted-foreground" />
@@ -361,8 +361,8 @@ export function DepositDrawer({
                     <span className="tabular-nums">
                       {token && address
                         ? balance !== undefined
-                          ? `Balance: ${formatTokenAmount(balance, token.decimals)} ${token.symbol}`
-                          : "Balance: —"
+                          ? `Teapot holds ${formatTokenAmount(balance, token.decimals)} ${token.symbol}`
+                          : "Peeking in the teapot…"
                         : " "}
                     </span>
                     {token && balance !== undefined && balance > 0n && (
@@ -384,14 +384,14 @@ export function DepositDrawer({
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">
-                            You receive
+                            You&apos;ll steep
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
                             ≈ {formatTokenAmount(quoted, 18)} {vault.name}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>Min after {DEFAULT_SLIPPAGE_PCT}% slippage</span>
+                          <span>At least, once poured</span>
                           <span className="tabular-nums">
                             {formatTokenAmount(minReceived, 18)}
                           </span>
@@ -410,7 +410,7 @@ export function DepositDrawer({
                     role="alert"
                     className={cn(
                       "rounded-xl px-3 py-2.5 text-sm",
-                      action.error === "Cancelled in wallet"
+                      action.error === CANCELLED_MESSAGE
                         ? "bg-muted/50 text-muted-foreground"
                         : "bg-destructive/10 text-destructive",
                     )}

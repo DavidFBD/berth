@@ -1,10 +1,10 @@
 "use client";
 
-import { Check, WarningCircle } from "@phosphor-icons/react";
+import { Check } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
+import { SteamPlume, TeapotArt } from "@/components/tea/tea-art";
 import type { VaultActionStep } from "@/hooks/use-vault-action";
 
 const STEPS = [
@@ -15,16 +15,17 @@ const STEPS = [
 
 type StepKey = (typeof STEPS)[number]["key"];
 
+/* The brewing ritual — per the design system's pour flow microcopy. */
 const STEP_MESSAGE: Record<StepKey, string> = {
-  building: "Preparing your order…",
-  approving: "Approve the token in your wallet…",
-  signing: "Confirm the transaction in your wallet…",
+  building: "Measuring the leaves…",
+  approving: "Warming the pot — approve in your wallet…",
+  signing: "One gentle stir — confirm in your wallet…",
 };
 
 /**
- * Three-dot Build → Approve → Sign progress indicator shown while a vault
- * action is in flight. `approveNeeded={false}` (withdrawals, native tokens)
- * keeps the Approve dot visible but marks it as skipped.
+ * The brewing stepper (design system BrewStepper): Build → Approve → Sign.
+ * `approveNeeded={false}` (pour-backs, native tokens) keeps the Approve dot
+ * visible but marks it as skipped.
  */
 export function ActionStepper({
   step,
@@ -39,46 +40,55 @@ export function ActionStepper({
   if (activeIndex === -1) return null;
 
   return (
-    <div className={cn("flex flex-col items-center gap-6 py-6", className)}>
-      <div className="flex items-center gap-2">
+    <div className={cn("flex flex-col gap-5 px-2 py-4", className)}>
+      <p className="text-center font-display text-lg text-foreground">Brewing…</p>
+      <div className="flex items-center">
         {STEPS.map((s, index) => {
           const skipped = s.key === "approving" && !approveNeeded;
           const done = index < activeIndex || (skipped && index <= activeIndex);
           const active = index === activeIndex && !skipped;
           return (
-            <div key={s.key} className="flex items-center gap-2">
+            <div key={s.key} className={cn("flex items-center", index > 0 && "flex-1")}>
               {index > 0 && (
                 <div
                   className={cn(
-                    "h-px w-8",
-                    index <= activeIndex ? "bg-primary" : "bg-border",
+                    "mx-1.5 h-0.5 flex-1 rounded-full transition-colors",
+                    index <= activeIndex ? "bg-accent" : "bg-border",
                   )}
+                  style={{
+                    transitionDuration: "var(--duration-pour)",
+                    transitionTimingFunction: "var(--ease-tea)",
+                  }}
                 />
               )}
               <div className="flex flex-col items-center gap-1.5">
                 <div
                   className={cn(
-                    "flex size-8 items-center justify-center rounded-full border text-xs font-medium transition-colors",
+                    "relative grid size-7.5 place-items-center rounded-full border-2 text-[13px] font-bold transition-all",
                     done && !skipped &&
-                      "border-primary bg-primary text-primary-foreground",
-                    active && "border-primary text-primary",
+                      "border-accent bg-accent text-accent-foreground",
+                    active && "border-accent bg-card text-accent",
                     skipped && "border-dashed border-border text-muted-foreground",
                     !done && !active && !skipped &&
-                      "border-border text-muted-foreground",
+                      "border-border bg-muted text-muted-foreground",
                   )}
                 >
-                  {done && !skipped ? (
-                    <Check className="size-4" />
-                  ) : active ? (
-                    <Spinner className="size-4" />
-                  ) : (
-                    index + 1
+                  {done && !skipped ? <Check className="size-4" /> : index + 1}
+                  {active && (
+                    <span
+                      className="absolute inset-0 rounded-full border-2 border-accent opacity-40"
+                      style={{
+                        animation: "steam-drift 1.6s var(--ease-tea) infinite",
+                      }}
+                    />
                   )}
                 </div>
                 <span
                   className={cn(
-                    "text-[11px]",
-                    active ? "font-medium text-foreground" : "text-muted-foreground",
+                    "text-[11.5px]",
+                    active
+                      ? "font-bold text-foreground"
+                      : "font-medium text-muted-foreground",
                   )}
                 >
                   {s.label}
@@ -98,7 +108,7 @@ export function ActionStepper({
           {STEP_MESSAGE[STEPS[activeIndex].key]}
         </p>
         <p className="text-xs text-muted-foreground">
-          Keep this screen open until it completes.
+          Keep this open — good tea takes a minute.
         </p>
       </div>
     </div>
@@ -106,9 +116,10 @@ export function ActionStepper({
 }
 
 /**
- * Presentational cross-chain fill tracker. Callers own the `useStatus` poll
- * and pass the raw solver status code down:
- * -1 / undefined → registering, 1 / 2 → filling, 3 → solved, 4 → failed.
+ * The steeping tracker (design system SteepingTracker) — shown while the
+ * cross-chain fill completes. Callers own the `useStatus` poll and pass the
+ * raw solver status code: -1 / undefined → registering, 1 / 2 → steeping,
+ * 3 → poured, 4 → kettle trouble.
  */
 export function IntentTracking({
   statusCode,
@@ -116,6 +127,7 @@ export function IntentTracking({
   successTitle,
   successBody,
   onDone,
+  accent = "var(--cup-breakfast-deep)",
   className,
 }: {
   statusCode: number | undefined;
@@ -123,25 +135,27 @@ export function IntentTracking({
   successTitle: string;
   successBody: string;
   onDone: () => void;
+  accent?: string;
   className?: string;
 }) {
   if (statusCode === 3) {
     return (
-      <div className={cn("flex flex-col items-center gap-4 py-6 text-center", className)}>
-        <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/15">
-          <Check className="size-7 text-emerald-500" />
+      <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
+        <div className="flex flex-col items-center">
+          <SteamPlume level={4} bloom width={64} height={40} />
+          <TeapotArt size={64} />
         </div>
         <div className="flex flex-col gap-1">
-          <p className="text-base font-semibold text-foreground">{successTitle}</p>
+          <p className="font-display text-lg text-foreground">{successTitle}</p>
           <p className="text-sm text-muted-foreground">{successBody}</p>
           {fillTxHash && (
-            <p className="font-mono text-xs text-muted-foreground tabular-nums">
+            <p className="money text-xs text-muted-foreground">
               Fill tx {shortenAddress(fillTxHash)}
             </p>
           )}
         </div>
         <Button className="h-12 w-full text-base" onClick={onDone}>
-          Done
+          Lovely
         </Button>
       </div>
     );
@@ -149,17 +163,18 @@ export function IntentTracking({
 
   if (statusCode === 4) {
     return (
-      <div className={cn("flex flex-col items-center gap-4 py-6 text-center", className)}>
-        <div className="flex size-14 items-center justify-center rounded-full bg-destructive/10">
-          <WarningCircle className="size-7 text-destructive" />
+      <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
+        <div className="flex flex-col items-center">
+          <div style={{ height: 40 }} />
+          <TeapotArt size={64} />
         </div>
         <div className="flex flex-col gap-1">
-          <p className="text-base font-semibold text-foreground">
-            The solver couldn&apos;t fill this order
+          <p className="font-display text-lg text-destructive">
+            The kettle&apos;s acting up.
           </p>
           <p className="text-sm text-muted-foreground">
-            Your funds are safe. If they don&apos;t reappear in your wallet
-            shortly, contact SODAX support with your transaction hash.
+            Nothing was lost — your funds are safe. If they don&apos;t reappear
+            shortly, keep the fill hash handy for support.
           </p>
         </div>
         <Button variant="outline" className="h-12 w-full text-base" onClick={onDone}>
@@ -171,17 +186,29 @@ export function IntentTracking({
 
   const filling = statusCode === 1 || statusCode === 2;
   return (
-    <div className={cn("flex flex-col items-center gap-4 py-10 text-center", className)}>
-      <Spinner className="size-8 text-primary" />
+    <div className={cn("flex flex-col items-center gap-3 px-3 py-6 text-center", className)}>
+      <div className="flex flex-col items-center">
+        <SteamPlume level={2} width={64} height={40} />
+        <TeapotArt size={64} />
+      </div>
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium text-foreground">
-          {filling ? "Solver filling your order…" : "Registering intent…"}
+        <p className="font-display text-lg text-foreground">
+          Your tea is steeping…
         </p>
         <p className="text-xs text-muted-foreground">
           {filling
-            ? "This usually takes under a minute."
-            : "Waiting for your transaction to reach the solver network."}
+            ? "Good tea takes a minute — usually less."
+            : "Carrying the tray over — waiting for the solver network."}
         </p>
+      </div>
+      <div className="mt-1 h-1 w-40 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full w-2/5 rounded-full"
+          style={{
+            background: accent,
+            animation: "steep-scan 1.8s var(--ease-tea) infinite",
+          }}
+        />
       </div>
     </div>
   );

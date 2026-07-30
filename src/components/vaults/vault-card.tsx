@@ -1,66 +1,60 @@
 "use client";
 
 import { useState } from "react";
+import { formatUnits } from "viem";
 
 import {
   useLeverageYieldEffectiveApr,
-  useLeverageYieldTotalAssets,
   type LeverageYieldVault,
 } from "@sodax/dapp-kit";
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown, CaretUp } from "@phosphor-icons/react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CupArt, SteamPlume } from "@/components/tea/tea-art";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
-import {
-  formatBps,
-  formatRayAsPercent,
-  formatTokenAmount,
-  formatWadAsMultiplier,
-} from "@/lib/format";
+import { formatRayAsPercent, formatTokenAmount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getVaultMeta } from "@/lib/vaults-meta";
 
-function BreakdownRow({
+/** RAY (1e27) rate → percent number for arithmetic (projection line). */
+function rayToPercent(ray: bigint): number {
+  return Number((ray * 10_000n) / 10n ** 25n) / 10_000;
+}
+
+function Row({
   label,
-  sublabel,
   value,
   negative,
-  muted,
+  strong,
 }: {
   label: string;
-  sublabel?: string;
-  value: string;
+  value: string | null;
   negative?: boolean;
-  muted?: boolean;
+  strong?: boolean;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <div className="min-w-0">
-        <span className={cn("text-sm", muted && "text-muted-foreground")}>
-          {label}
+    <div
+      className={cn(
+        "flex justify-between py-0.5 text-[12.5px]",
+        strong && "font-bold",
+      )}
+    >
+      <span>{label}</span>
+      {value !== null && (
+        <span className={cn("money", negative && "text-destructive")}>
+          {value}
         </span>
-        {sublabel ? (
-          <span className="ml-1.5 text-xs text-muted-foreground">
-            {sublabel}
-          </span>
-        ) : null}
-      </div>
-      <span
-        className={cn(
-          "shrink-0 text-sm font-medium tabular-nums",
-          negative && "text-red-600 dark:text-red-400",
-          muted && "font-normal text-muted-foreground",
-        )}
-      >
-        {value}
-      </span>
+      )}
     </div>
   );
 }
 
+/**
+ * The cup card (design system CupCard) — one vault, one cup of tea. Steam
+ * intensity scales with how much is steeping; iridescence is reserved for
+ * the fullest cups and the post-pour bloom.
+ */
 export function VaultCard({
   vault,
   onDeposit,
@@ -73,169 +67,195 @@ export function VaultCard({
   const meta = getVaultMeta(vault.name);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
 
+  const accent = `var(--cup-${meta.cupKey})`;
+  const deep = `var(--cup-${meta.cupKey}-deep)`;
+  const soft = `var(--cup-${meta.cupKey}-soft)`;
+
   const { data: apr, isLoading: isAprLoading } = useLeverageYieldEffectiveApr({
-    params: { vault: vault.vault },
-  });
-  const { data: tvl, isLoading: isTvlLoading } = useLeverageYieldTotalAssets({
     params: { vault: vault.vault },
   });
   const position = useUserVaultPosition(vault.vault);
 
+  const steeping =
+    position.underlyingValue !== undefined
+      ? Number(formatUnits(position.underlyingValue, 18))
+      : 0;
+  const hasTea = position.hasPosition;
+  // Heat bands approximate the design's $50/$500/$5000 via per-cup unit
+  // thresholds (see vaults-meta) until a price feed lands.
+  const [t1, t2, t3] = meta.steamThresholds;
+  const steamLevel = !hasTea
+    ? 0
+    : steeping >= t3
+      ? 4
+      : steeping >= t2
+        ? 3
+        : steeping >= t1
+          ? 2
+          : 1;
+  const fill = !hasTea ? 0 : Math.min(1, 0.25 + (steeping / t3) * 0.75);
+
   const aprNegative = apr !== undefined && apr.effectiveNetAprRay < 0n;
+  const aprPct = apr !== undefined ? rayToPercent(apr.effectiveNetAprRay) : 0;
+  const projection = steeping * (aprPct / 100);
 
   return (
-    <Card className={cn("gap-4 bg-linear-to-br", meta.gradient)}>
-      {/* Header: glyph + title + ecosystem badge */}
-      <div className="flex items-center gap-3 px-(--card-spacing)">
-        <div
-          aria-hidden
-          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background/60 text-lg font-semibold ring-1 ring-foreground/10"
-        >
-          {meta.glyph}
+    <div
+      className="rounded-2xl border bg-card p-4"
+      style={{
+        borderColor: `color-mix(in oklch, ${accent} 25%, var(--border))`,
+        boxShadow: "var(--shadow-card, var(--shadow-cup))",
+      }}
+    >
+      <div className="flex gap-3.5">
+        {/* The cup, steaming to scale */}
+        <div className="flex w-21 shrink-0 flex-col items-center">
+          <SteamPlume level={steamLevel} width={70} height={44} />
+          <CupArt
+            accent={accent}
+            deep={deep}
+            fill={fill}
+            bowl={meta.cupKey === "sencha"}
+            size={78}
+          />
         </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate font-heading text-base font-medium leading-snug">
-            {meta.title}
-          </h3>
-          <p className="truncate text-xs text-muted-foreground">{vault.name}</p>
-        </div>
-        <Badge variant="outline" className="shrink-0 bg-background/60">
-          {meta.ecosystem}
-        </Badge>
-      </div>
 
-      {/* Headline APR + subline */}
-      <div className="px-(--card-spacing)">
-        {isAprLoading || apr === undefined ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-36" />
-            <Skeleton className="h-4 w-48" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-display text-[19px] text-foreground">
+              {meta.teaName}
+            </span>
+            <span
+              className="rounded-full px-2 py-0.5 text-[10.5px] font-bold tracking-(--tracking-caps) uppercase"
+              style={{
+                color: deep,
+                background: soft,
+              }}
+            >
+              {meta.flavour}
+            </span>
           </div>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-baseline gap-x-2">
+          <p className="mt-0.5 text-xs text-muted-foreground">{meta.assetLine}</p>
+
+          {isAprLoading || apr === undefined ? (
+            <Skeleton className="mt-2 h-9 w-32" />
+          ) : (
+            <div className="mt-2 flex items-baseline gap-1.5">
               <span
-                className={cn(
-                  "text-4xl font-semibold tracking-tight tabular-nums",
-                  aprNegative
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-emerald-600 dark:text-emerald-400",
-                )}
+                className="money text-3xl font-semibold"
+                style={{ color: aprNegative ? "var(--destructive)" : deep }}
               >
-                {aprNegative ? "" : "+"}
                 {formatRayAsPercent(apr.effectiveNetAprRay)}
               </span>
-              <span className="text-sm text-muted-foreground">
-                APR{apr.lsdApr.stale ? " (est.)" : ""}
+              <span className="text-[13px] text-muted-foreground">
+                per year{apr.lsdApr.stale ? " (est.)" : ""}
               </span>
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground tabular-nums">
-              <span>{formatWadAsMultiplier(apr.leverageMultiplierWad)} leverage</span>
-              <span aria-hidden>·</span>
-              {isTvlLoading || tvl === undefined ? (
-                <Skeleton className="h-3.5 w-24" />
-              ) : (
-                <span>
-                  {formatTokenAmount(tvl, 18)} {meta.underlyingSymbol} TVL
-                </span>
-              )}
+          )}
+
+          {hasTea ? (
+            <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground">
+              <span>Steeping</span>
+              <span className="money text-right text-foreground">
+                {formatTokenAmount(position.underlyingValue ?? 0n, 18)}{" "}
+                {meta.underlyingSymbol}
+              </span>
+              <span>A year of steeping</span>
+              <span className="money text-right text-foreground">
+                ≈ {projection.toFixed(4)} {meta.underlyingSymbol}
+              </span>
             </div>
-          </>
-        )}
-        <p className="mt-2 text-sm text-muted-foreground">{meta.strategy}</p>
+          ) : (
+            <p className="mt-2 text-[13px] text-muted-foreground">
+              Your cup awaits its first pour.
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* Expandable APR breakdown */}
-      <div className="px-(--card-spacing)">
+      {/* CTAs */}
+      <div className="mt-3.5 flex gap-2">
+        <Button
+          className="h-11 flex-1 rounded-full text-[15px] font-bold"
+          style={{ background: deep, color: "oklch(0.985 0.008 90)" }}
+          onClick={() => onDeposit(vault)}
+        >
+          {hasTea ? "Pour" : "Pour your first cup"}
+        </Button>
+        {hasTea && (
+          <Button
+            variant="secondary"
+            className="h-11 rounded-full text-[15px] font-bold"
+            onClick={() => onWithdraw(vault)}
+          >
+            Pour back
+          </Button>
+        )}
+      </div>
+
+      {/* How strong is this brew? */}
+      <div className="mt-2">
         <button
           type="button"
           onClick={() => setBreakdownOpen((open) => !open)}
           aria-expanded={breakdownOpen}
-          className="flex w-full items-center justify-between rounded-lg py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          className="flex min-h-8 items-center gap-1.5 py-1 text-[12.5px] font-bold text-muted-foreground transition-colors hover:text-foreground"
         >
-          APR breakdown
-          <CaretDown
-            className={cn(
-              "size-4 transition-transform",
-              breakdownOpen && "rotate-180",
-            )}
-            aria-hidden
-          />
+          {breakdownOpen ? (
+            <CaretUp className="size-3.5" />
+          ) : (
+            <CaretDown className="size-3.5" />
+          )}
+          How strong is this brew?
         </button>
-        {breakdownOpen ? (
-          apr === undefined ? (
-            <div className="mt-2 space-y-2">
-              <Skeleton className="h-4 w-full" />
+        {breakdownOpen &&
+          (apr === undefined ? (
+            <div className="space-y-2 py-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-2/3" />
             </div>
           ) : (
-            <div className="mt-2 space-y-2 rounded-lg bg-background/50 p-3 ring-1 ring-foreground/5">
-              <BreakdownRow
-                label="LSD staking APR"
-                sublabel={apr.lsdApr.label}
+            <div
+              className="rounded-xl px-3 py-2.5 text-foreground"
+              style={{ background: soft }}
+            >
+              <Row
+                label={`Staking yield · ${apr.lsdApr.label}`}
                 value={`+${formatRayAsPercent(apr.lsdApr.aprRay)}`}
               />
-              <BreakdownRow
-                label="AAVE supply APR"
+              <Row
+                label="Lending spread"
                 value={`+${formatRayAsPercent(apr.supplyAprRay)}`}
               />
-              <BreakdownRow
-                label="AAVE borrow APR"
+              <Row
+                label="Borrow cost"
                 value={`−${formatRayAsPercent(apr.borrowAprRay)}`}
                 negative
               />
-              <BreakdownRow
-                label="Target LTV"
-                value={formatBps(apr.targetLtvBps)}
+              <Row
+                label={`Leverage · ${(Number(apr.leverageMultiplierWad / 10n ** 15n) / 1000).toFixed(1)}×`}
+                value={null}
               />
-              <BreakdownRow
-                label="AAVE-only net"
-                value={formatRayAsPercent(apr.netAprRay)}
-                muted
+              <div
+                className="my-1.5 border-t border-dashed"
+                style={{
+                  borderColor: `color-mix(in oklch, ${deep} 30%, transparent)`,
+                }}
               />
-              <p className="pt-1 text-xs text-muted-foreground">
-                The headline APR includes the LSD&apos;s native staking yield;
-                AAVE-only net excludes it.
-              </p>
+              <Row
+                label="Brew strength"
+                value={formatRayAsPercent(apr.effectiveNetAprRay)}
+                strong
+              />
+              {apr.lsdApr.stale && (
+                <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+                  The staking number is an estimate right now — the live feed
+                  is having a lie-down.
+                </p>
+              )}
             </div>
-          )
-        ) : null}
+          ))}
       </div>
-
-      {/* Position strip */}
-      {position.hasPosition ? (
-        <div className="mx-(--card-spacing) flex items-center justify-between gap-3 rounded-lg bg-background/70 p-3 ring-1 ring-foreground/10">
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Your position</p>
-            <p className="truncate text-sm font-medium tabular-nums">
-              {formatTokenAmount(position.shares, 18)} shares
-              {position.underlyingValue !== undefined ? (
-                <span className="text-muted-foreground">
-                  {" "}
-                  ≈ {formatTokenAmount(position.underlyingValue, 18)}{" "}
-                  {meta.underlyingSymbol}
-                </span>
-              ) : null}
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            onClick={() => onWithdraw(vault)}
-          >
-            Withdraw
-          </Button>
-        </div>
-      ) : null}
-
-      {/* Primary CTA */}
-      <div className="px-(--card-spacing)">
-        <Button className="h-12 w-full text-base" onClick={() => onDeposit(vault)}>
-          Deposit
-        </Button>
-      </div>
-    </Card>
+    </div>
   );
 }

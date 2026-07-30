@@ -16,19 +16,19 @@ const STATS = [
     icon: Robot,
     stat: "25+ AI agents",
     detail:
-      "7 researchers read the SDK source in parallel, 3 builders wrote the UI simultaneously, and 15 reviewers adversarially cross-examined every line — orchestrated by one Claude session.",
+      "One measured the leaves, one warmed the pot, several argued about steam: researchers, builders, and reviewers — orchestrated by one Claude session.",
   },
   {
     icon: Wrench,
     stat: "1 MCP server",
     detail:
-      "The SODAX Builders MCP served live protocol data — supported chains, solver token lists, vault registries, docs — straight into the agents' hands while they worked.",
+      "The SODAX Builders MCP poured live protocol data — chains, tokens, vaults, docs — straight into the agents' cups while they worked.",
   },
   {
     icon: Sparkle,
     stat: "~1 afternoon",
     detail:
-      "From an empty folder to a reviewed, cross-chain vault app: scaffolded, built, adversarially reviewed, and fixed — all vibed, no hand-written boilerplate.",
+      "From an empty folder to a reviewed, cross-chain tea service: scaffolded, brewed, tasted adversarially, and refined. No crypto jargon survived the tasting.",
   },
 ];
 
@@ -50,9 +50,9 @@ export function InfoDrawer() {
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>Vibed with SODAX</DrawerTitle>
+            <DrawerTitle>How this was made</DrawerTitle>
             <DrawerDescription>
-              This entire app was built by AI agents on the SODAX SDK.
+              Vibed together over many cups.
             </DrawerDescription>
           </DrawerHeader>
 
@@ -72,10 +72,10 @@ export function InfoDrawer() {
             ))}
 
             <p className="text-sm text-muted-foreground">
-              Under the hood: <span className="text-foreground">@sodax/dapp-kit</span>{" "}
-              turns every deposit into an intent-based cross-chain swap — any
-              asset on any of 20 networks in, leveraged staked-yield vault
-              shares on Sonic out, one signature.
+              Under the porcelain: <span className="text-foreground">@sodax/dapp-kit</span>{" "}
+              turns every pour into an intent-based cross-chain swap — any
+              asset on any of 20 networks in, leveraged staked-yield tea on
+              Sonic out, one signature.
             </p>
 
             <div className="flex flex-col gap-2">
@@ -85,7 +85,7 @@ export function InfoDrawer() {
                 rel="noreferrer"
                 className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
-                Build your own — SODAX Builders
+                See how it&apos;s brewed — SODAX Builders
                 <ArrowSquareOut className="size-4 text-muted-foreground" />
               </a>
               <a

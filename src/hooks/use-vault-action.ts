@@ -93,19 +93,22 @@ function extractErrorCode(error: unknown): string | undefined {
 }
 
 /** Map SDK error codes to human copy per the shared error-handling contract. */
+/** Cancel copy is compared by identity in the drawers to style it gently. */
+export const CANCELLED_MESSAGE = "No worries — the tea's still warm.";
+
 function friendlyError(error: unknown, fallback: string): string {
-  if (isUserRejectedError(error)) return "Cancelled in wallet";
+  if (isUserRejectedError(error)) return CANCELLED_MESSAGE;
   switch (extractErrorCode(error)) {
     case "USER_REJECTED":
-      return "Cancelled in wallet";
+      return CANCELLED_MESSAGE;
     case "RELAY_TIMEOUT":
     case "RELAY_FAILED":
     case "TX_SUBMIT_FAILED":
     case "TX_VERIFICATION_FAILED":
-      return "Your transaction was sent but cross-chain delivery is delayed — funds are safe, this usually resolves itself.";
+      return "Your pour was sent but the tray is taking a while — funds are safe, this usually resolves itself.";
     case "EXECUTION_FAILED":
     case "EXTERNAL_API_ERROR":
-      return "Your order is registered but the solver hasn't confirmed yet — it's safe to retry.";
+      return "Your pour is on the counter but the solver hasn't confirmed — it's safe to retry.";
     default:
       return fallback;
   }
@@ -182,7 +185,7 @@ export function useVaultAction(): UseVaultActionResult {
           fail(
             friendlyError(
               built.error,
-              "Couldn't prepare the deposit. Please try again.",
+              "Couldn't ready the pour. Please try again.",
             ),
           );
           return false;
@@ -194,7 +197,7 @@ export function useVaultAction(): UseVaultActionResult {
           walletProvider: args.walletProvider,
         });
         if (!allowance.ok) {
-          fail("Couldn't verify the token allowance. Please try again.");
+          fail("Couldn't check the pot. Please try again.");
           return false;
         }
         setApproveRequired(!allowance.value);
@@ -221,7 +224,7 @@ export function useVaultAction(): UseVaultActionResult {
           );
           if (!confirmed) {
             fail(
-              "The approval hasn't confirmed yet — wait a few seconds and try again.",
+              "The pot is still warming — wait a few seconds and try again.",
             );
             return false;
           }
@@ -234,7 +237,7 @@ export function useVaultAction(): UseVaultActionResult {
             fail(
               friendlyError(
                 built.error,
-                "Couldn't prepare the deposit. Please try again.",
+                "Couldn't ready the pour. Please try again.",
               ),
             );
             return false;
@@ -249,7 +252,7 @@ export function useVaultAction(): UseVaultActionResult {
         });
         if (!swapped.ok) {
           fail(
-            friendlyError(swapped.error, "Deposit failed. Please try again."),
+            friendlyError(swapped.error, "The kettle's acting up — try again."),
           );
           return false;
         }
@@ -287,7 +290,7 @@ export function useVaultAction(): UseVaultActionResult {
           fail(
             friendlyError(
               built.error,
-              "Couldn't prepare the withdrawal. Please try again.",
+              "Couldn't ready the pour-back. Please try again.",
             ),
           );
           return false;
@@ -304,7 +307,7 @@ export function useVaultAction(): UseVaultActionResult {
           fail(
             friendlyError(
               swapped.error,
-              "Withdrawal failed. Please try again.",
+              "The kettle's acting up — try again.",
             ),
           );
           return false;

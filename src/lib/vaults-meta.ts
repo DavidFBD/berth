@@ -19,6 +19,20 @@ export type VaultMeta = {
   gradient: string;
   /** Single glyph used as a lightweight icon. */
   glyph: string;
+  /** LSTeaTime tea name for the cup (design-system canon). */
+  teaName: string;
+  /** Cup accent key — matches the --cup-<key> CSS variable family. */
+  cupKey: "earlgrey" | "breakfast" | "sencha";
+  /** Blend badge label. */
+  flavour: string;
+  /** Descriptive asset line under the tea name. */
+  assetLine: string;
+  /**
+   * Steam-level thresholds in UNDERLYING token units (18dp bigints as
+   * numbers), approximating the design's $50 / $500 / $5000 heat bands.
+   * TODO: swap for a real USD price feed.
+   */
+  steamThresholds: [number, number, number];
 };
 
 export const VAULTS_META: Record<string, VaultMeta> = {
@@ -31,6 +45,11 @@ export const VAULTS_META: Record<string, VaultMeta> = {
     ecosystem: "Ethereum",
     gradient: "from-indigo-500/20 to-violet-500/5",
     glyph: "Ξ",
+    teaName: "Earl Grey",
+    cupKey: "earlgrey",
+    flavour: "ETH flavour",
+    assetLine: "EtherFi weETH",
+    steamThresholds: [0.02, 0.2, 2],
   },
   lsodaWSTETH: {
     title: "Leveraged wstETH",
@@ -41,6 +60,11 @@ export const VAULTS_META: Record<string, VaultMeta> = {
     ecosystem: "Ethereum",
     gradient: "from-sky-500/20 to-cyan-500/5",
     glyph: "Ξ",
+    teaName: "English Breakfast",
+    cupKey: "breakfast",
+    flavour: "ETH flavour",
+    assetLine: "Lido wstETH",
+    steamThresholds: [0.015, 0.15, 1.5],
   },
   lsodaJITOSOL: {
     title: "Leveraged JitoSOL",
@@ -51,6 +75,11 @@ export const VAULTS_META: Record<string, VaultMeta> = {
     ecosystem: "Solana",
     gradient: "from-emerald-500/20 to-teal-500/5",
     glyph: "◎",
+    teaName: "Sencha",
+    cupKey: "sencha",
+    flavour: "SOL flavour",
+    assetLine: "Jito JitoSOL",
+    steamThresholds: [0.3, 3, 30],
   },
 };
 
@@ -62,6 +91,11 @@ export const FALLBACK_VAULT_META: VaultMeta = {
   ecosystem: "Ethereum",
   gradient: "from-neutral-500/20 to-neutral-500/5",
   glyph: "◈",
+  teaName: "House Blend",
+  cupKey: "breakfast",
+  flavour: "mystery flavour",
+  assetLine: "Sonic hub vault",
+  steamThresholds: [0.02, 0.2, 2],
 };
 
 export function getVaultMeta(name: string): VaultMeta {

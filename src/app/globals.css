@@ -7,9 +7,11 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-money);
+  --font-heading: var(--font-display);
+  --font-display: var(--font-display);
+  --font-money: var(--font-money);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,73 +50,184 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ————— LSTeaTime tokens (design system: Morning Tea / Evening Tea) ————— */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: oklch(0.965 0.012 85); /* warm cream */
+  --foreground: oklch(0.3 0.028 55); /* steeped-leaf brown */
+  --card: oklch(0.985 0.008 90); /* porcelain white */
+  --card-foreground: oklch(0.3 0.028 55);
+  --popover: oklch(0.985 0.008 90);
+  --popover-foreground: oklch(0.3 0.028 55);
+  --primary: oklch(0.42 0.055 55); /* strong brew brown */
+  --primary-foreground: oklch(0.97 0.01 85);
+  --secondary: oklch(0.905 0.018 80); /* shortbread */
+  --secondary-foreground: oklch(0.36 0.03 55);
+  --muted: oklch(0.928 0.014 85); /* milk-in-first */
+  --muted-foreground: oklch(0.52 0.028 60);
+  --accent: oklch(0.62 0.07 300); /* earl-grey lavender */
+  --accent-foreground: oklch(0.985 0.008 90);
+  --destructive: oklch(0.55 0.13 30); /* burnt toast — used gently */
+  --border: oklch(0.885 0.016 80);
+  --input: oklch(0.885 0.016 80);
+  --ring: oklch(0.62 0.07 300);
+  --chart-1: oklch(0.58 0.085 290);
+  --chart-2: oklch(0.58 0.085 60);
+  --chart-3: oklch(0.58 0.085 150);
+  --chart-4: oklch(0.62 0.07 300);
+  --chart-5: oklch(0.42 0.055 55);
+  --radius: 1rem; /* porcelain, not pill-happy */
+  --sidebar: oklch(0.985 0.008 90);
+  --sidebar-foreground: oklch(0.3 0.028 55);
+  --sidebar-primary: oklch(0.42 0.055 55);
+  --sidebar-primary-foreground: oklch(0.97 0.01 85);
+  --sidebar-accent: oklch(0.928 0.014 85);
+  --sidebar-accent-foreground: oklch(0.36 0.03 55);
+  --sidebar-border: oklch(0.885 0.016 80);
+  --sidebar-ring: oklch(0.62 0.07 300);
+
+  /* Cup accent sub-palettes (matched chroma & lightness; hue varies) */
+  --cup-earlgrey: oklch(0.58 0.085 290);
+  --cup-earlgrey-soft: oklch(0.93 0.025 290);
+  --cup-earlgrey-deep: oklch(0.42 0.09 290);
+  --cup-breakfast: oklch(0.58 0.085 60);
+  --cup-breakfast-soft: oklch(0.93 0.025 70);
+  --cup-breakfast-deep: oklch(0.42 0.09 55);
+  --cup-sencha: oklch(0.58 0.085 150);
+  --cup-sencha-soft: oklch(0.93 0.025 150);
+  --cup-sencha-deep: oklch(0.42 0.09 150);
+
+  /* The one psychedelic allowance: iridescence — steam at full heat + celebrations */
+  --iridescent: linear-gradient(
+    115deg,
+    oklch(0.82 0.06 300) 0%,
+    oklch(0.85 0.06 55) 35%,
+    oklch(0.84 0.06 150) 70%,
+    oklch(0.82 0.06 250) 100%
+  );
+  --steam: oklch(0.75 0.015 85 / 0.55);
+  --tea-ring: oklch(0.8 0.03 70 / 0.28);
+  --shadow-cup: 0 10px 30px -12px oklch(0.42 0.05 55 / 0.25);
+
+  /* Motion — tea, not espresso */
+  --duration-sip: 200ms;
+  --duration-pour: 450ms;
+  --duration-steep: 900ms;
+  --ease-tea: cubic-bezier(0.33, 0, 0.15, 1);
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --tracking-caps: 0.08em;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.225 0.018 55); /* candlelit tearoom */
+  --foreground: oklch(0.93 0.014 85);
+  --card: oklch(0.268 0.02 55);
+  --card-foreground: oklch(0.93 0.014 85);
+  --popover: oklch(0.268 0.02 55);
+  --popover-foreground: oklch(0.93 0.014 85);
+  --primary: oklch(0.87 0.035 80); /* warm milk */
+  --primary-foreground: oklch(0.25 0.02 55);
+  --secondary: oklch(0.33 0.022 60);
+  --secondary-foreground: oklch(0.9 0.015 85);
+  --muted: oklch(0.31 0.02 55);
+  --muted-foreground: oklch(0.72 0.02 70);
+  --accent: oklch(0.72 0.07 300);
+  --accent-foreground: oklch(0.22 0.02 55);
+  --destructive: oklch(0.68 0.13 30);
+  --destructive-foreground: oklch(0.22 0.02 55);
+  --border: oklch(0.345 0.02 55);
+  --input: oklch(0.345 0.02 55);
+  --ring: oklch(0.72 0.07 300);
+  --chart-1: oklch(0.72 0.085 290);
+  --chart-2: oklch(0.72 0.085 60);
+  --chart-3: oklch(0.72 0.085 150);
+  --chart-4: oklch(0.72 0.07 300);
+  --chart-5: oklch(0.87 0.035 80);
+  --sidebar: oklch(0.268 0.02 55);
+  --sidebar-foreground: oklch(0.93 0.014 85);
+  --sidebar-primary: oklch(0.87 0.035 80);
+  --sidebar-primary-foreground: oklch(0.25 0.02 55);
+  --sidebar-accent: oklch(0.31 0.02 55);
+  --sidebar-accent-foreground: oklch(0.9 0.015 85);
+  --sidebar-border: oklch(0.345 0.02 55);
+  --sidebar-ring: oklch(0.72 0.07 300);
+
+  --cup-earlgrey: oklch(0.72 0.085 290);
+  --cup-earlgrey-soft: oklch(0.32 0.035 290);
+  --cup-earlgrey-deep: oklch(0.82 0.07 290);
+  --cup-breakfast: oklch(0.72 0.085 60);
+  --cup-breakfast-soft: oklch(0.32 0.035 60);
+  --cup-breakfast-deep: oklch(0.82 0.07 60);
+  --cup-sencha: oklch(0.72 0.085 150);
+  --cup-sencha-soft: oklch(0.32 0.035 150);
+  --cup-sencha-deep: oklch(0.82 0.07 150);
+
+  --iridescent: linear-gradient(
+    115deg,
+    oklch(0.72 0.08 300) 0%,
+    oklch(0.76 0.08 55) 35%,
+    oklch(0.74 0.08 150) 70%,
+    oklch(0.72 0.08 250) 100%
+  );
+  --steam: oklch(0.85 0.015 85 / 0.4);
+  --tea-ring: oklch(0.45 0.03 70 / 0.35);
+  --shadow-cup: 0 10px 30px -12px oklch(0 0 0 / 0.5);
+}
+
+/* Steam wisps — intensity scales with value in the cup */
+@keyframes steam-rise {
+  0% {
+    transform: translateY(0) translateX(0) scaleX(1);
+    opacity: 0;
+  }
+  20% {
+    opacity: var(--steam-opacity, 0.5);
+  }
+  60% {
+    transform: translateY(-26px) translateX(4px) scaleX(1.15);
+  }
+  100% {
+    transform: translateY(-44px) translateX(-3px) scaleX(1.35);
+    opacity: 0;
+  }
+}
+@keyframes steam-drift {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  50% {
+    transform: translateX(3px) rotate(2deg);
+  }
+}
+/* The celebratory "poured" bloom — the one iridescent moment */
+@keyframes steam-bloom {
+  0% {
+    transform: scale(0.6) translateY(6px);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6) translateY(-30px);
+    opacity: 0;
+  }
+}
+@keyframes steep-scan {
+  0% {
+    transform: translateX(-160px);
+  }
+  100% {
+    transform: translateX(160px);
+  }
+}
+
+/* Money is always tabular — the playfulness lives around the numbers. */
+.money,
+[data-money] {
+  font-family: var(--font-money);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 @layer base {

@@ -177,11 +177,11 @@ export function TokenPicker({
           <DrawerDescription>
             {mode === "source"
               ? chainKey
-                ? "Any solver-supported token can fund the deposit."
-                : "Pick the chain your funds are on."
+                ? "Anything in the pot can become tea."
+                : "Where's your tea coming from?"
               : chainKey
-                ? "Any solver-supported token can be delivered."
-                : "Pick the chain to receive funds on."}
+                ? "Pick what it arrives as."
+                : "Where should we pour it?"}
           </DrawerDescription>
         </DrawerHeader>
 

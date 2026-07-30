@@ -9,6 +9,7 @@ import { VaultList } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { TeapotModule } from "@/components/tea/teapot-module";
 
 export default function Home() {
   const [depositVault, setDepositVault] = useState<LeverageYieldVault | null>(
@@ -19,6 +20,7 @@ export default function Home() {
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const privy = usePrivyEmbeddedWallet();
 
   // Email login is the primary path; the external wallet drawer is the
@@ -35,34 +37,30 @@ export default function Home() {
     <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-12 sm:max-w-lg">
       <header className="sticky top-0 z-10 -mx-4 mb-4 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur">
         <div className="flex items-center gap-2">
-          <span className="text-lg" aria-hidden>
-            ⚡
-          </span>
-          <h1 className="text-base font-semibold tracking-tight">
-            Leveraged Staked Yield
-          </h1>
+          {/* eslint-disable-next-line @next/next/no-img-element -- tiny inline brand mark */}
+          <img src="/lsteatime-mark.svg" alt="" aria-hidden width={30} height={30} />
+          <h1 className="font-display text-xl text-foreground">LSTeaTime</h1>
         </div>
         <div className="flex items-center gap-1">
           <InfoDrawer />
-          <AccountButton />
+          <AccountButton open={accountOpen} onOpenChange={setAccountOpen} />
         </div>
       </header>
 
-      <p className="mb-6 text-sm text-muted-foreground">
-        Deposit any SODAX-supported asset from any network into leveraged
-        staked-yield vaults on Sonic.
-      </p>
+      <TeapotModule onTopUp={() => setAccountOpen(true)} />
 
-      <VaultList
-        onDeposit={(vault) => {
-          setDepositVault(vault);
-          setDepositOpen(true);
-        }}
-        onWithdraw={(vault) => {
-          setWithdrawVault(vault);
-          setWithdrawOpen(true);
-        }}
-      />
+      <div className="mt-4">
+        <VaultList
+          onDeposit={(vault) => {
+            setDepositVault(vault);
+            setDepositOpen(true);
+          }}
+          onWithdraw={(vault) => {
+            setWithdrawVault(vault);
+            setWithdrawOpen(true);
+          }}
+        />
+      </div>
 
       <DepositDrawer
         vault={depositVault}
@@ -78,9 +76,14 @@ export default function Home() {
       />
       <WalletDrawer open={walletOpen} onOpenChange={setWalletOpen} />
 
-      <footer className="mt-10 text-center text-xs text-muted-foreground">
-        Powered by SODAX · vaults live on the Sonic hub · no testnet, real
-        funds
+      <footer className="mt-9 text-center text-xs text-muted-foreground">
+        Tea is the way.{" "}
+        <span className="font-display text-foreground/70">
+          LSTeaTime is the best time.
+        </span>
+        <span className="mt-1 block text-[10.5px] text-muted-foreground/70">
+          Powered by SODAX · real funds, real tea — no testnet
+        </span>
       </footer>
     </div>
   );

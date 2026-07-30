@@ -34,10 +34,19 @@ import { shortenAddress } from "@/lib/format";
  * product stance that mobile users live entirely in the email flow.
  * Falls back to the plain ConnectButton when Privy isn't configured.
  */
-export function AccountButton() {
+export function AccountButton({
+  open: openProp,
+  onOpenChange,
+}: {
+  /** Optional controlled open state so the page (teapot Top up) can open the pantry. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+} = {}) {
   const privy = usePrivyEmbeddedWallet();
   const mounted = useMounted();
-  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountOpenState, setAccountOpenState] = useState(false);
+  const accountOpen = openProp ?? accountOpenState;
+  const setAccountOpen = onOpenChange ?? setAccountOpenState;
   const [walletsOpen, setWalletsOpen] = useState(false);
 
   if (!PRIVY_ENABLED) return <ConnectButton />;
@@ -76,7 +85,7 @@ export function AccountButton() {
       <Drawer open={accountOpen} onOpenChange={setAccountOpen}>
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>Your account</DrawerTitle>
+            <DrawerTitle>Your pantry</DrawerTitle>
             <DrawerDescription>
               {email ? `Signed in as ${email}` : "Signed in via email"}
             </DrawerDescription>
@@ -89,7 +98,7 @@ export function AccountButton() {
                   <QRCodeSVG value={address} size={144} marginSize={1} />
                 </div>
                 <ReceiveRow
-                  label="Your deposit address — one address, all EVM networks"
+                  label="Fill your teapot — one address, every EVM network"
                   address={address}
                   copyToast="Works on every EVM network SODAX supports — send funds here to top up."
                 />
@@ -98,7 +107,7 @@ export function AccountButton() {
               </>
             ) : (
               <p className="rounded-xl bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
-                Creating your wallet…
+                Warming the pot…
               </p>
             )}
 
@@ -153,7 +162,7 @@ function SolanaReceive() {
   if (!solanaAddress) return null;
   return (
     <ReceiveRow
-      label="Your Solana deposit address"
+      label="Fill your teapot — Solana"
       address={solanaAddress}
       copyToast="Only send Solana assets (SOL, JitoSOL, USDC…) to this one."
     />
@@ -209,7 +218,7 @@ function FundButton({ address }: { address: string }) {
     >
       <PlusCircle className="size-5 text-primary" />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium text-foreground">Add funds</span>
+        <span className="text-sm font-medium text-foreground">Fill the teapot</span>
         <span className="text-xs text-muted-foreground">
           Card, bank, or crypto from any chain
         </span>

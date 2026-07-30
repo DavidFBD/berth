@@ -27,7 +27,7 @@ import { getChainName } from "@/lib/chains";
 import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
-import { useVaultAction } from "@/hooks/use-vault-action";
+import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { ActionStepper, IntentTracking } from "./action-stepper";
 import { ChainLogo, TokenPicker } from "./token-picker";
@@ -146,15 +146,15 @@ export function WithdrawDrawer({
     if (toastedRef.current) return;
     if (statusCode === 3) {
       toastedRef.current = true;
-      toast.success("Withdrawal filled", {
+      toast.success("Poured back.", {
         description: dstChainKey
           ? `Funds delivered on ${getChainName(dstChainKey)}.`
           : "Funds delivered.",
       });
     } else if (statusCode === 4) {
       toastedRef.current = true;
-      toast.error("Withdrawal fill failed", {
-        description: "Your shares were not spent. Please try again.",
+      toast.error("The kettle's acting up.", {
+        description: "Your cup is untouched. Please try again.",
       });
     }
   }, [statusCode, dstChainKey]);
@@ -234,7 +234,7 @@ export function WithdrawDrawer({
       }
     : !dstChainKey || !outputToken
       ? {
-          label: "Select destination",
+          label: "Where to?",
           disabled: false,
           onClick: () => setPickerOpen(true),
         }
@@ -245,9 +245,9 @@ export function WithdrawDrawer({
             onClick: onConnectWallet,
           }
         : !parsed
-          ? { label: "Enter amount", disabled: true }
+          ? { label: "Pour back how much?", disabled: true }
           : parsed > availableShares
-            ? { label: "Insufficient shares", disabled: true }
+            ? { label: "Your cup isn't quite that full", disabled: true }
             : isWrongChain
               ? {
                   label: "Switch network",
@@ -255,15 +255,15 @@ export function WithdrawDrawer({
                   onClick: handleSwitchChain,
                 }
               : noRoute
-                ? { label: "No route for this pair", disabled: true }
+                ? { label: "No blend path for this pair", disabled: true }
                 : belowBtcDust
-                  ? { label: "Amount too small for BTC", disabled: true }
+                  ? { label: "Too small a sip for Bitcoin", disabled: true }
                   : quoted === undefined ||
                       minReceived === undefined ||
                       !walletProvider
-                    ? { label: "Fetching quote…", disabled: true, busy: true }
+                    ? { label: "Reading the leaves…", disabled: true, busy: true }
                     : {
-                        label: "Withdraw",
+                        label: "Pour back",
                         disabled: false,
                         onClick: () => void handleWithdraw(),
                       };
@@ -280,12 +280,12 @@ export function WithdrawDrawer({
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>
-              {meta ? `Withdraw from ${meta.title}` : "Withdraw"}
+              {meta ? `Pour back from ${meta.teaName}` : "Pour back"}
             </DrawerTitle>
             <DrawerDescription>
               {vault
-                ? `Swap ${vault.name} shares back to any token, on any chain.`
-                : "Select a vault to withdraw."}
+                ? "Back to any asset, on any network — the tea keeps its warmth."
+                : "Pick a cup to pour back from."}
             </DrawerDescription>
           </DrawerHeader>
 
@@ -294,11 +294,11 @@ export function WithdrawDrawer({
               <IntentTracking
                 statusCode={statusCode}
                 fillTxHash={fillTxHash}
-                successTitle="Withdrawn!"
+                successTitle="Back in your teapot."
                 successBody={
                   dstChainKey && outputToken
-                    ? `${outputToken.symbol} is on its way to your ${getChainName(dstChainKey)} wallet.`
-                    : "Funds are on their way to your wallet."
+                    ? `${outputToken.symbol} is on its way to you on ${getChainName(dstChainKey)} — ready when you are.`
+                    : "Ready when you are."
                 }
                 onDone={() => {
                   onOpenChange(false);
@@ -331,7 +331,7 @@ export function WithdrawDrawer({
                   />
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
-                      Available:{" "}
+                      Your cup holds{" "}
                       {formatTokenAmount(availableShares, SHARE_DECIMALS)}{" "}
                       {vault.name}
                     </span>
@@ -377,7 +377,7 @@ export function WithdrawDrawer({
                     </>
                   ) : (
                     <span className="flex-1 text-sm text-muted-foreground">
-                      Select destination chain &amp; token
+                      Where should we pour it?
                     </span>
                   )}
                   <CaretDown className="size-4 text-muted-foreground" />
@@ -394,7 +394,7 @@ export function WithdrawDrawer({
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">
-                            You receive
+                            You&apos;ll get back
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
                             ≈ {formatTokenAmount(quoted, outputToken.decimals)}{" "}
@@ -402,7 +402,7 @@ export function WithdrawDrawer({
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>Min after {DEFAULT_SLIPPAGE_PCT}% slippage</span>
+                          <span>At least, once poured</span>
                           <span className="tabular-nums">
                             {formatTokenAmount(minReceived, outputToken.decimals)}
                           </span>
@@ -421,7 +421,7 @@ export function WithdrawDrawer({
                     role="alert"
                     className={cn(
                       "rounded-xl px-3 py-2.5 text-sm",
-                      action.error === "Cancelled in wallet"
+                      action.error === CANCELLED_MESSAGE
                         ? "bg-muted/50 text-muted-foreground"
                         : "bg-destructive/10 text-destructive",
                     )}

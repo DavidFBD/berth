@@ -1,23 +1,33 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono, Karla, Young_Serif } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { DesktopStage } from "@/components/desktop-stage";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/* "English tea house, slightly dreamy" — per the LSTeaTime design system:
+   Young Serif for display, Karla for body/UI, IBM Plex Mono for money. */
+const displayFont = Young_Serif({
+  variable: "--font-display",
+  weight: "400",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const bodyFont = Karla({
+  variable: "--font-body",
+  subsets: ["latin"],
+});
+
+const moneyFont = IBM_Plex_Mono({
+  variable: "--font-money",
+  weight: ["400", "500", "600"],
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Leveraged Staked Yield",
+  title: "LSTeaTime",
   description:
-    "Deposit any SODAX-supported asset from any network into leveraged staked-yield vaults on Sonic.",
+    "A calming little game of filling up tea cups — leveraged staked yield on Sonic, poured from any asset on any network. Tea is the way.",
+  icons: { icon: "/lsteatime-mark.svg" },
 };
 
 export const viewport: Viewport = {
@@ -26,8 +36,8 @@ export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#f4efe4" },
+    { media: "(prefers-color-scheme: dark)", color: "#2b241d" },
   ],
 };
 
@@ -39,9 +49,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col font-sans">
         <Providers>
           <DesktopStage>{children}</DesktopStage>
         </Providers>
