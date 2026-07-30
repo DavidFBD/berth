@@ -10,6 +10,7 @@ import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { TeapotModule } from "@/components/tea/teapot-module";
+import { AuthGate } from "@/components/welcome-screen";
 
 export default function Home() {
   const [depositVault, setDepositVault] = useState<LeverageYieldVault | null>(
@@ -34,6 +35,7 @@ export default function Home() {
   };
 
   return (
+    <AuthGate>
     <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-12 sm:max-w-lg">
       <header className="sticky top-0 z-10 -mx-4 mb-4 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur">
         <div className="flex items-center gap-2">
@@ -86,6 +88,7 @@ export default function Home() {
         </span>
       </footer>
     </div>
+    </AuthGate>
   );
 }
 

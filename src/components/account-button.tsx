@@ -7,7 +7,6 @@ import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Copy,
-  Envelope,
   Plugs,
   PlusCircle,
   SignOut,
@@ -53,20 +52,10 @@ export function AccountButton({
 
   if (!privy.ready) return <Skeleton className="h-8 w-24" />;
 
-  if (!privy.authenticated) {
-    return (
-      <div className="flex items-center gap-2">
-        {/* External wallets: desktop-only affordance */}
-        <div className="hidden lg:block">
-          <ConnectButton />
-        </div>
-        <Button size="sm" onClick={privy.login}>
-          <Envelope className="size-4" />
-          Sign in
-        </Button>
-      </div>
-    );
-  }
+  // Not signed in via email but past the AuthGate means an external wallet
+  // is connected. The welcome screen owns sign-in, so the header shows only
+  // the wallet pill; no competing calls to action.
+  if (!privy.authenticated) return <ConnectButton />;
 
   const email = privy.user?.email?.address;
   const address = privy.embedded?.address;
