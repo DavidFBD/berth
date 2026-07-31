@@ -115,6 +115,7 @@ export function TokenPicker({
     emailMode,
     isLoading: holdingsLoading,
     holdings,
+    erroredChains,
   } = useEmbeddedHoldings();
 
   // Reset on close so every open starts fresh at the first screen.
@@ -255,7 +256,11 @@ export function TokenPicker({
                 ) : holdings.length === 0 ? (
                   <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
                     <p className="text-sm text-muted-foreground">
-                      Your teapot is empty. Top it up and the tea can flow.
+                      {erroredChains.length > 0
+                        ? `Nothing on the shelves we could reach, but ${erroredChains
+                            .map(getChainName)
+                            .join(", ")} won't open just now. Still trying.`
+                        : "Your teapot is empty. Top it up and the tea can flow."}
                     </p>
                     {onTopUp && (
                       <Button
@@ -301,6 +306,14 @@ export function TokenPicker({
                       </div>
                     </button>
                   ))
+                )}
+                {holdings.length > 0 && erroredChains.length > 0 && (
+                  <p className="px-2 py-2 text-xs text-muted-foreground">
+                    The {erroredChains.map(getChainName).join(", ")}{" "}
+                    {erroredChains.length === 1 ? "shelf" : "shelves"} won&apos;t
+                    open just now, so anything there is missing from this list.
+                    Still trying.
+                  </p>
                 )}
               </div>
               <button

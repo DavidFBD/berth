@@ -43,6 +43,8 @@ export type EmbeddedHoldingsResult = {
   isLoading: boolean;
   /** What the embedded wallets hold, largest USD value first (unpriced last, in chain order). */
   holdings: EmbeddedHolding[];
+  /** Chains whose balance sweep errored: their holdings are unknown, not zero. */
+  erroredChains: SpokeChainKey[];
   /** Sum of the priced holdings; undefined when nothing has a price. */
   totalUsd: number | undefined;
 };
@@ -77,9 +79,15 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
     ),
     combine: (results) => {
       const holdings: Array<Omit<EmbeddedHolding, "usdValue">> = [];
+      const erroredChains: SpokeChainKey[] = [];
       EMBEDDED_CHAINS.forEach((chainKey, index) => {
         const data = results[index]?.data;
-        if (!data) return;
+        if (!data) {
+          // A dead RPC must not read as an empty wallet: dapp-kit's 5s
+          // refetchInterval keeps retrying, so flag the chain as unknown.
+          if (results[index]?.isError) erroredChains.push(chainKey);
+          return;
+        }
         for (const token of getDepositTokens(chainKey)) {
           const balance = data[token.address] ?? 0n;
           if (balance > 0n) holdings.push({ chainKey, token, balance });
@@ -88,6 +96,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
       return {
         isLoading: results.some((query) => query.isLoading),
         holdings,
+        erroredChains,
       };
     },
   });
@@ -113,6 +122,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
     emailMode,
     isLoading: swept.isLoading || prices.isLoading,
     holdings,
+    erroredChains: swept.erroredChains,
     totalUsd,
   };
 }

@@ -53,6 +53,31 @@ export const walletConfig: SodaxWalletConfig = {
     ...(walletConnectProjectId
       ? { walletConnect: { projectId: walletConnectProjectId } }
       : {}),
+    // Keyless publicnode endpoints instead of viem's baked-in defaults, which
+    // are best-effort and do die — polygon-rpc.com returns 401 "tenant
+    // disabled" as of 2026-07-31, silently blanking Polygon balances. Chains
+    // not listed here (HyperEVM, LightLink, Kaia, Redbelly) stay on their
+    // official default RPCs, which publicnode doesn't cover.
+    chains: {
+      [ChainKeys.ETHEREUM_MAINNET]: {
+        rpcUrl: "https://ethereum-rpc.publicnode.com",
+      },
+      [ChainKeys.ARBITRUM_MAINNET]: {
+        rpcUrl: "https://arbitrum-one-rpc.publicnode.com",
+      },
+      [ChainKeys.BASE_MAINNET]: { rpcUrl: "https://base-rpc.publicnode.com" },
+      [ChainKeys.OPTIMISM_MAINNET]: {
+        rpcUrl: "https://optimism-rpc.publicnode.com",
+      },
+      [ChainKeys.POLYGON_MAINNET]: {
+        rpcUrl: "https://polygon-bor-rpc.publicnode.com",
+      },
+      [ChainKeys.BSC_MAINNET]: { rpcUrl: "https://bsc-rpc.publicnode.com" },
+      [ChainKeys.AVALANCHE_MAINNET]: {
+        rpcUrl: "https://avalanche-c-chain-rpc.publicnode.com",
+      },
+      [ChainKeys.SONIC_MAINNET]: { rpcUrl: "https://sonic-rpc.publicnode.com" },
+    },
   },
   SOLANA: solanaRpcUrl
     ? { chains: { [ChainKeys.SOLANA_MAINNET]: { rpcUrl: solanaRpcUrl } } }
