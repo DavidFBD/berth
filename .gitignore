@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# raw stage-asset sources (processed versions ship from public/stage/)
+/tea-loop.mp4
+/tea-poster.png
+
 # debug
 npm-debug.log*
 yarn-debug.log*
