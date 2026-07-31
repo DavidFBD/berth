@@ -13,7 +13,11 @@ import {
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
-import { DEPOSIT_SOURCE_CHAINS, getDepositTokens } from "@/lib/chains";
+import {
+  DEPOSIT_SOURCE_CHAINS,
+  getDepositTokens,
+  toBalanceReadToken,
+} from "@/lib/chains";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 
@@ -69,7 +73,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
       getXBalancesQueryOptions({
         xService: getXService(getXChainType(chainKey)!),
         xChainId: chainKey,
-        xTokens: getDepositTokens(chainKey),
+        xTokens: getDepositTokens(chainKey).map(toBalanceReadToken),
         address: emailMode
           ? isEvmChainKeyType(chainKey)
             ? evmAddress
@@ -89,7 +93,10 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
           return;
         }
         for (const token of getDepositTokens(chainKey)) {
-          const balance = data[token.address] ?? 0n;
+          // Balances are keyed by the read token's (re-checksummed) address;
+          // the holding carries the registry token so deposit params keep
+          // the exact casing the SDK matches on.
+          const balance = data[toBalanceReadToken(token).address] ?? 0n;
           if (balance > 0n) holdings.push({ chainKey, token, balance });
         }
       });

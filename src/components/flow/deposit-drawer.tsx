@@ -28,7 +28,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { DEPOSIT_SOURCE_CHAINS, getChainName } from "@/lib/chains";
+import {
+  DEPOSIT_SOURCE_CHAINS,
+  getChainName,
+  toBalanceReadToken,
+} from "@/lib/chains";
 import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import {
@@ -108,7 +112,7 @@ export function DepositDrawer({
     params: {
       xService,
       xChainId: srcChainKey,
-      xTokens: token ? [token] : [],
+      xTokens: token ? [toBalanceReadToken(token)] : [],
       address: token ? address : undefined,
     },
   });
@@ -117,7 +121,7 @@ export function DepositDrawer({
   // missing key on settled data means 0n, not "still loading".
   const balance = token
     ? balancesQuery.data
-      ? (balancesQuery.data[token.address] ?? 0n)
+      ? (balancesQuery.data[toBalanceReadToken(token).address] ?? 0n)
       : undefined
     : undefined;
 

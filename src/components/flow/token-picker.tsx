@@ -21,6 +21,7 @@ import {
   getChainLogo,
   getChainName,
   getDepositTokens,
+  toBalanceReadToken,
 } from "@/lib/chains";
 import { formatTokenAmount, formatUsd } from "@/lib/format";
 import {
@@ -150,7 +151,7 @@ export function TokenPicker({
     params: {
       xService,
       xChainId: chainKey ?? undefined,
-      xTokens: tokens,
+      xTokens: tokens.map(toBalanceReadToken),
       address: chainKey ? address : undefined,
     },
   });
@@ -169,9 +170,12 @@ export function TokenPicker({
     return filtered
       .map((token) => ({
         // Settled record with a missing key = zero balance (the EVM adapter
-        // omits zero native balances), not unknown.
+        // omits zero native balances), not unknown. Keyed by the read
+        // token's re-checksummed address.
         token,
-        balance: balances ? (balances[token.address] ?? 0n) : undefined,
+        balance: balances
+          ? (balances[toBalanceReadToken(token).address] ?? 0n)
+          : undefined,
       }))
       .sort((a, b) => {
         const aHas = (a.balance ?? 0n) > 0n;

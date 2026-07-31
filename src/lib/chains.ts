@@ -5,6 +5,7 @@ import {
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
+import { getAddress, isAddress } from "viem";
 
 /**
  * Chains a deposit can originate from, in picker display order. Hedera is
@@ -52,4 +53,18 @@ export function getDepositTokens(chainKey: SpokeChainKey): readonly XToken[] {
   return getSupportedSolverTokens(chainKey).filter(
     (token) => !token.symbol.startsWith("lsoda"),
   );
+}
+
+/**
+ * The SDK registry ships some EVM addresses with broken EIP-55 casing
+ * (Polygon WBTC + LINK as of @sodax/sdk 2.x). viem rejects a bad checksum
+ * while ENCODING the multicall, which fails every token in the batch and
+ * makes the whole chain read as zero balances. Re-checksum for balance
+ * reads only — quote/deposit payloads keep the registry's original casing,
+ * since the SDK and solver match tokens by exact string.
+ */
+export function toBalanceReadToken(token: XToken): XToken {
+  if (!token.address.startsWith("0x") || isAddress(token.address))
+    return token;
+  return { ...token, address: getAddress(token.address.toLowerCase()) };
 }
