@@ -22,7 +22,7 @@ import {
   getChainName,
   getDepositTokens,
 } from "@/lib/chains";
-import { formatTokenAmount } from "@/lib/format";
+import { formatTokenAmount, formatUsd } from "@/lib/format";
 import {
   EMBEDDED_CHAINS,
   useEmbeddedHoldings,
@@ -269,7 +269,7 @@ export function TokenPicker({
                     )}
                   </div>
                 ) : (
-                  holdings.map(({ chainKey: key, token, balance }) => (
+                  holdings.map(({ chainKey: key, token, balance, usdValue }) => (
                     <button
                       key={`${key}:${token.address}`}
                       type="button"
@@ -289,9 +289,16 @@ export function TokenPicker({
                           on {getChainName(key)}
                         </span>
                       </div>
-                      <span className="text-sm text-muted-foreground tabular-nums">
-                        {formatTokenAmount(balance, token.decimals)}
-                      </span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-sm text-foreground tabular-nums">
+                          {formatTokenAmount(balance, token.decimals)}
+                        </span>
+                        {usdValue !== undefined && (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {formatUsd(usdValue)}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ))
                 )}

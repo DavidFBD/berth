@@ -60,6 +60,17 @@ export function parseAmount(input: string, decimals: number): bigint | undefined
   }
 }
 
+/** Human display for a USD value: "$1,234", "$12.34", "<$0.01", "$1.2M". */
+export function formatUsd(value: number): string {
+  if (value > 0 && value < 0.01) return "<$0.01";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: value >= 1_000 ? 0 : 2,
+    notation: value >= 1_000_000 ? "compact" : "standard",
+  }).format(value);
+}
+
 export function shortenAddress(address: string, chars = 4): string {
   if (address.length <= chars * 2 + 2) return address;
   return `${address.slice(0, chars + 2)}…${address.slice(-chars)}`;

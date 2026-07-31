@@ -31,10 +31,16 @@ import { cn } from "@/lib/utils";
 import { DEPOSIT_SOURCE_CHAINS, getChainName } from "@/lib/chains";
 import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { getVaultMeta } from "@/lib/vaults-meta";
-import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
+import {
+  applySlippage,
+  formatTokenAmount,
+  formatUsd,
+  parseAmount,
+} from "@/lib/format";
 import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
+import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { ActionStepper, IntentTracking } from "./action-stepper";
 import { ChainLogo, TokenPicker } from "./token-picker";
 
@@ -79,13 +85,20 @@ export function DepositDrawer({
 
   // Email mode is balance-first: land the user on what they already hold so
   // the drawer opens showing a balance and an amount field, not a chain
-  // picker. First holding in chain order; the selector swaps it in one tap.
-  // Render-time state adjustment (not an effect), per house pattern.
-  const { emailMode, holdings } = useEmbeddedHoldings();
-  if (open && emailMode && !token && holdings.length > 0) {
+  // picker. Waits for the oracle prices so "first" means largest USD value,
+  // not first in chain order. Render-time state adjustment (not an effect),
+  // per house pattern.
+  const {
+    emailMode,
+    holdings,
+    isLoading: holdingsLoading,
+  } = useEmbeddedHoldings();
+  if (open && emailMode && !token && !holdingsLoading && holdings.length > 0) {
     setSrcChainKey(holdings[0].chainKey);
     setToken(holdings[0].token);
   }
+
+  const prices = useUsdPrices();
 
   const xService = useXService({ xChainType: getXChainType(srcChainKey) });
   const balancesQuery = useXBalances({
@@ -106,6 +119,8 @@ export function DepositDrawer({
     : undefined;
 
   const parsed = token ? parseAmount(amount, token.decimals) : undefined;
+  const parsedUsd =
+    token && parsed ? prices.usdValue(token, parsed) : undefined;
   // The partner fee is deducted from the input before the swap — quote on the
   // post-fee amount or minOutputAmount is unfillable.
   const quoteAmount = parsed
@@ -371,6 +386,11 @@ export function DepositDrawer({
                       "placeholder:text-muted-foreground/40 disabled:opacity-50",
                     )}
                   />
+                  {parsedUsd !== undefined && (
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      ≈ {formatUsd(parsedUsd)}
+                    </span>
+                  )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
                       {token && address

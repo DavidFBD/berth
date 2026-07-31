@@ -15,11 +15,14 @@ import {
 } from "@sodax/sdk";
 import { DEPOSIT_SOURCE_CHAINS, getDepositTokens } from "@/lib/chains";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { useUsdPrices } from "@/hooks/use-usd-prices";
 
 export type EmbeddedHolding = {
   chainKey: SpokeChainKey;
   token: XToken;
   balance: bigint;
+  /** Oracle USD value; undefined for tokens the money market doesn't list. */
+  usdValue: number | undefined;
 };
 
 /**
@@ -36,26 +39,30 @@ export const EMBEDDED_CHAINS: readonly SpokeChainKey[] =
 export type EmbeddedHoldingsResult = {
   /** True when the user is signed in via email with an embedded wallet. */
   emailMode: boolean;
-  /** True while any per-chain balance sweep is still in flight. */
+  /** True while balance sweeps or oracle prices are still in flight. */
   isLoading: boolean;
-  /** Every deposit-eligible token the embedded wallets hold, in chain order. */
+  /** What the embedded wallets hold, largest USD value first (unpriced last, in chain order). */
   holdings: EmbeddedHolding[];
+  /** Sum of the priced holdings; undefined when nothing has a price. */
+  totalUsd: number | undefined;
 };
 
 /**
  * Balance sweep of the Privy embedded wallets across every chain they can
  * sign on. One disabled-when-idle query per chain via the dapp-kit query
  * builder, so results share the cache with `useXBalances` consumers.
+ * Holdings are valued via the money market oracle and sorted by USD value.
  */
 export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
   const privy = usePrivyEmbeddedWallet();
   const solanaAccount = useXAccount({ xChainType: "SOLANA" });
+  const prices = useUsdPrices();
 
   const emailMode =
     privy.enabled && privy.authenticated && Boolean(privy.embedded);
   const evmAddress = privy.embedded?.address;
 
-  return useQueries({
+  const swept = useQueries({
     queries: EMBEDDED_CHAINS.map((chainKey) =>
       getXBalancesQueryOptions({
         xService: getXService(getXChainType(chainKey)!),
@@ -69,7 +76,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
       }),
     ),
     combine: (results) => {
-      const holdings: EmbeddedHolding[] = [];
+      const holdings: Array<Omit<EmbeddedHolding, "usdValue">> = [];
       EMBEDDED_CHAINS.forEach((chainKey, index) => {
         const data = results[index]?.data;
         if (!data) return;
@@ -79,10 +86,33 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
         }
       });
       return {
-        emailMode,
         isLoading: results.some((query) => query.isLoading),
         holdings,
       };
     },
   });
+
+  // Sort is stable, so unpriced holdings (sentinel -1) sink to the bottom
+  // while keeping their chain order relative to each other.
+  const holdings = swept.holdings
+    .map((holding) => ({
+      ...holding,
+      usdValue: prices.usdValue(holding.token, holding.balance),
+    }))
+    .sort((a, b) => (b.usdValue ?? -1) - (a.usdValue ?? -1));
+
+  const priced = holdings.filter(
+    (holding) => holding.usdValue !== undefined,
+  );
+  const totalUsd =
+    priced.length > 0
+      ? priced.reduce((sum, holding) => sum + (holding.usdValue ?? 0), 0)
+      : undefined;
+
+  return {
+    emailMode,
+    isLoading: swept.isLoading || prices.isLoading,
+    holdings,
+    totalUsd,
+  };
 }
