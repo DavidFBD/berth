@@ -222,6 +222,13 @@
   }
 }
 
+/* "Builder's" brew strength — the design default: colors steeped a touch
+   stronger. Applied to page content and the silk field, not to drawers
+   (the drawer primitive animates filter itself). */
+.builders-strength {
+  filter: saturate(1.4) contrast(1.04);
+}
+
 /* Money is always tabular — the playfulness lives around the numbers. */
 .money,
 [data-money] {

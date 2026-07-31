@@ -22,6 +22,8 @@ export default function Home() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  // One-shot post-pour celebration: the poured cup's steam blooms iridescent.
+  const [bloomVault, setBloomVault] = useState<string | null>(null);
   const privy = usePrivyEmbeddedWallet();
 
   // Email login is the primary path; the external wallet drawer is the
@@ -53,6 +55,7 @@ export default function Home() {
 
       <div className="mt-4">
         <VaultList
+          bloomVault={bloomVault}
           onDeposit={(vault) => {
             setDepositVault(vault);
             setDepositOpen(true);
@@ -72,6 +75,14 @@ export default function Home() {
         onTopUp={() => {
           setDepositOpen(false);
           setAccountOpen(true);
+        }}
+        onPoured={() => {
+          const poured = depositVault?.vault ?? null;
+          setBloomVault(poured);
+          // The bloom is a 900ms one-shot; clear so the next pour replays it.
+          setTimeout(() => {
+            setBloomVault((current) => (current === poured ? null : current));
+          }, 2500);
         }}
       />
       <WithdrawHost

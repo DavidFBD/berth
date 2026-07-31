@@ -1,6 +1,8 @@
 "use client";
 
 import { useId } from "react";
+import "@/lib/silk-shader";
+import { useMounted } from "@/hooks/use-mounted";
 
 /**
  * LSTeaTime signature art, ported from the design system
@@ -78,20 +80,28 @@ export function SteamPlume({
   );
 }
 
-/** Inline cup illustration, fill 0–1, tinted by accent. Sencha renders handleless. */
+/**
+ * Inline cup illustration, fill 0–1, tinted by accent. Sencha renders
+ * handleless. When `silk` (a 4-stop palette) is set, the tea surface becomes
+ * a live generative silk field — mounted client-side only, over the flat
+ * accent so SSR and no-WebGL still show tea.
+ */
 export function CupArt({
   accent = "var(--cup-breakfast)",
   deep = "var(--cup-breakfast-deep)",
   fill = 0.6,
   bowl = false,
   size = 72,
+  silk,
 }: {
   accent?: string;
   deep?: string;
   fill?: number;
   bowl?: boolean;
   size?: number;
+  silk?: string;
 }) {
+  const mounted = useMounted();
   const f = Math.max(0, Math.min(1, fill));
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const interior = bowl
@@ -134,6 +144,17 @@ export function CupArt({
       {f > 0 && (
         <g clipPath={`url(#cup${id})`}>
           <rect x="10" y={teaTop} width="76" height="60" fill={accent} opacity="0.55" />
+          {silk && mounted && (
+            <foreignObject x="10" y={teaTop} width="76" height={botY - teaTop + 6}>
+              <silk-shader
+                colors={silk}
+                scale="1.7"
+                speed="1.2"
+                glow="0.55"
+                style={{ width: "100%", height: "100%", opacity: 0.92 }}
+              />
+            </foreignObject>
+          )}
           <ellipse cx="48" cy={teaTop} rx="36" ry="3.5" fill={accent} opacity="0.9" />
         </g>
       )}

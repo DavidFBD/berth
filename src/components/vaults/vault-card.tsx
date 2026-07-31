@@ -12,6 +12,7 @@ import { CaretDown, CaretUp } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CupArt, SteamPlume } from "@/components/tea/tea-art";
+import { SILK_CUP } from "@/components/tea/silk";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { formatRayAsPercent, formatTokenAmount } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -59,10 +60,13 @@ export function VaultCard({
   vault,
   onDeposit,
   onWithdraw,
+  bloom = false,
 }: {
   vault: LeverageYieldVault;
   onDeposit: (v: LeverageYieldVault) => void;
   onWithdraw: (v: LeverageYieldVault) => void;
+  /** One-shot iridescent burst above the cup after a successful pour. */
+  bloom?: boolean;
 }) {
   const meta = getVaultMeta(vault.name);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -110,13 +114,14 @@ export function VaultCard({
       <div className="flex gap-3.5">
         {/* The cup, steaming to scale */}
         <div className="flex w-21 shrink-0 flex-col items-center">
-          <SteamPlume level={steamLevel} width={70} height={44} />
+          <SteamPlume level={steamLevel} bloom={bloom} width={70} height={44} />
           <CupArt
             accent={accent}
             deep={deep}
             fill={fill}
             bowl={meta.cupKey === "sencha"}
             size={78}
+            silk={SILK_CUP[meta.cupKey]}
           />
         </div>
 

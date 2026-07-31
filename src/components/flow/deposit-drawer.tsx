@@ -55,6 +55,7 @@ export function DepositDrawer({
   onOpenChange,
   onConnectWallet,
   onTopUp,
+  onPoured,
 }: {
   vault: LeverageYieldVault | null;
   open: boolean;
@@ -63,6 +64,8 @@ export function DepositDrawer({
   onConnectWallet?: () => void;
   /** Optional: routes an empty email-mode teapot to the funding flow. */
   onTopUp?: () => void;
+  /** Optional: fired once when the pour fills — the cup's bloom moment. */
+  onPoured?: () => void;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
     DEPOSIT_SOURCE_CHAINS[0],
@@ -172,6 +175,7 @@ export function DepositDrawer({
     if (toastedRef.current) return;
     if (statusCode === 3) {
       toastedRef.current = true;
+      onPoured?.();
       toast.success("Your cup is poured.", {
         description: "The steam does the rest.",
       });
@@ -181,7 +185,7 @@ export function DepositDrawer({
         description: "The pour couldn't be filled. Nothing was lost, try again.",
       });
     }
-  }, [statusCode]);
+  }, [statusCode, onPoured]);
 
   const finish = () => {
     action.reset();

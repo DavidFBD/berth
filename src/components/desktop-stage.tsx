@@ -2,6 +2,8 @@
 
 import { useState, type CSSProperties, type ReactNode } from "react";
 
+import { SilkBackdrop } from "@/components/tea/silk";
+
 /**
  * Desktop presentation layer: below `lg` the app renders as-is (true mobile
  * experience); on `lg+` the same single mount becomes the screen of a phone
@@ -63,10 +65,14 @@ export function DesktopStage({ children }: { children: ReactNode }) {
             <div className="hidden lg:block absolute top-2.5 left-1/2 z-20 h-[22px] w-[90px] -translate-x-1/2 rounded-full bg-neutral-900" />
           </>
         )}
-        {/* Screen: the app's own scroll container on desktop. Radius sits just
-            inside the PNG cutout's 5%-of-height corners so no video peeks through. */}
-        <div className="relative h-full lg:overflow-y-auto lg:overscroll-contain lg:rounded-[calc(var(--phone-h)*0.046)] lg:bg-background [scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden">
-          {children}
+        {/* Screen: silk field pinned behind, app scrolling above. Radius sits
+            just inside the PNG cutout's 5%-of-height corners so no video
+            peeks through. */}
+        <div className="relative h-full lg:overflow-hidden lg:rounded-[calc(var(--phone-h)*0.046)] lg:bg-background">
+          <SilkBackdrop />
+          <div className="builders-strength relative z-10 h-full lg:overflow-y-auto lg:overscroll-contain [scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden">
+            {children}
+          </div>
         </div>
         {/* Hand + phone overlay, above the screen so the thumb reads in front */}
         {!handFailed && (

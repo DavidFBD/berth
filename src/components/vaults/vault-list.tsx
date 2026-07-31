@@ -7,9 +7,12 @@ import { VaultCard } from "./vault-card";
 export function VaultList({
   onDeposit,
   onWithdraw,
+  bloomVault,
 }: {
   onDeposit: (v: LeverageYieldVault) => void;
   onWithdraw: (v: LeverageYieldVault) => void;
+  /** Vault address whose cup should bloom (post-pour celebration). */
+  bloomVault?: string | null;
 }) {
   const { sodax } = useSodaxContext();
   const vaults = sodax.leverageYield.listVaults();
@@ -30,6 +33,7 @@ export function VaultList({
           vault={vault}
           onDeposit={onDeposit}
           onWithdraw={onWithdraw}
+          bloom={vault.vault === bloomVault}
         />
       ))}
     </div>
