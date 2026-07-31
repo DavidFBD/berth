@@ -69,6 +69,10 @@ export default function Home() {
         open={depositOpen}
         onOpenChange={setDepositOpen}
         onConnectWallet={openWallet}
+        onTopUp={() => {
+          setDepositOpen(false);
+          setAccountOpen(true);
+        }}
       />
       <WithdrawHost
         vault={withdrawVault}

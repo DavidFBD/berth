@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { CaretLeft, MagnifyingGlass } from "@phosphor-icons/react";
 import { useXBalances } from "@sodax/dapp-kit";
 import { getXChainType, useXAccount, useXService } from "@sodax/wallet-sdk-react";
-import type { SpokeChainKey, XToken } from "@sodax/sdk";
+import { isEvmChainKeyType, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import {
   Drawer,
   DrawerContent,
@@ -23,6 +23,11 @@ import {
   getDepositTokens,
 } from "@/lib/chains";
 import { formatTokenAmount } from "@/lib/format";
+import {
+  EMBEDDED_CHAINS,
+  useEmbeddedHoldings,
+} from "@/hooks/use-embedded-holdings";
+import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 
 /** Chain logo with graceful fallback to a neutral lettered circle. */
 export function ChainLogo({
@@ -78,30 +83,46 @@ function TokenGlyph({ symbol }: { symbol: string }) {
 }
 
 /**
- * Two-step bottom-drawer picker: chain grid → token list for that chain,
- * with the connected wallet's balances surfaced and balance-holders sorted
- * first. Calls `onSelect(chainKey, token)` and closes itself.
+ * Bottom-drawer picker with two personalities. Email mode (Privy) leads with
+ * the user's actual holdings across every chain their embedded wallets sign
+ * on: pick what you hold, done. The wallet-native chain grid → token list
+ * flow stays behind a "browse all networks" escape hatch and remains the
+ * default for external-wallet users. Calls `onSelect(chainKey, token)` and
+ * closes itself.
  */
 export function TokenPicker({
   open,
   onOpenChange,
   onSelect,
   mode = "source",
+  onTopUp,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (chainKey: SpokeChainKey, token: XToken) => void;
   /** Direction the copy speaks to: funding a deposit vs receiving a withdrawal. */
   mode?: "source" | "destination";
+  /** Lets the email-mode empty state route to the funding flow. */
+  onTopUp?: () => void;
 }) {
   const [chainKey, setChainKey] = useState<SpokeChainKey | null>(null);
   const [search, setSearch] = useState("");
+  // Email-mode escape hatch: opt back into the full chain grid.
+  const [browseAll, setBrowseAll] = useState(false);
 
-  // Reset on close so every open starts fresh at the chain grid.
+  const privy = usePrivyEmbeddedWallet();
+  const {
+    emailMode,
+    isLoading: holdingsLoading,
+    holdings,
+  } = useEmbeddedHoldings();
+
+  // Reset on close so every open starts fresh at the first screen.
   const handleOpenChange = (next: boolean) => {
     if (!next) {
       setChainKey(null);
       setSearch("");
+      setBrowseAll(false);
     }
     onOpenChange(next);
   };
@@ -117,17 +138,24 @@ export function TokenPicker({
   const xService = useXService({
     xChainType: getXChainType(chainKey ?? undefined),
   });
+  // Email mode holds EVM funds at the embedded address, which never enters
+  // the external wallet store; Solana is bridged into the store, so the
+  // external account resolves there.
+  const address =
+    emailMode && chainKey && isEvmChainKeyType(chainKey)
+      ? privy.embedded?.address
+      : account.address;
   const balancesQuery = useXBalances({
     params: {
       xService,
       xChainId: chainKey ?? undefined,
       xTokens: tokens,
-      address: chainKey ? account.address : undefined,
+      address: chainKey ? address : undefined,
     },
   });
   const balances = balancesQuery.data;
   const balancesLoading =
-    chainKey !== null && !!account.address && balancesQuery.isLoading;
+    chainKey !== null && !!address && balancesQuery.isLoading;
 
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -152,33 +180,54 @@ export function TokenPicker({
       });
   }, [tokens, search, balances]);
 
+  // Email-mode first screens: holdings when pouring in, a trimmed grid of
+  // chains the embedded wallets can receive on when pouring out.
+  const showHoldings =
+    emailMode && mode === "source" && !browseAll && chainKey === null;
+  const gridChains =
+    emailMode && !browseAll && mode === "destination"
+      ? EMBEDDED_CHAINS
+      : DEPOSIT_SOURCE_CHAINS;
+  const showBack =
+    chainKey !== null || (browseAll && emailMode && mode === "source");
+
   return (
     <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent>
         <DrawerHeader>
           <div className="flex items-center gap-2">
-            {chainKey && (
+            {showBack && (
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Back to chains"
+                aria-label={chainKey ? "Back to chains" : "Back to your teapot"}
                 onClick={() => {
-                  setChainKey(null);
-                  setSearch("");
+                  if (chainKey) {
+                    setChainKey(null);
+                    setSearch("");
+                  } else {
+                    setBrowseAll(false);
+                  }
                 }}
               >
                 <CaretLeft className="size-4" />
               </Button>
             )}
             <DrawerTitle className="flex-1">
-              {chainKey ? `Select token on ${getChainName(chainKey)}` : "Select chain"}
+              {chainKey
+                ? `Select token on ${getChainName(chainKey)}`
+                : showHoldings
+                  ? "Your teapot"
+                  : "Select chain"}
             </DrawerTitle>
           </div>
           <DrawerDescription>
             {mode === "source"
               ? chainKey
                 ? "Anything in the pot can become tea."
-                : "Where's your tea coming from?"
+                : showHoldings
+                  ? "Pour straight from what you hold."
+                  : "Where's your tea coming from?"
               : chainKey
                 ? "Pick what it arrives as."
                 : "Where should we pour it?"}
@@ -186,22 +235,102 @@ export function TokenPicker({
         </DrawerHeader>
 
         <div className="flex h-[65dvh] flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
-          {chainKey === null ? (
-            <div className="grid grid-cols-4 gap-2 overflow-y-auto pb-2">
-              {DEPOSIT_SOURCE_CHAINS.map((key) => (
+          {showHoldings ? (
+            <>
+              <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+                {holdingsLoading && holdings.length === 0 ? (
+                  Array.from({ length: 3 }, (_, index) => (
+                    <div
+                      key={index}
+                      className="flex min-h-14 items-center gap-3 px-2 py-2"
+                    >
+                      <Skeleton className="size-8 rounded-full" />
+                      <div className="flex flex-1 flex-col gap-1.5">
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                      <Skeleton className="h-4 w-14" />
+                    </div>
+                  ))
+                ) : holdings.length === 0 ? (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Your teapot is empty. Top it up and the tea can flow.
+                    </p>
+                    {onTopUp && (
+                      <Button
+                        onClick={() => {
+                          handleOpenChange(false);
+                          onTopUp();
+                        }}
+                      >
+                        Fill the teapot
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  holdings.map(({ chainKey: key, token, balance }) => (
+                    <button
+                      key={`${key}:${token.address}`}
+                      type="button"
+                      onClick={() => {
+                        onSelect(key, token);
+                        handleOpenChange(false);
+                      }}
+                      className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted active:bg-muted"
+                    >
+                      <TokenGlyph symbol={token.symbol} />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {token.symbol}
+                        </span>
+                        <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                          <ChainLogo chainKey={key} size={12} />
+                          on {getChainName(key)}
+                        </span>
+                      </div>
+                      <span className="text-sm text-muted-foreground tabular-nums">
+                        {formatTokenAmount(balance, token.decimals)}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setBrowseAll(true)}
+                className="shrink-0 py-1 text-center text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
+              >
+                Pouring from an external wallet? Browse all networks
+              </button>
+            </>
+          ) : chainKey === null ? (
+            <>
+              <div className="grid grid-cols-4 gap-2 overflow-y-auto pb-2">
+                {gridChains.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setChainKey(key)}
+                    className="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card p-2 transition-colors hover:bg-muted active:bg-muted"
+                  >
+                    <ChainLogo chainKey={key} />
+                    <span className="w-full truncate text-center text-[10px] leading-tight text-muted-foreground">
+                      {getChainName(key)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {gridChains !== DEPOSIT_SOURCE_CHAINS && (
                 <button
-                  key={key}
                   type="button"
-                  onClick={() => setChainKey(key)}
-                  className="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card p-2 transition-colors hover:bg-muted active:bg-muted"
+                  onClick={() => setBrowseAll(true)}
+                  className="shrink-0 py-1 text-center text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
                 >
-                  <ChainLogo chainKey={key} />
-                  <span className="w-full truncate text-center text-[10px] leading-tight text-muted-foreground">
-                    {getChainName(key)}
-                  </span>
+                  Pouring to an external wallet? Show all networks
                 </button>
-              ))}
-            </div>
+              )}
+            </>
           ) : (
             <>
               <div className="relative shrink-0">

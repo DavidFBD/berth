@@ -34,6 +34,7 @@ import { getVaultMeta } from "@/lib/vaults-meta";
 import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
 import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
+import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { ActionStepper, IntentTracking } from "./action-stepper";
 import { ChainLogo, TokenPicker } from "./token-picker";
 
@@ -47,12 +48,15 @@ export function DepositDrawer({
   open,
   onOpenChange,
   onConnectWallet,
+  onTopUp,
 }: {
   vault: LeverageYieldVault | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Optional: lets the CTA open the app's wallet drawer when disconnected. */
   onConnectWallet?: () => void;
+  /** Optional: routes an empty email-mode teapot to the funding flow. */
+  onTopUp?: () => void;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
     DEPOSIT_SOURCE_CHAINS[0],
@@ -72,6 +76,16 @@ export function DepositDrawer({
   // wallets otherwise. Email mode switches chains silently.
   const { address, walletProvider, isWrongChain, handleSwitchChain } =
     useVaultWallet(srcChainKey);
+
+  // Email mode is balance-first: land the user on what they already hold so
+  // the drawer opens showing a balance and an amount field, not a chain
+  // picker. First holding in chain order; the selector swaps it in one tap.
+  // Render-time state adjustment (not an effect), per house pattern.
+  const { emailMode, holdings } = useEmbeddedHoldings();
+  if (open && emailMode && !token && holdings.length > 0) {
+    setSrcChainKey(holdings[0].chainKey);
+    setToken(holdings[0].token);
+  }
 
   const xService = useXService({ xChainType: getXChainType(srcChainKey) });
   const balancesQuery = useXBalances({
@@ -438,6 +452,7 @@ export function DepositDrawer({
       <TokenPicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
+        onTopUp={onTopUp}
         onSelect={(chainKey, selected) => {
           setSrcChainKey(chainKey);
           setToken(selected);
