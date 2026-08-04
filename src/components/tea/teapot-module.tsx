@@ -52,7 +52,12 @@ export function TeapotModule({ onTopUp }: { onTopUp: () => void }) {
           Your teapot
         </div>
         {emailMode && isLoading ? (
-          <Skeleton className="mt-1 h-4 w-36" />
+          // Mirrors the loaded shape: worth sentence + peek hint, so the
+          // module doesn't grow when the sweep lands.
+          <div className="mt-1 flex flex-col gap-1.5">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-3.5 w-24" />
+          </div>
         ) : worth ? (
           <div className="mt-0.5 text-[13px] text-muted-foreground">
             <span className="font-semibold text-foreground tabular-nums">
