@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { toast } from "sonner";
-import { CaretDown, Flame } from "@phosphor-icons/react";
+import { ArrowsDownUp, CaretDown, Flame } from "@phosphor-icons/react";
 import {
   ChainKeys,
   adjustAmountByFee,
@@ -41,6 +41,7 @@ import {
   formatTokenAmount,
   formatUsd,
   parseAmount,
+  usdToTokenAmount,
 } from "@/lib/format";
 import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
@@ -77,6 +78,8 @@ export function DepositDrawer({
   );
   const [token, setToken] = useState<XToken | null>(null);
   const [amount, setAmount] = useState("");
+  // What the typed amount means: dollars (default, when priced) or tokens.
+  const [denom, setDenom] = useState<"usd" | "token">("usd");
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const meta = vault ? getVaultMeta(vault.name) : null;
@@ -127,7 +130,16 @@ export function DepositDrawer({
       : undefined
     : undefined;
 
-  const parsed = token ? parseAmount(amount, token.decimals) : undefined;
+  // Dollars are how people think about a pour, so the amount field takes
+  // USD whenever the oracle prices the token, with a tap-to-flip line for
+  // exact token amounts. Unpriced tokens fall back to token entry.
+  const price = token ? prices.priceOf(token) : undefined;
+  const usdMode = denom === "usd" && price !== undefined;
+  const parsed = token
+    ? usdMode
+      ? usdToTokenAmount(amount, price, token.decimals)
+      : parseAmount(amount, token.decimals)
+    : undefined;
   const parsedUsd =
     token && parsed ? prices.usdValue(token, parsed) : undefined;
   // The partner fee is deducted from the input before the swap — quote on the
@@ -239,7 +251,29 @@ export function DepositDrawer({
       toast.info("Not enough left over for the kettle (network fees)");
       return;
     }
-    setAmount(formatUnits(max, token.decimals));
+    // Match the active denomination; in USD mode round DOWN so the
+    // converted token amount never exceeds the spendable balance.
+    if (usdMode) {
+      const usd = Number(formatUnits(max, token.decimals)) * price;
+      setAmount((Math.floor(usd * 100) / 100).toFixed(2));
+    } else {
+      setAmount(formatUnits(max, token.decimals));
+    }
+  };
+
+  // Flip the entry denomination, carrying the current value across so the
+  // number in the field keeps meaning the same pour.
+  const flipDenom = () => {
+    if (!token || price === undefined) return;
+    if (usdMode) {
+      setDenom("token");
+      if (parsed) setAmount(formatUnits(parsed, token.decimals));
+    } else {
+      setDenom("usd");
+      if (parsedUsd !== undefined) {
+        setAmount((Math.floor(parsedUsd * 100) / 100).toFixed(2));
+      }
+    }
   };
 
   const handleDeposit = async () => {
@@ -414,25 +448,51 @@ export function DepositDrawer({
 
                 {/* Amount */}
                 <div className="flex flex-col gap-1.5">
-                  <input
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    inputMode="decimal"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    placeholder="0"
-                    aria-label="Deposit amount"
-                    disabled={!token}
-                    className={cn(
-                      "w-full bg-transparent text-4xl font-semibold text-foreground tabular-nums outline-none",
-                      "placeholder:text-muted-foreground/40 disabled:opacity-50",
+                  <div className="flex items-baseline gap-0.5">
+                    {usdMode && (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "text-4xl font-semibold tabular-nums",
+                          amount
+                            ? "text-foreground"
+                            : "text-muted-foreground/40",
+                        )}
+                      >
+                        $
+                      </span>
                     )}
-                  />
-                  {parsedUsd !== undefined && (
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      ≈ {formatUsd(parsedUsd)}
-                    </span>
+                    <input
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      placeholder="0"
+                      aria-label={
+                        usdMode
+                          ? "Deposit amount in dollars"
+                          : "Deposit amount"
+                      }
+                      disabled={!token}
+                      className={cn(
+                        "w-full bg-transparent text-4xl font-semibold text-foreground tabular-nums outline-none",
+                        "placeholder:text-muted-foreground/40 disabled:opacity-50",
+                      )}
+                    />
+                  </div>
+                  {token && price !== undefined && (
+                    <button
+                      type="button"
+                      onClick={flipDenom}
+                      className="flex w-fit items-center gap-1 text-xs text-muted-foreground tabular-nums transition-colors hover:text-foreground"
+                    >
+                      <ArrowsDownUp className="size-3.5" />
+                      {usdMode
+                        ? `≈ ${parsed ? formatTokenAmount(parsed, token.decimals) : "0"} ${token.symbol}`
+                        : `≈ ${parsedUsd !== undefined ? formatUsd(parsedUsd) : "$0"}`}
+                    </button>
                   )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">

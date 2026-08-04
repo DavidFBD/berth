@@ -60,6 +60,33 @@ export function parseAmount(input: string, decimals: number): bigint | undefined
   }
 }
 
+/**
+ * Parse user text entered as US dollars into token base units at the given
+ * oracle price. Same input rules as parseAmount; undefined when the text
+ * isn't a positive decimal or the price is unusable.
+ */
+export function usdToTokenAmount(
+  input: string,
+  price: number,
+  decimals: number,
+): bigint | undefined {
+  const trimmed = input.trim();
+  if (!/^\d*\.?\d+$/.test(trimmed)) return undefined;
+  const usd = Number(trimmed);
+  if (!Number.isFinite(usd) || usd <= 0 || !Number.isFinite(price) || price <= 0)
+    return undefined;
+  try {
+    // toFixed never emits scientific notation, so parseUnits stays happy.
+    const value = parseUnits(
+      (usd / price).toFixed(Math.min(decimals, 12)),
+      decimals,
+    );
+    return value > 0n ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Human display for a USD value: "$1,234", "$12.34", "<$0.01", "$1.2M". */
 export function formatUsd(value: number): string {
   if (value > 0 && value < 0.01) return "<$0.01";
