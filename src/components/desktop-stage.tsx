@@ -4,6 +4,7 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 
 import { SilkBackdrop } from "@/components/tea/silk";
 import { StageScreenContext } from "@/components/stage-screen-context";
+import { Toaster } from "@/components/ui/sonner";
 
 /**
  * Desktop presentation layer: below `lg` the app renders as-is (true mobile
@@ -84,6 +85,10 @@ export function DesktopStage({ children }: { children: ReactNode }) {
           <div className="builders-strength relative z-10 h-full lg:overflow-y-auto lg:overscroll-contain [scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden">
             {children}
           </div>
+          {/* Inside the screen div so the fixed toast region is contained
+              by the lg transform: toasts drop into the phone, not the
+              browser. On mobile fixed still means viewport, as before. */}
+          <Toaster position="top-center" />
         </div>
         {/* Hand + phone overlay, above the screen so the thumb reads in front */}
         {!handFailed && (

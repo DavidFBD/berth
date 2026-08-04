@@ -6,7 +6,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { SodaxProvider, createSodaxQueryClient } from "@sodax/dapp-kit";
 import { SodaxWalletProvider } from "@sodax/wallet-sdk-react";
 import { IconContext } from "@phosphor-icons/react";
-import { Toaster } from "@/components/ui/sonner";
 import { AppPrivyProvider, PRIVY_ENABLED } from "@/components/privy-provider";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
@@ -29,7 +28,8 @@ export function Providers({ children }: { children: ReactNode }) {
             <IconContext.Provider value={ICON_DEFAULTS}>
               {PRIVY_ENABLED && mounted && <PrivySolanaBridge />}
               {children}
-              <Toaster position="top-center" />
+              {/* Toaster lives in DesktopStage's screen div so toasts stay
+                  inside the phone on lg+, like the drawers. */}
             </IconContext.Provider>
           </SodaxWalletProvider>
         </QueryClientProvider>
