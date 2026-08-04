@@ -7,7 +7,6 @@ import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Copy,
-  Plugs,
   PlusCircle,
   SignOut,
   Wallet,
@@ -21,7 +20,7 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ConnectButton, WalletDrawer } from "@/components/wallet";
+import { ConnectButton } from "@/components/wallet";
 import { useMounted } from "@/hooks/use-mounted";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -46,7 +45,6 @@ export function AccountButton({
   const [accountOpenState, setAccountOpenState] = useState(false);
   const accountOpen = openProp ?? accountOpenState;
   const setAccountOpen = onOpenChange ?? setAccountOpenState;
-  const [walletsOpen, setWalletsOpen] = useState(false);
 
   if (!PRIVY_ENABLED) return <ConnectButton />;
 
@@ -104,20 +102,9 @@ export function AccountButton({
 
             {address && <FundButton address={address} />}
 
-            {/* External wallets stay a desktop affordance */}
-            <button
-              type="button"
-              onClick={() => {
-                setAccountOpen(false);
-                setWalletsOpen(true);
-              }}
-              className="hidden min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted lg:flex"
-            >
-              <Plugs className="size-5 text-muted-foreground" />
-              <span className="flex-1 text-sm font-medium text-foreground">
-                Connect an external wallet
-              </span>
-            </button>
+            {/* No external-wallet affordance here on purpose: email users
+                live entirely in the teapot. The expert path stays on the
+                welcome screen for people who skip Privy. */}
 
             <Button
               variant="ghost"
@@ -133,8 +120,6 @@ export function AccountButton({
           </div>
         </DrawerContent>
       </Drawer>
-
-      <WalletDrawer open={walletsOpen} onOpenChange={setWalletsOpen} />
     </>
   );
 }

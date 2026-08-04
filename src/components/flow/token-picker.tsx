@@ -108,8 +108,6 @@ export function TokenPicker({
 }) {
   const [chainKey, setChainKey] = useState<SpokeChainKey | null>(null);
   const [search, setSearch] = useState("");
-  // Email-mode escape hatch: opt back into the full chain grid.
-  const [browseAll, setBrowseAll] = useState(false);
 
   const privy = usePrivyEmbeddedWallet();
   const {
@@ -124,7 +122,6 @@ export function TokenPicker({
     if (!next) {
       setChainKey(null);
       setSearch("");
-      setBrowseAll(false);
     }
     onOpenChange(next);
   };
@@ -186,15 +183,15 @@ export function TokenPicker({
   }, [tokens, search, balances]);
 
   // Email-mode first screens: holdings when pouring in, a trimmed grid of
-  // chains the embedded wallets can receive on when pouring out.
-  const showHoldings =
-    emailMode && mode === "source" && !browseAll && chainKey === null;
+  // chains the embedded wallets can receive on when pouring out. External
+  // wallets are the expert path (welcome screen, non-Privy users), so email
+  // mode gets no browse-all escape hatch in either direction.
+  const showHoldings = emailMode && mode === "source" && chainKey === null;
   const gridChains =
-    emailMode && !browseAll && mode === "destination"
+    emailMode && mode === "destination"
       ? EMBEDDED_CHAINS
       : DEPOSIT_SOURCE_CHAINS;
-  const showBack =
-    chainKey !== null || (browseAll && emailMode && mode === "source");
+  const showBack = chainKey !== null;
 
   return (
     <Drawer open={open} onOpenChange={handleOpenChange}>
@@ -205,14 +202,10 @@ export function TokenPicker({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={chainKey ? "Back to chains" : "Back to your teapot"}
+                aria-label="Back to chains"
                 onClick={() => {
-                  if (chainKey) {
-                    setChainKey(null);
-                    setSearch("");
-                  } else {
-                    setBrowseAll(false);
-                  }
+                  setChainKey(null);
+                  setSearch("");
                 }}
               >
                 <CaretLeft className="size-4" />
@@ -320,41 +313,23 @@ export function TokenPicker({
                   </p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setBrowseAll(true)}
-                className="shrink-0 py-1 text-center text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
-              >
-                Pouring from an external wallet? Browse all networks
-              </button>
             </>
           ) : chainKey === null ? (
-            <>
-              <div className="grid grid-cols-4 gap-2 overflow-y-auto pb-2">
-                {gridChains.map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setChainKey(key)}
-                    className="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card p-2 transition-colors hover:bg-muted active:bg-muted"
-                  >
-                    <ChainLogo chainKey={key} />
-                    <span className="w-full truncate text-center text-[10px] leading-tight text-muted-foreground">
-                      {getChainName(key)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              {gridChains !== DEPOSIT_SOURCE_CHAINS && (
+            <div className="grid grid-cols-4 gap-2 overflow-y-auto pb-2">
+              {gridChains.map((key) => (
                 <button
+                  key={key}
                   type="button"
-                  onClick={() => setBrowseAll(true)}
-                  className="shrink-0 py-1 text-center text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
+                  onClick={() => setChainKey(key)}
+                  className="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card p-2 transition-colors hover:bg-muted active:bg-muted"
                 >
-                  Pouring to an external wallet? Show all networks
+                  <ChainLogo chainKey={key} />
+                  <span className="w-full truncate text-center text-[10px] leading-tight text-muted-foreground">
+                    {getChainName(key)}
+                  </span>
                 </button>
-              )}
-            </>
+              ))}
+            </div>
           ) : (
             <>
               <div className="relative shrink-0">
