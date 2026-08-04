@@ -6,6 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { SodaxProvider, createSodaxQueryClient } from "@sodax/dapp-kit";
 import { SodaxWalletProvider } from "@sodax/wallet-sdk-react";
 import { IconContext } from "@phosphor-icons/react";
+import { MotionConfig } from "motion/react";
 import { AppPrivyProvider, PRIVY_ENABLED } from "@/components/privy-provider";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
@@ -26,10 +27,13 @@ export function Providers({ children }: { children: ReactNode }) {
         <QueryClientProvider client={queryClient}>
           <SodaxWalletProvider config={walletConfig}>
             <IconContext.Provider value={ICON_DEFAULTS}>
-              {PRIVY_ENABLED && mounted && <PrivySolanaBridge />}
-              {children}
-              {/* Toaster lives in DesktopStage's screen div so toasts stay
-                  inside the phone on lg+, like the drawers. */}
+              {/* Motion respects the OS reduce-motion preference app-wide. */}
+              <MotionConfig reducedMotion="user">
+                {PRIVY_ENABLED && mounted && <PrivySolanaBridge />}
+                {children}
+                {/* Toaster lives in DesktopStage's screen div so toasts stay
+                    inside the phone on lg+, like the drawers. */}
+              </MotionConfig>
             </IconContext.Provider>
           </SodaxWalletProvider>
         </QueryClientProvider>

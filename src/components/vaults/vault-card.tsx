@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatUnits } from "viem";
+import { AnimatePresence, motion } from "motion/react";
 
 import {
   useLeverageYieldEffectiveApr,
@@ -213,8 +214,17 @@ export function VaultCard({
           )}
           How strong is this brew?
         </button>
-        {breakdownOpen &&
-          (apr === undefined ? (
+        <AnimatePresence initial={false}>
+        {breakdownOpen && (
+          <motion.div
+            key="breakdown"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            className="overflow-hidden"
+          >
+          {apr === undefined ? (
             <div className="space-y-2 py-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-2/3" />
@@ -259,7 +269,10 @@ export function VaultCard({
                 </p>
               )}
             </div>
-          ))}
+          )}
+          </motion.div>
+        )}
+        </AnimatePresence>
       </div>
     </div>
   );
