@@ -83,13 +83,17 @@ export function AccountButton({
           <div className="flex flex-col gap-2 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
             {address ? (
               <>
-                <div className="flex items-center justify-center rounded-xl border border-border bg-white p-3 dark:bg-neutral-100">
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-white p-3 dark:bg-neutral-100">
                   <QRCodeSVG value={address} size={144} marginSize={1} />
+                  <span className="text-[11px] text-neutral-500">
+                    Scan for your EVM address
+                  </span>
                 </div>
                 <ReceiveRow
-                  label="Fill your teapot: one address, every EVM network"
+                  title="EVM address"
+                  description="One address for Ethereum, Base, Arbitrum, Polygon, BNB and every other EVM network."
                   address={address}
-                  copyToast="Works on every EVM network SODAX supports. Send funds here to top up."
+                  copyToast="Works on every EVM network SODAX supports. Send funds there to top up."
                 />
                 {/* Privy's /solana hooks are not SSR-safe — client-only. */}
                 {mounted && <SolanaReceive />}
@@ -138,19 +142,27 @@ function SolanaReceive() {
   if (!solanaAddress) return null;
   return (
     <ReceiveRow
-      label="Fill your teapot: Solana"
+      title="Solana address"
+      description="Only for Solana assets: SOL, JitoSOL, USDC on Solana."
       address={solanaAddress}
-      copyToast="Only send Solana assets (SOL, JitoSOL, USDC…) to this one."
+      copyToast="Only send Solana assets to this one."
     />
   );
 }
 
+/**
+ * Friendly-labeled receive row: no raw hex in the UI (that's teapot
+ * plumbing) — tap copies the address and the toast confirms the shortened
+ * form so you can double-check what landed in the clipboard.
+ */
 function ReceiveRow({
-  label,
+  title,
+  description,
   address,
   copyToast,
 }: {
-  label: string;
+  title: string;
+  description: string;
   address: string;
   copyToast: string;
 }) {
@@ -159,16 +171,16 @@ function ReceiveRow({
       type="button"
       onClick={() => {
         void navigator.clipboard.writeText(address);
-        toast.success("Address copied", { description: copyToast });
+        toast.success("Address copied", {
+          description: `${shortenAddress(address, 6)} · ${copyToast}`,
+        });
       }}
       className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted"
     >
       <Wallet className="size-5 text-primary" />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium text-foreground">
-          {shortenAddress(address, 6)}
-        </span>
-        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-sm font-medium text-foreground">{title}</span>
+        <span className="text-xs text-muted-foreground">{description}</span>
       </div>
       <Copy className="size-4 text-muted-foreground" />
     </button>
