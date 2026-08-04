@@ -1,4 +1,9 @@
-import { ChainKeys, type PartnerFee, type SodaxOptions } from "@sodax/sdk";
+import {
+  ChainKeys,
+  type EvmChainKey,
+  type PartnerFee,
+  type SodaxOptions,
+} from "@sodax/sdk";
 import type { SodaxWalletConfig } from "@sodax/wallet-sdk-react";
 
 /**
@@ -97,6 +102,19 @@ export const walletConfig: SodaxWalletConfig = {
   NEAR: {},
   STACKS: {},
 };
+
+/**
+ * The pinned RPC for an EVM chain, when we pin one. Consumers building their
+ * own viem publicClient (the Privy bridge) must use this instead of viem's
+ * baked-in default, which can be decommissioned (polygon-rpc.com) — undefined
+ * falls back to the chain's default for the long-tail chains we don't pin.
+ */
+export function getPinnedRpcUrl(chainKey: EvmChainKey): string | undefined {
+  const chains = walletConfig.EVM?.chains as
+    | Partial<Record<EvmChainKey, { rpcUrl?: string }>>
+    | undefined;
+  return chains?.[chainKey]?.rpcUrl;
+}
 
 /** Slippage tolerance applied to solver quotes, in percent. */
 export const DEFAULT_SLIPPAGE_PCT = 0.5;

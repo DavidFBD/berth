@@ -28,6 +28,13 @@ export type VaultWallet = {
   /** True while an EVM external wallet sits on the wrong network. */
   isWrongChain: boolean;
   handleSwitchChain: () => void;
+  /**
+   * Email mode only: re-assert + verify the embedded wallet's chain on the
+   * signing provider itself. MUST be awaited right before any on-chain send;
+   * the embedded wallet's chain state is global and races between chain
+   * switches otherwise strand the transaction on the wrong network.
+   */
+  ensureChain?: () => Promise<boolean>;
 };
 
 /**
@@ -61,10 +68,11 @@ export function useVaultWallet(
       address: privy.embedded?.address,
       // The bridge resolves asynchronously; consumers already handle an
       // undefined provider (CTA shows a busy state).
-      walletProvider: privyProvider,
+      walletProvider: privyProvider?.provider,
       mode: "email",
       isWrongChain: false,
       handleSwitchChain: () => {},
+      ensureChain: privyProvider?.ensureChain,
     };
   }
 

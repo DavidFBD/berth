@@ -44,6 +44,12 @@ export interface RunDepositArgs {
   /** Minimum lsoda* shares out, 18 decimals, slippage already applied. */
   minOutputAmount: bigint;
   walletProvider: AnyWalletProvider;
+  /**
+   * Re-assert the wallet is on `srcChainKey` (embedded wallets: chain state
+   * is global and can be stolen by a competing switch). Awaited before every
+   * on-chain send; false aborts the flow.
+   */
+  ensureReady?: () => Promise<boolean>;
 }
 
 export interface RunWithdrawArgs {
@@ -67,6 +73,8 @@ export interface RunWithdrawArgs {
    */
   recipient: string;
   walletProvider: AnyWalletProvider;
+  /** See RunDepositArgs.ensureReady. */
+  ensureReady?: () => Promise<boolean>;
 }
 
 export interface UseVaultActionResult {
@@ -172,6 +180,15 @@ export function useVaultAction(): UseVaultActionResult {
       setError(null);
       setResponse(null);
       setApproveRequired(null);
+      // Every on-chain send is preceded by a chain re-assertion: embedded
+      // wallets share one provider whose chain any competing switch can
+      // steal between build and send.
+      const onRightChain = async (): Promise<boolean> => {
+        if (!args.ensureReady) return true;
+        if (await args.ensureReady()) return true;
+        fail("The kettle drifted off its burner. Please pour again.");
+        return false;
+      };
       try {
         // 1. Build right before executing — the payload deadline is hub time + 5 min.
         setStep("building");
@@ -206,9 +223,10 @@ export function useVaultAction(): UseVaultActionResult {
         }
         setApproveRequired(!allowance.value);
 
-        // 3. Approve if needed.
+        // 3. Approve if needed (an on-chain tx on the spoke: assert chain).
         if (!allowance.value) {
           setStep("approving");
+          if (!(await onRightChain())) return false;
           const approved = await approve.mutateAsyncSafe({
             params: built.value.params,
             walletProvider: args.walletProvider,
@@ -252,6 +270,7 @@ export function useVaultAction(): UseVaultActionResult {
 
         // 4. Execute: one signature on the spoke chain, then verify → relay → notify solver.
         setStep("signing");
+        if (!(await onRightChain())) return false;
         const swapped = await vaultSwap.mutateAsyncSafe({
           ...built.value,
           walletProvider: args.walletProvider,
@@ -281,6 +300,12 @@ export function useVaultAction(): UseVaultActionResult {
       runningRef.current = true;
       setError(null);
       setResponse(null);
+      const onRightChain = async (): Promise<boolean> => {
+        if (!args.ensureReady) return true;
+        if (await args.ensureReady()) return true;
+        fail("The kettle drifted off its burner. Please pour again.");
+        return false;
+      };
       try {
         setStep("building");
         const built = await buildWithdraw.mutateAsyncSafe({
@@ -307,6 +332,7 @@ export function useVaultAction(): UseVaultActionResult {
         // No allowance/approve step: the payload carries hubWalletSwap and the
         // hub wallet is authorised via the single sendMessage signature below.
         setStep("signing");
+        if (!(await onRightChain())) return false;
         const swapped = await vaultSwap.mutateAsyncSafe({
           ...built.value,
           walletProvider: args.walletProvider,
