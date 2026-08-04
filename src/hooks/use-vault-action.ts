@@ -135,7 +135,10 @@ export function useVaultAction(): UseVaultActionResult {
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
   const runningRef = useRef(false);
 
-  const fail = useCallback((message: string) => {
+  const fail = useCallback((message: string, raw?: unknown) => {
+    // The friendly copy hides the SDK error entirely — keep the raw object
+    // on the console so field failures are diagnosable.
+    if (raw !== undefined) console.error("[vault-action]", raw);
     setError(message);
     setStep("error");
   }, []);
@@ -187,6 +190,7 @@ export function useVaultAction(): UseVaultActionResult {
               built.error,
               "Couldn't ready the pour. Please try again.",
             ),
+            built.error,
           );
           return false;
         }
@@ -197,7 +201,7 @@ export function useVaultAction(): UseVaultActionResult {
           walletProvider: args.walletProvider,
         });
         if (!allowance.ok) {
-          fail("Couldn't check the pot. Please try again.");
+          fail("Couldn't check the pot. Please try again.", allowance.error);
           return false;
         }
         setApproveRequired(!allowance.value);
@@ -215,6 +219,7 @@ export function useVaultAction(): UseVaultActionResult {
                 approved.error,
                 "Token approval failed. Please try again.",
               ),
+              approved.error,
             );
             return false;
           }
@@ -239,6 +244,7 @@ export function useVaultAction(): UseVaultActionResult {
                 built.error,
                 "Couldn't ready the pour. Please try again.",
               ),
+              built.error,
             );
             return false;
           }
@@ -253,6 +259,7 @@ export function useVaultAction(): UseVaultActionResult {
         if (!swapped.ok) {
           fail(
             friendlyError(swapped.error, "The kettle's acting up. Try again."),
+            swapped.error,
           );
           return false;
         }
@@ -292,6 +299,7 @@ export function useVaultAction(): UseVaultActionResult {
               built.error,
               "Couldn't ready the pour-back. Please try again.",
             ),
+            built.error,
           );
           return false;
         }
@@ -309,6 +317,7 @@ export function useVaultAction(): UseVaultActionResult {
               swapped.error,
               "The kettle's acting up. Try again.",
             ),
+            swapped.error,
           );
           return false;
         }
