@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf"
+    },
+    "sodax-sdk": {
+      "source": "icon-project/sodax-sdks",
+      "sourceType": "github",
+      "skillPath": "packages/skills/skills/sodax-sdk/SKILL.md",
+      "computedHash": "7f8b538b135859dd5e0b1d6b90e5bd9e7004e2bfda8ce7e55ffe642f963c9c2f"
+    }
+  }
+}

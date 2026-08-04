@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { toast } from "sonner";
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown, Flame } from "@phosphor-icons/react";
 import {
   ChainKeys,
   adjustAmountByFee,
@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import {
   DEPOSIT_SOURCE_CHAINS,
   getChainName,
+  getNativeGasToken,
   toBalanceReadToken,
 } from "@/lib/chains";
 import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
@@ -98,6 +99,7 @@ export function DepositDrawer({
   const {
     emailMode,
     holdings,
+    gasShortChains,
     isLoading: holdingsLoading,
   } = useEmbeddedHoldings();
   if (open && emailMode && !token && !holdingsLoading && holdings.length > 0) {
@@ -376,6 +378,39 @@ export function DepositDrawer({
                   )}
                   <CaretDown className="size-4 text-muted-foreground" />
                 </button>
+
+                {/* Tea without a flame: the embedded wallet holds this token
+                    but zero native balance on its chain, so the pour would
+                    die at the network fee. Say so before the quote does. */}
+                {emailMode &&
+                  token &&
+                  gasShortChains.includes(srcChainKey) &&
+                  (() => {
+                    const native = getNativeGasToken(srcChainKey);
+                    const symbol = native?.symbol ?? "the native token";
+                    return (
+                      <div className="flex gap-3 rounded-xl border border-amber-600/30 bg-amber-500/10 px-3 py-2.5">
+                        <Flame className="mt-0.5 size-5 shrink-0 text-amber-700" />
+                        <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
+                          <p className="text-foreground">
+                            The {getChainName(srcChainKey)} shelf has no{" "}
+                            {symbol} to light the burner. This pour pays its
+                            network fee in {symbol}, so it can&apos;t start
+                            until a splash arrives.
+                          </p>
+                          {onTopUp && (
+                            <button
+                              type="button"
+                              onClick={onTopUp}
+                              className="self-start text-left font-medium text-amber-800 underline underline-offset-2"
+                            >
+                              Send a splash of {symbol} to your teapot address
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                 {/* Amount */}
                 <div className="flex flex-col gap-1.5">

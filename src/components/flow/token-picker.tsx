@@ -72,7 +72,7 @@ export function ChainLogo({
   );
 }
 
-function TokenGlyph({ symbol }: { symbol: string }) {
+export function TokenGlyph({ symbol }: { symbol: string }) {
   return (
     <div
       aria-hidden="true"

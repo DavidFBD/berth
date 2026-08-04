@@ -40,12 +40,15 @@ export default function Home() {
     <AuthGate>
     <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-12 sm:max-w-lg">
       <header className="sticky top-0 z-10 -mx-4 mb-4 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur">
-        <div className="flex items-center gap-2">
+        {/* Brand never shrinks; the account pill truncates instead. Without
+            min-w-0 on the right group, the icon button is the only flexible
+            item and collapses under its icon, which then overlaps the h1. */}
+        <div className="flex shrink-0 items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element -- tiny inline brand mark */}
           <img src="/lsteatime-mark.svg" alt="" aria-hidden width={30} height={30} />
           <h1 className="font-display text-xl text-foreground">LSTeaTime</h1>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1">
           <InfoDrawer />
           <AccountButton open={accountOpen} onOpenChange={setAccountOpen} />
         </div>

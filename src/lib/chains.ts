@@ -56,6 +56,19 @@ export function getDepositTokens(chainKey: SpokeChainKey): readonly XToken[] {
 }
 
 /**
+ * The chain's native (gas) token as an XToken, when the solver list carries
+ * it. A pour FROM a chain is an on-chain transaction there, so the sending
+ * wallet needs a non-zero native balance to cover the network fee.
+ */
+export function getNativeGasToken(chainKey: SpokeChainKey): XToken | undefined {
+  const nativeAddress = spokeChainConfig[chainKey]?.nativeToken;
+  if (!nativeAddress) return undefined;
+  return getDepositTokens(chainKey).find(
+    (token) => token.address === nativeAddress,
+  );
+}
+
+/**
  * The SDK registry ships some EVM addresses with broken EIP-55 casing
  * (Polygon WBTC + LINK as of @sodax/sdk 2.x). viem rejects a bad checksum
  * while ENCODING the multicall, which fails every token in the batch and

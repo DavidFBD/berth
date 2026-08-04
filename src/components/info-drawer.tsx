@@ -42,6 +42,7 @@ export function InfoDrawer() {
         variant="ghost"
         size="icon-sm"
         aria-label="About this app"
+        className="shrink-0"
         onClick={() => setOpen(true)}
       >
         <Info className="size-5" />

@@ -65,10 +65,12 @@ export function AccountButton({
       <button
         type="button"
         onClick={() => setAccountOpen(true)}
-        className="flex h-8 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+        className="flex h-8 min-w-0 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
       >
-        <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
-        {email ?? (address ? shortenAddress(address) : "Account")}
+        <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+        <span className="truncate">
+          {email ?? (address ? shortenAddress(address) : "Account")}
+        </span>
       </button>
 
       <Drawer open={accountOpen} onOpenChange={setAccountOpen}>

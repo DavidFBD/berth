@@ -16,6 +16,7 @@ import {
 import {
   DEPOSIT_SOURCE_CHAINS,
   getDepositTokens,
+  getNativeGasToken,
   toBalanceReadToken,
 } from "@/lib/chains";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -49,6 +50,11 @@ export type EmbeddedHoldingsResult = {
   holdings: EmbeddedHolding[];
   /** Chains whose balance sweep errored: their holdings are unknown, not zero. */
   erroredChains: SpokeChainKey[];
+  /**
+   * Chains holding tokens but ZERO native balance: any pour from there dies
+   * at the network fee, so the tea is visible but stuck until gas arrives.
+   */
+  gasShortChains: SpokeChainKey[];
   /** Sum of the priced holdings; undefined when nothing has a price. */
   totalUsd: number | undefined;
 };
@@ -84,6 +90,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
     combine: (results) => {
       const holdings: Array<Omit<EmbeddedHolding, "usdValue">> = [];
       const erroredChains: SpokeChainKey[] = [];
+      const gasShortChains: SpokeChainKey[] = [];
       EMBEDDED_CHAINS.forEach((chainKey, index) => {
         const data = results[index]?.data;
         if (!data) {
@@ -92,18 +99,33 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
           if (results[index]?.isError) erroredChains.push(chainKey);
           return;
         }
+        const nativeToken = getNativeGasToken(chainKey);
+        let holdsNonNative = false;
         for (const token of getDepositTokens(chainKey)) {
           // Balances are keyed by the read token's (re-checksummed) address;
           // the holding carries the registry token so deposit params keep
           // the exact casing the SDK matches on.
           const balance = data[toBalanceReadToken(token).address] ?? 0n;
-          if (balance > 0n) holdings.push({ chainKey, token, balance });
+          if (balance > 0n) {
+            holdings.push({ chainKey, token, balance });
+            if (token.address !== nativeToken?.address) holdsNonNative = true;
+          }
+        }
+        // Tea without a flame: tokens on this shelf but no native balance
+        // (a settled record with the key missing means zero, not unknown).
+        if (
+          nativeToken &&
+          holdsNonNative &&
+          (data[toBalanceReadToken(nativeToken).address] ?? 0n) === 0n
+        ) {
+          gasShortChains.push(chainKey);
         }
       });
       return {
         isLoading: results.some((query) => query.isLoading),
         holdings,
         erroredChains,
+        gasShortChains,
       };
     },
   });
@@ -130,6 +152,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
     isLoading: swept.isLoading || prices.isLoading,
     holdings,
     erroredChains: swept.erroredChains,
+    gasShortChains: swept.gasShortChains,
     totalUsd,
   };
 }
