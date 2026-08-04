@@ -79,9 +79,16 @@ export const walletConfig: SodaxWalletConfig = {
       [ChainKeys.SONIC_MAINNET]: { rpcUrl: "https://sonic-rpc.publicnode.com" },
     },
   },
-  SOLANA: solanaRpcUrl
-    ? { chains: { [ChainKeys.SOLANA_MAINNET]: { rpcUrl: solanaRpcUrl } } }
-    : {},
+  // The SDK default (api.mainnet-beta.solana.com) 403s browser dapp traffic
+  // outright, which blanked the embedded wallet's SOL from the teapot.
+  // Publicnode is keyless like the EVM endpoints above; env still wins.
+  SOLANA: {
+    chains: {
+      [ChainKeys.SOLANA_MAINNET]: {
+        rpcUrl: solanaRpcUrl ?? "https://solana-rpc.publicnode.com",
+      },
+    },
+  },
   SUI: {},
   BITCOIN: {},
   STELLAR: {},

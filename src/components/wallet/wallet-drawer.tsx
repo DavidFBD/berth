@@ -165,8 +165,15 @@ function FamilyList({
   return (
     <ScrollArea className="max-h-[55cqh]">
       <div className="flex flex-col gap-0.5 px-2">
-        {groups.map((group) =>
-          group.isConnected ? (
+        {groups.map((group) => {
+          // The Privy-bridged embedded wallet surfaces here like any
+          // wallet-standard connector, but it's the user's teapot, not an
+          // external wallet: label it as such and hide the unplug (a manual
+          // disconnect wouldn't auto-reconnect until the next sign-in, and
+          // it would silently blank Solana from the teapot sweep).
+          const isTeapot =
+            group.connectorId?.toLowerCase().includes("privy") ?? false;
+          return group.isConnected ? (
             <div key={group.chainType} className={ROW_CLASS}>
               <FamilyIcon group={group} />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -182,25 +189,28 @@ function FamilyList({
                       aria-hidden
                       className="size-1.5 rounded-full bg-emerald-500"
                     />
-                    Connected
+                    {isTeapot ? "Your teapot" : "Connected"}
                   </Badge>
                 </span>
                 {group.account?.address && (
                   <span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
                     {shortenAddress(group.account.address)}
+                    {isTeapot ? " · from your email sign-in" : ""}
                   </span>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Disconnect ${group.displayName}`}
-                disabled={disconnecting === group.chainType}
-                onClick={() => onDisconnect(group.chainType)}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                {disconnecting === group.chainType ? <Spinner /> : <Plugs />}
-              </Button>
+              {!isTeapot && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Disconnect ${group.displayName}`}
+                  disabled={disconnecting === group.chainType}
+                  onClick={() => onDisconnect(group.chainType)}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  {disconnecting === group.chainType ? <Spinner /> : <Plugs />}
+                </Button>
+              )}
             </div>
           ) : (
             <button
@@ -215,8 +225,8 @@ function FamilyList({
               </span>
               <CaretRight className="size-4 text-muted-foreground" />
             </button>
-          ),
-        )}
+          );
+        })}
       </div>
     </ScrollArea>
   );
