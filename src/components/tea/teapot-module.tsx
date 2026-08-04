@@ -71,20 +71,24 @@ export function TeapotModule({ onTopUp }: { onTopUp: () => void }) {
           </div>
         )}
         {canPeek && (
+          // Inline flow, not flex: each span stays whole (nowrap) and drops
+          // to its own full line when the column gets narrow, instead of
+          // the two labels wrapping side-by-side into skinny columns.
           <button
             type="button"
             onClick={() => setLidOpen(true)}
-            className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="mt-1 block text-left text-xs leading-5 text-muted-foreground transition-colors hover:text-foreground"
           >
-            <span className="underline underline-offset-2">
+            <span className="whitespace-nowrap underline underline-offset-2">
               What&apos;s in the pot?
-            </span>
+            </span>{" "}
             {gasShortChains.length > 0 ? (
-              <span className="flex items-center gap-0.5 font-medium text-amber-700">
-                <Flame className="size-3.5" /> a shelf needs a flame
+              <span className="whitespace-nowrap font-medium text-amber-700">
+                <Flame className="inline size-3.5 align-[-0.2em]" /> a shelf
+                needs a flame
               </span>
             ) : (
-              <CaretRight className="size-3" />
+              <CaretRight className="inline size-3" />
             )}
           </button>
         )}
