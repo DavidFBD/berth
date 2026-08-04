@@ -163,7 +163,7 @@ function FamilyList({
   onDisconnect: (chainType: ChainType) => void;
 }) {
   return (
-    <ScrollArea className="max-h-[55dvh]">
+    <ScrollArea className="max-h-[55cqh]">
       <div className="flex flex-col gap-0.5 px-2">
         {groups.map((group) =>
           group.isConnected ? (
@@ -346,7 +346,7 @@ function ConnectorLevel({
   }
 
   return (
-    <ScrollArea className="max-h-[55dvh]">
+    <ScrollArea className="max-h-[55cqh]">
       <div className="flex flex-col gap-0.5 px-2">
         {sorted.map((connector) => (
           <ConnectorRow

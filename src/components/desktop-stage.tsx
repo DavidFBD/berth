@@ -3,6 +3,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 
 import { SilkBackdrop } from "@/components/tea/silk";
+import { StageScreenContext } from "@/components/stage-screen-context";
 
 /**
  * Desktop presentation layer: below `lg` the app renders as-is (true mobile
@@ -26,8 +27,12 @@ import { SilkBackdrop } from "@/components/tea/silk";
 export function DesktopStage({ children }: { children: ReactNode }) {
   const [videoFailed, setVideoFailed] = useState(false);
   const [handFailed, setHandFailed] = useState(false);
+  // Drawers portal into the screen div (state, not ref: consumers must
+  // re-render once it mounts). See stage-screen-context.tsx.
+  const [screenEl, setScreenEl] = useState<HTMLDivElement | null>(null);
 
   return (
+    <StageScreenContext.Provider value={screenEl}>
     <div className="min-h-dvh lg:fixed lg:inset-0 lg:grid lg:place-items-center lg:overflow-hidden">
       {/* Ambient backdrop — desktop only */}
       <div className="hidden lg:block" aria-hidden>
@@ -67,8 +72,14 @@ export function DesktopStage({ children }: { children: ReactNode }) {
         )}
         {/* Screen: silk field pinned behind, app scrolling above. Radius sits
             just inside the PNG cutout's 5%-of-height corners so no video
-            peeks through. */}
-        <div className="relative h-full lg:overflow-hidden lg:rounded-[calc(var(--phone-h)*0.046)] lg:bg-background">
+            peeks through. At lg the transform makes this the containing
+            block for the drawers' fixed positioning and container-type
+            makes cqh units mean "phone screen height", so bottom sheets
+            slide up inside the phone, not across the browser. */}
+        <div
+          ref={setScreenEl}
+          className="relative h-full lg:transform-gpu lg:@container-size lg:overflow-hidden lg:rounded-[calc(var(--phone-h)*0.046)] lg:bg-background"
+        >
           <SilkBackdrop />
           <div className="builders-strength relative z-10 h-full lg:overflow-y-auto lg:overscroll-contain [scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden">
             {children}
@@ -87,5 +98,6 @@ export function DesktopStage({ children }: { children: ReactNode }) {
         )}
       </div>
     </div>
+    </StageScreenContext.Provider>
   );
 }

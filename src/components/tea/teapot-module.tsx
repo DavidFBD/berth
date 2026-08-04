@@ -139,7 +139,7 @@ function TeapotLidDrawer({
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="flex max-h-[65dvh] flex-col gap-3 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+        <div className="flex max-h-[65cqh] flex-col gap-3 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
           {holdings.length > 0 && (
             <div className="flex flex-col gap-1">
               {holdings.map(({ chainKey, token, balance, usdValue }) => (

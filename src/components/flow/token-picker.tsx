@@ -239,7 +239,7 @@ export function TokenPicker({
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="flex h-[65dvh] flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+        <div className="flex h-[65cqh] flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
           {showHoldings ? (
             <>
               <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
