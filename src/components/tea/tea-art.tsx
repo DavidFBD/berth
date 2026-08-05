@@ -110,68 +110,102 @@ export function CupArt({
   const topY = bowl ? 26 : 22;
   const botY = bowl ? 61 : 63;
   const teaTop = botY - f * (botY - topY - 3);
+  // The silk canvas lives OUTSIDE the svg: WebKit (all iOS browsers) neither
+  // clips nor viewBox-scales foreignObject content, so an embedded canvas
+  // paints as a raw unclipped rectangle. An HTML overlay clipped with CSS
+  // path() renders identically everywhere. px = viewBox unit → CSS px.
+  const px = (v: number) => Math.round(v * (size / 96) * 100) / 100;
+  const interiorPx = bowl
+    ? `M ${px(14)} ${px(26)} h ${px(68)} v ${px(8)} c 0 ${px(15.2)} ${px(-14.9)} ${px(27)} ${px(-34)} ${px(27)} S ${px(14)} ${px(49.2)} ${px(14)} ${px(34)} V ${px(26)} Z`
+    : `M ${px(18)} ${px(22)} h ${px(52)} v ${px(16)} c 0 ${px(14)} ${px(-11.2)} ${px(25)} ${px(-26)} ${px(25)} S ${px(18)} ${px(52)} ${px(18)} ${px(38)} V ${px(22)} Z`;
   return (
-    <svg
-      width={size}
-      height={size * 0.83}
-      viewBox="0 0 96 80"
-      fill="none"
+    <div
       aria-hidden="true"
+      style={{ position: "relative", width: size, height: size * 0.83 }}
     >
-      <defs>
-        <clipPath id={`cup${id}`}>
-          <path d={interior} />
-        </clipPath>
-      </defs>
-      {bowl ? (
-        <path
-          d="M12 24h72v10c0 16.6-16.1 30-36 30S12 50.6 12 34V24Z"
-          fill="var(--card)"
-          stroke={deep}
-          strokeWidth="3"
-        />
-      ) : (
-        <>
+      <svg width={size} height={size * 0.83} viewBox="0 0 96 80" fill="none">
+        <defs>
+          <clipPath id={`cup${id}`}>
+            <path d={interior} />
+          </clipPath>
+        </defs>
+        {bowl ? (
           <path
-            d="M16 20h56v18c0 15.5-12.5 28-28 28S16 53.5 16 38V20Z"
+            d="M12 24h72v10c0 16.6-16.1 30-36 30S12 50.6 12 34V24Z"
             fill="var(--card)"
             stroke={deep}
             strokeWidth="3"
           />
-          <path d="M72 25h6a10 10 0 0 1 0 20h-7" stroke={deep} strokeWidth="3" />
-        </>
-      )}
-      {f > 0 && (
-        <g clipPath={`url(#cup${id})`}>
-          <rect x="10" y={teaTop} width="76" height="60" fill={accent} opacity="0.55" />
-          {silk && mounted && (
-            <foreignObject x="10" y={teaTop} width="76" height={botY - teaTop + 6}>
-              <silk-shader
-                colors={silk}
-                scale="1.7"
-                speed="1.2"
-                glow="0.55"
-                style={{ width: "100%", height: "100%", opacity: 0.92 }}
-              />
-            </foreignObject>
-          )}
-          <ellipse cx="48" cy={teaTop} rx="36" ry="3.5" fill={accent} opacity="0.9" />
-        </g>
-      )}
-      {bowl ? (
-        <path d="M28 72h40" stroke={deep} strokeWidth="3" strokeLinecap="round" />
-      ) : (
-        <>
-          <path
-            d="M16 24h56M16 27h56"
-            stroke={accent}
-            strokeWidth="1.5"
-            opacity="0.45"
+        ) : (
+          <>
+            <path
+              d="M16 20h56v18c0 15.5-12.5 28-28 28S16 53.5 16 38V20Z"
+              fill="var(--card)"
+              stroke={deep}
+              strokeWidth="3"
+            />
+            <path d="M72 25h6a10 10 0 0 1 0 20h-7" stroke={deep} strokeWidth="3" />
+          </>
+        )}
+        {f > 0 && (
+          <g clipPath={`url(#cup${id})`}>
+            <rect x="10" y={teaTop} width="76" height="60" fill={accent} opacity="0.55" />
+            <ellipse cx="48" cy={teaTop} rx="36" ry="3.5" fill={accent} opacity="0.9" />
+          </g>
+        )}
+        {bowl ? (
+          <path d="M28 72h40" stroke={deep} strokeWidth="3" strokeLinecap="round" />
+        ) : (
+          <>
+            <path
+              d="M16 24h56M16 27h56"
+              stroke={accent}
+              strokeWidth="1.5"
+              opacity="0.45"
+            />
+            <path d="M10 72h68" stroke={deep} strokeWidth="3" strokeLinecap="round" />
+          </>
+        )}
+      </svg>
+      {f > 0 && silk && mounted && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            clipPath: `path("${interiorPx}")`,
+            pointerEvents: "none",
+          }}
+        >
+          <silk-shader
+            colors={silk}
+            scale="1.7"
+            speed="1.2"
+            glow="0.55"
+            style={{
+              position: "absolute",
+              left: px(10),
+              top: px(teaTop),
+              width: px(76),
+              height: px(botY - teaTop + 6),
+              opacity: 0.92,
+            }}
           />
-          <path d="M10 72h68" stroke={deep} strokeWidth="3" strokeLinecap="round" />
-        </>
+          {/* Surface highlight above the silk, as the in-svg ellipse was. */}
+          <div
+            style={{
+              position: "absolute",
+              left: px(12),
+              top: px(teaTop - 3.5),
+              width: px(72),
+              height: px(7),
+              borderRadius: "50%",
+              background: accent,
+              opacity: 0.9,
+            }}
+          />
+        </div>
       )}
-    </svg>
+    </div>
   );
 }
 
