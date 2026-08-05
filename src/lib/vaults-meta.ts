@@ -28,12 +28,18 @@ export type VaultMeta = {
   /** Descriptive asset line under the tea name. */
   assetLine: string;
   /**
-   * Steam-level thresholds in UNDERLYING token units (18dp bigints as
-   * numbers), approximating the design's $50 / $500 / $5000 heat bands.
-   * TODO: swap for a real USD price feed.
+   * Fallback steam-level thresholds in UNDERLYING token units, used only when
+   * the oracle can't price this vault's asset. The real bands are
+   * {@link USD_STEAM_BANDS}.
    */
   steamThresholds: [number, number, number];
 };
+
+/**
+ * The design's canonical heat bands in USD: a cup steams by what it's worth,
+ * so a $500 cup of Sencha and a $500 cup of Earl Grey read the same.
+ */
+export const USD_STEAM_BANDS: [number, number, number] = [50, 500, 5_000];
 
 export const VAULTS_META: Record<string, VaultMeta> = {
   lsodaWEETH: {

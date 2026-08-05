@@ -14,10 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CupArt, SteamPlume } from "@/components/tea/tea-art";
 import { SILK_CUP } from "@/components/tea/silk";
+import { TokenLogo } from "@/components/flow/token-picker";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
-import { formatRayAsPercent, formatTokenAmount } from "@/lib/format";
+import { useUsdPrices } from "@/hooks/use-usd-prices";
+import { formatRayAsPercent, formatTokenAmount, formatUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { getVaultMeta } from "@/lib/vaults-meta";
+import { getVaultMeta, USD_STEAM_BANDS } from "@/lib/vaults-meta";
 
 /** RAY (1e27) rate → percent number for arithmetic (projection line). */
 function rayToPercent(ray: bigint): number {
@@ -80,29 +82,39 @@ export function VaultCard({
     params: { vault: vault.vault },
   });
   const position = useUserVaultPosition(vault.vault);
+  const prices = useUsdPrices();
 
   const steeping =
     position.underlyingValue !== undefined
       ? Number(formatUnits(position.underlyingValue, 18))
       : 0;
   const hasTea = position.hasPosition;
-  // Heat bands approximate the design's $50/$500/$5000 via per-cup unit
-  // thresholds (see vaults-meta) until a price feed lands.
-  const [t1, t2, t3] = meta.steamThresholds;
+
+  // The position is denominated in the vault's hub asset (the sodaX wrapper),
+  // which is a money market reserve — so the oracle already prices it and the
+  // card can speak dollars. Token units remain the fallback.
+  const price = prices.priceOfHubAsset(vault.asset);
+  const steepingUsd = price !== undefined ? steeping * price : undefined;
+
+  // Heat by worth when priced, by token units otherwise.
+  const heat = steepingUsd ?? steeping;
+  const [t1, t2, t3] =
+    steepingUsd !== undefined ? USD_STEAM_BANDS : meta.steamThresholds;
   const steamLevel = !hasTea
     ? 0
-    : steeping >= t3
+    : heat >= t3
       ? 4
-      : steeping >= t2
+      : heat >= t2
         ? 3
-        : steeping >= t1
+        : heat >= t1
           ? 2
           : 1;
-  const fill = !hasTea ? 0 : Math.min(1, 0.25 + (steeping / t3) * 0.75);
+  const fill = !hasTea ? 0 : Math.min(1, 0.25 + (heat / t3) * 0.75);
 
   const aprNegative = apr !== undefined && apr.effectiveNetAprRay < 0n;
   const aprPct = apr !== undefined ? rayToPercent(apr.effectiveNetAprRay) : 0;
   const projection = steeping * (aprPct / 100);
+  const projectionUsd = price !== undefined ? projection * price : undefined;
 
   return (
     <div
@@ -127,21 +139,31 @@ export function VaultCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-display text-[19px] text-foreground">
               {meta.teaName}
             </span>
+            {/* Flavour badge and asset line, merged: the logo carries the
+                asset, so one pill says what this is without a second line.
+                An unknown vault has no symbol — the pill is then flavour only. */}
             <span
-              className="rounded-full px-2 py-0.5 text-[10.5px] font-bold tracking-(--tracking-caps) uppercase"
-              style={{
-                color: deep,
-                background: soft,
-              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full py-0.5 text-[11px] font-bold",
+                meta.underlyingSymbol ? "pr-2 pl-0.5" : "px-2",
+              )}
+              style={{ color: deep, background: soft }}
             >
-              {meta.flavour}
+              {meta.underlyingSymbol && (
+                <>
+                  <TokenLogo symbol={meta.underlyingSymbol} size={16} />
+                  {meta.underlyingSymbol}
+                </>
+              )}
+              <span className={cn(meta.underlyingSymbol && "opacity-55")}>
+                {meta.flavour}
+              </span>
             </span>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">{meta.assetLine}</p>
 
           {isAprLoading || apr === undefined ? (
             <Skeleton className="mt-2 h-9 w-32" />
@@ -163,12 +185,15 @@ export function VaultCard({
             <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground">
               <span>Steeping</span>
               <span className="money text-right text-foreground">
-                {formatTokenAmount(position.underlyingValue ?? 0n, 18)}{" "}
-                {meta.underlyingSymbol}
+                {steepingUsd !== undefined
+                  ? formatUsd(steepingUsd)
+                  : `${formatTokenAmount(position.underlyingValue ?? 0n, 18)} ${meta.underlyingSymbol}`}
               </span>
               <span>A year of steeping</span>
               <span className="money text-right text-foreground">
-                ≈ {projection.toFixed(4)} {meta.underlyingSymbol}
+                {projectionUsd !== undefined
+                  ? `≈ ${formatUsd(projectionUsd)}`
+                  : `≈ ${projection.toFixed(4)} ${meta.underlyingSymbol}`}
               </span>
             </div>
           ) : (
