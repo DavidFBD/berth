@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { formatUnits, parseUnits } from "viem";
+import { formatUnits } from "viem";
 import { toast } from "sonner";
 import { ArrowsDownUp, CaretDown, Flame } from "@phosphor-icons/react";
 import {
@@ -47,6 +47,7 @@ import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
+import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
@@ -135,6 +136,15 @@ export function DepositDrawer({
   // exact token amounts. Unpriced tokens fall back to token entry.
   const price = token ? prices.priceOf(token) : undefined;
   const usdMode = denom === "usd" && price !== undefined;
+
+  // What Max must hold back so the pour can pay its own network fee.
+  const { buffer: gasBuffer } = useNativeGasBuffer({
+    chainKey: srcChainKey,
+    token,
+    isNative: !!token && isNativeToken(token),
+    priceUsd: price,
+    balance,
+  });
   const parsed = token
     ? usdMode
       ? usdToTokenAmount(amount, price, token.decimals)
@@ -237,16 +247,13 @@ export function DepositDrawer({
 
   const handleMax = () => {
     if (!token || balance === undefined) return;
-    let max = balance;
-    if (isNativeToken(token)) {
-      // Leave fee headroom when spending the native token. Bitcoin fees are
-      // sat-scale — 0.01 BTC would withhold a fortune — so buffer per chain.
-      const buffer =
-        srcChainKey === ChainKeys.BITCOIN_MAINNET
-          ? 3_000n // sats
-          : parseUnits("0.01", token.decimals);
-      max = max > buffer ? max - buffer : 0n;
+    if (gasBuffer === undefined) {
+      toast.info("Checking what the burner costs. One moment.");
+      return;
     }
+    // Withhold only what the network actually charges (see useNativeGasBuffer);
+    // non-native pours pay their fee from the native balance, so buffer is 0.
+    const max = balance > gasBuffer ? balance - gasBuffer : 0n;
     if (max <= 0n) {
       toast.info("Not enough left over for the kettle (network fees)");
       return;
