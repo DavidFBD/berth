@@ -10,6 +10,11 @@ import { MotionConfig } from "motion/react";
 import { AppPrivyProvider, PRIVY_ENABLED } from "@/components/privy-provider";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
+import { installLogCapture } from "@/lib/error-log-buffer";
+
+// At module scope, so the buffer is recording before any provider mounts and
+// misses nothing during startup. Idempotent and a no-op on the server.
+installLogCapture();
 
 /** App-wide Phosphor default: every icon renders duotone unless overridden. */
 const ICON_DEFAULTS = { weight: "duotone" as const };

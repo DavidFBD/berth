@@ -18,6 +18,12 @@ import type {
   VaultSwapResponse,
   XToken,
 } from "@sodax/sdk";
+import {
+  addressHint,
+  isReportable,
+  submitErrorReport,
+  type ErrorReportContext,
+} from "@/lib/error-report";
 
 /** Where the orchestrated deposit/withdraw currently is. */
 export type VaultActionStep =
@@ -34,6 +40,8 @@ type AnyWalletProvider = GetWalletProviderType<SpokeChainKey>;
 export interface RunDepositArgs {
   /** Vault proxy address on the Sonic hub (doubles as the lsoda* share token). */
   vault: Address;
+  /** Registry name (lsoda* symbol), for error reports only. */
+  vaultName?: string;
   srcChainKey: SpokeChainKey;
   /** User's EOA on `srcChainKey`. */
   srcAddress: string;
@@ -54,6 +62,8 @@ export interface RunDepositArgs {
 
 export interface RunWithdrawArgs {
   vault: Address;
+  /** Registry name (lsoda* symbol), for error reports only. */
+  vaultName?: string;
   /** Chain the user deposited FROM — shares live in that chain's hub wallet. */
   srcChainKey: SpokeChainKey;
   /** User's EOA on `srcChainKey`. */
@@ -77,9 +87,18 @@ export interface RunWithdrawArgs {
   ensureReady?: () => Promise<boolean>;
 }
 
+/** Whether a failure has been handed to the team, for the error UI to say so. */
+export type ReportState = "idle" | "sending" | "filed" | "unsent";
+
 export interface UseVaultActionResult {
   step: VaultActionStep;
   error: string | null;
+  /**
+   * Whether the current error reached the issue tracker. `unsent` covers both
+   * "not worth reporting" (user cancelled) and "reporting failed", because the
+   * user-facing distinction is only ever "the team has this" or not.
+   */
+  reportState: ReportState;
   response: VaultSwapResponse | null;
   /**
    * Whether the current deposit needed an approval tx: null until the
@@ -98,6 +117,26 @@ function extractErrorCode(error: unknown): string | undefined {
     if (typeof code === "string") return code;
   }
   return undefined;
+}
+
+/** Best-effort human-readable message off an unknown SDK error, for the report. */
+function rawErrorMessage(error: unknown): string | undefined {
+  if (error === undefined || error === null) return undefined;
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  if (typeof error === "string") return error;
+  if (typeof error === "object") {
+    const shape = error as { message?: unknown; error?: unknown };
+    if (typeof shape.message === "string") return shape.message;
+    if (typeof shape.error === "string") return shape.error;
+    try {
+      return JSON.stringify(error, (_k, v) =>
+        typeof v === "bigint" ? `${v}n` : v,
+      )?.slice(0, 2_000);
+    } catch {
+      return undefined;
+    }
+  }
+  return String(error);
 }
 
 /** Map SDK error codes to human copy per the shared error-handling contract. */
@@ -139,16 +178,52 @@ export function useVaultAction(): UseVaultActionResult {
 
   const [step, setStep] = useState<VaultActionStep>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [reportState, setReportState] = useState<ReportState>("idle");
   const [response, setResponse] = useState<VaultSwapResponse | null>(null);
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
   const runningRef = useRef(false);
+  /**
+   * Context for the current run, so a failure can be reported with the pour
+   * that caused it. A ref because `fail` is called from deep in the pipeline
+   * and must see the latest value without re-creating every callback.
+   */
+  const reportContextRef = useRef<Partial<ErrorReportContext>>({});
+
+  /** Advance the pipeline, keeping the report's "failed at" in step. */
+  const advance = useCallback((next: VaultActionStep) => {
+    reportContextRef.current.step = next;
+    setStep(next);
+  }, []);
 
   const fail = useCallback((message: string, raw?: unknown) => {
     // The friendly copy hides the SDK error entirely — keep the raw object
-    // on the console so field failures are diagnosable.
+    // on the console so field failures are diagnosable. This console line is
+    // also what the log buffer captures into the issue.
     if (raw !== undefined) console.error("[vault-action]", raw);
     setError(message);
     setStep("error");
+
+    // A cancelled pour isn't a bug; everything else goes to the team so the
+    // user never has to describe what happened.
+    if (!isReportable(message, CANCELLED_MESSAGE)) {
+      setReportState("unsent");
+      return;
+    }
+    setReportState("sending");
+    void submitErrorReport({
+      action: "deposit",
+      step: "unknown",
+      ...reportContextRef.current,
+      friendlyMessage: message,
+      errorCode: extractErrorCode(raw),
+      rawMessage: rawErrorMessage(raw),
+    } as ErrorReportContext).then((result) => {
+      setReportState(
+        result.status === "filed" || result.status === "duplicate"
+          ? "filed"
+          : "unsent",
+      );
+    });
   }, []);
 
   /**
@@ -178,8 +253,19 @@ export function useVaultAction(): UseVaultActionResult {
       if (runningRef.current) return false;
       runningRef.current = true;
       setError(null);
+      setReportState("idle");
       setResponse(null);
       setApproveRequired(null);
+      reportContextRef.current = {
+        action: "deposit",
+        step: "building",
+        vaultName: args.vaultName,
+        srcChainKey: args.srcChainKey,
+        tokenSymbol: args.token.symbol,
+        amount: `${args.inputAmount} (raw, ${args.token.decimals}dp)`,
+        addressHint: addressHint(args.srcAddress),
+        walletMode: args.ensureReady ? "email" : "external",
+      };
       // Every on-chain send is preceded by a chain re-assertion: embedded
       // wallets share one provider whose chain any competing switch can
       // steal between build and send.
@@ -191,7 +277,7 @@ export function useVaultAction(): UseVaultActionResult {
       };
       try {
         // 1. Build right before executing — the payload deadline is hub time + 5 min.
-        setStep("building");
+        advance("building");
         const buildArgs = {
           vault: args.vault,
           srcChainKey: args.srcChainKey,
@@ -225,7 +311,7 @@ export function useVaultAction(): UseVaultActionResult {
 
         // 3. Approve if needed (an on-chain tx on the spoke: assert chain).
         if (!allowance.value) {
-          setStep("approving");
+          advance("approving");
           if (!(await onRightChain())) return false;
           const approved = await approve.mutateAsyncSafe({
             params: built.value.params,
@@ -269,7 +355,7 @@ export function useVaultAction(): UseVaultActionResult {
         }
 
         // 4. Execute: one signature on the spoke chain, then verify → relay → notify solver.
-        setStep("signing");
+        advance("signing");
         if (!(await onRightChain())) return false;
         const swapped = await vaultSwap.mutateAsyncSafe({
           ...built.value,
@@ -291,7 +377,7 @@ export function useVaultAction(): UseVaultActionResult {
         runningRef.current = false;
       }
     },
-    [approve, buildDeposit, fail, queryClient, sodax, vaultSwap, waitForAllowance],
+    [advance, approve, buildDeposit, fail, queryClient, sodax, vaultSwap, waitForAllowance],
   );
 
   const runWithdraw = useCallback(
@@ -299,7 +385,18 @@ export function useVaultAction(): UseVaultActionResult {
       if (runningRef.current) return false;
       runningRef.current = true;
       setError(null);
+      setReportState("idle");
       setResponse(null);
+      reportContextRef.current = {
+        action: "withdraw",
+        step: "building",
+        vaultName: args.vaultName,
+        srcChainKey: args.srcChainKey,
+        dstChainKey: args.dstChainKey,
+        amount: `${args.inputAmount} shares (18dp)`,
+        addressHint: addressHint(args.srcAddress),
+        walletMode: args.ensureReady ? "email" : "external",
+      };
       const onRightChain = async (): Promise<boolean> => {
         if (!args.ensureReady) return true;
         if (await args.ensureReady()) return true;
@@ -307,7 +404,7 @@ export function useVaultAction(): UseVaultActionResult {
         return false;
       };
       try {
-        setStep("building");
+        advance("building");
         const built = await buildWithdraw.mutateAsyncSafe({
           vault: args.vault,
           srcChainKey: args.srcChainKey,
@@ -331,7 +428,7 @@ export function useVaultAction(): UseVaultActionResult {
 
         // No allowance/approve step: the payload carries hubWalletSwap and the
         // hub wallet is authorised via the single sendMessage signature below.
-        setStep("signing");
+        advance("signing");
         if (!(await onRightChain())) return false;
         const swapped = await vaultSwap.mutateAsyncSafe({
           ...built.value,
@@ -356,12 +453,13 @@ export function useVaultAction(): UseVaultActionResult {
         runningRef.current = false;
       }
     },
-    [buildWithdraw, fail, queryClient, vaultSwap],
+    [advance, buildWithdraw, fail, queryClient, vaultSwap],
   );
 
   const reset = useCallback(() => {
     setStep("idle");
     setError(null);
+    setReportState("idle");
     setResponse(null);
     setApproveRequired(null);
   }, []);
@@ -369,6 +467,7 @@ export function useVaultAction(): UseVaultActionResult {
   return {
     step,
     error,
+    reportState,
     response,
     approveRequired,
     runDeposit,

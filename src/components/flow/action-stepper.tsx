@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
 import { SteamPlume, TeapotArt } from "@/components/tea/tea-art";
-import type { VaultActionStep } from "@/hooks/use-vault-action";
+import {
+  CANCELLED_MESSAGE,
+  type ReportState,
+  type VaultActionStep,
+} from "@/hooks/use-vault-action";
 
 const STEPS = [
   { key: "building", label: "Build" },
@@ -210,6 +214,43 @@ export function IntentTracking({
           }}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The failure message, plus a quiet note when the failure has already been
+ * handed to the team. A cancelled pour is styled gently and never reported:
+ * the user chose it, so there is nothing to look into.
+ */
+export function ActionError({
+  message,
+  reportState,
+}: {
+  message: string;
+  reportState: ReportState;
+}) {
+  const cancelled = message === CANCELLED_MESSAGE;
+  return (
+    <div
+      role="alert"
+      className={cn(
+        "rounded-xl px-3 py-2.5 text-sm",
+        cancelled
+          ? "bg-muted/50 text-muted-foreground"
+          : "bg-destructive/10 text-destructive",
+      )}
+    >
+      <p>{message}</p>
+      {!cancelled && reportState !== "idle" && (
+        <p className="mt-1.5 text-[12px] opacity-75">
+          {reportState === "sending"
+            ? "Letting the kitchen know…"
+            : reportState === "filed"
+              ? "The kitchen has been told, so someone can look into it. No need to report it."
+              : null}
+        </p>
+      )}
     </div>
   );
 }

@@ -43,12 +43,12 @@ import {
   parseAmount,
   usdToTokenAmount,
 } from "@/lib/format";
-import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
+import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
-import { ActionStepper, IntentTracking } from "./action-stepper";
+import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
 /**
@@ -296,6 +296,7 @@ export function DepositDrawer({
     }
     await action.runDeposit({
       vault: vault.vault,
+      vaultName: vault.name,
       srcChainKey,
       srcAddress: address,
       token,
@@ -551,17 +552,10 @@ export function DepositDrawer({
                 ) : null}
 
                 {action.step === "error" && action.error && (
-                  <p
-                    role="alert"
-                    className={cn(
-                      "rounded-xl px-3 py-2.5 text-sm",
-                      action.error === CANCELLED_MESSAGE
-                        ? "bg-muted/50 text-muted-foreground"
-                        : "bg-destructive/10 text-destructive",
-                    )}
-                  >
-                    {action.error}
-                  </p>
+                  <ActionError
+                    message={action.error}
+                    reportState={action.reportState}
+                  />
                 )}
               </div>
 

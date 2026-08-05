@@ -28,9 +28,9 @@ import { getChainName } from "@/lib/chains";
 import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
-import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
+import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
-import { ActionStepper, IntentTracking } from "./action-stepper";
+import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
 /** lsoda* shares are 18-decimal ERC-4626 tokens on the Sonic hub. */
@@ -225,6 +225,7 @@ export function WithdrawDrawer({
     }
     await action.runWithdraw({
       vault: vault.vault,
+      vaultName: vault.name,
       srcChainKey,
       srcAddress: address,
       dstChainKey,
@@ -488,17 +489,10 @@ export function WithdrawDrawer({
                 ) : null}
 
                 {action.step === "error" && action.error && (
-                  <p
-                    role="alert"
-                    className={cn(
-                      "rounded-xl px-3 py-2.5 text-sm",
-                      action.error === CANCELLED_MESSAGE
-                        ? "bg-muted/50 text-muted-foreground"
-                        : "bg-destructive/10 text-destructive",
-                    )}
-                  >
-                    {action.error}
-                  </p>
+                  <ActionError
+                    message={action.error}
+                    reportState={action.reportState}
+                  />
                 )}
               </div>
 
