@@ -11,9 +11,15 @@ import { recentLogs, type CapturedLog } from "@/lib/error-log-buffer";
  * public on-chain data and the single most useful thing for tracing a pour.
  */
 
+/** Whether a failure has reached the tracker, for the error UI to say so. */
+export type ReportState = "idle" | "sending" | "filed" | "unsent";
+
 export type ErrorReportContext = {
   action: "deposit" | "withdraw";
-  /** Pipeline stage that failed: building | approving | signing. */
+  /**
+   * Where it failed. The build/approve/sign pipeline steps, or `filling` for a
+   * pour that was signed and submitted and then failed at the solver.
+   */
   step: string;
   /** Vault share-token symbol, e.g. lsodaWEETH. */
   vaultName?: string;

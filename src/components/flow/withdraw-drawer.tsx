@@ -30,6 +30,9 @@ import { getVaultMeta } from "@/lib/vaults-meta";
 import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
+import { useErrorReporter } from "@/hooks/use-error-reporter";
+import { addressHint, type ErrorReportContext } from "@/lib/error-report";
+import { FILL_FAILED_MESSAGE } from "@/lib/error-copy";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
@@ -91,6 +94,10 @@ export function WithdrawDrawer({
   // SDK would otherwise default to `srcAddress`, the wrong format across
   // chain families) — unless the user typed a custom cash-out address.
   const ownRecipient = useVaultWallet(dstChainKey).address;
+  // A failed FILL lands after useVaultAction has handed off, so it needs its
+  // own reporter — see the deposit drawer.
+  const { report: reportFill, reportState: fillReportState } =
+    useErrorReporter();
   const trimmedCustom = customRecipient?.trim() ?? "";
   const dstIsEvm = dstChainKey ? isEvmChainKeyType(dstChainKey) : false;
   const customLooksValid =
@@ -156,6 +163,26 @@ export function WithdrawDrawer({
     ? statusQuery.data.value.fill_tx_hash
     : undefined;
 
+  /**
+   * Everything a fill-failure report needs, synced after commit so the effect
+   * below can fire on terminal status alone without closing over stale values.
+   */
+  const fillContextRef = useRef<Partial<ErrorReportContext>>({});
+  useEffect(() => {
+    fillContextRef.current = {
+      vaultName: vault?.name,
+      srcChainKey,
+      dstChainKey: dstChainKey ?? undefined,
+      tokenSymbol: outputToken?.symbol,
+      amount: parsed ? `${parsed} shares (18dp)` : undefined,
+      addressHint: addressHint(address),
+      txHashes: [
+        action.response?.intentDeliveryInfo.dstTxHash,
+        fillTxHash,
+      ].filter((hash): hash is string => !!hash),
+    };
+  });
+
   const toastedRef = useRef(false);
   useEffect(() => {
     if (toastedRef.current) return;
@@ -168,11 +195,21 @@ export function WithdrawDrawer({
       });
     } else if (statusCode === 4) {
       toastedRef.current = true;
-      toast.error("The kettle's acting up.", {
+      toast.error(FILL_FAILED_MESSAGE, {
         description: "Your cup is untouched. Please try again.",
       });
+      // Signed, delivered to the hub, then unfilled by the solver: a failed
+      // transaction with funds already in motion. Nothing else reported it.
+      reportFill({
+        action: "withdraw",
+        step: "filling",
+        ...fillContextRef.current,
+        errorCode: "SOLVER_FILL_FAILED",
+        friendlyMessage: FILL_FAILED_MESSAGE,
+        rawMessage: "Solver reported status 4 (failed) for the withdraw intent.",
+      } as ErrorReportContext);
     }
-  }, [statusCode, dstChainKey]);
+  }, [statusCode, dstChainKey, reportFill]);
 
   const finish = () => {
     action.reset();
@@ -312,6 +349,7 @@ export function WithdrawDrawer({
           {vault && showTracking ? (
             <div className="p-4">
               <IntentTracking
+                reportState={fillReportState}
                 statusCode={statusCode}
                 fillTxHash={fillTxHash}
                 successTitle="Back in your teapot."

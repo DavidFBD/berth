@@ -5,11 +5,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
 import { SteamPlume, TeapotArt } from "@/components/tea/tea-art";
-import {
-  CANCELLED_MESSAGE,
-  type ReportState,
-  type VaultActionStep,
-} from "@/hooks/use-vault-action";
+import { CANCELLED_MESSAGE } from "@/lib/error-copy";
+import type { ReportState } from "@/lib/error-report";
+import type { VaultActionStep } from "@/hooks/use-vault-action";
 
 const STEPS = [
   { key: "building", label: "Build" },
@@ -133,6 +131,7 @@ export function IntentTracking({
   onDone,
   accent = "var(--cup-breakfast-deep)",
   className,
+  reportState = "idle",
 }: {
   statusCode: number | undefined;
   fillTxHash?: string;
@@ -141,6 +140,8 @@ export function IntentTracking({
   onDone: () => void;
   accent?: string;
   className?: string;
+  /** Reporting state for a failed fill, so the screen can say the team has it. */
+  reportState?: ReportState;
 }) {
   if (statusCode === 3) {
     return (
@@ -180,6 +181,11 @@ export function IntentTracking({
             Nothing was lost and your funds are safe. If they don&apos;t reappear
             shortly, keep the fill hash handy for support.
           </p>
+          {reportState === "filed" && (
+            <p className="text-xs text-muted-foreground opacity-75">
+              The kitchen has been told, so someone can look into it.
+            </p>
+          )}
         </div>
         <Button variant="outline" className="h-12 w-full text-base" onClick={onDone}>
           Close

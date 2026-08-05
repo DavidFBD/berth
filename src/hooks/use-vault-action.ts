@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  isUserRejectedError,
   useLeverageYieldDeposit,
   useLeverageYieldVaultSwap,
   useLeverageYieldWithdraw,
@@ -20,10 +19,19 @@ import type {
 } from "@sodax/sdk";
 import {
   addressHint,
-  isReportable,
-  submitErrorReport,
   type ErrorReportContext,
+  type ReportState,
 } from "@/lib/error-report";
+import {
+  CANCELLED_MESSAGE,
+  extractErrorCode,
+  friendlyError,
+  rawErrorMessage,
+} from "@/lib/error-copy";
+import { useErrorReporter } from "@/hooks/use-error-reporter";
+
+// Re-exported so existing consumers keep one import site for error copy.
+export { CANCELLED_MESSAGE };
 
 /** Where the orchestrated deposit/withdraw currently is. */
 export type VaultActionStep =
@@ -87,9 +95,6 @@ export interface RunWithdrawArgs {
   ensureReady?: () => Promise<boolean>;
 }
 
-/** Whether a failure has been handed to the team, for the error UI to say so. */
-export type ReportState = "idle" | "sending" | "filed" | "unsent";
-
 export interface UseVaultActionResult {
   step: VaultActionStep;
   error: string | null;
@@ -111,56 +116,6 @@ export interface UseVaultActionResult {
   reset: () => void;
 }
 
-function extractErrorCode(error: unknown): string | undefined {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = (error as { code: unknown }).code;
-    if (typeof code === "string") return code;
-  }
-  return undefined;
-}
-
-/** Best-effort human-readable message off an unknown SDK error, for the report. */
-function rawErrorMessage(error: unknown): string | undefined {
-  if (error === undefined || error === null) return undefined;
-  if (error instanceof Error) return `${error.name}: ${error.message}`;
-  if (typeof error === "string") return error;
-  if (typeof error === "object") {
-    const shape = error as { message?: unknown; error?: unknown };
-    if (typeof shape.message === "string") return shape.message;
-    if (typeof shape.error === "string") return shape.error;
-    try {
-      return JSON.stringify(error, (_k, v) =>
-        typeof v === "bigint" ? `${v}n` : v,
-      )?.slice(0, 2_000);
-    } catch {
-      return undefined;
-    }
-  }
-  return String(error);
-}
-
-/** Map SDK error codes to human copy per the shared error-handling contract. */
-/** Cancel copy is compared by identity in the drawers to style it gently. */
-export const CANCELLED_MESSAGE = "No worries, the tea's still warm.";
-
-function friendlyError(error: unknown, fallback: string): string {
-  if (isUserRejectedError(error)) return CANCELLED_MESSAGE;
-  switch (extractErrorCode(error)) {
-    case "USER_REJECTED":
-      return CANCELLED_MESSAGE;
-    case "RELAY_TIMEOUT":
-    case "RELAY_FAILED":
-    case "TX_SUBMIT_FAILED":
-    case "TX_VERIFICATION_FAILED":
-      return "Your pour was sent but the tray is taking a while. Funds are safe, this usually resolves itself.";
-    case "EXECUTION_FAILED":
-    case "EXTERNAL_API_ERROR":
-      return "Your pour is on the counter but the solver hasn't confirmed. It's safe to retry.";
-    default:
-      return fallback;
-  }
-}
-
 /**
  * Orchestrates the full deposit (build → allowance → approve → sign) and
  * withdraw (build → sign) flows for a leverage-yield vault. All mutations go
@@ -178,10 +133,10 @@ export function useVaultAction(): UseVaultActionResult {
 
   const [step, setStep] = useState<VaultActionStep>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [reportState, setReportState] = useState<ReportState>("idle");
   const [response, setResponse] = useState<VaultSwapResponse | null>(null);
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
   const runningRef = useRef(false);
+  const { reportState, report, resetReport } = useErrorReporter();
   /**
    * Context for the current run, so a failure can be reported with the pour
    * that caused it. A ref because `fail` is called from deep in the pipeline
@@ -205,26 +160,15 @@ export function useVaultAction(): UseVaultActionResult {
 
     // A cancelled pour isn't a bug; everything else goes to the team so the
     // user never has to describe what happened.
-    if (!isReportable(message, CANCELLED_MESSAGE)) {
-      setReportState("unsent");
-      return;
-    }
-    setReportState("sending");
-    void submitErrorReport({
+    report({
       action: "deposit",
       step: "unknown",
       ...reportContextRef.current,
       friendlyMessage: message,
       errorCode: extractErrorCode(raw),
       rawMessage: rawErrorMessage(raw),
-    } as ErrorReportContext).then((result) => {
-      setReportState(
-        result.status === "filed" || result.status === "duplicate"
-          ? "filed"
-          : "unsent",
-      );
-    });
-  }, []);
+    } as ErrorReportContext);
+  }, [report]);
 
   /**
    * Approvals return once the tx is submitted; poll the allowance until the
@@ -253,7 +197,7 @@ export function useVaultAction(): UseVaultActionResult {
       if (runningRef.current) return false;
       runningRef.current = true;
       setError(null);
-      setReportState("idle");
+      resetReport();
       setResponse(null);
       setApproveRequired(null);
       reportContextRef.current = {
@@ -377,7 +321,7 @@ export function useVaultAction(): UseVaultActionResult {
         runningRef.current = false;
       }
     },
-    [advance, approve, buildDeposit, fail, queryClient, sodax, vaultSwap, waitForAllowance],
+    [advance, approve, buildDeposit, fail, queryClient, resetReport, sodax, vaultSwap, waitForAllowance],
   );
 
   const runWithdraw = useCallback(
@@ -385,7 +329,7 @@ export function useVaultAction(): UseVaultActionResult {
       if (runningRef.current) return false;
       runningRef.current = true;
       setError(null);
-      setReportState("idle");
+      resetReport();
       setResponse(null);
       reportContextRef.current = {
         action: "withdraw",
@@ -453,16 +397,16 @@ export function useVaultAction(): UseVaultActionResult {
         runningRef.current = false;
       }
     },
-    [advance, buildWithdraw, fail, queryClient, vaultSwap],
+    [advance, buildWithdraw, fail, queryClient, resetReport, vaultSwap],
   );
 
   const reset = useCallback(() => {
     setStep("idle");
     setError(null);
-    setReportState("idle");
+    resetReport();
     setResponse(null);
     setApproveRequired(null);
-  }, []);
+  }, [resetReport]);
 
   return {
     step,

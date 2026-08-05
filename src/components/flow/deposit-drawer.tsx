@@ -48,6 +48,9 @@ import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
+import { useErrorReporter } from "@/hooks/use-error-reporter";
+import { addressHint, type ErrorReportContext } from "@/lib/error-report";
+import { FILL_FAILED_MESSAGE } from "@/lib/error-copy";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
@@ -112,6 +115,10 @@ export function DepositDrawer({
   }
 
   const prices = useUsdPrices();
+  // Reports a failed FILL, which happens after useVaultAction has already
+  // succeeded and handed off, so it needs its own reporter.
+  const { report: reportFill, reportState: fillReportState } =
+    useErrorReporter();
 
   const xService = useXService({ xChainType: getXChainType(srcChainKey) });
   const balancesQuery = useXBalances({
@@ -198,6 +205,29 @@ export function DepositDrawer({
     ? statusQuery.data.value.fill_tx_hash
     : undefined;
 
+  /**
+   * Everything a fill-failure report needs, refreshed every render. The effect
+   * below must fire on terminal status ALONE — depending on the amount or quote
+   * would re-run it mid-typing and re-toast — so it reads the latest context
+   * from here instead of closing over stale values.
+   */
+  const fillContextRef = useRef<Partial<ErrorReportContext>>({});
+  // Synced after commit, not during render: writing a ref while rendering
+  // misbehaves under concurrent rendering (and the lint rule rightly says so).
+  useEffect(() => {
+    fillContextRef.current = {
+      vaultName: vault?.name,
+      srcChainKey,
+      tokenSymbol: token?.symbol,
+      amount: parsed ? `${parsed} (raw, ${token?.decimals}dp)` : undefined,
+      addressHint: addressHint(address),
+      txHashes: [
+        action.response?.intentDeliveryInfo.dstTxHash,
+        fillTxHash,
+      ].filter((hash): hash is string => !!hash),
+    };
+  });
+
   const toastedRef = useRef(false);
   useEffect(() => {
     if (toastedRef.current) return;
@@ -209,11 +239,23 @@ export function DepositDrawer({
       });
     } else if (statusCode === 4) {
       toastedRef.current = true;
-      toast.error("The kettle's acting up.", {
+      toast.error(FILL_FAILED_MESSAGE, {
         description: "The pour couldn't be filled. Nothing was lost, try again.",
       });
+      // The signature went through and the intent reached the hub, then the
+      // solver failed to fill it. A failed transaction with the user's funds
+      // already in motion, so it matters more than a build-time error, not
+      // less — and nothing else in this flow reported it.
+      reportFill({
+        action: "deposit",
+        step: "filling",
+        ...fillContextRef.current,
+        errorCode: "SOLVER_FILL_FAILED",
+        friendlyMessage: FILL_FAILED_MESSAGE,
+        rawMessage: "Solver reported status 4 (failed) for the deposit intent.",
+      } as ErrorReportContext);
     }
-  }, [statusCode, onPoured]);
+  }, [statusCode, onPoured, reportFill]);
 
   const finish = () => {
     action.reset();
@@ -376,6 +418,7 @@ export function DepositDrawer({
           {vault && showTracking ? (
             <div className="p-4">
               <IntentTracking
+                reportState={fillReportState}
                 statusCode={statusCode}
                 fillTxHash={fillTxHash}
                 successTitle="Your cup is poured."
