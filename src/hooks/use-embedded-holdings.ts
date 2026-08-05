@@ -41,6 +41,21 @@ export const EMBEDDED_CHAINS: readonly SpokeChainKey[] =
     (key) => isEvmChainKeyType(key) || key === ChainKeys.SOLANA_MAINNET,
   );
 
+/**
+ * How often to re-sweep the wallets. dapp-kit's query builder hardcodes a 5s
+ * refetch, which is far too hot for a whole-wallet sweep: the SDK's Solana
+ * service exposes only a single-token `getBalance`, so the base class fans a
+ * sweep out to ONE RPC call PER TOKEN — 21 calls every 5 seconds on Solana
+ * alone. Keyless public endpoints answer that with 429s, web3.js retries with
+ * backoff, and the read then fails closed (`getBalance` swallows errors and
+ * returns 0), so a rate-limited wallet reads as an EMPTY one.
+ *
+ * This is a holdings overview, not a live ticker — a minute is plenty. The
+ * amount a pour is actually validated against stays on the fast path, read
+ * per-token in the drawer.
+ */
+const SWEEP_INTERVAL_MS = 60_000;
+
 export type EmbeddedHoldingsResult = {
   /** True when the user is signed in via email with an embedded wallet. */
   emailMode: boolean;
@@ -75,8 +90,8 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
   const evmAddress = privy.embedded?.address;
 
   const swept = useQueries({
-    queries: EMBEDDED_CHAINS.map((chainKey) =>
-      getXBalancesQueryOptions({
+    queries: EMBEDDED_CHAINS.map((chainKey) => ({
+      ...getXBalancesQueryOptions({
         xService: getXService(getXChainType(chainKey)!),
         xChainId: chainKey,
         xTokens: getDepositTokens(chainKey).map(toBalanceReadToken),
@@ -86,7 +101,10 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
             : solanaAccount.address
           : undefined,
       }),
-    ),
+      // Must come AFTER the spread — see SWEEP_INTERVAL_MS.
+      refetchInterval: SWEEP_INTERVAL_MS,
+      staleTime: SWEEP_INTERVAL_MS,
+    })),
     combine: (results) => {
       const holdings: Array<Omit<EmbeddedHolding, "usdValue">> = [];
       const erroredChains: SpokeChainKey[] = [];

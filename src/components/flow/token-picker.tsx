@@ -221,6 +221,11 @@ export function TokenPicker({
       xTokens: tokens.map(toBalanceReadToken),
       address: chainKey ? address : undefined,
     },
+    // Browsing a chain reads its WHOLE token list, which the SDK fans out to
+    // one RPC call per token on Solana. dapp-kit's default 5s refetch turns
+    // that into a rate-limit storm; these numbers only decorate a list the
+    // user is scrolling, so a slower cadence costs nothing.
+    queryOptions: { refetchInterval: 30_000, staleTime: 30_000 },
   });
   const balances = balancesQuery.data;
   const balancesLoading =
