@@ -92,23 +92,33 @@ export function usePrivyEvmWalletProvider(
 
       const ensureChain = async (): Promise<boolean> => {
         const hexId = `0x${chain.id.toString(16)}`;
+        // Either failure path must leave a console trail: this is the one
+        // abort the drawers surface with no raw error attached, so field
+        // reports are undiagnosable without it.
+        let lastSeen: string | undefined;
         try {
           await eip1193.request({
             method: "wallet_switchEthereumChain",
             params: [{ chainId: hexId }],
           });
           // Verify: the switch can lag while a competing switch settles.
-          for (let attempt = 0; attempt < 10; attempt++) {
-            const current = (await eip1193.request({
+          for (let attempt = 0; attempt < 20; attempt++) {
+            lastSeen = (await eip1193.request({
               method: "eth_chainId",
             })) as string;
-            if (Number.parseInt(current, 16) === chain.id) return true;
+            if (Number.parseInt(lastSeen, 16) === chain.id) return true;
             await new Promise((resolve) => setTimeout(resolve, 300));
           }
-        } catch {
-          // Fall through — a false return keeps the pour from being sent
-          // onto the wrong chain.
+          console.error(
+            `[privy-wallet] chain re-assert timed out: wanted ${hexId} (${evmChainKey}), wallet still reports ${lastSeen} — a competing switch kept winning`,
+          );
+        } catch (error) {
+          console.error(
+            `[privy-wallet] chain switch to ${hexId} (${evmChainKey}) threw — stale Privy iframe or unreachable Privy API`,
+            error,
+          );
         }
+        // A false return keeps the pour from being sent onto the wrong chain.
         return false;
       };
 
@@ -131,9 +141,14 @@ export function usePrivyEvmWalletProvider(
           ensureChain,
         },
       });
-    })().catch(() => {
+    })().catch((error) => {
       // Construction failed (e.g. switch rejected) — leave state as-is; the
-      // key mismatch keeps the hook returning undefined for this chain.
+      // key mismatch keeps the hook returning undefined for this chain, and
+      // the consumer's CTA sits in a busy state with no visible error.
+      console.error(
+        `[privy-wallet] provider construction for ${evmChainKey} failed`,
+        error,
+      );
     });
 
     return () => {
