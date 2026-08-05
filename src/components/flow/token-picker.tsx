@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { CaretLeft, MagnifyingGlass } from "@phosphor-icons/react";
 import { useXBalances } from "@sodax/dapp-kit";
 import { getXChainType, useXAccount, useXService } from "@sodax/wallet-sdk-react";
-import { isEvmChainKeyType, type SpokeChainKey, type XToken } from "@sodax/sdk";
+import {
+  isEvmChainKeyType,
+  tokenLogo,
+  type SpokeChainKey,
+  type XToken,
+} from "@sodax/sdk";
 import {
   Drawer,
   DrawerContent,
@@ -30,6 +35,33 @@ import {
 } from "@/hooks/use-embedded-holdings";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 
+/**
+ * Lettered circle standing in for a logo that is missing or failed to load.
+ * Sized in px so it lines up with the image it replaces.
+ */
+function LetterCircle({
+  letter,
+  size,
+  className,
+}: {
+  letter: string;
+  size: number;
+  className?: string;
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-muted font-semibold text-muted-foreground",
+        className,
+      )}
+      style={{ width: size, height: size, fontSize: Math.max(9, size * 0.4) }}
+    >
+      {letter}
+    </div>
+  );
+}
+
 /** Chain logo with graceful fallback to a neutral lettered circle. */
 export function ChainLogo({
   chainKey,
@@ -40,22 +72,16 @@ export function ChainLogo({
   size?: number;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  // Track WHICH src failed, not a boolean: the same component instance gets
+  // re-pointed at another chain as the drawer's selection changes, and a
+  // sticky `true` would strand a working logo behind the fallback.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const logo = getChainLogo(chainKey);
   const name = getChainName(chainKey);
 
-  if (!logo || failed) {
+  if (!logo || failedSrc === logo) {
     return (
-      <div
-        aria-hidden="true"
-        className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground",
-          className,
-        )}
-        style={{ width: size, height: size }}
-      >
-        {name.charAt(0)}
-      </div>
+      <LetterCircle letter={name.charAt(0)} size={size} className={className} />
     );
   }
 
@@ -67,18 +93,62 @@ export function ChainLogo({
       width={size}
       height={size}
       className={cn("shrink-0 rounded-full", className)}
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(logo)}
     />
   );
 }
 
-export function TokenGlyph({ symbol }: { symbol: string }) {
+/**
+ * Asset logo, resolved from the token symbol against the logo set shipped in
+ * `@sodax/assets` (the SDK's `tokenLogo`). Long-tail symbols have no file
+ * there, so a 404 falls back to the lettered circle. Pass `chainKey` to badge
+ * the network in the corner — the asset is the subject, the chain the caveat.
+ */
+export function TokenLogo({
+  symbol,
+  size = 32,
+  chainKey,
+  className,
+}: {
+  symbol: string;
+  size?: number;
+  chainKey?: SpokeChainKey;
+  className?: string;
+}) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const src = tokenLogo(symbol);
+  const badgeSize = Math.round(size * 0.42);
+
+  const art =
+    failedSrc === src ? (
+      <LetterCircle letter={symbol.charAt(0)} size={size} />
+    ) : (
+      // eslint-disable-next-line @next/next/no-img-element -- remote token logos, tiny and unknown domains
+      <img
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full"
+        onError={() => setFailedSrc(src)}
+      />
+    );
+
+  if (!chainKey) {
+    return <div className={cn("shrink-0", className)}>{art}</div>;
+  }
+
   return (
     <div
-      aria-hidden="true"
-      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground"
+      className={cn("relative shrink-0", className)}
+      style={{ width: size, height: size }}
     >
-      {symbol.charAt(0)}
+      {art}
+      <ChainLogo
+        chainKey={chainKey}
+        size={badgeSize}
+        className="absolute -right-0.5 -bottom-0.5 ring-2 ring-card"
+      />
     </div>
   );
 }
@@ -281,13 +351,12 @@ export function TokenPicker({
                       }}
                       className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted active:bg-muted"
                     >
-                      <TokenGlyph symbol={token.symbol} />
+                      <TokenLogo symbol={token.symbol} chainKey={key} />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate text-sm font-medium text-foreground">
                           {token.symbol}
                         </span>
-                        <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-                          <ChainLogo chainKey={key} size={12} />
+                        <span className="truncate text-xs text-muted-foreground">
                           on {getChainName(key)}
                         </span>
                       </div>
@@ -360,7 +429,7 @@ export function TokenPicker({
                     }}
                     className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted active:bg-muted"
                   >
-                    <TokenGlyph symbol={token.symbol} />
+                    <TokenLogo symbol={token.symbol} />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-sm font-medium text-foreground">
                         {token.symbol}

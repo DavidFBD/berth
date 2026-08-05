@@ -31,7 +31,7 @@ import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
 import { CANCELLED_MESSAGE, useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { ActionStepper, IntentTracking } from "./action-stepper";
-import { ChainLogo, TokenPicker } from "./token-picker";
+import { TokenLogo, TokenPicker } from "./token-picker";
 
 /** lsoda* shares are 18-decimal ERC-4626 tokens on the Sonic hub. */
 const SHARE_DECIMALS = 18;
@@ -384,7 +384,10 @@ export function WithdrawDrawer({
                 >
                   {dstChainKey && outputToken ? (
                     <>
-                      <ChainLogo chainKey={dstChainKey} />
+                      <TokenLogo
+                        symbol={outputToken.symbol}
+                        chainKey={dstChainKey}
+                      />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="text-sm font-medium text-foreground">
                           {outputToken.symbol}

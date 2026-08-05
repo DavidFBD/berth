@@ -48,7 +48,7 @@ import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { ActionStepper, IntentTracking } from "./action-stepper";
-import { ChainLogo, TokenPicker } from "./token-picker";
+import { TokenLogo, TokenPicker } from "./token-picker";
 
 /**
  * Full mobile deposit flow in one bottom drawer: pick source chain + token,
@@ -396,7 +396,7 @@ export function DepositDrawer({
                 >
                   {token ? (
                     <>
-                      <ChainLogo chainKey={srcChainKey} />
+                      <TokenLogo symbol={token.symbol} chainKey={srcChainKey} />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="text-sm font-medium text-foreground">
                           {token.symbol}

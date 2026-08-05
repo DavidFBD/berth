@@ -12,7 +12,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { SteamPlume, TeapotArt } from "@/components/tea/tea-art";
-import { ChainLogo, TokenGlyph } from "@/components/flow/token-picker";
+import { TokenLogo } from "@/components/flow/token-picker";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import {
   useEmbeddedHoldings,
@@ -156,13 +156,12 @@ function TeapotLidDrawer({
                   key={`${chainKey}:${token.address}`}
                   className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2"
                 >
-                  <TokenGlyph symbol={token.symbol} />
+                  <TokenLogo symbol={token.symbol} chainKey={chainKey} />
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium text-foreground">
                       {token.symbol}
                     </span>
-                    <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-                      <ChainLogo chainKey={chainKey} size={12} />
+                    <span className="truncate text-xs text-muted-foreground">
                       on {getChainName(chainKey)}
                     </span>
                   </div>
