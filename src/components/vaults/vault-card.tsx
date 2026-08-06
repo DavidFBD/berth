@@ -401,15 +401,17 @@ export function VaultCard({
           ) : (
             <CaretDown className="size-3.5" />
           )}
-          {/* On a full cup the rate has given up the headline, so it rides
-              here — attached to the very thing that explains it. */}
-          {hasTea && apr !== undefined && (
+          {/* One clause, not two. A full cup shows just the rate (the
+              headline it gave up to the dollars); an empty cup keeps the
+              question, where it's the invitation. */}
+          {hasTea && apr !== undefined ? (
             <span style={{ color: aprNegative ? "var(--destructive)" : deep }}>
               {formatRayAsPercent(apr.effectiveNetAprRay)} {copy.perYear}
-              {apr.lsdApr.stale ? " (est.)" : ""} ·
+              {apr.lsdApr.stale ? " (est.)" : ""}
             </span>
+          ) : (
+            copy.brewQuestion
           )}
-          {copy.brewQuestion}
         </button>
         <AnimatePresence initial={false}>
         {breakdownOpen && (
