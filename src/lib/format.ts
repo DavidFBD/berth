@@ -98,6 +98,30 @@ export function formatUsd(value: number): string {
   }).format(value);
 }
 
+/**
+ * USD display that keeps small values legible instead of collapsing them to
+ * "<$0.01". A modest pot earns fractions of a cent a day, so the earned figure
+ * needs real decimals to say anything at all — and to be seen ticking.
+ */
+export function formatUsdPrecise(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(value);
+  }
+  const digits = abs >= 1_000 ? 0 : abs >= 1 ? 2 : abs >= 0.01 ? 4 : 6;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
 export function shortenAddress(address: string, chars = 4): string {
   if (address.length <= chars * 2 + 2) return address;
   return `${address.slice(0, chars + 2)}…${address.slice(-chars)}`;

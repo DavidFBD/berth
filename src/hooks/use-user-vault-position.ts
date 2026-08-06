@@ -32,6 +32,17 @@ export type UserVaultPosition = {
    * `undefined` until the price-per-share read resolves.
    */
   underlyingValue: bigint | undefined;
+  /**
+   * Underlying assets one whole share redeems for (18 decimals) — the vault's
+   * price-per-share, which creeps up as it accrues. `undefined` until read.
+   */
+  pricePerShare: bigint | undefined;
+  /**
+   * Stable identity of the holder set these shares were read for: every
+   * queried address, lowercased and sorted. Persisted alongside the earned
+   * anchor so one browser's ledger is never applied to another user's shares.
+   */
+  ownerKey: string;
   /** True while any share-balance query is still loading. */
   isLoading: boolean;
   /** True once any chain reports a non-zero share balance. */
@@ -104,12 +115,19 @@ export function useUserVaultPosition(
         : [],
   );
 
+  const ownerKey = holders
+    .map((holder) => holder.address.toLowerCase())
+    .sort()
+    .join("|");
+
   return {
     shares,
     underlyingValue:
       pricePerShare !== undefined
         ? (shares * pricePerShare) / ONE_SHARE
         : undefined,
+    pricePerShare,
+    ownerKey,
     isLoading: balanceQueries.some((query) => query.isLoading),
     hasPosition: shares > 0n,
     sharesByChain,

@@ -17,7 +17,14 @@ import { SILK_CUP } from "@/components/tea/silk";
 import { TokenLogo } from "@/components/flow/token-picker";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
-import { formatRayAsPercent, formatTokenAmount, formatUsd } from "@/lib/format";
+import { useEarnedYield } from "@/hooks/use-earned-yield";
+import { useTickingValue } from "@/hooks/use-ticking-value";
+import {
+  formatRayAsPercent,
+  formatTokenAmount,
+  formatUsd,
+  formatUsdPrecise,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getVaultMeta, USD_STEAM_BANDS } from "@/lib/vaults-meta";
 
@@ -116,6 +123,46 @@ export function VaultCard({
   const projection = steeping * (aprPct / 100);
   const projectionUsd = price !== undefined ? projection * price : undefined;
 
+  // What this cup has actually made. Not readable on chain — the vault mints
+  // shares and forgets their price — so it comes off a locally anchored
+  // price-per-share. See hooks/use-earned-yield.
+  const earnedPosition = useEarnedYield({
+    vault: vault.vault,
+    shares: position.shares,
+    pricePerShare: position.pricePerShare,
+    ownerKey: position.ownerKey,
+  });
+  const earned =
+    earnedPosition.earned !== undefined
+      ? Number(formatUnits(earnedPosition.earned, 18))
+      : undefined;
+
+  // Tick in whichever unit the row is speaking, so the number moves at the
+  // same rate the projection promises.
+  const earnedBase =
+    earned !== undefined && price !== undefined ? earned * price : earned;
+  const earnedPerYear = (price !== undefined ? projectionUsd : projection) ?? 0;
+  const earnedTicking = useTickingValue(
+    earnedBase,
+    earnedPerYear,
+    hasTea && earnedBase !== undefined,
+  );
+  const earnedText =
+    earnedTicking === undefined
+      ? null
+      : price !== undefined
+        ? formatUsdPrecise(earnedTicking)
+        : `${earnedTicking.toFixed(6)} ${meta.underlyingSymbol}`;
+  // A position we only met after it was funded has an unknowable entry price,
+  // so the figure is growth since we started watching — say so rather than
+  // pass it off as lifetime earnings.
+  const earnedLabel = earnedPosition.exact
+    ? "Earned so far"
+    : `Earned since ${earnedPosition.since?.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })}`;
+
   return (
     <div
       className="rounded-2xl border bg-card p-4"
@@ -165,41 +212,70 @@ export function VaultCard({
             </span>
           </div>
 
-          {isAprLoading || apr === undefined ? (
+          {/* A full cup leads with what it is worth; an empty one has no
+              dollars worth saying, so the rate stays the headline there. */}
+          {hasTea ? (
+            <>
+              <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5">
+                <span
+                  className="money text-[32px] leading-none font-semibold"
+                  style={{ color: deep }}
+                >
+                  {steepingUsd !== undefined
+                    ? formatUsd(steepingUsd)
+                    : `${formatTokenAmount(position.underlyingValue ?? 0n, 18)} ${meta.underlyingSymbol}`}
+                </span>
+                <span className="text-[13px] text-muted-foreground">
+                  in the pot
+                </span>
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1 text-[13px]">
+                {earnedText !== null && (
+                  <>
+                    <span className="text-muted-foreground">{earnedLabel}</span>
+                    <span
+                      className="money text-right font-bold"
+                      style={{
+                        color:
+                          earnedTicking !== undefined && earnedTicking < 0
+                            ? "var(--destructive)"
+                            : deep,
+                      }}
+                    >
+                      {earnedText}
+                    </span>
+                  </>
+                )}
+                <span className="text-muted-foreground">
+                  A year of steeping
+                </span>
+                <span className="money text-right text-foreground">
+                  {projectionUsd !== undefined
+                    ? `≈ ${formatUsd(projectionUsd)}`
+                    : `≈ ${projection.toFixed(4)} ${meta.underlyingSymbol}`}
+                </span>
+              </div>
+            </>
+          ) : isAprLoading || apr === undefined ? (
             <Skeleton className="mt-2 h-9 w-32" />
           ) : (
-            <div className="mt-2 flex items-baseline gap-1.5">
-              <span
-                className="money text-3xl font-semibold"
-                style={{ color: aprNegative ? "var(--destructive)" : deep }}
-              >
-                {formatRayAsPercent(apr.effectiveNetAprRay)}
-              </span>
-              <span className="text-[13px] text-muted-foreground">
-                per year{apr.lsdApr.stale ? " (est.)" : ""}
-              </span>
-            </div>
-          )}
-
-          {hasTea ? (
-            <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground">
-              <span>Steeping</span>
-              <span className="money text-right text-foreground">
-                {steepingUsd !== undefined
-                  ? formatUsd(steepingUsd)
-                  : `${formatTokenAmount(position.underlyingValue ?? 0n, 18)} ${meta.underlyingSymbol}`}
-              </span>
-              <span>A year of steeping</span>
-              <span className="money text-right text-foreground">
-                {projectionUsd !== undefined
-                  ? `≈ ${formatUsd(projectionUsd)}`
-                  : `≈ ${projection.toFixed(4)} ${meta.underlyingSymbol}`}
-              </span>
-            </div>
-          ) : (
-            <p className="mt-2 text-[13px] text-muted-foreground">
-              Your cup awaits its first pour.
-            </p>
+            <>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span
+                  className="money text-3xl font-semibold"
+                  style={{ color: aprNegative ? "var(--destructive)" : deep }}
+                >
+                  {formatRayAsPercent(apr.effectiveNetAprRay)}
+                </span>
+                <span className="text-[13px] text-muted-foreground">
+                  per year{apr.lsdApr.stale ? " (est.)" : ""}
+                </span>
+              </div>
+              <p className="mt-2 text-[13px] text-muted-foreground">
+                Your cup awaits its first pour.
+              </p>
+            </>
           )}
         </div>
       </div>
@@ -236,6 +312,14 @@ export function VaultCard({
             <CaretUp className="size-3.5" />
           ) : (
             <CaretDown className="size-3.5" />
+          )}
+          {/* On a full cup the rate has given up the headline, so it rides
+              here — attached to the very thing that explains it. */}
+          {hasTea && apr !== undefined && (
+            <span style={{ color: aprNegative ? "var(--destructive)" : deep }}>
+              {formatRayAsPercent(apr.effectiveNetAprRay)} per year
+              {apr.lsdApr.stale ? " (est.)" : ""} ·
+            </span>
           )}
           How strong is this brew?
         </button>
