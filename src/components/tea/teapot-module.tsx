@@ -19,7 +19,8 @@ import {
   type EmbeddedHoldingsResult,
 } from "@/hooks/use-embedded-holdings";
 import { getChainName, getNativeGasToken } from "@/lib/chains";
-import { formatTokenAmount, formatUsd } from "@/lib/format";
+import { formatTokenAmount } from "@/lib/format";
+import { useCopy, useMoney } from "@/components/settings-provider";
 
 /**
  * The teapot header module — idle funds waiting to be poured. Email users
@@ -35,6 +36,8 @@ export function TeapotModule({ onTopUp }: { onTopUp: () => void }) {
   const { emailMode, isLoading, holdings, erroredChains, gasShortChains, totalUsd } =
     embedded;
   const [lidOpen, setLidOpen] = useState(false);
+  const copy = useCopy();
+  const money = useMoney();
 
   const worth = emailMode && !isLoading && totalUsd !== undefined;
   // Anything to investigate? Holdings, or shelves we couldn't read.
@@ -49,7 +52,7 @@ export function TeapotModule({ onTopUp }: { onTopUp: () => void }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
-          Your teapot
+          {copy.teapotTitle}
         </div>
         {emailMode && isLoading ? (
           // Mirrors the loaded shape: worth sentence + peek hint, so the
@@ -61,18 +64,17 @@ export function TeapotModule({ onTopUp }: { onTopUp: () => void }) {
         ) : worth ? (
           <div className="mt-0.5 text-[13px] text-muted-foreground">
             <span className="font-semibold text-foreground tabular-nums">
-              ≈ {formatUsd(totalUsd)}
+              ≈ {money.format(totalUsd)}
             </span>{" "}
-            in the pot, ready to pour
-            {holdings.length > 1 ? ` (${holdings.length} assets)` : ""}.
+            {copy.readyToPourTail(holdings.length)}
           </div>
         ) : (
           <div className="mt-0.5 text-[13px] text-muted-foreground">
             {signedIn
               ? emailMode && holdings.length === 0
-                ? "The pot is empty. Top it up and the tea can flow."
-                : "Send anything from ~200 assets across 20 networks. It waits here."
-              : "Sign in and the pot warms itself. Email is all it takes."}
+                ? copy.potEmpty
+                : copy.sendAnything
+              : copy.signInWarms}
           </div>
         )}
         {canPeek && (
@@ -85,12 +87,12 @@ export function TeapotModule({ onTopUp }: { onTopUp: () => void }) {
             className="mt-1 block text-left text-xs leading-5 text-muted-foreground transition-colors hover:text-foreground"
           >
             <span className="whitespace-nowrap underline underline-offset-2">
-              What&apos;s in the pot?
+              {copy.whatsInPot}
             </span>{" "}
             {gasShortChains.length > 0 ? (
               <span className="whitespace-nowrap font-medium text-amber-700">
-                <Flame className="inline size-3.5 align-[-0.2em]" /> a shelf
-                needs a flame
+                <Flame className="inline size-3.5 align-[-0.2em]" />{" "}
+                {copy.needsFlame}
               </span>
             ) : (
               <CaretRight className="inline size-3" />
@@ -103,7 +105,7 @@ export function TeapotModule({ onTopUp }: { onTopUp: () => void }) {
         className="h-11 shrink-0 rounded-full px-4 text-[13.5px] font-bold"
         onClick={signedIn ? onTopUp : privy.login}
       >
-        {signedIn ? "Top up" : "Sign in"}
+        {signedIn ? copy.topUp : copy.signIn}
       </Button>
 
       <TeapotLidDrawer
@@ -137,15 +139,15 @@ function TeapotLidDrawer({
   onTopUp: () => void;
 }) {
   const { holdings, erroredChains, gasShortChains, totalUsd } = embedded;
+  const copy = useCopy();
+  const money = useMoney();
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Inside the pot</DrawerTitle>
-          <DrawerDescription>
-            What you hold, and which shelf it sits on.
-          </DrawerDescription>
+          <DrawerTitle>{copy.insidePot}</DrawerTitle>
+          <DrawerDescription>{copy.insidePotSub}</DrawerDescription>
         </DrawerHeader>
 
         <div className="flex max-h-[65cqh] flex-col gap-3 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
@@ -170,16 +172,20 @@ function TeapotLidDrawer({
                       {formatTokenAmount(balance, token.decimals)}
                     </span>
                     <span className="text-xs text-muted-foreground tabular-nums">
-                      {usdValue !== undefined ? formatUsd(usdValue) : "unpriced"}
+                      {usdValue !== undefined
+                        ? money.format(usdValue)
+                        : "unpriced"}
                     </span>
                   </div>
                 </div>
               ))}
               {totalUsd !== undefined && holdings.length > 1 && (
                 <div className="flex items-center justify-between border-t border-border/60 px-2 pt-2.5 text-sm">
-                  <span className="text-muted-foreground">In the pot</span>
+                  <span className="text-muted-foreground">
+                    {copy.potTotalLabel}
+                  </span>
                   <span className="font-semibold text-foreground tabular-nums">
-                    ≈ {formatUsd(totalUsd)}
+                    ≈ {money.format(totalUsd)}
                   </span>
                 </div>
               )}

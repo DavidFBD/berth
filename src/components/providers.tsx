@@ -9,6 +9,7 @@ import { IconContext } from "@phosphor-icons/react";
 import { MotionConfig } from "motion/react";
 import { AppPrivyProvider, PRIVY_ENABLED } from "@/components/privy-provider";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
+import { SettingsProvider } from "@/components/settings-provider";
 import { WalletDiagnostics } from "@/components/dev/wallet-diagnostics";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
 import { installLogCapture } from "@/lib/error-log-buffer";
@@ -32,6 +33,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <SodaxProvider config={sodaxConfig}>
         <QueryClientProvider client={queryClient}>
           <SodaxWalletProvider config={walletConfig}>
+            <SettingsProvider>
             <IconContext.Provider value={ICON_DEFAULTS}>
               {/* Motion respects the OS reduce-motion preference app-wide. */}
               <MotionConfig reducedMotion="user">
@@ -46,6 +48,7 @@ export function Providers({ children }: { children: ReactNode }) {
                     inside the phone on lg+, like the drawers. */}
               </MotionConfig>
             </IconContext.Provider>
+            </SettingsProvider>
           </SodaxWalletProvider>
         </QueryClientProvider>
       </SodaxProvider>

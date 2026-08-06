@@ -52,6 +52,13 @@
 
 /* ————— LSTeaTime tokens (design system: Morning Tea / Evening Tea) ————— */
 :root {
+  /* Font slots: modes remap these to their own next/font variables. The
+     indirection exists because a mode class re-declaring --font-display
+     would race next/font's generated class on the same element. */
+  --font-display: var(--font-display-original);
+  --font-body: var(--font-body-original);
+  --font-money: var(--font-money-original);
+
   --background: oklch(0.965 0.012 85); /* warm cream */
   --foreground: oklch(0.3 0.028 55); /* steeped-leaf brown */
   --card: oklch(0.985 0.008 90); /* porcelain white */
@@ -171,6 +178,74 @@
   --steam: oklch(0.85 0.015 85 / 0.4);
   --tea-ring: oklch(0.45 0.03 70 / 0.35);
   --shadow-cup: 0 10px 30px -12px oklch(0 0 0 / 0.5);
+}
+
+/* ————— Mode: Gangster ————— 90s hip-hop by way of a velvet tea lounge:
+   near-black plum walls, gold rims, Crown-Royal purple, money green. Deep
+   cup colours run LIGHT here (they're text/strong colours on dark ground),
+   mirroring how .dark flips them. */
+.mode-gangster {
+  --font-display: var(--font-display-gangster);
+
+  --background: oklch(0.17 0.02 310);
+  --foreground: oklch(0.92 0.02 90);
+  --card: oklch(0.22 0.025 310);
+  --card-foreground: oklch(0.92 0.02 90);
+  --popover: oklch(0.22 0.025 310);
+  --popover-foreground: oklch(0.92 0.02 90);
+  --primary: oklch(0.78 0.13 85); /* gold rope chain */
+  --primary-foreground: oklch(0.18 0.03 85);
+  --secondary: oklch(0.3 0.035 310); /* velvet */
+  --secondary-foreground: oklch(0.9 0.02 90);
+  --muted: oklch(0.26 0.025 310);
+  --muted-foreground: oklch(0.68 0.04 85); /* champagne */
+  --accent: oklch(0.55 0.19 25); /* brake-light red */
+  --accent-foreground: oklch(0.95 0.01 90);
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.95 0.01 90);
+  --border: oklch(0.33 0.04 85); /* thin gold trim */
+  --input: oklch(0.32 0.03 310);
+  --ring: oklch(0.78 0.13 85);
+  --chart-1: oklch(0.68 0.14 300);
+  --chart-2: oklch(0.78 0.13 85);
+  --chart-3: oklch(0.68 0.13 150);
+  --chart-4: oklch(0.62 0.19 25);
+  --chart-5: oklch(0.92 0.02 90);
+  --radius: 0.625rem; /* sharper corners, less porcelain */
+  --sidebar: oklch(0.22 0.025 310);
+  --sidebar-foreground: oklch(0.92 0.02 90);
+  --sidebar-primary: oklch(0.78 0.13 85);
+  --sidebar-primary-foreground: oklch(0.18 0.03 85);
+  --sidebar-accent: oklch(0.26 0.025 310);
+  --sidebar-accent-foreground: oklch(0.9 0.02 90);
+  --sidebar-border: oklch(0.33 0.04 85);
+  --sidebar-ring: oklch(0.78 0.13 85);
+
+  /* Cups: royal purple, gold, money green */
+  --cup-earlgrey: oklch(0.62 0.14 300);
+  --cup-earlgrey-soft: oklch(0.29 0.05 300);
+  --cup-earlgrey-deep: oklch(0.8 0.1 300);
+  --cup-breakfast: oklch(0.72 0.13 85);
+  --cup-breakfast-soft: oklch(0.3 0.05 85);
+  --cup-breakfast-deep: oklch(0.85 0.11 88);
+  --cup-sencha: oklch(0.62 0.13 150);
+  --cup-sencha-soft: oklch(0.27 0.045 150);
+  --cup-sencha-deep: oklch(0.78 0.11 150);
+
+  /* Bling, not rainbow: the celebration gradient is gold chrome. */
+  --iridescent: linear-gradient(
+    115deg,
+    oklch(0.68 0.12 80) 0%,
+    oklch(0.92 0.1 90) 30%,
+    oklch(0.7 0.13 85) 55%,
+    oklch(0.95 0.08 95) 80%,
+    oklch(0.72 0.12 82) 100%
+  );
+  --steam: oklch(0.85 0.02 85 / 0.4);
+  --tea-ring: oklch(0.5 0.06 85 / 0.35);
+  --shadow-cup:
+    0 12px 32px -12px oklch(0 0 0 / 0.6),
+    0 0 0 1px oklch(0.78 0.13 85 / 0.12);
 }
 
 /* Steam wisps — intensity scales with value in the cup */

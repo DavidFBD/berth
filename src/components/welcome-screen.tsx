@@ -8,6 +8,7 @@ import { WalletDrawer } from "@/components/wallet";
 import { CupArt, SteamPlume } from "@/components/tea/tea-art";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { useCopy } from "@/components/settings-provider";
 
 /* eslint-disable @next/next/no-img-element -- tiny local brand mark */
 
@@ -50,6 +51,7 @@ const CUPS = [
 function WelcomeScreen() {
   const privy = usePrivyEmbeddedWallet();
   const [walletsOpen, setWalletsOpen] = useState(false);
+  const copy = useCopy();
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-6 px-6 py-10 text-center sm:max-w-lg">
@@ -57,8 +59,7 @@ function WelcomeScreen() {
         <img src="/lsteatime-mark.svg" alt="LSTeaTime" width={64} height={64} />
         <h1 className="font-display text-3xl text-foreground">LSTeaTime</h1>
         <p className="max-w-70 text-[15px] leading-relaxed text-muted-foreground">
-          A calming little game of filling up tea cups. The cups earn while
-          they steep.
+          {copy.tagline}
         </p>
       </div>
 
@@ -85,34 +86,32 @@ function WelcomeScreen() {
             onClick={privy.login}
           >
             <Envelope className="size-5" />
-            Sign in with email
+            {copy.signInEmail}
           </Button>
         ) : (
           <Button
             className="h-13 w-full rounded-full text-base font-bold"
             onClick={() => setWalletsOpen(true)}
           >
-            Connect a wallet
+            {copy.connectWallet}
           </Button>
         )}
-        <p className="text-xs text-muted-foreground">
-          No seed phrases, no extensions. Your pantry sets itself up.
-        </p>
+        <p className="text-xs text-muted-foreground">{copy.noSeedPhrases}</p>
         {PRIVY_ENABLED && (
           <button
             type="button"
             onClick={() => setWalletsOpen(true)}
             className="hidden py-1 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground lg:block"
           >
-            Prefer your own wallet? Connect it instead
+            {copy.preferOwnWallet}
           </button>
         )}
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Tea is the way.{" "}
+        {copy.mottoLead}{" "}
         <span className="font-display text-foreground/70">
-          LSTeaTime is the best time.
+          {copy.mottoDisplay}
         </span>
       </p>
 

@@ -1,25 +1,43 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, Karla, Young_Serif } from "next/font/google";
+import {
+  IBM_Plex_Mono,
+  Karla,
+  UnifrakturCook,
+  Young_Serif,
+} from "next/font/google";
 import { Providers } from "@/components/providers";
 import { DesktopStage } from "@/components/desktop-stage";
 import "./globals.css";
 
 /* "English tea house, slightly dreamy" — per the LSTeaTime design system:
-   Young Serif for display, Karla for body/UI, IBM Plex Mono for money. */
+   Young Serif for display, Karla for body/UI, IBM Plex Mono for money.
+
+   Each font binds to its OWN variable (--font-display-original, not
+   --font-display); :root in globals.css maps the generic slot onto it and a
+   mode class remaps the slot to that mode's font. Browsers only download a
+   @font-face when something actually renders in it, so dormant mode fonts
+   cost a declaration, not a fetch. */
 const displayFont = Young_Serif({
-  variable: "--font-display",
+  variable: "--font-display-original",
   weight: "400",
   subsets: ["latin"],
 });
 
 const bodyFont = Karla({
-  variable: "--font-body",
+  variable: "--font-body-original",
   subsets: ["latin"],
 });
 
 const moneyFont = IBM_Plex_Mono({
-  variable: "--font-money",
+  variable: "--font-money-original",
   weight: ["400", "500", "600"],
+  subsets: ["latin"],
+});
+
+/* Gangster mode: gothic blackletter for display type. */
+const gangsterDisplayFont = UnifrakturCook({
+  variable: "--font-display-gangster",
+  weight: "700",
   subsets: ["latin"],
 });
 
@@ -73,7 +91,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} h-full antialiased`}
+      // next-themes stamps the mode class on <html> before hydration; the
+      // server can't know it, so React must not treat the mismatch as a bug.
+      suppressHydrationWarning
+      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} ${gangsterDisplayFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
         <Providers>

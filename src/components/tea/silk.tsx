@@ -2,17 +2,15 @@
 
 import "@/lib/silk-shader";
 import { useMounted } from "@/hooks/use-mounted";
+import { useMode } from "@/components/settings-provider";
+import { MODES } from "@/lib/copy";
 
 /**
  * Silk palettes from the design system (ui_kits/lsteatime): the app floats
  * on a generative silk field, and the tea inside every cup is one too.
+ * The page backdrop's palette now belongs to the active mode (see MODES);
+ * the per-cup surfaces below are still the design-system originals.
  */
-
-/** Page-backdrop palettes, morning and evening (index.html SILK_BG). */
-export const SILK_BG = {
-  morning: "#f4eee0,#e9dcc4,#dcd2e8,#f8f2e3",
-  evening: "#251f18,#2f2820,#363049,#453a2c",
-} as const;
 
 /** Per-blend tea-surface palettes (CupCard.jsx SILK). */
 export const SILK_CUP: Record<string, string> = {
@@ -30,27 +28,25 @@ export const SILK_CUP: Record<string, string> = {
  */
 export function SilkBackdrop() {
   const mounted = useMounted();
+  const { mode } = useMode();
   if (!mounted) return null;
+  const silk = (MODES.find((m) => m.id === mode) ?? MODES[0]).silk;
   return (
     <div
       aria-hidden
       className="builders-strength pointer-events-none fixed inset-0 z-0 lg:absolute"
     >
+      {/* Keyed by mode: the shader reads its attributes once on mount, so a
+          palette change must remount rather than mutate. */}
       <silk-shader
-        colors={SILK_BG.morning}
+        key={mode}
+        colors={silk.colors}
         quiet="0.5,0.94,0.65,0.18"
         speed="0.8"
         scale="1.35"
-        glow="0.5"
-        className="absolute inset-0 opacity-60 dark:hidden"
-      />
-      <silk-shader
-        colors={SILK_BG.evening}
-        quiet="0.5,0.94,0.65,0.18"
-        speed="0.8"
-        scale="1.35"
-        glow="0.3"
-        className="absolute inset-0 hidden opacity-55 dark:block"
+        glow={String(silk.glow)}
+        className="absolute inset-0"
+        style={{ opacity: silk.opacity }}
       />
     </div>
   );

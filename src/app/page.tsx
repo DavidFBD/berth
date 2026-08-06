@@ -5,6 +5,8 @@ import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
 import { AccountButton } from "@/components/account-button";
 import { InfoDrawer } from "@/components/info-drawer";
+import { SettingsDrawer } from "@/components/settings-drawer";
+import { useCopy } from "@/components/settings-provider";
 import { VaultList } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
@@ -25,6 +27,7 @@ export default function Home() {
   // One-shot post-pour celebration: the poured cup's steam blooms iridescent.
   const [bloomVault, setBloomVault] = useState<string | null>(null);
   const privy = usePrivyEmbeddedWallet();
+  const copy = useCopy();
 
   // Email login is the primary path; the external wallet drawer is the
   // fallback for signed-in users reaching for a non-EVM source chain.
@@ -49,6 +52,7 @@ export default function Home() {
           <h1 className="font-display text-xl text-foreground">LSTeaTime</h1>
         </div>
         <div className="flex min-w-0 items-center gap-1">
+          <SettingsDrawer />
           <InfoDrawer />
           <AccountButton open={accountOpen} onOpenChange={setAccountOpen} />
         </div>
@@ -97,12 +101,12 @@ export default function Home() {
       <WalletDrawer open={walletOpen} onOpenChange={setWalletOpen} />
 
       <footer className="mt-9 text-center text-xs text-muted-foreground">
-        Tea is the way.{" "}
+        {copy.mottoLead}{" "}
         <span className="font-display text-foreground/70">
-          LSTeaTime is the best time.
+          {copy.mottoDisplay}
         </span>
         <span className="mt-1 block text-[10.5px] text-muted-foreground/70">
-          Powered by SODAX · real funds, real tea, no testnet
+          {copy.poweredBy}
         </span>
       </footer>
     </div>

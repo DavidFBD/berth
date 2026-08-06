@@ -87,65 +87,129 @@ export function usdToTokenAmount(
   }
 }
 
-/** Human display for a USD value: "$1,234", "$12.34", "<$0.01", "$1.2M". */
-export function formatUsd(value: number): string {
-  if (value > 0 && value < 0.01) return "<$0.01";
+/**
+ * A display currency plus the USD→currency multiplier. The whole app computes
+ * in USD (the oracle only speaks it); this is applied as the final step
+ * before formatting, nowhere else.
+ */
+export type Money = { currency: string; rate: number };
+
+export const USD_MONEY: Money = { currency: "USD", rate: 1 };
+
+/**
+ * How many fraction digits a currency conventionally carries (2 for USD/EUR,
+ * 0 for JPY/KRW). Intl knows; asking it once per currency is enough.
+ */
+const fractionDigitsCache = new Map<string, number>();
+function currencyFractionDigits(currency: string): number {
+  let digits = fractionDigitsCache.get(currency);
+  if (digits === undefined) {
+    digits =
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+      }).resolvedOptions().maximumFractionDigits ?? 2;
+    fractionDigitsCache.set(currency, digits);
+  }
+  return digits;
+}
+
+function formatCurrency(value: number, currency: string, digits: number, compact = false): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
-    maximumFractionDigits: value >= 1_000 ? 0 : 2,
-    notation: value >= 1_000_000 ? "compact" : "standard",
+    currency,
+    minimumFractionDigits: compact ? undefined : digits,
+    maximumFractionDigits: digits,
+    notation: compact ? "compact" : "standard",
   }).format(value);
 }
 
+/** Human display for a money value: "$1,234", "€12.34", "<¥1", "$1.2M". */
+export function formatMoney(usd: number, money: Money = USD_MONEY): string {
+  const value = usd * money.rate;
+  const base = currencyFractionDigits(money.currency);
+  const smallest = 10 ** -base; // one cent, or one yen
+  if (value > 0 && value < smallest) {
+    return `<${formatCurrency(smallest, money.currency, base)}`;
+  }
+  if (value >= 1_000_000) return formatCurrency(value, money.currency, 1, true);
+  return formatCurrency(value, money.currency, value >= 1_000 ? 0 : base);
+}
+
+export function formatUsd(value: number): string {
+  return formatMoney(value);
+}
+
 /**
- * USD display that keeps small values legible instead of collapsing them to
+ * Money display that keeps small values legible instead of collapsing them to
  * "<$0.01". A modest pot earns fractions of a cent a day, so the earned figure
  * needs real decimals to say anything at all — and to be seen ticking.
  */
-export function formatUsdPrecise(value: number): string {
+export function formatMoneyPrecise(
+  usd: number,
+  money: Money = USD_MONEY,
+): string {
+  const value = usd * money.rate;
   const abs = Math.abs(value);
-  if (abs >= 1_000_000) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(value);
-  }
-  const digits = abs >= 1_000 ? 0 : abs >= 1 ? 2 : abs >= 0.01 ? 4 : 6;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value);
+  if (abs >= 1_000_000) return formatCurrency(value, money.currency, 1, true);
+  const base = currencyFractionDigits(money.currency);
+  const digits =
+    abs >= 1_000
+      ? Math.max(base - 2, 0)
+      : abs >= 1
+        ? base
+        : abs >= 0.01
+          ? base + 2
+          : base + 4;
+  return formatCurrency(value, money.currency, digits);
+}
+
+export function formatUsdPrecise(value: number): string {
+  return formatMoneyPrecise(value);
 }
 
 /**
- * Split a USD figure into a settled head and an accruing tail, so the digits
- * that actually move can be styled apart from the ones that don't.
+ * Split a money figure into a settled head and an accruing tail, so the
+ * digits that actually move can be styled apart from the ones that don't.
  *
- * Deliberately finer than `formatUsdPrecise`: a $10 pot at 9% moves in the
+ * Deliberately finer than `formatMoneyPrecise`: a $10 pot at 9% moves in the
  * eighth decimal, and a number that never visibly changes reads as broken
  * rather than as earning. The tail carries that motion; the head stays the
  * figure you'd actually quote.
  */
+export function splitAccruingMoney(
+  usd: number,
+  money: Money = USD_MONEY,
+): { head: string; tail: string } {
+  const value = usd * money.rate;
+  const abs = Math.abs(value);
+  // Well past a thousand the visible digits already move on their own.
+  if (abs >= 100_000) return { head: formatMoneyPrecise(usd, money), tail: "" };
+
+  const base = currencyFractionDigits(money.currency);
+  const headDigits = abs >= 1_000 ? 0 : abs >= 1 ? base : base + 2;
+
+  // Head and tail MUST come from the same decimal string: formatting the raw
+  // value would ROUND the head ($0.0013) while the tail continues from the
+  // truncated digits (8437), printing a number that doesn't exist.
+  const [whole, frac = ""] = abs.toFixed(headDigits + 4).split(".");
+  const headValue = Number(`${whole}.${frac.slice(0, headDigits) || "0"}`);
+  const head = formatCurrency(
+    value < 0 ? -headValue : headValue,
+    money.currency,
+    headDigits,
+  );
+  const tail = frac.slice(headDigits);
+  // A head with no decimals needs the point itself to live in the tail,
+  // or "¥1,500" + "0123" would read as ¥15,000,123.
+  return { head, tail: tail ? (headDigits === 0 ? `.${tail}` : tail) : "" };
+}
+
 export function splitAccruingUsd(value: number): {
   head: string;
   tail: string;
 } {
-  const abs = Math.abs(value);
-  // Past a thousand dollars the cents already move on their own.
-  if (abs >= 1_000) return { head: formatUsdPrecise(value), tail: "" };
-
-  const headDigits = abs >= 1 ? 2 : 4;
-  const [whole, frac = ""] = abs.toFixed(headDigits + 4).split(".");
-  const sign = value < 0 ? "-" : "";
-  return {
-    head: `${sign}$${Number(whole).toLocaleString("en-US")}.${frac.slice(0, headDigits)}`,
-    tail: frac.slice(headDigits),
-  };
+  return splitAccruingMoney(value);
 }
 
 export function shortenAddress(address: string, chars = 4): string {

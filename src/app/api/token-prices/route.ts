@@ -1,80 +1,109 @@
 import { COINGECKO_IDS } from "@/lib/coingecko-ids";
+import { CURRENCIES, type FxRates } from "@/lib/currencies";
 
 /**
- * USD prices for the deposit tokens the money market oracle can't price.
+ * USD prices for the deposit tokens the money market oracle can't price,
+ * plus USD→display-currency FX rates.
  *
- * Server-side so the CoinGecko key never reaches the browser, and so one
- * upstream request serves every client: the whole pinned id set goes out in a
- * single `/simple/price` call, cached for `REVALIDATE_SECONDS`. That is ~12
- * upstream calls an hour against a Demo-tier budget of 30 per MINUTE, no
- * matter how many people are pouring.
+ * Prices come from DefiLlama (keyless, and it accepts `coingecko:<id>` keys
+ * directly, so the pinned id set in coingecko-ids.ts carries over untouched).
+ * We moved off CoinGecko itself after its Demo tier started answering
+ * routine volume with 401s dressed up as auth errors.
  *
- * Always 200 with a `prices` object. A missing key or a bad upstream response
- * yields `{}` plus a reason, because an unpriced token is a soft degrade the
- * UI already handles (no USD value shown) and must never break the app.
+ * FX comes from Frankfurter (ECB reference rates, keyless). Fiat FX moves on
+ * a different clock from crypto — a day-old ECB rate is exactly what a
+ * display currency wants — so it deliberately does NOT share the price
+ * provider's fate: either half can degrade alone.
+ *
+ * Server-side so one upstream request serves every client. Always 200: a
+ * missing price or rate is a soft degrade the UI already handles (token
+ * shows unpriced, money falls back to USD) and must never break the app.
  */
 
-const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
-const REVALIDATE_SECONDS = 300;
-
-// No `export const revalidate` here: segment config must be a literal, and the
-// budget guard that matters is the fetch cache below — the handler may re-run
-// per request but the upstream call is served from cache until it expires.
+const LLAMA_BASE = "https://coins.llama.fi";
+const FRANKFURTER_BASE = "https://api.frankfurter.dev/v1";
+const PRICES_REVALIDATE_SECONDS = 300;
+/** ECB publishes once a business day; half a day of cache is generous. */
+const FX_REVALIDATE_SECONDS = 43_200;
 
 type TokenPricesResponse = {
   /** Symbol (original casing, as in COINGECKO_IDS) → USD price. */
   prices: Record<string, number>;
+  /** USD → display-currency multipliers, e.g. { EUR: 0.92 }. */
+  fx?: FxRates;
   /** Present only when prices are empty or partial, for the console. */
   reason?: string;
 };
 
-export async function GET() {
-  const apiKey = process.env.COINGECKO_API_KEY;
-  if (!apiKey) {
-    return Response.json({
-      prices: {},
-      reason: "COINGECKO_API_KEY is not configured",
-    } satisfies TokenPricesResponse);
-  }
+type LlamaResponse = {
+  coins?: Record<string, { price?: number } | undefined>;
+};
 
-  const ids = [...new Set(Object.values(COINGECKO_IDS))];
-  const url = `${COINGECKO_BASE}/simple/price?ids=${ids.join(",")}&vs_currencies=usd`;
+type FrankfurterResponse = {
+  rates?: Record<string, number | undefined>;
+};
 
+async function fetchPrices(): Promise<{
+  prices: Record<string, number>;
+  reason?: string;
+}> {
+  const keys = [...new Set(Object.values(COINGECKO_IDS))]
+    .map((id) => `coingecko:${id}`)
+    .join(",");
   try {
-    const response = await fetch(url, {
-      // Demo-tier key pairs with the public base URL and this header name;
-      // the Pro host rejects it (error 10011) and vice versa.
-      headers: { "x-cg-demo-api-key": apiKey },
-      next: { revalidate: REVALIDATE_SECONDS },
+    const response = await fetch(`${LLAMA_BASE}/prices/current/${keys}`, {
+      next: { revalidate: PRICES_REVALIDATE_SECONDS },
     });
-
     if (!response.ok) {
-      return Response.json({
-        prices: {},
-        reason: `CoinGecko responded ${response.status}`,
-      } satisfies TokenPricesResponse);
+      return { prices: {}, reason: `DefiLlama responded ${response.status}` };
     }
-
-    const data = (await response.json()) as Record<
-      string,
-      { usd?: number } | undefined
-    >;
-
+    const data = (await response.json()) as LlamaResponse;
     const prices: Record<string, number> = {};
     for (const [symbol, id] of Object.entries(COINGECKO_IDS)) {
-      const price = data[id]?.usd;
+      const price = data.coins?.[`coingecko:${id}`]?.price;
       if (typeof price === "number" && Number.isFinite(price) && price > 0) {
         prices[symbol] = price;
       }
     }
-
-    return Response.json({ prices } satisfies TokenPricesResponse);
+    return { prices };
   } catch (error) {
-    return Response.json({
+    return {
       prices: {},
-      reason: `CoinGecko request failed: ${
+      reason: `DefiLlama request failed: ${
         error instanceof Error ? error.message : "unknown error"
       }`,
-    } satisfies TokenPricesResponse);
+    };
   }
+}
+
+async function fetchFx(): Promise<FxRates | undefined> {
+  const symbols = CURRENCIES.filter((code) => code !== "USD").join(",");
+  try {
+    const response = await fetch(
+      `${FRANKFURTER_BASE}/latest?base=USD&symbols=${symbols}`,
+      { next: { revalidate: FX_REVALIDATE_SECONDS } },
+    );
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as FrankfurterResponse;
+    const fx: FxRates = { USD: 1 };
+    for (const code of CURRENCIES) {
+      const rate = data.rates?.[code];
+      if (typeof rate === "number" && Number.isFinite(rate) && rate > 0) {
+        fx[code] = rate;
+      }
+    }
+    return fx;
+  } catch {
+    // No FX is a soft degrade: money simply keeps speaking USD.
+    return undefined;
+  }
+}
+
+export async function GET() {
+  const [priceResult, fx] = await Promise.all([fetchPrices(), fetchFx()]);
+  return Response.json({
+    prices: priceResult.prices,
+    fx,
+    ...(priceResult.reason ? { reason: priceResult.reason } : {}),
+  } satisfies TokenPricesResponse);
 }

@@ -19,12 +19,8 @@ import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useEarnedYield } from "@/hooks/use-earned-yield";
 import { useTickingValue } from "@/hooks/use-ticking-value";
-import {
-  formatRayAsPercent,
-  formatTokenAmount,
-  formatUsd,
-  splitAccruingUsd,
-} from "@/lib/format";
+import { useCopy, useMoney } from "@/components/settings-provider";
+import { formatRayAsPercent, formatTokenAmount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getVaultMeta, USD_STEAM_BANDS } from "@/lib/vaults-meta";
 
@@ -70,11 +66,14 @@ function EarnedFigure({
   value,
   symbol,
   color,
+  split,
 }: {
   value: number;
   /** Set only when unpriced — then the figure is in token units. */
   symbol?: string;
   color: string;
+  /** Money splitter from useMoney, so the figure prints in the user's currency. */
+  split: (usd: number) => { head: string; tail: string };
 }) {
   if (symbol) {
     return (
@@ -84,7 +83,7 @@ function EarnedFigure({
     );
   }
 
-  const { head, tail } = splitAccruingUsd(value);
+  const { head, tail } = split(value);
   const signed = value > 0 ? `+${head}` : head;
 
   return (
@@ -121,6 +120,8 @@ export function VaultCard({
 }) {
   const meta = getVaultMeta(vault.name);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const copy = useCopy();
+  const money = useMoney();
 
   const accent = `var(--cup-${meta.cupKey})`;
   const deep = `var(--cup-${meta.cupKey}-deep)`;
@@ -196,11 +197,13 @@ export function VaultCard({
   // so the figure is growth since we started watching — say so rather than
   // pass it off as lifetime earnings.
   const earnedLabel = earnedPosition.exact
-    ? "Earned so far"
-    : `Earned since ${earnedPosition.since?.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })}`;
+    ? copy.earnedSoFar
+    : copy.earnedSince(
+        earnedPosition.since?.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }) ?? "",
+      );
 
   return (
     <div
@@ -261,11 +264,11 @@ export function VaultCard({
                   style={{ color: deep }}
                 >
                   {steepingUsd !== undefined
-                    ? formatUsd(steepingUsd)
+                    ? money.format(steepingUsd)
                     : `${formatTokenAmount(position.underlyingValue ?? 0n, 18)} ${meta.underlyingSymbol}`}
                 </span>
                 <span className="text-[13px] text-muted-foreground">
-                  in the pot
+                  {copy.inThePot}
                 </span>
               </div>
 
@@ -282,16 +285,17 @@ export function VaultCard({
                             : undefined
                         }
                         color={earnedColor}
+                        split={money.split}
                       />
                     </span>
                   </>
                 )}
                 <span className="text-muted-foreground">
-                  A year of steeping
+                  {copy.yearOfSteeping}
                 </span>
                 <span className="money text-right text-foreground">
                   {projectionUsd !== undefined
-                    ? `≈ ${formatUsd(projectionUsd)}`
+                    ? `≈ ${money.format(projectionUsd)}`
                     : `≈ ${projection.toFixed(4)} ${meta.underlyingSymbol}`}
                 </span>
               </div>
@@ -308,11 +312,12 @@ export function VaultCard({
                   {formatRayAsPercent(apr.effectiveNetAprRay)}
                 </span>
                 <span className="text-[13px] text-muted-foreground">
-                  per year{apr.lsdApr.stale ? " (est.)" : ""}
+                  {copy.perYear}
+                  {apr.lsdApr.stale ? " (est.)" : ""}
                 </span>
               </div>
               <p className="mt-2 text-[13px] text-muted-foreground">
-                Your cup awaits its first pour.
+                {copy.awaitsFirstPour}
               </p>
             </>
           )}
@@ -326,7 +331,7 @@ export function VaultCard({
           style={{ background: deep, color: "oklch(0.985 0.008 90)" }}
           onClick={() => onDeposit(vault)}
         >
-          {hasTea ? "Pour" : "Pour your first cup"}
+          {hasTea ? copy.pour : copy.pourFirst}
         </Button>
         {hasTea && (
           <Button
@@ -334,7 +339,7 @@ export function VaultCard({
             className="h-11 rounded-full text-[15px] font-bold"
             onClick={() => onWithdraw(vault)}
           >
-            Pour back
+            {copy.pourBack}
           </Button>
         )}
       </div>
@@ -356,11 +361,11 @@ export function VaultCard({
               here — attached to the very thing that explains it. */}
           {hasTea && apr !== undefined && (
             <span style={{ color: aprNegative ? "var(--destructive)" : deep }}>
-              {formatRayAsPercent(apr.effectiveNetAprRay)} per year
+              {formatRayAsPercent(apr.effectiveNetAprRay)} {copy.perYear}
               {apr.lsdApr.stale ? " (est.)" : ""} ·
             </span>
           )}
-          How strong is this brew?
+          {copy.brewQuestion}
         </button>
         <AnimatePresence initial={false}>
         {breakdownOpen && (
@@ -383,20 +388,20 @@ export function VaultCard({
               style={{ background: soft }}
             >
               <Row
-                label={`Staking yield · ${apr.lsdApr.label}`}
+                label={`${copy.stakingYield} · ${apr.lsdApr.label}`}
                 value={`+${formatRayAsPercent(apr.lsdApr.aprRay)}`}
               />
               <Row
-                label="Lending spread"
+                label={copy.lendingSpread}
                 value={`+${formatRayAsPercent(apr.supplyAprRay)}`}
               />
               <Row
-                label="Borrow cost"
+                label={copy.borrowCost}
                 value={`−${formatRayAsPercent(apr.borrowAprRay)}`}
                 negative
               />
               <Row
-                label={`Leverage · ${(Number(apr.leverageMultiplierWad / 10n ** 15n) / 1000).toFixed(1)}×`}
+                label={`${copy.leverage} · ${(Number(apr.leverageMultiplierWad / 10n ** 15n) / 1000).toFixed(1)}×`}
                 value={null}
               />
               <div
@@ -406,14 +411,13 @@ export function VaultCard({
                 }}
               />
               <Row
-                label="Brew strength"
+                label={copy.brewStrength}
                 value={formatRayAsPercent(apr.effectiveNetAprRay)}
                 strong
               />
               {apr.lsdApr.stale && (
                 <p className="mt-1.5 text-[11.5px] text-muted-foreground">
-                  The staking number is an estimate right now; the live feed
-                  is having a lie-down.
+                  {copy.staleFeedNote}
                 </p>
               )}
             </div>
