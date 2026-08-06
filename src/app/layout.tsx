@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import {
+  Corben,
   IBM_Plex_Mono,
   Karla,
+  Monoton,
+  Shippori_Mincho,
   UnifrakturCook,
+  VT323,
   Young_Serif,
 } from "next/font/google";
 import { Providers } from "@/components/providers";
@@ -38,6 +42,34 @@ const moneyFont = IBM_Plex_Mono({
 const gangsterDisplayFont = UnifrakturCook({
   variable: "--font-display-gangster",
   weight: "700",
+  subsets: ["latin"],
+});
+
+/* Nan's Parlour: a rounded, doily-soft serif. */
+const nanDisplayFont = Corben({
+  variable: "--font-display-nan",
+  weight: ["400", "700"],
+  subsets: ["latin"],
+});
+
+/* Degen Terminal: CRT phosphor. */
+const terminalDisplayFont = VT323({
+  variable: "--font-display-terminal",
+  weight: "400",
+  subsets: ["latin"],
+});
+
+/* Vaporwave: neon-tube chrome lettering. */
+const vaporwaveDisplayFont = Monoton({
+  variable: "--font-display-vaporwave",
+  weight: "400",
+  subsets: ["latin"],
+});
+
+/* Sumi-e: a mincho serif with brush bones. */
+const sumieDisplayFont = Shippori_Mincho({
+  variable: "--font-display-sumie",
+  weight: ["400", "600"],
   subsets: ["latin"],
 });
 
@@ -94,7 +126,7 @@ export default function RootLayout({
       // next-themes stamps the mode class on <html> before hydration; the
       // server can't know it, so React must not treat the mismatch as a bug.
       suppressHydrationWarning
-      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} ${gangsterDisplayFont.variable} h-full antialiased`}
+      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} ${gangsterDisplayFont.variable} ${nanDisplayFont.variable} ${terminalDisplayFont.variable} ${vaporwaveDisplayFont.variable} ${sumieDisplayFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
         <Providers>

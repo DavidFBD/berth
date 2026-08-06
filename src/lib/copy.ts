@@ -64,6 +64,38 @@ export const MODES: readonly ModeMeta[] = [
     /* Velvet-wallpaper weave: plum blacks with a thread of gold. */
     silk: { colors: "#1f1727,#2b2136,#3d2e1c,#171220", glow: 0.35, opacity: 0.55 },
   },
+  {
+    id: "nan",
+    label: "Nan's Parlour",
+    blurb: "Chintz, doilies and rose pastels. Sit down, have a biscuit.",
+    className: "mode-nan",
+    swatch: ["oklch(0.96 0.018 20)", "oklch(0.55 0.12 15)", "oklch(0.6 0.09 250)"],
+    silk: { colors: "#f9ecec,#f3dce2,#e4ecdd,#fdf6ee", glow: 0.55, opacity: 0.6 },
+  },
+  {
+    id: "terminal",
+    label: "degen_terminal",
+    blurb: "Green phosphor on black glass. The Bloomberg of tea.",
+    className: "mode-terminal",
+    swatch: ["oklch(0.15 0.02 150)", "oklch(0.8 0.19 145)", "oklch(0.75 0.15 80)"],
+    silk: { colors: "#0a120c,#0e1a10,#11220f,#081008", glow: 0.25, opacity: 0.5 },
+  },
+  {
+    id: "vaporwave",
+    label: "Ｖａｐｏｒｗａｖｅ",
+    blurb: "Magenta, cyan, chrome. The mall at eternal sunset.",
+    className: "mode-vaporwave",
+    swatch: ["oklch(0.25 0.08 290)", "oklch(0.66 0.24 340)", "oklch(0.8 0.12 195)"],
+    silk: { colors: "#2a1e4f,#52276b,#1c3f63,#411f5c", glow: 0.6, opacity: 0.6 },
+  },
+  {
+    id: "sumie",
+    label: "Sumi-e",
+    blurb: "Ink wash on paper. One red seal. Stillness.",
+    className: "mode-sumie",
+    swatch: ["oklch(0.97 0.005 90)", "oklch(0.3 0.01 270)", "oklch(0.55 0.19 30)"],
+    silk: { colors: "#f5f3ee,#e8e5de,#d5d2c9,#f0ede6", glow: 0.4, opacity: 0.5 },
+  },
 ];
 
 export const DEFAULT_MODE: ModeId = "original";
@@ -226,12 +258,186 @@ const GANGSTER: Copy = {
   settingsSub: "How the lounge looks, and what the money talks.",
 };
 
+/** Nan's Parlour: a doting grandmother runs the place. Everything is lovely. */
+const NAN: Copy = {
+  ...ORIGINAL,
+  pour: "Pour a cuppa",
+  pourFirst: "Your first cuppa, dear",
+  pourBack: "Tip it back",
+  awaitsFirstPour: "The cup's just waiting for you, love.",
+  inThePot: "in the pot, love",
+  earnedSoFar: "Pin money so far",
+  earnedSince: (date) => `Pin money since ${date}`,
+  yearOfSteeping: "A year of lovely steeping",
+  brewQuestion: "How's the brew, dear?",
+  brewStrength: "Brew strength",
+  staleFeedNote:
+    "The staking number's having a little sit-down, dear; it's an estimate for now.",
+
+  teapotTitle: "Nan's teapot",
+  readyToPourTail: (assetCount) =>
+    `in the pot, ready when you are${assetCount > 1 ? ` (${assetCount} lovely things)` : ""}.`,
+  potEmpty: "Pot's empty, sweetheart. Shall we top it up?",
+  sendAnything: "Send along anything you like, dear — it'll keep warm here.",
+  signInWarms: "Come in, come in. The pot warms itself once you're through the door.",
+  whatsInPot: "What's under the cosy?",
+  needsFlame: "a shelf needs the stove lit",
+  topUp: "Top up, dear",
+  signIn: "Come in, love",
+  insidePot: "Under the tea cosy",
+  insidePotSub: "Everything you've got, and which shelf it's keeping warm on.",
+
+  tagline:
+    "Sit down, have a biscuit, and let your cups steep themselves lovely.",
+  signInEmail: "Come in with email",
+  noSeedPhrases: "No seed phrases, no extensions. Nan sorts the pantry herself.",
+  preferOwnWallet: "Brought your own wallet? That's fine too, dear",
+  mottoLead: "Tea is the way.",
+  mottoDisplay: "There's always time for a cuppa.",
+
+  settingsTitle: "The good cupboard",
+  settingsSub: "How the parlour looks, and what the money speaks.",
+};
+
+/** Degen Terminal: lowercase, dense, permanently online. */
+const TERMINAL: Copy = {
+  ...ORIGINAL,
+  pour: "exec pour",
+  pourFirst: "exec first_pour",
+  pourBack: "withdraw",
+  awaitsFirstPour: "cup empty. awaiting first pour_",
+  inThePot: "staked",
+  earnedSoFar: "yield accrued",
+  earnedSince: (date) => `accrued since ${date}`,
+  yearOfSteeping: "proj. 1Y",
+  perYear: "APY",
+  brewQuestion: "show yield breakdown",
+  stakingYield: "staking",
+  lendingSpread: "lend spread",
+  borrowCost: "borrow cost",
+  leverage: "leverage",
+  brewStrength: "net APY",
+  staleFeedNote: "warn: lsd feed stale. displaying last-known estimate_",
+
+  teapotTitle: "> wallet",
+  readyToPourTail: (assetCount) =>
+    `liquid, ready to deploy${assetCount > 1 ? ` (${assetCount} assets)` : ""}_`,
+  potEmpty: "balance: 0. deposit to continue_",
+  sendAnything: "accepts ~200 assets / 20 networks. funds idle here_",
+  signInWarms: "auth to initialize wallet. email is the keypair_",
+  whatsInPot: "ls ./pot",
+  needsFlame: "gas: 0 on one chain",
+  topUp: "deposit",
+  signIn: "auth",
+  insidePot: "./pot",
+  insidePotSub: "positions by chain. gas warnings inline_",
+  potTotalLabel: "total",
+
+  tagline: "terminal-grade leveraged staking. numbers go up while you sleep_",
+  signInEmail: "auth --email",
+  connectWallet: "connect wallet",
+  noSeedPhrases: "no seed phrase. no extension. keys provision on auth_",
+  preferOwnWallet: "byo wallet? connect it",
+  mottoLead: "gm. tea is the way.",
+  mottoDisplay: "wagmi, one cup at a time_",
+
+  settingsTitle: "~/.config",
+  settingsSub: "skin + display currency_",
+  modeSectionLabel: "skin",
+  currencySectionLabel: "currency",
+};
+
+/** Vaporwave: the mall at eternal sunset. Wide letters, wide time. */
+const VAPORWAVE: Copy = {
+  ...ORIGINAL,
+  pour: "Ｐｏｕｒ",
+  pourFirst: "First pour ～",
+  pourBack: "Release",
+  awaitsFirstPour: "Your cup waits in the plaza.",
+  inThePot: "in the fountain",
+  earnedSoFar: "Accumulated bliss",
+  earnedSince: (date) => `Bliss since ${date}`,
+  yearOfSteeping: "A year in the mall of time",
+  brewQuestion: "How deep is the aesthetic?",
+  brewStrength: "The aesthetic",
+  staleFeedNote:
+    "The feed drifted out past the grid horizon; this number is a memory of it.",
+
+  teapotTitle: "ＹＯＵＲ ＴＥＡＰＯＴ",
+  readyToPourTail: (assetCount) =>
+    `in the fountain, ready to flow${assetCount > 1 ? ` (${assetCount} artifacts)` : ""}.`,
+  potEmpty: "The fountain is dry. Toss a coin in.",
+  sendAnything: "Send anything from ~200 assets across 20 networks. Time is not real here.",
+  signInWarms: "Sign in and the fountain starts to glow. Email is the password.",
+  whatsInPot: "What's in the fountain?",
+  topUp: "Ｔｏｐ ｕｐ",
+  signIn: "Ｅｎｔｅｒ",
+  insidePot: "Inside the fountain",
+  insidePotSub: "Your artifacts, and which arcade they sit in.",
+
+  tagline:
+    "A calming little game in the eternal sunset. The cups steep forever.",
+  signInEmail: "Enter with email",
+  noSeedPhrases: "No seed phrases, no extensions. The plaza builds itself.",
+  preferOwnWallet: "Your own wallet? Bring it to the plaza",
+  mottoLead: "Tea is the way.",
+  mottoDisplay: "ＬＳＴｅａＴｉｍｅ ４ｅｖｅｒ",
+
+  settingsTitle: "The control room",
+  settingsSub: "Reality settings. Adjust the sunset, choose the money.",
+};
+
+/** Sumi-e: ink and silence. Every word that can go, goes. */
+const SUMIE: Copy = {
+  ...ORIGINAL,
+  pour: "Pour",
+  pourFirst: "First pour",
+  pourBack: "Return",
+  awaitsFirstPour: "The cup waits.",
+  inThePot: "steeping",
+  earnedSoFar: "Grown",
+  earnedSince: (date) => `Grown since ${date}`,
+  yearOfSteeping: "One year hence",
+  perYear: "a year",
+  brewQuestion: "The brew, examined",
+  stakingYield: "Staking",
+  lendingSpread: "Lending",
+  borrowCost: "Borrowing",
+  leverage: "Leverage",
+  brewStrength: "Strength",
+  staleFeedNote: "The feed rests. The number is an estimate.",
+
+  teapotTitle: "The pot",
+  readyToPourTail: (assetCount) =>
+    assetCount > 1 ? `waiting. ${assetCount} leaves.` : "waiting.",
+  potEmpty: "The pot is empty.",
+  sendAnything: "Send anything. It waits.",
+  signInWarms: "Sign in. The pot warms.",
+  whatsInPot: "Look inside",
+  needsFlame: "a shelf lacks flame",
+  topUp: "Add",
+  signIn: "Enter",
+  insidePot: "Within",
+  insidePotSub: "What is held, and where.",
+  potTotalLabel: "Within",
+
+  tagline: "Cups fill. Tea steeps. Nothing more is needed.",
+  signInEmail: "Enter with email",
+  connectWallet: "Connect a wallet",
+  noSeedPhrases: "No seed phrases. No extensions.",
+  preferOwnWallet: "Your own wallet? Connect it",
+  mottoLead: "Tea is the way.",
+  mottoDisplay: "Stillness, steeping.",
+
+  settingsTitle: "The alcove",
+  settingsSub: "Appearance. Currency.",
+};
+
 export const COPY: Record<ModeId, Copy> = {
   original: ORIGINAL,
   gangster: GANGSTER,
-  // Until each mode's voice is written, it speaks Original — never blank.
-  nan: ORIGINAL,
-  terminal: ORIGINAL,
-  vaporwave: ORIGINAL,
-  sumie: ORIGINAL,
+  nan: NAN,
+  terminal: TERMINAL,
+  vaporwave: VAPORWAVE,
+  sumie: SUMIE,
 };
