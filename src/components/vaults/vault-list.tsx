@@ -19,6 +19,24 @@ import { cn } from "@/lib/utils";
 import { VaultCard } from "./vault-card";
 
 /**
+ * Which cups hold tea, in shelf order. Fixed hook slots because hooks can't
+ * run in a loop and the shelf holds at most a handful; an out-of-range slot
+ * gets `undefined` and its queries simply stay disabled. Cache-shared with
+ * each cup's own position read, so this costs no extra RPC.
+ */
+function useFilledCups(vaults: readonly LeverageYieldVault[]): boolean[] {
+  const positions = [
+    useUserVaultPosition(vaults[0]?.vault),
+    useUserVaultPosition(vaults[1]?.vault),
+    useUserVaultPosition(vaults[2]?.vault),
+    useUserVaultPosition(vaults[3]?.vault),
+    useUserVaultPosition(vaults[4]?.vault),
+    useUserVaultPosition(vaults[5]?.vault),
+  ];
+  return vaults.map((_, index) => positions[index]?.hasPosition ?? false);
+}
+
+/**
  * The tea shelf — every blend minimized to its cup, lined up on one board.
  * Tapping a cup lifts it and steeps the full cup card open underneath;
  * tapping it again (or another cup) puts it back. Nothing is expanded by
@@ -37,6 +55,12 @@ export function VaultList({
   const { sodax } = useSodaxContext();
   const vaults = sodax.leverageYield.listVaults();
   const [selected, setSelected] = useState<string | null>(null);
+
+  // Your cups stay vivid; the rest step back. Only meaningful once at least
+  // one cup holds tea — an all-empty shelf stays fully warm, since greying
+  // everything would just read as a broken theme.
+  const filled = useFilledCups(vaults);
+  const anyFilled = filled.some(Boolean);
 
   // Post-pour the celebration must be visible: open the poured cup's card.
   // Render-time state adjustment (not an effect), per house pattern.
@@ -61,11 +85,14 @@ export function VaultList({
       {/* The shelf: cups sit on the board; the board is a warm wooden line. */}
       <div className="rounded-2xl border border-border bg-card px-3 pt-3 pb-4 shadow-sm">
         <div className="grid grid-cols-3 items-end">
-          {vaults.map((vault) => (
+          {vaults.map((vault, index) => (
             <ShelfCup
               key={vault.vault}
               vault={vault}
               selected={vault.vault === selected}
+              dimmed={
+                anyFilled && !filled[index] && vault.vault !== selected
+              }
               onSelect={() =>
                 setSelected((current) =>
                   current === vault.vault ? null : vault.vault,
@@ -118,10 +145,13 @@ export function VaultList({
 function ShelfCup({
   vault,
   selected,
+  dimmed,
   onSelect,
 }: {
   vault: LeverageYieldVault;
   selected: boolean;
+  /** True when another cup holds tea and this one doesn't: step back. */
+  dimmed: boolean;
   onSelect: () => void;
 }) {
   const meta = getVaultMeta(vault.name);
@@ -160,7 +190,12 @@ function ShelfCup({
       whileTap={{ scale: 0.93 }}
       animate={{ y: selected ? -6 : 0 }}
       transition={{ type: "spring", stiffness: 420, damping: 26 }}
-      className="flex flex-col items-center pb-2"
+      className={cn(
+        "flex flex-col items-center pb-2 transition-[opacity,filter] duration-300",
+        // Muted, not invisible: a dimmed cup is still on offer, it just
+        // isn't yours yet.
+        dimmed && "opacity-45 saturate-[0.3]",
+      )}
     >
       <SteamPlume level={steamLevel} width={54} height={26} />
       <CupArt
