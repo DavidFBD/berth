@@ -23,7 +23,7 @@ import {
   formatRayAsPercent,
   formatTokenAmount,
   formatUsd,
-  formatUsdPrecise,
+  splitAccruingUsd,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getVaultMeta, USD_STEAM_BANDS } from "@/lib/vaults-meta";
@@ -58,6 +58,47 @@ function Row({
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * An earned figure, split so the digits that move are visibly the ones moving:
+ * a settled head at quotable precision, then a finer tail carrying the sheen.
+ * Falls back to a plain token amount when there's no price to speak dollars in.
+ */
+function EarnedFigure({
+  value,
+  symbol,
+  color,
+}: {
+  value: number;
+  /** Set only when unpriced — then the figure is in token units. */
+  symbol?: string;
+  color: string;
+}) {
+  if (symbol) {
+    return (
+      <span className="money" style={{ color }}>
+        {value.toFixed(6)} {symbol}
+      </span>
+    );
+  }
+
+  const { head, tail } = splitAccruingUsd(value);
+  const signed = value > 0 ? `+${head}` : head;
+
+  return (
+    <span className="money" style={{ color }}>
+      {signed}
+      {tail && (
+        <span
+          className="accruing text-[0.82em]"
+          style={{ "--accrue-color": color } as React.CSSProperties}
+        >
+          {tail}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -147,12 +188,10 @@ export function VaultCard({
     earnedPerYear,
     hasTea && earnedBase !== undefined,
   );
-  const earnedText =
-    earnedTicking === undefined
-      ? null
-      : price !== undefined
-        ? formatUsdPrecise(earnedTicking)
-        : `${earnedTicking.toFixed(6)} ${meta.underlyingSymbol}`;
+  const earnedColor =
+    earnedTicking !== undefined && earnedTicking < 0
+      ? "var(--destructive)"
+      : deep;
   // A position we only met after it was funded has an unknowable entry price,
   // so the figure is growth since we started watching — say so rather than
   // pass it off as lifetime earnings.
@@ -231,19 +270,19 @@ export function VaultCard({
               </div>
 
               <div className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1 text-[13px]">
-                {earnedText !== null && (
+                {earnedTicking !== undefined && (
                   <>
                     <span className="text-muted-foreground">{earnedLabel}</span>
-                    <span
-                      className="money text-right font-bold"
-                      style={{
-                        color:
-                          earnedTicking !== undefined && earnedTicking < 0
-                            ? "var(--destructive)"
-                            : deep,
-                      }}
-                    >
-                      {earnedText}
+                    <span className="text-right font-bold">
+                      <EarnedFigure
+                        value={earnedTicking}
+                        symbol={
+                          price === undefined
+                            ? meta.underlyingSymbol
+                            : undefined
+                        }
+                        color={earnedColor}
+                      />
                     </span>
                   </>
                 )}

@@ -122,6 +122,32 @@ export function formatUsdPrecise(value: number): string {
   }).format(value);
 }
 
+/**
+ * Split a USD figure into a settled head and an accruing tail, so the digits
+ * that actually move can be styled apart from the ones that don't.
+ *
+ * Deliberately finer than `formatUsdPrecise`: a $10 pot at 9% moves in the
+ * eighth decimal, and a number that never visibly changes reads as broken
+ * rather than as earning. The tail carries that motion; the head stays the
+ * figure you'd actually quote.
+ */
+export function splitAccruingUsd(value: number): {
+  head: string;
+  tail: string;
+} {
+  const abs = Math.abs(value);
+  // Past a thousand dollars the cents already move on their own.
+  if (abs >= 1_000) return { head: formatUsdPrecise(value), tail: "" };
+
+  const headDigits = abs >= 1 ? 2 : 4;
+  const [whole, frac = ""] = abs.toFixed(headDigits + 4).split(".");
+  const sign = value < 0 ? "-" : "";
+  return {
+    head: `${sign}$${Number(whole).toLocaleString("en-US")}.${frac.slice(0, headDigits)}`,
+    tail: frac.slice(headDigits),
+  };
+}
+
 export function shortenAddress(address: string, chars = 4): string {
   if (address.length <= chars * 2 + 2) return address;
   return `${address.slice(0, chars + 2)}…${address.slice(-chars)}`;
