@@ -189,10 +189,12 @@ export function splitAccruingMoney(
   const base = currencyFractionDigits(money.currency);
   const headDigits = abs >= 1_000 ? 0 : abs >= 1 ? base : base + 2;
 
+  // Two tail digits, no more: the tail is de-emphasised styling, and a long
+  // faded run reads as line noise rather than precision.
   // Head and tail MUST come from the same decimal string: formatting the raw
   // value would ROUND the head ($0.0013) while the tail continues from the
-  // truncated digits (8437), printing a number that doesn't exist.
-  const [whole, frac = ""] = abs.toFixed(headDigits + 4).split(".");
+  // truncated digits (84), printing a number that doesn't exist.
+  const [whole, frac = ""] = abs.toFixed(headDigits + 2).split(".");
   const headValue = Number(`${whole}.${frac.slice(0, headDigits) || "0"}`);
   const head = formatCurrency(
     value < 0 ? -headValue : headValue,

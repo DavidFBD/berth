@@ -530,47 +530,32 @@
   letter-spacing: -0.01em;
 }
 
-/* The accruing tail of an earned figure. The digits underneath are real and
-   genuinely turning over; this sheen just makes the growth legible at a
-   glance, so a small pot reads as earning rather than as stuck.
-
-   The gradient colour arrives as --accrue-color because `currentColor` is
-   useless here: background-clip:text needs a transparent text fill, which
-   would make currentColor resolve to transparent and erase the digits. */
-@keyframes accrue-sheen {
-  from {
-    background-position: 220% 0;
+/* The "still earning" cue beside the earned figure. Motion lives NEXT TO the
+   money, never inside it — an earlier gradient sheen across the digits read
+   as a rendering glitch. The digits still tick (they're real); this dot just
+   breathes so the row reads as live between flips. */
+@keyframes live-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
-  to {
-    background-position: -120% 0;
+  50% {
+    opacity: 0.35;
+    transform: scale(0.72);
   }
 }
 
-.accruing {
-  --accrue-sheen: var(--accrue-color, oklch(0.5 0 0));
-  background-image: linear-gradient(
-    100deg,
-    var(--accrue-sheen) 0%,
-    var(--accrue-sheen) 36%,
-    color-mix(in oklch, var(--accrue-sheen) 28%, transparent) 50%,
-    var(--accrue-sheen) 64%,
-    var(--accrue-sheen) 100%
-  );
-  background-size: 220% 100%;
-  background-repeat: no-repeat;
-  /* Every iOS browser is WebKit, so the prefix is load-bearing, not legacy. */
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: accrue-sheen 3.4s linear infinite;
+.live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: live-breathe 2.4s var(--ease-tea, ease-in-out) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .accruing {
-    background-image: none;
-    -webkit-text-fill-color: var(--accrue-sheen);
-    color: var(--accrue-sheen);
+  .live-dot {
     animation: none;
   }
 }

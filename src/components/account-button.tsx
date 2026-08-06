@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { AnimatePresence, motion } from "motion/react";
 import { useAddFunds } from "@privy-io/react-auth";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Copy,
+  GearSix,
   PlusCircle,
+  QrCode,
   SignOut,
   Wallet,
 } from "@phosphor-icons/react";
@@ -21,6 +24,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
+import { SettingsDrawer } from "@/components/settings-drawer";
+import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -42,7 +47,9 @@ export function AccountButton({
 } = {}) {
   const privy = usePrivyEmbeddedWallet();
   const mounted = useMounted();
+  const copy = useCopy();
   const [accountOpenState, setAccountOpenState] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const accountOpen = openProp ?? accountOpenState;
   const setAccountOpen = onOpenChange ?? setAccountOpenState;
 
@@ -83,12 +90,6 @@ export function AccountButton({
           <div className="flex flex-col gap-2 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
             {address ? (
               <>
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-white p-3 dark:bg-neutral-100">
-                  <QRCodeSVG value={address} size={144} marginSize={1} />
-                  <span className="text-[11px] text-neutral-500">
-                    Scan for your EVM address
-                  </span>
-                </div>
                 <ReceiveRow
                   title="EVM address"
                   description="One address for Ethereum, Base, Arbitrum, Polygon, BNB and every other EVM network."
@@ -110,6 +111,27 @@ export function AccountButton({
                 live entirely in the teapot. The expert path stays on the
                 welcome screen for people who skip Privy. */}
 
+            {/* The back room — modes and currency. Drawers don't stack, so
+                the pantry hands over: close this one, open that one. */}
+            <button
+              type="button"
+              onClick={() => {
+                setAccountOpen(false);
+                setSettingsOpen(true);
+              }}
+              className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted"
+            >
+              <GearSix className="size-5 text-primary" />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-medium text-foreground">
+                  {copy.settingsTitle}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {copy.settingsSub}
+                </span>
+              </div>
+            </button>
+
             <Button
               variant="ghost"
               className="justify-start gap-3 px-3 text-muted-foreground"
@@ -124,6 +146,8 @@ export function AccountButton({
           </div>
         </DrawerContent>
       </Drawer>
+
+      <SettingsDrawer open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
   );
 }
@@ -152,7 +176,8 @@ function SolanaReceive() {
 
 /**
  * Friendly-labeled receive row: no raw hex in the UI (that's teapot
- * plumbing) — tap copies the address and the toast confirms the shortened
+ * plumbing). Two actions per address — a QR that unfolds inline under the
+ * row (no drawer-on-drawer), and a copy whose toast confirms the shortened
  * form so you can double-check what landed in the clipboard.
  */
 function ReceiveRow({
@@ -166,24 +191,66 @@ function ReceiveRow({
   address: string;
   copyToast: string;
 }) {
+  const [qrOpen, setQrOpen] = useState(false);
+
   return (
-    <button
-      type="button"
-      onClick={() => {
-        void navigator.clipboard.writeText(address);
-        toast.success("Address copied", {
-          description: `${shortenAddress(address, 6)} · ${copyToast}`,
-        });
-      }}
-      className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted"
-    >
-      <Wallet className="size-5 text-primary" />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium text-foreground">{title}</span>
-        <span className="text-xs text-muted-foreground">{description}</span>
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
+        <Wallet className="size-5 shrink-0 text-primary" />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground">{title}</span>
+          <span className="text-xs text-muted-foreground">{description}</span>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Show ${title} as QR code`}
+          aria-expanded={qrOpen}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={() => setQrOpen((open) => !open)}
+        >
+          <QrCode className="size-4.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Copy ${title}`}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            void navigator.clipboard.writeText(address);
+            toast.success("Address copied", {
+              description: `${shortenAddress(address, 6)} · ${copyToast}`,
+            });
+          }}
+        >
+          <Copy className="size-4.5" />
+        </Button>
       </div>
-      <Copy className="size-4 text-muted-foreground" />
-    </button>
+
+      <AnimatePresence initial={false}>
+        {qrOpen && (
+          <motion.div
+            key="qr"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col items-center gap-2 px-3 pb-3">
+              {/* White tile regardless of mode: QR codes need contrast, not
+                  theming. */}
+              <div className="rounded-lg bg-white p-2">
+                <QRCodeSVG value={address} size={132} marginSize={1} />
+              </div>
+              <span className="money text-[11px] text-muted-foreground">
+                {shortenAddress(address, 8)}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 

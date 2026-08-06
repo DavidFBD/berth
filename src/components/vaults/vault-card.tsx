@@ -58,9 +58,11 @@ function Row({
 }
 
 /**
- * An earned figure, split so the digits that move are visibly the ones moving:
- * a settled head at quotable precision, then a finer tail carrying the sheen.
- * Falls back to a plain token amount when there's no price to speak dollars in.
+ * An earned figure: a settled head at quotable precision, then two quieter
+ * digits of real extra precision. Same size, same font — only the ink fades,
+ * so it reads as one number rather than a typo. The digits tick because the
+ * value does; the "alive" cue is the dot beside the label, never the text.
+ * Falls back to a plain token amount when there's no price to speak in.
  */
 function EarnedFigure({
   value,
@@ -89,14 +91,7 @@ function EarnedFigure({
   return (
     <span className="money" style={{ color }}>
       {signed}
-      {tail && (
-        <span
-          className="accruing text-[0.82em]"
-          style={{ "--accrue-color": color } as React.CSSProperties}
-        >
-          {tail}
-        </span>
-      )}
+      {tail && <span className="opacity-45">{tail}</span>}
     </span>
   );
 }
@@ -164,6 +159,14 @@ export function VaultCard({
   const aprPct = apr !== undefined ? rayToPercent(apr.effectiveNetAprRay) : 0;
   const projection = steeping * (aprPct / 100);
   const projectionUsd = price !== undefined ? projection * price : undefined;
+  // The carrot: principal PLUS a year of this rate — the pot they'd be
+  // looking at, not the increment. The future-tense label and "≈" carry
+  // the "projected, not promised" honesty.
+  const yearTotal = steeping + projection;
+  const yearTotalUsd =
+    steepingUsd !== undefined && projectionUsd !== undefined
+      ? steepingUsd + projectionUsd
+      : undefined;
 
   // What this cup has actually made. Not readable on chain — the vault mints
   // shares and forgets their price — so it comes off a locally anchored
@@ -272,11 +275,24 @@ export function VaultCard({
                 </span>
               </div>
 
-              <div className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1 text-[13px]">
+              {/* Stat blocks, label over value: a long label ("Pin money
+                  since Aug 6") wraps inside its own column instead of
+                  shearing the date off, and the values sit on one steady
+                  baseline instead of a ragged right edge. */}
+              {/* Each stat is a column with the label given the slack, so
+                  when one mode's label wraps to two lines and the other's
+                  doesn't, the two values still share a baseline. */}
+              <div className="mt-3 flex items-stretch gap-4">
                 {earnedTicking !== undefined && (
-                  <>
-                    <span className="text-muted-foreground">{earnedLabel}</span>
-                    <span className="text-right font-bold">
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex flex-1 items-center gap-1.5 text-[10.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
+                      <span
+                        className="live-dot shrink-0"
+                        style={{ background: earnedColor }}
+                      />
+                      <span className="min-w-0">{earnedLabel}</span>
+                    </div>
+                    <div className="mt-1 text-[15px] font-bold">
                       <EarnedFigure
                         value={earnedTicking}
                         symbol={
@@ -287,17 +303,19 @@ export function VaultCard({
                         color={earnedColor}
                         split={money.split}
                       />
-                    </span>
-                  </>
+                    </div>
+                  </div>
                 )}
-                <span className="text-muted-foreground">
-                  {copy.yearOfSteeping}
-                </span>
-                <span className="money text-right text-foreground">
-                  {projectionUsd !== undefined
-                    ? `≈ ${money.format(projectionUsd)}`
-                    : `≈ ${projection.toFixed(4)} ${meta.underlyingSymbol}`}
-                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex-1 text-[10.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
+                    {copy.yearOfSteeping}
+                  </div>
+                  <div className="money mt-1 text-[15px] text-foreground">
+                    {yearTotalUsd !== undefined
+                      ? `≈ ${money.format(yearTotalUsd)}`
+                      : `≈ ${yearTotal.toFixed(4)} ${meta.underlyingSymbol}`}
+                  </div>
+                </div>
               </div>
             </>
           ) : isAprLoading || apr === undefined ? (

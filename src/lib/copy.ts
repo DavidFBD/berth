@@ -23,8 +23,6 @@ export type ModeMeta = {
   id: ModeId;
   /** Name on the settings card, written in the mode's own voice. */
   label: string;
-  /** One-liner under the label. */
-  blurb: string;
   /** Class applied to <html>; token overrides hang off it in globals.css. */
   className: string;
   /**
@@ -50,7 +48,6 @@ export const MODES: readonly ModeMeta[] = [
   {
     id: "original",
     label: "Original",
-    blurb: "The tea house as you know it. Calm, warm, porcelain.",
     className: "mode-original",
     swatch: ["oklch(0.965 0.012 85)", "oklch(0.42 0.055 55)", "oklch(0.62 0.07 300)"],
     silk: { colors: "#f4eee0,#e9dcc4,#dcd2e8,#f8f2e3", glow: 0.5, opacity: 0.6 },
@@ -58,7 +55,6 @@ export const MODES: readonly ModeMeta[] = [
   {
     id: "gangster",
     label: "Gangster",
-    blurb: "Gold, velvet and gothic letters. The pot becomes a stash.",
     className: "mode-gangster",
     swatch: ["oklch(0.17 0.02 310)", "oklch(0.78 0.13 85)", "oklch(0.55 0.19 25)"],
     /* Velvet-wallpaper weave: plum blacks with a thread of gold. */
@@ -67,7 +63,6 @@ export const MODES: readonly ModeMeta[] = [
   {
     id: "nan",
     label: "Nan's Parlour",
-    blurb: "Chintz, doilies and rose pastels. Sit down, have a biscuit.",
     className: "mode-nan",
     swatch: ["oklch(0.96 0.018 20)", "oklch(0.55 0.12 15)", "oklch(0.6 0.09 250)"],
     silk: { colors: "#f9ecec,#f3dce2,#e4ecdd,#fdf6ee", glow: 0.55, opacity: 0.6 },
@@ -75,7 +70,6 @@ export const MODES: readonly ModeMeta[] = [
   {
     id: "terminal",
     label: "degen_terminal",
-    blurb: "Green phosphor on black glass. The Bloomberg of tea.",
     className: "mode-terminal",
     swatch: ["oklch(0.15 0.02 150)", "oklch(0.8 0.19 145)", "oklch(0.75 0.15 80)"],
     silk: { colors: "#0a120c,#0e1a10,#11220f,#081008", glow: 0.25, opacity: 0.5 },
@@ -83,7 +77,6 @@ export const MODES: readonly ModeMeta[] = [
   {
     id: "vaporwave",
     label: "Ｖａｐｏｒｗａｖｅ",
-    blurb: "Magenta, cyan, chrome. The mall at eternal sunset.",
     className: "mode-vaporwave",
     swatch: ["oklch(0.25 0.08 290)", "oklch(0.66 0.24 340)", "oklch(0.8 0.12 195)"],
     silk: { colors: "#2a1e4f,#52276b,#1c3f63,#411f5c", glow: 0.6, opacity: 0.6 },
@@ -91,7 +84,6 @@ export const MODES: readonly ModeMeta[] = [
   {
     id: "sumie",
     label: "Sumi-e",
-    blurb: "Ink wash on paper. One red seal. Stillness.",
     className: "mode-sumie",
     swatch: ["oklch(0.97 0.005 90)", "oklch(0.3 0.01 270)", "oklch(0.55 0.19 30)"],
     silk: { colors: "#f5f3ee,#e8e5de,#d5d2c9,#f0ede6", glow: 0.4, opacity: 0.5 },
@@ -115,6 +107,12 @@ export type Copy = {
   inThePot: string;
   earnedSoFar: string;
   earnedSince: (date: string) => string;
+  /**
+   * Label over the year-projection stat. The VALUE under it is principal
+   * plus a year of the current rate (the pot they'd have, not the
+   * increment), so the label must speak in the future tense — it does the
+   * "projected, not promised" work together with the "≈".
+   */
   yearOfSteeping: string;
   perYear: string;
   brewQuestion: string;
@@ -165,7 +163,7 @@ const ORIGINAL: Copy = {
   inThePot: "in the pot",
   earnedSoFar: "Earned so far",
   earnedSince: (date) => `Earned since ${date}`,
-  yearOfSteeping: "A year of steeping",
+  yearOfSteeping: "This time next year",
   perYear: "per year",
   brewQuestion: "How strong is this brew?",
   stakingYield: "Staking yield",
@@ -220,7 +218,7 @@ const GANGSTER: Copy = {
   inThePot: "in the stash",
   earnedSoFar: "Stacked so far",
   earnedSince: (date) => `Stacked since ${date}`,
-  yearOfSteeping: "A year on the grind",
+  yearOfSteeping: "After a year on the grind",
   brewQuestion: "How hard does this brew go?",
   stakingYield: "The honest hustle",
   lendingSpread: "The spread",
@@ -268,7 +266,7 @@ const NAN: Copy = {
   inThePot: "in the pot, love",
   earnedSoFar: "Pin money so far",
   earnedSince: (date) => `Pin money since ${date}`,
-  yearOfSteeping: "A year of lovely steeping",
+  yearOfSteeping: "This time next year, love",
   brewQuestion: "How's the brew, dear?",
   brewStrength: "Brew strength",
   staleFeedNote:
@@ -309,7 +307,7 @@ const TERMINAL: Copy = {
   inThePot: "staked",
   earnedSoFar: "yield accrued",
   earnedSince: (date) => `accrued since ${date}`,
-  yearOfSteeping: "proj. 1Y",
+  yearOfSteeping: "proj. balance @ 1Y",
   perYear: "APY",
   brewQuestion: "show yield breakdown",
   stakingYield: "staking",
@@ -357,7 +355,7 @@ const VAPORWAVE: Copy = {
   inThePot: "in the fountain",
   earnedSoFar: "Accumulated bliss",
   earnedSince: (date) => `Bliss since ${date}`,
-  yearOfSteeping: "A year in the mall of time",
+  yearOfSteeping: "One sunset year from now",
   brewQuestion: "How deep is the aesthetic?",
   brewStrength: "The aesthetic",
   staleFeedNote:

@@ -5,7 +5,6 @@ import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
 import { AccountButton } from "@/components/account-button";
 import { InfoDrawer } from "@/components/info-drawer";
-import { SettingsDrawer } from "@/components/settings-drawer";
 import { useCopy } from "@/components/settings-provider";
 import { VaultList } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
@@ -52,7 +51,6 @@ export default function Home() {
           <h1 className="font-display text-xl text-foreground">LSTeaTime</h1>
         </div>
         <div className="flex min-w-0 items-center gap-1">
-          <SettingsDrawer />
           <InfoDrawer />
           <AccountButton open={accountOpen} onOpenChange={setAccountOpen} />
         </div>

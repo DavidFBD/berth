@@ -1,9 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { GearSix } from "@phosphor-icons/react";
-
-import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
@@ -21,28 +17,23 @@ import { CURRENCIES } from "@/lib/currencies";
 import { cn } from "@/lib/utils";
 
 /**
- * Header gear + the back room: pick a mode (the app's whole personality —
- * skin AND voice) and a display currency. Both persist per browser.
+ * The back room: pick a mode (the app's whole personality — skin AND voice)
+ * and a display currency. Both persist per browser. Controlled from outside;
+ * the pantry owns the way in.
  */
-export function SettingsDrawer() {
-  const [open, setOpen] = useState(false);
+export function SettingsDrawer({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const copy = useCopy();
   const { mode, setMode } = useMode();
   const { currency, setCurrency } = useCurrency();
 
   return (
-    <>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Settings"
-        className="shrink-0"
-        onClick={() => setOpen(true)}
-      >
-        <GearSix className="size-5" />
-      </Button>
-
-      <Drawer open={open} onOpenChange={setOpen}>
+    <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>{copy.settingsTitle}</DrawerTitle>
@@ -54,7 +45,9 @@ export function SettingsDrawer() {
               <h3 className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
                 {copy.modeSectionLabel}
               </h3>
-              <div className="grid grid-cols-1 gap-2">
+              {/* Name and swatch only — no blurb. What a mode does to the
+                  place is the surprise; explaining it here would spoil it. */}
+              <div className="grid grid-cols-2 gap-2">
                 {MODES.map((meta) => {
                   const selected = meta.id === mode;
                   return (
@@ -64,7 +57,7 @@ export function SettingsDrawer() {
                       onClick={() => setMode(meta.id)}
                       aria-pressed={selected}
                       className={cn(
-                        "flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                        "flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
                         selected
                           ? "border-primary ring-2 ring-primary/40"
                           : "border-border hover:border-primary/40",
@@ -80,18 +73,13 @@ export function SettingsDrawer() {
                         {meta.swatch.map((color, index) => (
                           <span
                             key={index}
-                            className="h-7 w-3.5"
+                            className="h-6 w-3"
                             style={{ background: color }}
                           />
                         ))}
                       </span>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="text-sm font-bold text-foreground">
-                          {meta.label}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {meta.blurb}
-                        </span>
+                      <span className="min-w-0 truncate text-[13px] font-bold text-foreground">
+                        {meta.label}
                       </span>
                     </button>
                   );
@@ -124,7 +112,6 @@ export function SettingsDrawer() {
             </section>
           </div>
         </DrawerContent>
-      </Drawer>
-    </>
+    </Drawer>
   );
 }
