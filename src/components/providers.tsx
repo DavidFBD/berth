@@ -9,6 +9,7 @@ import { IconContext } from "@phosphor-icons/react";
 import { MotionConfig } from "motion/react";
 import { AppPrivyProvider, PRIVY_ENABLED } from "@/components/privy-provider";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
+import { WalletDiagnostics } from "@/components/dev/wallet-diagnostics";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
 import { installLogCapture } from "@/lib/error-log-buffer";
 
@@ -35,6 +36,11 @@ export function Providers({ children }: { children: ReactNode }) {
               {/* Motion respects the OS reduce-motion preference app-wide. */}
               <MotionConfig reducedMotion="user">
                 {PRIVY_ENABLED && mounted && <PrivySolanaBridge />}
+                {/* Temporary: diagnosing why localhost shows an empty wallet
+                    while prod shows the same embedded wallet's holdings. */}
+                {process.env.NODE_ENV !== "production" && mounted && (
+                  <WalletDiagnostics />
+                )}
                 {children}
                 {/* Toaster lives in DesktopStage's screen div so toasts stay
                     inside the phone on lg+, like the drawers. */}
