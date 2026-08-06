@@ -187,13 +187,28 @@ export function VaultCard({
   const earnedBase =
     earned !== undefined && price !== undefined ? earned * price : earned;
   const earnedPerYear = (price !== undefined ? projectionUsd : projection) ?? 0;
+
+  // A leveraged vault's price-per-share is a SAWTOOTH: borrow interest
+  // accrues against it block by block, but the staking side only lands when
+  // the LSD's exchange-rate oracle ticks (about daily). So between ticks a
+  // fresh position drifts microscopically negative — accounting noise, not
+  // loss. Within a tight band on a positive-rate vault we pin the display at
+  // zero (and don't tick) until the oracle catches it up; a negative beyond
+  // the band, or a genuinely negative rate, stays honestly red.
+  const potForFloor = (price !== undefined ? steepingUsd : steeping) ?? 0;
+  const sawtoothNoise =
+    earnedBase !== undefined &&
+    earnedBase < 0 &&
+    !aprNegative &&
+    -earnedBase < potForFloor * 0.001;
+
   const earnedTicking = useTickingValue(
     earnedBase,
     earnedPerYear,
-    hasTea && earnedBase !== undefined,
+    hasTea && earnedBase !== undefined && !sawtoothNoise,
   );
   const earnedColor =
-    earnedTicking !== undefined && earnedTicking < 0
+    !sawtoothNoise && earnedTicking !== undefined && earnedTicking < 0
       ? "var(--destructive)"
       : deep;
   // A position we only met after it was funded has an unknowable entry price,
@@ -293,16 +308,27 @@ export function VaultCard({
                       <span className="min-w-0">{earnedLabel}</span>
                     </div>
                     <div className="mt-1 text-[15px] font-bold">
-                      <EarnedFigure
-                        value={earnedTicking}
-                        symbol={
-                          price === undefined
-                            ? meta.underlyingSymbol
-                            : undefined
-                        }
-                        color={earnedColor}
-                        split={money.split}
-                      />
+                      {sawtoothNoise ? (
+                        // Flat zero, quiet ink, no tick: interpolating up
+                        // from a negative base would cross zero and then
+                        // flicker back on every fresh chain read.
+                        <span className="money text-muted-foreground">
+                          {price !== undefined
+                            ? money.format(0)
+                            : `0.000000 ${meta.underlyingSymbol}`}
+                        </span>
+                      ) : (
+                        <EarnedFigure
+                          value={earnedTicking}
+                          symbol={
+                            price === undefined
+                              ? meta.underlyingSymbol
+                              : undefined
+                          }
+                          color={earnedColor}
+                          split={money.split}
+                        />
+                      )}
                     </div>
                   </div>
                 )}
