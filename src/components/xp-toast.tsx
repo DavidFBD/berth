@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Sparkle } from "@phosphor-icons/react";
+import { Coffee, Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { RewardList } from "@/lib/profile-types";
 import { levelUpRank, type RankInfo } from "@/lib/xp";
@@ -93,9 +93,9 @@ function LevelUpCard({ rank, total }: { rank: RankInfo; total: number }) {
         initial={{ rotate: -90, scale: 0 }}
         animate={{ rotate: 0, scale: 1 }}
         transition={{ type: "spring", stiffness: 320, damping: 16, delay: 0.1 }}
-        className="text-2xl leading-none"
+        className="leading-none"
       >
-        🍵
+        <Coffee className="size-6 text-primary" />
       </motion.span>
       <div className="flex flex-col">
         <motion.span

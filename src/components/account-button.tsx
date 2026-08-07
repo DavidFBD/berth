@@ -8,6 +8,7 @@ import { useAddFunds } from "@privy-io/react-auth";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
+  Coffee,
   Copy,
   GearSix,
   PlusCircle,
@@ -198,9 +199,7 @@ function AccountPill({
               className="size-5 rounded-full"
             />
           ) : (
-            <span aria-hidden className="text-sm leading-none">
-              🍵
-            </span>
+            <Coffee aria-hidden className="size-5 text-primary" />
           )}
           {/* The signed-in dot lives on the avatar, presence-badge style. */}
           <span

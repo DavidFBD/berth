@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { motion } from "motion/react";
-import { EnvelopeSimple } from "@phosphor-icons/react";
+import { Coffee, EnvelopeSimple } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { AVATARS, avatarSrc, type AvatarId } from "@/lib/avatars";
 import { rankForXp, XP_ACTIONS } from "@/lib/xp";
@@ -40,9 +40,9 @@ export function TeaService() {
         ) : (
           <div
             aria-hidden
-            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-lg"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-muted"
           >
-            🍵
+            <Coffee className="size-6 text-primary" />
           </div>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
@@ -143,7 +143,7 @@ export function XpChip({ onClick }: { onClick?: () => void }) {
       {src ? (
         <Image src={src} alt="" width={20} height={20} className="size-5 rounded-full" />
       ) : (
-        <span aria-hidden className="text-xs leading-none">🍵</span>
+        <Coffee aria-hidden className="size-5 text-primary" />
       )}
       <span className="text-xs font-medium">Lv {rank.level}</span>
     </motion.span>
