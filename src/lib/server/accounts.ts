@@ -352,6 +352,35 @@ export async function referralPanel(user: UserRow): Promise<ReferralPanel> {
   };
 }
 
+const LEDGER_PAGE = 30;
+
+/**
+ * The house ledger: the account's recent XP events, newest first, so every
+ * award is attributable after the fact (field feedback 2026-08-07: a fresh
+ * account couldn't tell where its 210 XP came from).
+ */
+export async function xpHistory(
+  userId: string,
+): Promise<{ kind: XpKind; amount: number; at: string }[]> {
+  const sql = getSql();
+  const rows = (await sql.query(
+    `select kind, amount, created_at from xp_events
+     where user_id = $1
+     order by created_at desc, id desc
+     limit ${LEDGER_PAGE}`,
+    [userId],
+  )) as { kind: string; amount: number; created_at: string }[];
+  return rows
+    .filter((row): row is (typeof rows)[number] & { kind: XpKind } =>
+      isXpKind(row.kind),
+    )
+    .map((row) => ({
+      kind: row.kind,
+      amount: row.amount,
+      at: new Date(row.created_at).toISOString(),
+    }));
+}
+
 export async function setAvatar(
   userId: string,
   avatarId: string,
