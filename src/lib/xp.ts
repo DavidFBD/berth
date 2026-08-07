@@ -56,6 +56,22 @@ export function isXpKind(value: string): value is XpKind {
 }
 
 /**
+ * Why each kind pays, in toast-sized words — the ladder owns its own
+ * vocabulary, and the announcer and the house ledger both read from here.
+ * Deliberately theme-agnostic, like everything rewards (see ADR-0001).
+ */
+export const REWARD_REASONS: Record<XpKind, string> = {
+  pour_in: "for pouring a cup",
+  pour_out: "for pouring back",
+  account_created: "for taking your seat",
+  email_linked: "for saving your seat",
+  avatar_set: "for picking a face",
+  theme_tried: "for tasting a new parlour",
+  friend_poured: "a friend poured their first cup",
+  invite_accepted: "for joining on a friend's invite",
+};
+
+/**
  * Rank ladder. Names are deliberately theme-agnostic: personalities restyle
  * the app's voice, but your rank is your rank in every parlour.
  */

@@ -23,10 +23,10 @@ import {
   INVITE_UNLOCK_LEVEL,
   RANKS,
   rankForXp,
+  REWARD_REASONS,
   XP_ACTIONS,
 } from "@/lib/xp";
 import type { ReferralPanel } from "@/lib/profile-types";
-import { REWARD_REASONS } from "@/components/xp-toast";
 import {
   useClaimInvite,
   useProfile,
@@ -582,49 +582,80 @@ function LedgerRow() {
 }
 
 /**
- * Compact header chip: the chosen face and the level. Renders nothing until
- * a profile exists, so signed-out visitors see no rewards chrome at all.
+ * The one header rank chip, worn by both kinds of account: the chosen face
+ * plus the level, keyed on the XP total so every fresh award remounts the
+ * inner span and replays the settle-in pop — the chip "receives" the
+ * reward. One module on purpose: the pop IS the reward-receipt animation
+ * and must feel identical wherever it appears (it used to exist twice, in
+ * here and in account-button, and drifted apart was only a matter of time).
+ *
+ * `presence` adds the signed-in dot; `placeholder` keeps the chip rendered
+ * before the profile lands (a pantry button must exist to be tapped) —
+ * without it, no profile means no rewards chrome at all.
  */
-export function XpChip({ onClick }: { onClick?: () => void }) {
+export function RankChip({
+  onClick,
+  presence = false,
+  placeholder,
+  ariaPrefix = "Your rewards",
+  ariaSuffix,
+}: {
+  onClick?: () => void;
+  presence?: boolean;
+  placeholder?: string;
+  ariaPrefix?: string;
+  ariaSuffix?: string;
+}) {
   const profile = useProfile();
-  if (!profile.data) return null;
-  const rank = rankForXp(profile.data.xp);
-  const src = avatarSrc(profile.data.avatarId);
+  if (!profile.data && placeholder === undefined) return null;
+  const rank = profile.data ? rankForXp(profile.data.xp) : null;
+  const src = profile.data ? avatarSrc(profile.data.avatarId) : undefined;
 
-  // Keyed on the XP total: every fresh award remounts the inner span, which
-  // replays the little settle-in pop — the chip "receives" the reward.
   const inner = (
     <motion.span
-      key={profile.data.xp}
+      key={profile.data?.xp ?? -1}
       initial={{ scale: 1.25 }}
       animate={{ scale: 1 }}
       transition={{ type: "spring", stiffness: 500, damping: 15 }}
       className="flex items-center gap-1.5"
     >
-      {src ? (
-        <Image src={src} alt="" width={20} height={20} className="size-5 rounded-full" />
-      ) : (
-        <Coffee aria-hidden className="size-5 text-primary" />
-      )}
-      <span className="text-xs font-medium">Lv {rank.level}</span>
+      <span className="relative flex size-5 shrink-0 items-center justify-center">
+        {src ? (
+          <Image src={src} alt="" width={20} height={20} className="size-5 rounded-full" />
+        ) : (
+          <Coffee aria-hidden className="size-5 text-primary" />
+        )}
+        {/* The signed-in dot lives on the avatar, presence-badge style. */}
+        {presence && (
+          <span
+            aria-hidden
+            className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-card"
+          />
+        )}
+      </span>
+      <span className="text-xs font-medium text-foreground">
+        {rank ? `Lv ${rank.level}` : placeholder}
+      </span>
     </motion.span>
   );
 
   // shrink-0 + nowrap: a squeezed header must truncate its neighbours, not
   // fold "Lv 2" onto two lines.
-  if (!onClick) {
-    return (
-      <span className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-2.5">
-        {inner}
-      </span>
-    );
-  }
+  const shell =
+    "flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-2.5";
+  if (!onClick) return <span className={shell}>{inner}</span>;
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Your rewards: ${rank.name}, level ${rank.level}`}
-      className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-2.5 transition-colors hover:bg-muted"
+      aria-label={[
+        ariaPrefix,
+        rank ? `${rank.name}, level ${rank.level}` : null,
+        ariaSuffix,
+      ]
+        .filter(Boolean)
+        .join(", ")}
+      className={cn(shell, "transition-colors hover:bg-muted")}
     >
       {inner}
     </button>

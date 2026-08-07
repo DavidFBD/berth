@@ -4,32 +4,17 @@ import { motion } from "motion/react";
 import { Coffee, Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { Reward, RewardList } from "@/lib/profile-types";
-import { levelUpRank, type RankInfo, type XpKind } from "@/lib/xp";
+import { levelUpRank, REWARD_REASONS, type RankInfo } from "@/lib/xp";
 
 /**
  * The achievement announcer. Every XP payout gets a small ceremony instead
  * of a plain toast: a spring-popped pill per reward (each naming what it was
- * FOR — field feedback 2026-08-07: an unexplained balance reads as a bug),
- * and a steam-wreathed card when a rank boundary is crossed. Ceremonies
- * queue while Privy's overlay owns the screen and flush once it's gone, so
- * nothing celebrates behind a blur.
+ * FOR — field feedback 2026-08-07: an unexplained balance reads as a bug;
+ * the reasons live beside the ladder in lib/xp), and a steam-wreathed card
+ * when a rank boundary is crossed. Ceremonies queue while Privy's overlay
+ * owns the screen and flush once it's gone, so nothing celebrates behind a
+ * blur.
  */
-
-/**
- * Why each kind pays, in toast-sized words. Theme-agnostic on purpose, same
- * exception as the rewards panel: ranks and rewards read identically in
- * every parlour. The ledger in tea-service reuses these.
- */
-export const REWARD_REASONS: Record<XpKind, string> = {
-  pour_in: "for pouring a cup",
-  pour_out: "for pouring back",
-  account_created: "for taking your seat",
-  email_linked: "for saving your seat",
-  avatar_set: "for picking a face",
-  theme_tried: "for tasting a new parlour",
-  friend_poured: "a friend poured their first cup",
-  invite_accepted: "for joining on a friend's invite",
-};
 
 type Announcement = { rewards: RewardList; newXp: number };
 
