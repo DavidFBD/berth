@@ -4,6 +4,7 @@ import {
   IBM_Plex_Mono,
   Karla,
   Monoton,
+  Poiret_One,
   Shippori_Mincho,
   UnifrakturCook,
   VT323,
@@ -74,6 +75,13 @@ const sumieDisplayFont = Shippori_Mincho({
   subsets: ["latin"],
 });
 
+/* Aurora: thin luminous curves, ribbons of light on a dark sky. */
+const auroraDisplayFont = Poiret_One({
+  variable: "--font-display-aurora",
+  weight: "400",
+  subsets: ["latin"],
+});
+
 const DESCRIPTION =
   "A calming little game of filling tea cups. The cups earn while they steep. Any asset, any network, it all becomes tea.";
 
@@ -127,7 +135,7 @@ export default function RootLayout({
       // next-themes stamps the mode class on <html> before hydration; the
       // server can't know it, so React must not treat the mismatch as a bug.
       suppressHydrationWarning
-      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} ${gangsterDisplayFont.variable} ${nanDisplayFont.variable} ${terminalDisplayFont.variable} ${vaporwaveDisplayFont.variable} ${sumieDisplayFont.variable} h-full antialiased`}
+      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} ${gangsterDisplayFont.variable} ${nanDisplayFont.variable} ${terminalDisplayFont.variable} ${vaporwaveDisplayFont.variable} ${sumieDisplayFont.variable} ${auroraDisplayFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
         <Providers>

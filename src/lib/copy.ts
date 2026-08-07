@@ -86,6 +86,14 @@ export const MODES: readonly ModeMeta[] = [
     swatch: ["oklch(0.97 0.005 90)", "oklch(0.3 0.01 270)", "oklch(0.55 0.19 30)"],
     silk: { colors: "#f5f3ee,#e8e5de,#d5d2c9,#f0ede6", glow: 0.4, opacity: 0.5 },
   },
+  {
+    id: "aurora",
+    label: "Aurora",
+    className: "mode-aurora",
+    swatch: ["oklch(0.19 0.045 265)", "oklch(0.78 0.17 165)", "oklch(0.7 0.15 310)"],
+    /* The night sky over a frozen lake: deep blue, then the lights. */
+    silk: { colors: "#0b1630,#123a3f,#1d5c4a,#2c2050", glow: 0.65, opacity: 0.6 },
+  },
 ];
 
 export const DEFAULT_MODE: ModeId = "original";
@@ -1191,6 +1199,157 @@ const SUMIE: Copy = {
   infoDocsCta: "Developer docs",
 };
 
+/**
+ * Aurora: a Finnish winter night. Sauna warmth against arctic dark, dry
+ * northern understatement, and the revontulet, the fox fires: old Finland
+ * says a fox sweeps its tail across the snow and sparks the sky alight.
+ * The register is quiet and warm; the cold does the contrast work.
+ */
+const AURORA: Copy = {
+  ...ORIGINAL,
+  pour: "Pour",
+  pourFirst: "Pour your first cup",
+  pourBack: "Pour back",
+  awaitsFirstPour: "Your cup waits under the northern sky.",
+  inThePot: "in the pot",
+  earnedSoFar: "Gathered",
+  earnedSince: (date) => `Since ${date}`,
+  yearOfSteeping: "One winter from now",
+  perYear: "per year",
+  brewQuestion: "What warms this cup?",
+  stakingYield: "Staking yield",
+  lendingSpread: "Lending spread",
+  borrowCost: "Borrow cost",
+  leverage: "Leverage",
+  brewStrength: "Brew strength",
+  staleFeedNote:
+    "The staking number is an estimate right now; the live feed stepped out to the sauna.",
+
+  teapotTitle: "Your teapot",
+  readyToPourTail: (assetCount) =>
+    `in the pot, kept warm${assetCount > 1 ? ` (${assetCount} assets)` : ""}.`,
+  potEmpty: "The pot is empty. The night is long enough to fill it.",
+  sendAnything:
+    "Send anything from ~200 assets across 20 networks. It keeps well in the cold.",
+  signInWarms: "Sign in and the pot warms itself. Email is all it takes.",
+  whatsInPot: "What's in the pot?",
+  needsFlame: "a shelf needs firewood",
+  topUp: "Top up",
+  signIn: "Step inside",
+  insidePot: "Inside the pot",
+  insidePotSub: "What you hold, and which shelf it rests on.",
+  potTotalLabel: "In the pot",
+
+  tagline:
+    "A calm little game of filling tea cups under the northern lights. The cups earn while they steep.",
+  signInEmail: "Sign in with email",
+  connectWallet: "Connect a wallet",
+  noSeedPhrases: "No seed phrases, no extensions. Your cabin sets itself up.",
+  preferOwnWallet: "Prefer your own wallet? Connect it instead",
+  mottoLead: "Tea is the way.",
+  mottoDisplay: "Steam rises. Lights dance.",
+
+  pourIntoTitle: (teaName) => `Pour into ${teaName}`,
+  pourTitleFallback: "Pour a cup",
+  pourSub: "Any asset, any network. It all becomes tea under the same sky.",
+  pickCupToPour: "Pick a cup to pour into.",
+  whatPouring: "What are you pouring?",
+  gasShortWarning: (chainName, symbol) =>
+    `The ${chainName} shelf has no ${symbol} for the stove. This pour pays its network fee in ${symbol}, so nothing warms until a splash arrives.`,
+  gasShortCta: (symbol) => `Send a splash of ${symbol} to your teapot address`,
+  teapotHolds: (amount) => `Teapot holds ${amount}`,
+  peekingTeapot: "Peeking in the teapot…",
+  youllSteep: "You'll steep",
+  fetchingQuote: "Reading the sky…",
+  noRouteForPair: "No path through the snow for this pair",
+  burnerCostChecking: "Asking what the stove wants. A moment.",
+  nothingForKettle: "Not enough left over for the stove (network fees)",
+  ctaPourHowMuch: "Pour how much?",
+  ctaTooMuch: "A touch more than your teapot holds",
+  ctaNoRoute: "No path through the snow",
+  ctaReadingLeaves: "Reading the lights…",
+  pourFilledTitle: "Your cup is poured.",
+  pourFilledBody:
+    "The steam does the rest. Somewhere north, a fox sweeps its tail across the sky.",
+  pourFillFailedBody: "The pour couldn't be filled. Nothing was lost, try again.",
+  steepingBody: (teaName) =>
+    teaName
+      ? `${teaName} is steeping, warm under the lights.`
+      : "Your tea is steeping, warm under the lights.",
+
+  pourBackTitle: (teaName) => `Pour back from ${teaName}`,
+  pourBackTitleFallback: "Pour back",
+  pourBackSub: "Back to any asset, on any network. The warmth travels well.",
+  pickCupPourBack: "Pick a cup to pour back from.",
+  cupHolds: (amount) => `Your cup holds ${amount}`,
+  signOnceOn: (chainName) =>
+    `You'll sign once on ${chainName}, the chain you arrived from.`,
+  whereTo: "Where to?",
+  whereShouldWePour: "Where should we pour it?",
+  useMyWallet: "Use my wallet",
+  tripleCheckAddress: (symbol, chainName) =>
+    `Check this three times. Tea poured to the wrong address is gone for good, and the receiving side (your exchange) must accept ${symbol} on ${chainName}.`,
+  cashOutLink: "Cash out? Pour to an exchange address instead →",
+  youllGetBack: "You'll get back",
+  ctaAddressLooksOff: "That address looks off",
+  ctaPourBackHowMuch: "Pour back how much?",
+  ctaCupNotThatFull: "Your cup isn't quite that full",
+  ctaTooSmallForBtc: "Too small a sip for Bitcoin",
+  pouredBackTitle: "Poured back.",
+  pouredBackBody: (chainName) => `Delivered on ${chainName}, still warm.`,
+  pourBackFailedBody: "Your cup is untouched. Please try again.",
+  backInTeapotTitle: "Back in your teapot.",
+  backInTeapotBody: (symbol, chainName) =>
+    `${symbol} is crossing the ice to you on ${chainName}, ready when you are.`,
+  backInTeapotBodyFallback: "Ready when you are.",
+
+  pickerSelectTokenOn: (chainName) => `Select token on ${chainName}`,
+  pickerSelectChain: "Select chain",
+  pickerSourceChainSub: "Anything in the pot can become tea.",
+  pickerSourceHoldingsSub: "Pour straight from what you hold.",
+  pickerSourceGridSub: "From which shore is your tea coming?",
+  pickerDestTokenSub: "Pick what it arrives as.",
+  fillTeapot: "Fill the teapot",
+
+  brewing: "Brewing…",
+  stepMsgBuilding: "Splitting the firewood…",
+  stepMsgApproving: "Warming the stove. Approve in your wallet…",
+  stepMsgSigning: "One gentle stir. Confirm in your wallet…",
+  keepThisOpen: "Stay a while, good tea takes a minute.",
+  teaSteeping: "Your tea is steeping…",
+  goodTeaMinute: "Good tea takes a minute, usually less.",
+  carryingTray: "Carrying the tray across the snow to the solver network.",
+  lovely: "No niin",
+  kettleActingUpTitle: "The kettle's sulking.",
+  fillFailedScreenBody:
+    "Nothing was lost and your funds are safe. If they don't reappear shortly, keep the fill hash handy for support.",
+  kitchenTold: "The kitchen has been told, so someone can look into it.",
+  lettingKitchenKnow: "Letting the kitchen know…",
+  kitchenToldNoReport:
+    "The kitchen has been told, so someone can look into it. No need to report it.",
+
+  settingsTitle: "The porch",
+  settingsSub: "How the cabin looks, and what the money speaks.",
+
+  infoTitle: "How this was made",
+  infoSub: "Vibed together through one long polar night.",
+  infoAgentsStat: "25+ AI agents",
+  infoAgentsDetail:
+    "One split the firewood, one tended the stove, several argued about steam. Researchers, builders, and reviewers, all led by one Claude session.",
+  infoMcpStat: "1 MCP server",
+  infoMcpDetail:
+    "The SODAX Builders MCP poured live protocol data (chains, tokens, vaults, docs) straight into the agents' cups while they worked.",
+  infoTimeStat: "~1 afternoon",
+  infoTimeDetail:
+    "From an empty folder to a reviewed, cross-chain tea service, quick as a sauna heats. No crypto jargon survived the cold plunge.",
+  infoPorcelain:
+    "turns every pour into an intent-based cross-chain swap. Any asset on any of 20 networks in, leveraged staked-yield tea on Sonic out, one signature, quiet as snowfall.",
+  infoHouseRules: (feePct) =>
+    `House rules: every pour includes a ${feePct} service charge. It keeps the stove lit and the flavours curated.`,
+  infoBuildersCta: "See how it's brewed at SODAX Builders",
+  infoDocsCta: "SODAX developer docs",
+};
+
 export const COPY: Record<ModeId, Copy> = {
   original: ORIGINAL,
   gangster: GANGSTER,
@@ -1198,4 +1357,5 @@ export const COPY: Record<ModeId, Copy> = {
   terminal: TERMINAL,
   vaporwave: VAPORWAVE,
   sumie: SUMIE,
+  aurora: AURORA,
 };

@@ -14,11 +14,7 @@ _(Struck-through = tackled — with a short status note from Claude. 🟡 = part
 - ~~Native Bitcoin in and out~~ → **Done** via USER-mode PSBTs, 546-sat dust guard.
 - ~~LSTeaTime lore~~ → **Done**: footer + info sheet. Fuller lore page still an option.
 
-## Rewards round (2026-08-07)
-
-- ~~User accounts with profile pictures and XP for actions~~ → **Done end-to-end.** Neon Postgres (`users` + `xp_events` ledger, tx-hash dedup), preset tea avatar shelf (8 hand-drawn SVGs, no uploads = no moderation), XP on pours both directions (100 each, verified against the Sonic hub receipt), welcome 25, email link 150, avatar pick 25, first taste of each theme 10. Ranks: New Leaf → Tea Sage, theme-agnostic on purpose. Chip next to the account pill; tea service panel in the pantry and in its own drawer for wallet guests.
-- ~~Info drawer retold per theme + theme-switch XP~~ → **Done**: the making-of story now speaks all six voices; each theme pays its 10 XP exactly once per account (ledger ref = account:mode).
-- Fee disclosure kept quiet but present ("house rules" line in the info drawer, in every voice). Rewards copy never mentions fees or trading — it's all "rewards for playing".
+- ~~Rewards round (2026-08-07): accounts, avatars, XP~~ → **Done end-to-end.** Neon Postgres `users` + `xp_events` ledger (tx-hash dedup), 8 preset tea avatars, XP for pours both directions (verified against the hub receipt), welcome/email-link/avatar/theme-first-taste awards, ranks New Leaf → Tea Sage. Info drawer retold in all six voices; quiet "house rules" fee line in every voice; rewards copy never mentions fees or trading.
 
 ## Deferred / next
 
@@ -28,3 +24,5 @@ _(Struck-through = tackled — with a short status note from Claude. 🟡 = part
 - **Leaderboard** (Upstash sorted sets) — explicitly not now.
 - **Partner fee claiming flow** (`feeClaim.setSwapPreference` + auto-swap to a stable) — fees are accruing, claiming is manual for now.
 - Fuller lore page / onboarding moment.
+- ~~I'd love a theme that is Aurora, it should be Finland themed aurora borealis with beautiful aurora filles skies as backgrounds, reference to sauna's and Finland in general~~ → **Done** (2026-08-07): seventh mode `aurora`. Arctic-night palette (aurora green primary, violet accent, sauna-ember cup), Poiret One display font, night-sky silk, full Finnish voice (löyly steam, stove for burner, revontulet fox-fire lore in the pour celebration, "No niin" on success). Verified in webkit.
+- I'd really like to know what my options are for implementing a referral program in the current stack. In an ideal world, every user is incentivized to invite friends (verifiably) and in turn earn XP for that, and maybe further down the line earn actual on-chain funds (I could see myself funding an account with 100USDC and allowing users to invite friends and earn $5 for doing so, $5 for both the new user and the referring user). Maybe we should split if up in two phases. Phase 1 being the referral program build with sizeable XP as reward (also make sure this doesn't skew our level tiers, we may have to rework this too). Phase 2 being adding real USDC to the rewards alongside the pre-existing XP

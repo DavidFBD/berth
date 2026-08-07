@@ -466,6 +466,63 @@
   --shadow-cup: 0 8px 24px -14px oklch(0.26 0.006 270 / 0.35);
 }
 
+/* ————— Mode: Aurora ————— A Finnish winter night: deep arctic blue, snow-pale
+   type, and the revontulet in green and violet. The sauna stove keeps one
+   ember of warmth in an otherwise cold palette. */
+.mode-aurora {
+  --font-display: var(--font-display-aurora);
+
+  --background: oklch(0.19 0.045 265);
+  --foreground: oklch(0.94 0.02 190);
+  --card: oklch(0.23 0.05 262);
+  --card-foreground: oklch(0.94 0.02 190);
+  --popover: oklch(0.23 0.05 262);
+  --popover-foreground: oklch(0.94 0.02 190);
+  --primary: oklch(0.78 0.17 165); /* aurora green */
+  --primary-foreground: oklch(0.17 0.05 200);
+  --secondary: oklch(0.3 0.06 270);
+  --secondary-foreground: oklch(0.92 0.03 200);
+  --muted: oklch(0.27 0.045 265);
+  --muted-foreground: oklch(0.73 0.04 230);
+  --accent: oklch(0.7 0.15 310); /* violet fringe of the lights */
+  --accent-foreground: oklch(0.96 0.02 310);
+  --destructive: oklch(0.64 0.2 20);
+  --border: oklch(0.35 0.06 275);
+  --input: oklch(0.33 0.055 272);
+  --ring: oklch(0.78 0.17 165);
+  --chart-1: oklch(0.78 0.17 165);
+  --chart-2: oklch(0.7 0.15 310);
+  --chart-3: oklch(0.78 0.1 220);
+  --chart-4: oklch(0.72 0.14 55);
+  --chart-5: oklch(0.94 0.02 190);
+  --radius: 1rem;
+
+  /* Cups: the lights in green and ice, plus one kiuas ember for warmth. */
+  --cup-earlgrey: oklch(0.75 0.15 170); /* aurora green */
+  --cup-earlgrey-soft: oklch(0.31 0.06 190);
+  --cup-earlgrey-deep: oklch(0.85 0.13 165);
+  --cup-breakfast: oklch(0.72 0.14 55); /* sauna-stove ember */
+  --cup-breakfast-soft: oklch(0.32 0.06 55);
+  --cup-breakfast-deep: oklch(0.82 0.12 60);
+  --cup-sencha: oklch(0.78 0.1 220); /* lake ice */
+  --cup-sencha-soft: oklch(0.31 0.05 230);
+  --cup-sencha-deep: oklch(0.87 0.08 215);
+
+  /* The full sweep of the fox's tail: green through teal to violet and rose. */
+  --iridescent: linear-gradient(
+    115deg,
+    oklch(0.78 0.17 165) 0%,
+    oklch(0.78 0.1 220) 35%,
+    oklch(0.7 0.15 310) 70%,
+    oklch(0.78 0.13 350) 100%
+  );
+  --steam: oklch(0.92 0.02 190 / 0.4); /* löyly off the stones */
+  --tea-ring: oklch(0.55 0.08 250 / 0.35);
+  --shadow-cup:
+    0 12px 32px -12px oklch(0.08 0.03 265 / 0.7),
+    0 0 24px -8px oklch(0.78 0.17 165 / 0.35);
+}
+
 /* Steam wisps — intensity scales with value in the cup */
 @keyframes steam-rise {
   0% {
