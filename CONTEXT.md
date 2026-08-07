@@ -22,8 +22,12 @@ has a home module, it is named.
   price-per-share between LSD oracle ticks. Suppressed inside a 0.1% noise
   band by `lib/cup-view`; a real loss stays red.
 - **Mode / voice** — one of eight visual+copy personalities. The seam is
-  `useCopy()` (`lib/copy`, eight adapters behind one interface); mode ids
-  live in `lib/modes` so the server never imports the voices.
+  `useCopy()` (`lib/copy`); mode ids live in `lib/modes` so the server never
+  imports the voices.
+- **Base voice** — Original, the one voice that defines every `Copy` key;
+  the other seven parlours are `Partial<Copy>` overrides layered on top, so
+  a new line costs one edit. Rewards prose lives in the base only (agnostic
+  by design; see CLAUDE.md).
 
 ## The machinery
 
@@ -49,17 +53,31 @@ has a home module, it is named.
   account linking is an explicit act.
 - **Rewards till** — the server side of XP: `lib/server/rewards-route`
   owns auth → identity → award → envelope for every XP route; `awardXp`
-  (`lib/server/accounts`) is the idempotent ledger write; `lib/server/hub-tx`
-  verifies a pour's hub receipt before it earns anything.
+  (`lib/server/accounts`) is the idempotent ledger write;
+  `lib/server/pour-verify` proves a pour before it earns anything. The
+  till's database seam is `SqlClient` (`lib/server/db`), two adapters: Neon
+  in prod, PGlite in tests (`pglite-test-db`).
+- **Announcer** — the XP ceremony module (`components/xp-toast`): queues
+  payouts while an overlay owns the stage, derives rank crossings itself
+  from `(rewards, newXp)`, and names what each award was for.
+- **Invite code rulebook** — `lib/invite-code`, the ONE statement of what a
+  referral code is (alphabet, length, normalizer); pocket, OG gates, claim
+  input, and the server mint all ask it. Its server-side sibling is
+  `CLAIMABLE_SQL` (`lib/server/accounts`): the late-claim rule stated once,
+  asked by both the claim write and the panel's `canClaim`.
+- **Rewards request core** — `useRewardsCall` (`hooks/use-profile`): the one
+  identity+auth+POST ritual; `useRewardsQuery` and `useProfileMutation` are
+  its two flavours, and every public rewards hook is configuration on top.
 - **Hub wallet** — the Sonic-side wallet derived from a (chainKey, address)
   pair. The same EOA maps to a DIFFERENT hub wallet per source chain, which
   is why share rows are never interchangeable across chains.
 
 ## Settled decisions (do not re-propose)
 
-Recorded in `thoughts.md`: wallet-guest mutations trusted by address (SIWE
-deferred), pour-ownership proof deferred, account-linking edge accepted,
-leaderboard explicitly not now. The `useVaultAction` pipeline body, the
-Privy EVM provider bridge, the gas buffer model, and the earned-yield
-pure/impure split were reviewed (2026-08-07) and confirmed deep — leave
-them whole.
+Recorded in `thoughts.md`: account-linking edge accepted, leaderboard
+explicitly not now. SIWE and pour-ownership proof are DONE (2026-08-07),
+no longer deferred. The `useVaultAction` pipeline body, the Privy EVM
+provider bridge, the gas buffer model, and the earned-yield pure/impure
+split were reviewed (2026-08-07) and confirmed deep — leave them whole.
+Rewards copy stays in the base voice only (David, 2026-08-08): agnostic by
+default, the seam open for flavouring later.
