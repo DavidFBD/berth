@@ -6,6 +6,7 @@ import {
   Monoton,
   Poiret_One,
   Shippori_Mincho,
+  Shrikhand,
   UnifrakturCook,
   VT323,
   Young_Serif,
@@ -82,6 +83,13 @@ const auroraDisplayFont = Poiret_One({
   subsets: ["latin"],
 });
 
+/* LSD: fat groovy letters, straight off a seventies gig poster. */
+const lsdDisplayFont = Shrikhand({
+  variable: "--font-display-lsd",
+  weight: "400",
+  subsets: ["latin"],
+});
+
 const DESCRIPTION =
   "A calming little game of filling tea cups. The cups earn while they steep. Any asset, any network, it all becomes tea.";
 
@@ -135,7 +143,7 @@ export default function RootLayout({
       // next-themes stamps the mode class on <html> before hydration; the
       // server can't know it, so React must not treat the mismatch as a bug.
       suppressHydrationWarning
-      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} ${gangsterDisplayFont.variable} ${nanDisplayFont.variable} ${terminalDisplayFont.variable} ${vaporwaveDisplayFont.variable} ${sumieDisplayFont.variable} ${auroraDisplayFont.variable} h-full antialiased`}
+      className={`${displayFont.variable} ${bodyFont.variable} ${moneyFont.variable} ${gangsterDisplayFont.variable} ${nanDisplayFont.variable} ${terminalDisplayFont.variable} ${vaporwaveDisplayFont.variable} ${sumieDisplayFont.variable} ${auroraDisplayFont.variable} ${lsdDisplayFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
         <Providers>

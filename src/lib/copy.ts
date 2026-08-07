@@ -94,6 +94,14 @@ export const MODES: readonly ModeMeta[] = [
     /* The night sky over a frozen lake: deep blue, then the lights. */
     silk: { colors: "#0b1630,#123a3f,#1d5c4a,#2c2050", glow: 0.65, opacity: 0.6 },
   },
+  {
+    id: "lsd",
+    label: "LSDTime",
+    className: "mode-lsd",
+    swatch: ["oklch(0.24 0.09 315)", "oklch(0.85 0.26 135)", "oklch(0.68 0.26 345)"],
+    /* The lava lamp at full simmer; globals.css slowly rotates its hues. */
+    silk: { colors: "#3a1050,#7a1f6e,#20713d,#4d1f7a", glow: 0.85, opacity: 0.7 },
+  },
 ];
 
 export const DEFAULT_MODE: ModeId = "original";
@@ -1359,6 +1367,86 @@ const AURORA: Copy = {
   infoDocsCta: "SODAX developer docs",
 };
 
+/**
+ * LSD: the eighties acid trip the app was secretly named after — LSD as in
+ * liquid staking derivatives, obviously. Lava lamps, kaleidoscopes, walls
+ * that breathe a little. The trip stays warm and benign; safety copy
+ * (addresses, failures) inherits Original's sober lines untouched.
+ */
+const LSD: Copy = {
+  ...ORIGINAL,
+  awaitsFirstPour: "The cup shimmers, waiting.",
+  earnedSoFar: "Manifested",
+  yearOfSteeping: "One orbit from now",
+  perYear: "per orbit",
+  brewQuestion: "How deep does this brew go?",
+  staleFeedNote:
+    "The staking number is an estimate right now; the live feed is off chasing fractals.",
+
+  readyToPourTail: (assetCount) =>
+    `in the pot, gently vibrating${assetCount > 1 ? ` (${assetCount} assets)` : ""}.`,
+  potEmpty: "The pot is empty. Or is emptiness just a fuller kind of full?",
+  sendAnything:
+    "Send anything from ~200 assets across 20 networks. It all dissolves into the same light.",
+  whatsInPot: "What's swirling in the pot?",
+  signIn: "Tune in",
+  insidePotSub: "What you hold, and which shelf it melts on.",
+  onTheTable: "The whole trip",
+
+  tagline:
+    "A kaleidoscopic little game of filling tea cups. The cups earn while they steep. The walls breathe a bit.",
+  noSeedPhrases:
+    "No seed phrases, no extensions. Your pantry assembles itself from pure colour.",
+  mottoLead: "Tea is the way.",
+  mottoDisplay: "The tea drinks you back.",
+
+  pourSub: "Any asset, any network. It all melts into tea.",
+  whatPouring: "What are you pouring, cosmically speaking?",
+  peekingTeapot: "Gazing into the teapot…",
+  fetchingQuote: "Consulting the kaleidoscope…",
+  noRouteForPair: "No tunnel between these colours",
+  burnerCostChecking: "Asking the lava lamp what it wants. One moment.",
+  ctaNoRoute: "No tunnel between these colours",
+  ctaReadingLeaves: "Reading the fractals…",
+  pourFilledTitle: "Your cup is poured.",
+  pourFilledBody: "The steam spirals. So does everything else, if you watch long enough.",
+  steepingBody: (teaName) =>
+    teaName
+      ? `${teaName} is steeping. The colours are steeping too.`
+      : "Your tea is steeping. The colours are steeping too.",
+
+  pourBackSub: "Back to any asset, on any network. The warmth stays in the pattern.",
+  pouredBackBody: (chainName) => `Rematerialised on ${chainName}.`,
+
+  pickerSourceChainSub: "Anything in the pot can become tea.",
+  pickerSourceGridSub: "Which dimension is your tea coming from?",
+  pickerDestTokenSub: "Pick what it condenses into.",
+
+  brewing: "Melting…",
+  stepMsgBuilding: "Arranging the fractals…",
+  stepMsgApproving: "Warming the lava lamp. Approve in your wallet…",
+  stepMsgSigning: "One cosmic stir. Confirm in your wallet…",
+  keepThisOpen: "Stay in the groove, good tea takes a minute.",
+  goodTeaMinute: "Time is soup in here, but a minute, usually less.",
+  carryingTray: "Floating the tray over to the solver network.",
+  lovely: "Far out",
+  kettleActingUpTitle: "The kettle is having visions.",
+
+  settingsTitle: "The chill-out room",
+  settingsSub: "How deep the colours go, and what the money speaks.",
+
+  infoTitle: "How this was made",
+  infoSub: "Vibed together. Literally.",
+  infoAgentsDetail:
+    "One measured the leaves, one stared at the steam until it made sense. Researchers, builders, and reviewers, all orchestrated by one Claude session.",
+  infoTimeDetail:
+    "From an empty folder to a reviewed, cross-chain tea service in one afternoon. In here that could be a lifetime, it's fine.",
+  infoPorcelain:
+    "turns every pour into an intent-based cross-chain swap. Any asset on any of 20 networks in, leveraged staked-yield tea on Sonic out, one signature. LSD stands for liquid staking derivatives, obviously.",
+  infoHouseRules: (feePct) =>
+    `House rules: every pour includes a ${feePct} service charge. It keeps the lava lamp lit and the flavours curated.`,
+};
+
 export const COPY: Record<ModeId, Copy> = {
   original: ORIGINAL,
   gangster: GANGSTER,
@@ -1367,4 +1455,5 @@ export const COPY: Record<ModeId, Copy> = {
   vaporwave: VAPORWAVE,
   sumie: SUMIE,
   aurora: AURORA,
+  lsd: LSD,
 };

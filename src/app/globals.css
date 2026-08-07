@@ -523,6 +523,124 @@
     0 0 24px -8px oklch(0.78 0.17 165 / 0.35);
 }
 
+/* Aurora's shooting star: one quiet streak roughly every half minute, alive
+   for about a second of it. Fixed overlay under the app's chrome; the
+   drawers and header simply pass over it. */
+@media (prefers-reduced-motion: no-preference) {
+  .mode-aurora body::after {
+    content: "";
+    position: fixed;
+    top: 14%;
+    left: 68%;
+    width: 90px;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      oklch(0.95 0.02 190 / 0.9),
+      transparent
+    );
+    border-radius: 999px;
+    transform: rotate(-28deg) translateX(0);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+    animation: aurora-shooting-star 31s linear infinite;
+    animation-delay: 7s;
+  }
+
+  @keyframes aurora-shooting-star {
+    0%,
+    95.5% {
+      opacity: 0;
+      transform: rotate(-28deg) translateX(0);
+    }
+    96.5% {
+      opacity: 0.85;
+    }
+    99.4% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 0;
+      transform: rotate(-28deg) translateX(-46vw);
+    }
+  }
+}
+
+/* ————— Mode: LSD ————— The eighties acid trip: neon on deep purple, a lava
+   lamp for a burner, and a silk field whose hues never stop wandering.
+   (LSD as in liquid staking derivatives, obviously.) */
+.mode-lsd {
+  --font-display: var(--font-display-lsd);
+
+  --background: oklch(0.24 0.09 315);
+  --foreground: oklch(0.95 0.03 100);
+  --card: oklch(0.29 0.1 310);
+  --card-foreground: oklch(0.95 0.03 100);
+  --popover: oklch(0.29 0.1 310);
+  --popover-foreground: oklch(0.95 0.03 100);
+  --primary: oklch(0.85 0.26 135); /* acid green */
+  --primary-foreground: oklch(0.2 0.08 315);
+  --secondary: oklch(0.4 0.13 300);
+  --secondary-foreground: oklch(0.94 0.04 330);
+  --muted: oklch(0.33 0.09 310);
+  --muted-foreground: oklch(0.78 0.08 330);
+  --accent: oklch(0.68 0.26 345); /* hot magenta */
+  --accent-foreground: oklch(0.97 0.02 345);
+  --destructive: oklch(0.66 0.24 25);
+  --border: oklch(0.45 0.14 320);
+  --input: oklch(0.42 0.12 315);
+  --ring: oklch(0.85 0.26 135);
+  --chart-1: oklch(0.85 0.26 135);
+  --chart-2: oklch(0.68 0.26 345);
+  --chart-3: oklch(0.8 0.13 195);
+  --chart-4: oklch(0.75 0.18 60);
+  --chart-5: oklch(0.9 0.18 100);
+  --radius: 1.25rem;
+
+  /* Cups straight off the blotter sheet. */
+  --cup-earlgrey: oklch(0.68 0.26 345); /* magenta */
+  --cup-earlgrey-soft: oklch(0.34 0.1 345);
+  --cup-earlgrey-deep: oklch(0.8 0.2 345);
+  --cup-breakfast: oklch(0.75 0.18 60); /* acid orange */
+  --cup-breakfast-soft: oklch(0.35 0.08 60);
+  --cup-breakfast-deep: oklch(0.84 0.15 65);
+  --cup-sencha: oklch(0.8 0.13 195); /* electric cyan */
+  --cup-sencha-soft: oklch(0.33 0.06 210);
+  --cup-sencha-deep: oklch(0.88 0.11 195);
+
+  /* The whole spectrum at once; nothing here is reserved. */
+  --iridescent: linear-gradient(
+    115deg,
+    oklch(0.85 0.26 135) 0%,
+    oklch(0.8 0.13 195) 25%,
+    oklch(0.68 0.26 345) 50%,
+    oklch(0.75 0.18 60) 75%,
+    oklch(0.9 0.18 100) 100%
+  );
+  --steam: oklch(0.9 0.1 330 / 0.45);
+  --tea-ring: oklch(0.6 0.15 330 / 0.4);
+  --shadow-cup:
+    0 12px 32px -12px oklch(0.1 0.06 315 / 0.75),
+    0 0 24px -6px oklch(0.68 0.26 345 / 0.45);
+}
+
+/* The trip itself: the silk field's hues wander a full circle every 36s.
+   Scoped to the backdrop wrapper (never body) so filter's containing-block
+   quirk can't break the fixed-position drawers. */
+@media (prefers-reduced-motion: no-preference) {
+  .mode-lsd .builders-strength {
+    animation: lsd-hue-drift 36s linear infinite;
+  }
+
+  @keyframes lsd-hue-drift {
+    to {
+      filter: hue-rotate(360deg);
+    }
+  }
+}
+
 /* Steam wisps — intensity scales with value in the cup */
 @keyframes steam-rise {
   0% {

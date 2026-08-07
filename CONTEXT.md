@@ -21,8 +21,8 @@ has a home module, it is named.
 - **Sawtooth** — the microscopic negative drift of a leveraged vault's
   price-per-share between LSD oracle ticks. Suppressed inside a 0.1% noise
   band by `lib/cup-view`; a real loss stays red.
-- **Mode / voice** — one of seven visual+copy personalities. The seam is
-  `useCopy()` (`lib/copy`, seven adapters behind one interface); mode ids
+- **Mode / voice** — one of eight visual+copy personalities. The seam is
+  `useCopy()` (`lib/copy`, eight adapters behind one interface); mode ids
   live in `lib/modes` so the server never imports the voices.
 
 ## The machinery
