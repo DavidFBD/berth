@@ -74,10 +74,12 @@ has a home module, it is named.
 
 ## Settled decisions (do not re-propose)
 
-Recorded in `thoughts.md`: account-linking edge accepted, leaderboard
-explicitly not now. SIWE and pour-ownership proof are DONE (2026-08-07),
-no longer deferred. The `useVaultAction` pipeline body, the Privy EVM
-provider bridge, the gas buffer model, and the earned-yield pure/impure
-split were reviewed (2026-08-07) and confirmed deep — leave them whole.
-Rewards copy stays in the base voice only (David, 2026-08-08): agnostic by
-default, the seam open for flavouring later.
+Load-bearing decisions live in `docs/adr/` — read them before proposing
+changes in their territory: base-voice rewards copy (0001), the level-3
+invite gate (0002), no leaderboard (0003), referral pays at first verified
+pour (0004). Smaller settled points, recorded in `thoughts.md`: the
+account-linking edge is accepted; SIWE and pour-ownership proof are DONE
+(2026-08-07), no longer deferred. The `useVaultAction` pipeline body, the
+Privy EVM provider bridge, the gas buffer model, and the earned-yield
+pure/impure split were reviewed (2026-08-07) and confirmed deep — leave
+them whole.
