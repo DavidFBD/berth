@@ -1,4 +1,9 @@
 import type { ErrorReportPayload, ErrorReportResult } from "@/lib/error-report";
+import {
+  buildIssueBody,
+  fingerprintMarker,
+  issueTitle,
+} from "@/lib/server/issue-body";
 
 /**
  * Files a failed pour as a GitHub issue on the app repo, so the team (or an AI
@@ -22,7 +27,6 @@ const ENABLED = process.env.ERROR_REPORTING_ENABLED !== "false";
 
 const LABEL = "auto-reported";
 const MAX_BODY_BYTES = 64 * 1024;
-const MAX_LOGS = 40;
 
 /** Per-IP cap. Best-effort: serverless instances don't share memory, so this
  *  thins abuse rather than eliminating it — fingerprint dedup does the rest. */
@@ -57,64 +61,6 @@ function gh(path: string, init?: RequestInit) {
 
 function ok(result: ErrorReportResult) {
   return Response.json(result);
-}
-
-/** Fenced so log text can never break out of the issue body's markdown. */
-function codeBlock(text: string, lang = ""): string {
-  return `\`\`\`${lang}\n${text.replace(/```/g, "``​`")}\n\`\`\``;
-}
-
-function buildIssueBody(payload: ErrorReportPayload, sha: string | undefined) {
-  const rows: [string, string | undefined][] = [
-    ["Action", payload.action],
-    ["Failed at step", payload.step],
-    ["Vault", payload.vaultName],
-    ["Source chain", payload.srcChainKey],
-    ["Destination chain", payload.dstChainKey],
-    ["Token", payload.tokenSymbol],
-    ["Amount", payload.amount],
-    ["Wallet mode", payload.walletMode],
-    ["Address", payload.addressHint],
-    ["SDK error code", payload.errorCode],
-    ["Deploy", sha],
-  ];
-
-  const logs = payload.logs
-    .slice(-MAX_LOGS)
-    .map((log) => `${log.at} [${log.level}] ${log.text}`)
-    .join("\n");
-
-  return [
-    `**What the user saw:** ${payload.friendlyMessage}`,
-    "",
-    "| | |",
-    "|---|---|",
-    ...rows
-      .filter(([, value]) => value)
-      .map(([label, value]) => `| ${label} | \`${value}\` |`),
-    "",
-    payload.rawMessage
-      ? `### Raw error\n${codeBlock(payload.rawMessage)}`
-      : "",
-    payload.txHashes?.length
-      ? `### Transactions\n${payload.txHashes.map((h) => `- \`${h}\``).join("\n")}`
-      : "",
-    logs ? `### Console (most recent last)\n${codeBlock(logs)}` : "",
-    "### Client",
-    codeBlock(
-      [
-        `url:       ${payload.page.url}`,
-        `at:        ${payload.page.at}`,
-        `viewport:  ${payload.page.viewport}`,
-        `userAgent: ${payload.page.userAgent}`,
-      ].join("\n"),
-    ),
-    "",
-    "---",
-    `Filed automatically from the app. Grouped by \`fingerprint:${payload.fingerprint}\` — do not edit that marker, it is how repeat occurrences find this issue.`,
-  ]
-    .filter(Boolean)
-    .join("\n");
 }
 
 /** Create the grouping label once per instance; harmless if it already exists. */
@@ -168,7 +114,7 @@ export async function POST(request: Request) {
     return ok({ status: "skipped", reason: "incomplete payload" });
   }
 
-  const marker = `fingerprint:${payload.fingerprint}`;
+  const marker = fingerprintMarker(payload.fingerprint);
   const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
 
   try {
@@ -200,14 +146,10 @@ export async function POST(request: Request) {
 
     await ensureLabel();
 
-    const title = `${payload.action} failed at ${payload.step}${
-      payload.srcChainKey ? ` on ${payload.srcChainKey}` : ""
-    }: ${payload.errorCode ?? payload.friendlyMessage}`.slice(0, 200);
-
     const created = await gh(`/repos/${REPO}/issues`, {
       method: "POST",
       body: JSON.stringify({
-        title,
+        title: issueTitle(payload),
         body: buildIssueBody(payload, sha),
         labels: [LABEL],
       }),
