@@ -389,10 +389,20 @@ export function useVaultAction(options?: {
         }
 
         // 2. Allowance check (native tokens and non-EVM chains report true).
-        const allowance = await sodax.swaps.isAllowanceValid<SpokeChainKey>({
+        // A read-only call against a public RPC, so a transient endpoint
+        // failure (mobile networks, shared-IP rate limits) shouldn't kill the
+        // pour — back off and retry before giving up.
+        let allowance = await sodax.swaps.isAllowanceValid<SpokeChainKey>({
           params: built.value.params,
           walletProvider: args.walletProvider,
         });
+        for (let attempt = 1; !allowance.ok && attempt <= 2; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 1_500 * attempt));
+          allowance = await sodax.swaps.isAllowanceValid<SpokeChainKey>({
+            params: built.value.params,
+            walletProvider: args.walletProvider,
+          });
+        }
         if (!allowance.ok) {
           fail("Couldn't check the pot. Please try again.", allowance.error);
           return false;
