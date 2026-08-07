@@ -57,6 +57,10 @@ export const EMBEDDED_CHAINS: readonly SpokeChainKey[] =
  */
 const SWEEP_INTERVAL_MS = 60_000;
 
+/** Below this, a priced holding is unusable residue and is neither shown nor
+ * counted anywhere (list, teapot worth, table total). */
+const DUST_USD = 0.1;
+
 export type EmbeddedHoldingsResult = {
   /** True when the user is signed in via email with an embedded wallet. */
   emailMode: boolean;
@@ -149,12 +153,20 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
   });
 
   // Sort is stable, so unpriced holdings (sentinel -1) sink to the bottom
-  // while keeping their chain order relative to each other.
+  // while keeping their chain order relative to each other. Priced holdings
+  // below the dust line vanish entirely (David's call): a residue too small
+  // to cover its own pour is not a holding, it's noise — showing €0.03 of
+  // BNB just invites a doomed pour attempt. Top the token up and it crosses
+  // the line and reappears. Unpriced holdings stay: unknown is not dust.
   const holdings = swept.holdings
     .map((holding) => ({
       ...holding,
       usdValue: prices.usdValue(holding.token, holding.balance),
     }))
+    .filter(
+      (holding) =>
+        holding.usdValue === undefined || holding.usdValue >= DUST_USD,
+    )
     .sort((a, b) => (b.usdValue ?? -1) - (a.usdValue ?? -1));
 
   const priced = holdings.filter(
