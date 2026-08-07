@@ -1,22 +1,30 @@
 These are thoughts I'm writing down whilst I wait for our session limit to reset:
 
-_(Struck-through = tackled — with a short status note from Claude. 🟡 = partially done.)_
+_(Struck-through = tackled — with a short status note from Claude. 🟡 = partially done. Finished rounds get compressed to one-liners to keep this readable; git history holds the detail.)_
 
-- 🟡 ~~In .env.local I've dropped Privy credentials. I want to hide away the traditional wallet connecting a bit and make a Privy email based login the standard. Ideally a user is able to create an account or log in with email indeed and then there should also be a flow for 'funding' the newly created account by sending crypto to one of it's many new addresses. Question here is of course, does Privy create wallet addresses for all SODAX enabled networks? Or would you suggest a different best practice approach? I am of the opinion that traditional wallet connecting should only be available for desktop visitors~~
-  → **Done for EVM + Solana; answer: Privy does NOT cover all SODAX networks.** Email login is the default; one embedded EVM address covers all 13 EVM chains, Solana embedded wallet bridged via wallet-standard. Bitcoin/Sui/Stellar/NEAR would each be hand-built signers (deferred); Stacks/ICON impossible via Privy — those stay external-wallet-only (desktop, per your rule). Funding: address copy + QR + Privy's hosted funding modal (enable methods in the Privy dashboard).
-- ~~I'd love to get the app styled after its name LSTeaTime… The master prompt can be placed into a new file called claude-design-master-prompts.md. The master prompt must instruct Claude Design to create a complete suitable design system for LSTeaTime, including og images, favicon, logo, fonts, colors, image assets, etc..~~
-  → **Done end-to-end:** master prompt written, run through Claude Design, and the returned design system (tokens, cups, teapot, steam, brew stepper, steeping tracker, voice table, lore) is implemented in the app.
-- ~~Despite this app being powered by leveraged staking yield vaults, I actually want to abstract away all of the 'crypto-language' and make it more like a satisfying little game of 'filling up the tea cups'. I think it is important that each teacup does display the yield in a playful manner and the 'exposure' should also be visible, so whether it is ETH or SOL 'flavoured'. Of course we have two different ones for ETH so we must get creative in how we label these differing variants of the ETH flavour.~~
-  → **Done:** the LSTeaTime skin is live — Earl Grey (weETH) / English Breakfast (wstETH, the ETH sibling) / Sencha (JitoSOL, handleless bowl), steam scales with what's steeping, the whole app speaks tea (pour / pour back / brew strength / pantry / "the kettle's acting up"), Young Serif + Karla + IBM Plex Mono, morning & evening themes.
-- ~~Let's use phosphor duotone icons throughout this app where icons are needed~~
-  → **Done:** all app icons are Phosphor with a global duotone default.
-- ~~Let's build the desktop version of this app in a way where we have a stock video looping on the background and a hand holding up an Iphone…~~
-  → **Done, assets supplied and wired (desktop only).** Your `tea-loop.mp4` was re-encoded with ffmpeg: blur baked in (gaussian sigma 4), audio stripped, seamless 1s crossfade loop, H.264 yuv420p + faststart, 11.6MB → 3.7MB; poster frame generated. Your `tea-poster.png` (the hand) had its screen punched transparent pixel-by-pixel and now layers ON TOP of the app screen, so the thumb overlaps the UI naturally; app geometry is mapped to the measured screen rect (404x882 @ 704,199 in the 1749x1312 PNG). CSS bezel remains as fallback if the PNG fails to load. Raw sources at repo root are gitignored; shipped assets live in `public/stage/`.
-- ~~There should be an info button somewhere that when clicked launches a modal which explains how easy it was to vibe together this app with SODAX…~~
-  → **Done:** ℹ️ in the header — 25+ agents, the SODAX Builders MCP, links out.
-- ~~I'm kind of sure that SODAX offers the function of adding a fee and a fee wallet. I want to set a 0.1% fee on swaps and I want the fee wallet to be 0xbe59D5bf40Ac4A349bD748E0d7c19eF27Ad3Ca23~~
-  → **Done:** global 0.1% (10 bps) partner fee to that address on every vault swap; quotes adjusted to the post-fee amount. Claim accrued fees later via `sodax.partners.feeClaim*`.
-- ~~I know that with SODAX there is some sort of additional effort that must be done in order to enable native bitcoin in the app. Can you confirm this and can you make sure that native bitcoin is enable as well as option for deposition and withdrawing?~~
-  → **Confirmed & done:** the extra effort is Bound Exchange (trading-wallet) mode; we switched BTC to `USER` mode instead — one-signature PSBT deposits straight from the personal wallet (plus a one-time free auth signature the SDK requires). Withdrawals to BTC work with the 546-sat dust guard.
-- ~~I feel like we must also make an effort somewhere to explain the lore of lsteatime, kind of an ode to staking as the purest form of yield on apex networks like ETH and SOL. Steady and stable. Liquid staking tokens being an evolutionary defi primitive opening up staking to everyone who still wants to actively use the asset in defi too. And then leveraging up on the liquid staking token as an ultimate tea sipping vanilla degen who dreams of one day trying LSD but at the same time knowing they'll never be cool enough or dare to try. Tea is the way. lsteatime is the best time.~~
-  → **Done:** lore is canon in the design brief AND live in-app — the footer sips it ("Tea is the way. LSTeaTime is the best time.") and the info sheet tells the story. A fuller lore page/onboarding moment remains an option for later.
+## Settled rounds (compressed)
+
+- ~~Privy email login as the default, wallet demoted to desktop~~ → **Done** for EVM + Solana embedded wallets; funding via address copy/QR/Privy modal. Bitcoin/Sui/Stellar/NEAR embedded signers deferred; Stacks/ICON stay external-only.
+- ~~Design system via Claude Design master prompt~~ → **Done**, implemented app-wide.
+- ~~Abstract away crypto language into the tea game~~ → **Done**: Earl Grey / English Breakfast / Sencha, full tea voice.
+- ~~Phosphor duotone icons~~ → **Done.**
+- ~~Desktop stage: looping video + hand holding an iPhone~~ → **Done**, assets baked and shipped in `public/stage/`.
+- ~~Info button explaining how this was vibed with SODAX~~ → **Done**, and now retold per mode (see below).
+- ~~0.1% fee to 0xbe59…Ca23~~ → **Done and verified earning on-chain** (SODA, sodaBTC, lsodaWEETH, BNB sitting at the fee wallet on Sonic). Claim later via `sodax.partners.feeClaim.*`.
+- ~~Native Bitcoin in and out~~ → **Done** via USER-mode PSBTs, 546-sat dust guard.
+- ~~LSTeaTime lore~~ → **Done**: footer + info sheet. Fuller lore page still an option.
+
+## Rewards round (2026-08-07)
+
+- ~~User accounts with profile pictures and XP for actions~~ → **Done end-to-end.** Neon Postgres (`users` + `xp_events` ledger, tx-hash dedup), preset tea avatar shelf (8 hand-drawn SVGs, no uploads = no moderation), XP on pours both directions (100 each, verified against the Sonic hub receipt), welcome 25, email link 150, avatar pick 25, first taste of each theme 10. Ranks: New Leaf → Tea Sage, theme-agnostic on purpose. Chip next to the account pill; tea service panel in the pantry and in its own drawer for wallet guests.
+- ~~Info drawer retold per theme + theme-switch XP~~ → **Done**: the making-of story now speaks all six voices; each theme pays its 10 XP exactly once per account (ledger ref = account:mode).
+- Fee disclosure kept quiet but present ("house rules" line in the info drawer, in every voice). Rewards copy never mentions fees or trading — it's all "rewards for playing".
+
+## Deferred / next
+
+- **SIWE (sign-in with Ethereum) for wallet-only users.** Right now wallet-guest mutations are trusted by address; worst case an imposter changes someone's teapot avatar. Fine for launch, tighten if XP ever gains real-world value.
+- **Pour ownership proof.** Pour XP requires a real, successful hub tx (invented or failed hashes pay nothing, hashes pay once ever), but the server doesn't yet prove the hash belongs to the caller. Harden by decoding the intent's creator if it matters later.
+- **Account linking edge**: one human with separate email and wallet histories stays two accounts unless they connect the wallet while signed in. Acceptable for a game.
+- **Leaderboard** (Upstash sorted sets) — explicitly not now.
+- **Partner fee claiming flow** (`feeClaim.setSwapPreference` + auto-swap to a stable) — fees are accruing, claiming is manual for now.
+- Fuller lore page / onboarding moment.
