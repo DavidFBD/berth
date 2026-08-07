@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowSquareOut, Info, Robot, Sparkle, Wrench } from "@phosphor-icons/react";
+import Link from "next/link";
+import {
+  ArrowSquareOut,
+  CaretRight,
+  Info,
+  Robot,
+  Sparkle,
+  Wrench,
+} from "@phosphor-icons/react";
 import {
   Drawer,
   DrawerContent,
@@ -11,12 +19,7 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
-import { PARTNER_FEE } from "@/lib/sodax-config";
-
-/** Basis points to a human percent: 40 → "0.4%". PartnerFee is a union; ours
- * is the percentage branch, but narrow instead of assuming. */
-const FEE_PCT =
-  "percentage" in PARTNER_FEE ? `${PARTNER_FEE.percentage / 100}%` : "small";
+import { FEE_PCT_LABEL as FEE_PCT } from "@/lib/sodax-config";
 
 /**
  * Header info button + drawer: the story of how this app was vibed together,
@@ -77,6 +80,13 @@ export function InfoDrawer() {
             </p>
 
             <div className="flex flex-col gap-2">
+              <Link
+                href="/lore"
+                className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                {copy.loreLink}
+                <CaretRight className="size-4 text-muted-foreground" />
+              </Link>
               <a
                 href="https://builders.sodax.com"
                 target="_blank"

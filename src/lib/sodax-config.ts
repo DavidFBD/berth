@@ -126,3 +126,8 @@ export function getPinnedRpcUrl(chainKey: EvmChainKey): string | undefined {
 
 /** Slippage tolerance applied to solver quotes, in percent. */
 export const DEFAULT_SLIPPAGE_PCT = 0.5;
+
+/** Basis points to a human percent: 40 → "0.4%". PartnerFee is a union; ours
+ * is the percentage branch, but narrow instead of assuming. */
+export const FEE_PCT_LABEL =
+  "percentage" in PARTNER_FEE ? `${PARTNER_FEE.percentage / 100}%` : "small";

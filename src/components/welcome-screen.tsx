@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Envelope } from "@phosphor-icons/react";
 import { useConnectedChains } from "@sodax/wallet-sdk-react";
 import { Button } from "@/components/ui/button";
@@ -114,6 +115,13 @@ function WelcomeScreen() {
           {copy.mottoDisplay}
         </span>
       </p>
+
+      <Link
+        href="/lore"
+        className="text-[11px] text-muted-foreground underline decoration-border underline-offset-2 transition-colors hover:text-foreground"
+      >
+        {copy.loreLink}
+      </Link>
 
       <WalletDrawer open={walletsOpen} onOpenChange={setWalletsOpen} />
     </div>

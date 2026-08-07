@@ -277,6 +277,20 @@ export type Copy = {
   infoHouseRules: (feePct: string) => string;
   infoBuildersCta: string;
   infoDocsCta: string;
+
+  /* — lore page (/lore): the legend, told long-form in each voice — */
+  loreLink: string;
+  loreTitle: string;
+  loreSub: string;
+  loreFoundingTitle: string;
+  loreFoundingBody: string;
+  loreBlendsTitle: string;
+  loreBlendsBody: string;
+  loreKitchenTitle: string;
+  loreKitchenBody: string;
+  loreHouseTitle: string;
+  loreHouseBody: string;
+  loreCta: string;
 };
 
 const ORIGINAL: Copy = {
@@ -443,6 +457,23 @@ const ORIGINAL: Copy = {
     `House rules: every pour includes a ${feePct} service charge. It keeps the tea warm and the flavours curated.`,
   infoBuildersCta: "See how it's brewed at SODAX Builders",
   infoDocsCta: "SODAX developer docs",
+
+  loreLink: "Read the whole legend",
+  loreTitle: "The Legend of LSTeaTime",
+  loreSub: "How a tea house came to pour across twenty networks.",
+  loreFoundingTitle: "The founding",
+  loreFoundingBody:
+    "One afternoon, an empty folder was warmed until it became a tea house. A parliament of AI agents measured, brewed, and argued about steam until the porcelain rang true. No crypto jargon survived the tasting; only tea remained.",
+  loreBlendsTitle: "The three blends",
+  loreBlendsBody:
+    "Three cups sit on the shelf, and each is a quiet machine: staked yield, folded and refolded until the leaves earn more than they would alone. Pick by flavour. The cups do the arithmetic.",
+  loreKitchenTitle: "The teapot and the kitchen",
+  loreKitchenBody:
+    "Send anything from ~200 assets across 20 networks and it waits in your teapot. When you pour, the kitchen (a network of solvers) carries the tray: one signature, any asset in, steeping tea out. The porcelain underneath is SODAX.",
+  loreHouseTitle: "House rules",
+  loreHouseBody:
+    "The house pays you to play: pours, first tastes of every voice, and friends who join the table all earn XP, from New Leaf all the way to Tea Sage. And the house keeps one small rule, written by the door:",
+  loreCta: "Take a seat",
 };
 
 /**
@@ -601,6 +632,23 @@ const GANGSTER: Copy = {
     `House rules: every pour carries a ${feePct} service charge. Keeps the tea hot and the menu hand-picked.`,
   infoBuildersCta: "Peep the kitchen at SODAX Builders",
   infoDocsCta: "SODAX developer docs",
+
+  loreLink: "The whole saga",
+  loreTitle: "How This House Was Built",
+  loreSub: "From an empty lot to pouring across twenty blocks.",
+  loreFoundingTitle: "The come-up",
+  loreFoundingBody:
+    "One afternoon, an empty folder got put on. A crew of agents measured, brewed, and beefed about steam until the porcelain rang. No jargon made it out alive.",
+  loreBlendsTitle: "The three blends",
+  loreBlendsBody:
+    "Three cups on the shelf, every one a quiet hustle: staked yield folded until the leaves work double shifts. Pick your flavour. The cups run the numbers.",
+  loreKitchenTitle: "The stash and the kitchen",
+  loreKitchenBody:
+    "Send anything from any block and it waits in your stash. Pour, and the kitchen walks the tray over: one signature, tea on the other side. The porcelain underneath is SODAX.",
+  loreHouseTitle: "House rules",
+  loreHouseBody:
+    "The house pays you to play: pours, first tastes, and people you bring to the table, New Leaf up to Tea Sage. And one small rule, posted by the door:",
+  loreCta: "Pull up a chair",
 };
 
 /** Nan's Parlour: a doting grandmother runs the place. Everything is lovely. */
@@ -753,6 +801,23 @@ const NAN: Copy = {
     `House rules, love: each pour includes a small ${feePct} service charge. It keeps the tea warm and the good flavours in stock.`,
   infoBuildersCta: "See how it's done at SODAX Builders, dear",
   infoDocsCta: "The developer docs, if you're curious",
+
+  loreLink: "The whole story, if you've a minute",
+  loreTitle: "The Story of Our Little Tea House",
+  loreSub: "How it all came to be, dear.",
+  loreFoundingTitle: "How it began",
+  loreFoundingBody:
+    "One afternoon, love, an empty folder was warmed through until it became a tea house. A gaggle of helpful agents measured and brewed and had words about the steam. Only tea survived, which is as it should be.",
+  loreBlendsTitle: "The three blends",
+  loreBlendsBody:
+    "Three cups on the shelf, each one clever as anything: staked yield folded over and over so the leaves earn their keep. Pick whichever takes your fancy. The cups do the sums.",
+  loreKitchenTitle: "The teapot and the kitchen",
+  loreKitchenBody:
+    "Send along whatever you've got and it waits in the pot. When you pour, the kitchen carries the tray over: one signature and it's steeping. The porcelain underneath is SODAX. Lovely stuff.",
+  loreHouseTitle: "House rules",
+  loreHouseBody:
+    "We do like to spoil you: pours, first tastes, and friends you bring round all earn a little something, from New Leaf to Tea Sage. And one small rule, dear, by the door:",
+  loreCta: "Come in, love",
 };
 
 /** Degen Terminal: lowercase, dense, permanently online. */
@@ -915,6 +980,23 @@ const TERMINAL: Copy = {
   infoHouseRules: (feePct) => `fee schedule: ${feePct} per pour. keeps the tea warm + the flavors curated_`,
   infoBuildersCta: "src: builders.sodax.com",
   infoDocsCta: "docs: docs.sodax.com",
+
+  loreLink: "cat lore.md",
+  loreTitle: "readme.lore",
+  loreSub: "git log of a tea house_",
+  loreFoundingTitle: "init",
+  loreFoundingBody:
+    "one afternoon: mkdir, then a tea house. n agents measured, brewed, argued about steam. jargon: zero survivors.",
+  loreBlendsTitle: "the blends",
+  loreBlendsBody:
+    "3 cups. each = staked yield, looped. leaves earn more than leaves idle. pick flavour; cups do math.",
+  loreKitchenTitle: "pot + kitchen",
+  loreKitchenBody:
+    "send anything from 20 chains. it waits in the pot. pour = 1 signature; solver network carries the tray. base layer: SODAX.",
+  loreHouseTitle: "house rules",
+  loreHouseBody:
+    "xp for playing: pours, first tastes, referrals. new_leaf → tea_sage. one rule by the door:",
+  loreCta: "cd ~/table",
 };
 
 /** Vaporwave: the mall at eternal sunset. Wide letters, wide time. */
@@ -1066,6 +1148,23 @@ const VAPORWAVE: Copy = {
     `Plaza rules: every pour includes a ${feePct} service charge. It keeps the tea warm and the flavors curated, forever.`,
   infoBuildersCta: "Visit the atrium: SODAX Builders",
   infoDocsCta: "The archive: developer docs",
+
+  loreLink: "Ｔｈｅ ｌｅｇｅｎｄ",
+  loreTitle: "Ｔｈｅ Ｌｅｇｅｎｄ",
+  loreSub: "A tea house at the edge of the mall sunset.",
+  loreFoundingTitle: "Genesis",
+  loreFoundingBody:
+    "One eternal afternoon, an empty folder dissolved into a tea house. A choir of agents measured, brewed, and argued about steam until the marble hummed. Only aesthetics survived.",
+  loreBlendsTitle: "The three artifacts",
+  loreBlendsBody:
+    "Three cups on the shelf, each a quiet machine: staked yield folded like light in pool water. Choose your artifact. The cups compute.",
+  loreKitchenTitle: "The fountain and the kitchen",
+  loreKitchenBody:
+    "Send anything across twenty networks; it shimmers in the fountain. Pour once, sign once, and the kitchen glides the tray through the arcade. Beneath the marble: SODAX.",
+  loreHouseTitle: "House rules",
+  loreHouseBody:
+    "The mall rewards its visitors: pours, first tastes, invited friends, New Leaf to Tea Sage. One rule, etched by the door:",
+  loreCta: "Ｅｎｔｅｒ",
 };
 
 /** Sumi-e: ink and silence. Every word that can go, goes. */
@@ -1213,6 +1312,23 @@ const SUMIE: Copy = {
   infoHouseRules: (feePct) => `Each pour carries a ${feePct} charge. The tea stays warm. The flavours, chosen.`,
   infoBuildersCta: "SODAX Builders",
   infoDocsCta: "Developer docs",
+
+  loreLink: "The legend, whole",
+  loreTitle: "The Legend",
+  loreSub: "A tea house, in few strokes.",
+  loreFoundingTitle: "Origin",
+  loreFoundingBody:
+    "An afternoon. An empty folder, warmed. Many hands measured; some doubted. Tea remained.",
+  loreBlendsTitle: "Three blends",
+  loreBlendsBody:
+    "Three cups. Each folds yield upon yield, quietly. Choose. The cups count.",
+  loreKitchenTitle: "Pot and kitchen",
+  loreKitchenBody:
+    "Send anything. It waits. One signature; the tray is carried. Beneath: SODAX.",
+  loreHouseTitle: "House rules",
+  loreHouseBody:
+    "Play is rewarded. Pours, first tastes, companions. New Leaf, then Tea Sage. One rule, by the door:",
+  loreCta: "Enter",
 };
 
 /**
@@ -1365,6 +1481,23 @@ const AURORA: Copy = {
     `House rules: every pour includes a ${feePct} service charge. It keeps the stove lit and the flavours curated.`,
   infoBuildersCta: "See how it's brewed at SODAX Builders",
   infoDocsCta: "SODAX developer docs",
+
+  loreLink: "The whole legend, by the fire",
+  loreTitle: "The Legend of the Northern Tea House",
+  loreSub: "Told on a long polar night.",
+  loreFoundingTitle: "The first fire",
+  loreFoundingBody:
+    "One long night, an empty folder was fed to the stove until a tea house stood in the snow. Agents split firewood, tended the steam, argued gently. Only warmth survived.",
+  loreBlendsTitle: "The three blends",
+  loreBlendsBody:
+    "Three cups glow on the shelf, each a small aurora: staked yield folded like light over a frozen lake. Pick your colour. The cups keep count.",
+  loreKitchenTitle: "The pot and the kitchen",
+  loreKitchenBody:
+    "Send anything across twenty shores; it keeps well in the cold. Pour, sign once, and the kitchen carries the tray across the ice. Under the snow: SODAX.",
+  loreHouseTitle: "House rules",
+  loreHouseBody:
+    "The house pays you to stay warm: pours, first tastes, friends at the table, New Leaf to Tea Sage. One rule, carved by the door:",
+  loreCta: "Step inside",
 };
 
 /**
@@ -1445,6 +1578,23 @@ const LSD: Copy = {
     "turns every pour into an intent-based cross-chain swap. Any asset on any of 20 networks in, leveraged staked-yield tea on Sonic out, one signature. LSD stands for liquid staking derivatives, obviously.",
   infoHouseRules: (feePct) =>
     `House rules: every pour includes a ${feePct} service charge. It keeps the lava lamp lit and the flavours curated.`,
+
+  loreLink: "The full trip report",
+  loreTitle: "The Trip Report",
+  loreSub: "How the tea house dreamed itself.",
+  loreFoundingTitle: "The awakening",
+  loreFoundingBody:
+    "One afternoon that may still be happening, an empty folder blinked and became a tea house. Agents measured, brewed, and stared at the steam until it made sense. The jargon dissolved first.",
+  loreBlendsTitle: "The three blends",
+  loreBlendsBody:
+    "Three cups breathe on the shelf, each a small perpetual pattern: staked yield folded into itself like a fractal. Pick a colour. The cups do the math so you can watch the walls.",
+  loreKitchenTitle: "The pot and the kitchen",
+  loreKitchenBody:
+    "Send anything from any dimension; it hums in the pot. Pour, sign once, and the kitchen floats the tray across. Underneath the pattern: SODAX.",
+  loreHouseTitle: "House rules",
+  loreHouseBody:
+    "The house pays you to play: pours, first tastes, fellow travellers, New Leaf to Tea Sage. One rule, painted on the door:",
+  loreCta: "Come through",
 };
 
 export const COPY: Record<ModeId, Copy> = {
