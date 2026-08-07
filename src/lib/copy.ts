@@ -200,6 +200,20 @@ export type Copy = {
   backInTeapotBody: (symbol: string, chainName: string) => string;
   backInTeapotBodyFallback: string;
 
+  /* — pour flow: token picker — */
+  pickerSelectTokenOn: (chainName: string) => string;
+  pickerSelectChain: string;
+  pickerSourceChainSub: string;
+  pickerSourceHoldingsSub: string;
+  pickerSourceGridSub: string;
+  pickerDestTokenSub: string;
+  /** `chains` arrives pre-joined: "Polygon, Solana". */
+  pickerShelvesEmptyUnreachable: (chains: string) => string;
+  pickerShelvesUnreachableNote: (chains: string, plural: boolean) => string;
+  fillTeapot: string;
+  pickerSearchPlaceholder: string;
+  pickerNoMatches: (query: string) => string;
+
   /* — pour flow: stepper + steeping tracker — */
   brewing: string;
   stepBuild: string;
@@ -352,6 +366,20 @@ const ORIGINAL: Copy = {
     `${symbol} is on its way to you on ${chainName}, ready when you are.`,
   backInTeapotBodyFallback: "Ready when you are.",
 
+  pickerSelectTokenOn: (chainName) => `Select token on ${chainName}`,
+  pickerSelectChain: "Select chain",
+  pickerSourceChainSub: "Anything in the pot can become tea.",
+  pickerSourceHoldingsSub: "Pour straight from what you hold.",
+  pickerSourceGridSub: "Where's your tea coming from?",
+  pickerDestTokenSub: "Pick what it arrives as.",
+  pickerShelvesEmptyUnreachable: (chains) =>
+    `Nothing on the shelves we could reach, but ${chains} won't open just now. Still trying.`,
+  pickerShelvesUnreachableNote: (chains, plural) =>
+    `The ${chains} ${plural ? "shelves" : "shelf"} won't open just now, so anything there is missing from this list. Still trying.`,
+  fillTeapot: "Fill the teapot",
+  pickerSearchPlaceholder: "Search by name or symbol",
+  pickerNoMatches: (query) => `No tokens match "${query}"`,
+
   brewing: "Brewing…",
   stepBuild: "Build",
   stepApprove: "Approve",
@@ -503,6 +531,20 @@ const GANGSTER: Copy = {
     `${symbol} is en route on ${chainName}, ready when you are.`,
   backInTeapotBodyFallback: "Ready when you are.",
 
+  pickerSelectTokenOn: (chainName) => `Pick your token on ${chainName}`,
+  pickerSelectChain: "Pick a network",
+  pickerSourceChainSub: "Anything in the stash can become tea.",
+  pickerSourceHoldingsSub: "Pour straight from what you're holding.",
+  pickerSourceGridSub: "Where's the tea coming from?",
+  pickerDestTokenSub: "Pick what it lands as.",
+  pickerShelvesEmptyUnreachable: (chains) =>
+    `Nothing on the shelves we could reach, but ${chains} won't open right now. Still working it.`,
+  pickerShelvesUnreachableNote: (chains, plural) =>
+    `The ${chains} ${plural ? "shelves" : "shelf"} won't open right now, so anything there is missing from this list. Still working it.`,
+  fillTeapot: "Re-up the stash",
+  pickerSearchPlaceholder: "Search by name or symbol",
+  pickerNoMatches: (query) => `Nothing matching "${query}"`,
+
   brewing: "Brewing…",
   stepMsgBuilding: "Measuring the leaves…",
   stepMsgApproving: "Warming the pot. Approve in your wallet…",
@@ -637,6 +679,20 @@ const NAN: Copy = {
   backInTeapotBody: (symbol, chainName) =>
     `Your ${symbol} is on its way over on ${chainName}. Ready when you are, dear.`,
   backInTeapotBodyFallback: "Ready when you are, dear.",
+
+  pickerSelectTokenOn: (chainName) => `Choose your token on ${chainName}, dear`,
+  pickerSelectChain: "Choose a network, love",
+  pickerSourceChainSub: "Anything in the pot can become tea, dear.",
+  pickerSourceHoldingsSub: "Pour straight from what you've got, love.",
+  pickerSourceGridSub: "Where's your tea coming from, dear?",
+  pickerDestTokenSub: "Pick what it arrives as, love.",
+  pickerShelvesEmptyUnreachable: (chains) =>
+    `Nothing on the shelves we could reach, dear, and ${chains} won't open just now. We'll keep trying.`,
+  pickerShelvesUnreachableNote: (chains, plural) =>
+    `The ${chains} ${plural ? "shelves" : "shelf"} won't open just now, love, so anything there is missing from this list. We'll keep trying.`,
+  fillTeapot: "Top up the pot, dear",
+  pickerSearchPlaceholder: "Search by name or symbol, dear",
+  pickerNoMatches: (query) => `Nothing matching "${query}", I'm afraid`,
 
   brewing: "Brewing, dear…",
   stepMsgBuilding: "Measuring the leaves…",
@@ -781,6 +837,20 @@ const TERMINAL: Copy = {
     `${symbol.toLowerCase()} inbound on ${chainName.toLowerCase()}_`,
   backInTeapotBodyFallback: "inbound_",
 
+  pickerSelectTokenOn: (chainName) => `select token @ ${chainName.toLowerCase()}`,
+  pickerSelectChain: "select network",
+  pickerSourceChainSub: "any asset compiles to tea_",
+  pickerSourceHoldingsSub: "deploy directly from holdings_",
+  pickerSourceGridSub: "select source network_",
+  pickerDestTokenSub: "select output asset_",
+  pickerShelvesEmptyUnreachable: (chains) =>
+    `no readable balances. warn: ${chains.toLowerCase()} rpc unreachable. retrying_`,
+  pickerShelvesUnreachableNote: (chains) =>
+    `warn: ${chains.toLowerCase()} rpc unreachable. balances there not listed. retrying_`,
+  fillTeapot: "deposit",
+  pickerSearchPlaceholder: "grep name|symbol",
+  pickerNoMatches: (query) => `0 results for "${query}"_`,
+
   brewing: "executing…",
   stepBuild: "build",
   stepApprove: "approve",
@@ -921,6 +991,20 @@ const VAPORWAVE: Copy = {
     `${symbol} drifts toward you on ${chainName}, ready when you are.`,
   backInTeapotBodyFallback: "Ready when you are.",
 
+  pickerSelectTokenOn: (chainName) => `Choose an artifact on ${chainName}`,
+  pickerSelectChain: "Choose an arcade",
+  pickerSourceChainSub: "Any artifact becomes tea in the fountain.",
+  pickerSourceHoldingsSub: "Pour straight from what floats in your fountain.",
+  pickerSourceGridSub: "Which arcade does your tea come from?",
+  pickerDestTokenSub: "Choose what it returns as.",
+  pickerShelvesEmptyUnreachable: (chains) =>
+    `Nothing on the shelves we could reach, and ${chains} drifted past the grid horizon. Still calling out to it.`,
+  pickerShelvesUnreachableNote: (chains, plural) =>
+    `The ${chains} ${plural ? "arcades have" : "arcade has"} drifted past the grid horizon, so anything there is missing from this list. Still calling.`,
+  fillTeapot: "Ｔｏｐ ｕｐ",
+  pickerSearchPlaceholder: "Search the plaza",
+  pickerNoMatches: (query) => `Nothing in the plaza matches "${query}"`,
+
   brewing: "Ｂｒｅｗｉｎｇ…",
   stepMsgBuilding: "Measuring the leaves…",
   stepMsgApproving: "Warming the pot. Approve in your wallet…",
@@ -1057,6 +1141,20 @@ const SUMIE: Copy = {
   backInTeapotTitle: "Returned to the pot.",
   backInTeapotBody: (symbol, chainName) => `${symbol} arrives on ${chainName}.`,
   backInTeapotBodyFallback: "It arrives.",
+
+  pickerSelectTokenOn: (chainName) => `A token, on ${chainName}`,
+  pickerSelectChain: "A network",
+  pickerSourceChainSub: "Anything becomes tea.",
+  pickerSourceHoldingsSub: "Pour from what is held.",
+  pickerSourceGridSub: "From where?",
+  pickerDestTokenSub: "It arrives as…",
+  pickerShelvesEmptyUnreachable: (chains) =>
+    `The reachable shelves are bare. ${chains} does not answer. We try again.`,
+  pickerShelvesUnreachableNote: (chains) =>
+    `${chains} does not answer. What rests there is not listed. We try again.`,
+  fillTeapot: "Add to the pot",
+  pickerSearchPlaceholder: "Search",
+  pickerNoMatches: (query) => `Nothing matches "${query}"`,
 
   brewing: "Brewing.",
   stepMsgBuilding: "Measuring.",

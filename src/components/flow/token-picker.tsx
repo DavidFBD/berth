@@ -27,7 +27,8 @@ import {
   getDepositTokens,
   toBalanceReadToken,
 } from "@/lib/chains";
-import { formatTokenAmount, formatUsd } from "@/lib/format";
+import { formatTokenAmount } from "@/lib/format";
+import { useCopy, useMoney } from "@/components/settings-provider";
 import {
   EMBEDDED_CHAINS,
   useEmbeddedHoldings,
@@ -178,6 +179,8 @@ export function TokenPicker({
   const [chainKey, setChainKey] = useState<SpokeChainKey | null>(null);
   const [search, setSearch] = useState("");
 
+  const copy = useCopy();
+  const money = useMoney();
   const {
     emailMode,
     isLoading: holdingsLoading,
@@ -278,22 +281,22 @@ export function TokenPicker({
             )}
             <DrawerTitle className="flex-1">
               {chainKey
-                ? `Select token on ${getChainName(chainKey)}`
+                ? copy.pickerSelectTokenOn(getChainName(chainKey))
                 : showHoldings
-                  ? "Your teapot"
-                  : "Select chain"}
+                  ? copy.teapotTitle
+                  : copy.pickerSelectChain}
             </DrawerTitle>
           </div>
           <DrawerDescription>
             {mode === "source"
               ? chainKey
-                ? "Anything in the pot can become tea."
+                ? copy.pickerSourceChainSub
                 : showHoldings
-                  ? "Pour straight from what you hold."
-                  : "Where's your tea coming from?"
+                  ? copy.pickerSourceHoldingsSub
+                  : copy.pickerSourceGridSub
               : chainKey
-                ? "Pick what it arrives as."
-                : "Where should we pour it?"}
+                ? copy.pickerDestTokenSub
+                : copy.whereShouldWePour}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -319,10 +322,10 @@ export function TokenPicker({
                   <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
                     <p className="text-sm text-muted-foreground">
                       {erroredChains.length > 0
-                        ? `Nothing on the shelves we could reach, but ${erroredChains
-                            .map(getChainName)
-                            .join(", ")} won't open just now. Still trying.`
-                        : "Your teapot is empty. Top it up and the tea can flow."}
+                        ? copy.pickerShelvesEmptyUnreachable(
+                            erroredChains.map(getChainName).join(", "),
+                          )
+                        : copy.potEmpty}
                     </p>
                     {onTopUp && (
                       <Button
@@ -331,7 +334,7 @@ export function TokenPicker({
                           onTopUp();
                         }}
                       >
-                        Fill the teapot
+                        {copy.fillTeapot}
                       </Button>
                     )}
                   </div>
@@ -361,7 +364,7 @@ export function TokenPicker({
                         </span>
                         {usdValue !== undefined && (
                           <span className="text-xs text-muted-foreground tabular-nums">
-                            {formatUsd(usdValue)}
+                            {money.format(usdValue)}
                           </span>
                         )}
                       </div>
@@ -370,10 +373,10 @@ export function TokenPicker({
                 )}
                 {holdings.length > 0 && erroredChains.length > 0 && (
                   <p className="px-2 py-2 text-xs text-muted-foreground">
-                    The {erroredChains.map(getChainName).join(", ")}{" "}
-                    {erroredChains.length === 1 ? "shelf" : "shelves"} won&apos;t
-                    open just now, so anything there is missing from this list.
-                    Still trying.
+                    {copy.pickerShelvesUnreachableNote(
+                      erroredChains.map(getChainName).join(", "),
+                      erroredChains.length > 1,
+                    )}
                   </p>
                 )}
               </div>
@@ -401,7 +404,7 @@ export function TokenPicker({
                 <Input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search by name or symbol"
+                  placeholder={copy.pickerSearchPlaceholder}
                   className="h-11 pl-9"
                   autoComplete="off"
                   autoCorrect="off"
@@ -411,7 +414,7 @@ export function TokenPicker({
               <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
                 {rows.length === 0 && (
                   <p className="py-8 text-center text-sm text-muted-foreground">
-                    No tokens match &ldquo;{search}&rdquo;
+                    {copy.pickerNoMatches(search)}
                   </p>
                 )}
                 {rows.map(({ token, balance }) => (
