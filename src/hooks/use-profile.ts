@@ -116,7 +116,7 @@ export function useProfile() {
       );
       if (!data) throw new Error("profile sync failed");
       clearPendingReferral();
-      toastRewards(data.rewards);
+      toastRewards(data.rewards, data.xp);
       return profileOf(data);
     },
   });
@@ -143,8 +143,7 @@ function useProfileMutation<TVars>(
     },
     onSuccess: (data) => {
       if (!data) return;
-      const previous = queryClient.getQueryData<Profile>(["profile", key]);
-      toastRewards(data.rewards, previous?.xp, data.xp);
+      toastRewards(data.rewards, data.xp);
       queryClient.setQueryData<Profile>(["profile", key], profileOf(data));
       // Every award moves the ledger, and a pour can move the referral
       // corner (steeping → poured); both are cheap refetches on next open.

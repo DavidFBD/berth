@@ -31,7 +31,7 @@ export const REWARD_REASONS: Record<XpKind, string> = {
   invite_accepted: "for joining on a friend's invite",
 };
 
-type Announcement = { rewards: RewardList; oldXp?: number; newXp?: number };
+type Announcement = { rewards: RewardList; newXp: number };
 
 const queue: Announcement[] = [];
 let pump: ReturnType<typeof setInterval> | null = null;
@@ -40,13 +40,19 @@ let heldSince = 0;
 /** How long a ceremony will wait for the stage before going on anyway. */
 const MAX_HOLD_MS = 20_000;
 
+/**
+ * `newXp` is the response's fresh total; the crossing derives right here as
+ * `newXp - sum(rewards)` → `newXp`. No caller assembles before/after pairs
+ * (the old optional-args shape silently dropped the level-up card whenever
+ * a caller had no cached "before" — which was every profile sync, the exact
+ * moment the flushed friend_poured +250 arrives).
+ */
 export function announceRewards(
   rewards: RewardList | undefined,
-  oldXp?: number,
-  newXp?: number,
+  newXp: number,
 ) {
   if (!rewards?.length) return;
-  queue.push({ rewards, oldXp, newXp });
+  queue.push({ rewards, newXp });
   if (!pump) {
     heldSince = Date.now();
     flush();
@@ -83,9 +89,11 @@ function flush() {
   }
 }
 
-function present({ rewards, oldXp, newXp }: Announcement) {
+function present({ rewards, newXp }: Announcement) {
   const total = rewards.reduce((sum, reward) => sum + reward.amount, 0);
-  const reached = levelUpRank(oldXp, newXp);
+  // The rewards in one response are exactly the delta between the totals,
+  // so the "before" needs no cache and no caller cooperation.
+  const reached = levelUpRank(newXp - total, newXp);
 
   if (reached) {
     // A single reward folds its reason into the card; a batch gets the card

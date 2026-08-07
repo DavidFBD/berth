@@ -21,10 +21,10 @@ describe("levelUpRank", () => {
     expect(levelUpRank(100, 100)).toBeNull();
   });
 
-  it("never claims a level-up when either total is unknown", () => {
-    expect(levelUpRank(undefined, 110)).toBeNull();
-    expect(levelUpRank(90, undefined)).toBeNull();
-    expect(levelUpRank(undefined, undefined)).toBeNull();
+  it("derives the crossing from a response's rewards delta (the announcer's shape)", () => {
+    // newXp 250, one +250 reward: before = 0, after = 250 → level 3 card.
+    const total = 250;
+    expect(levelUpRank(250 - total, 250)?.level).toBe(3);
   });
 
   it("stays quiet when XP moves down a rung", () => {

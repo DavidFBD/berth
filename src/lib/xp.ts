@@ -109,14 +109,11 @@ export function rankForXp(xp: number): RankInfo {
 
 /**
  * Whether an XP change crossed a rank boundary: the rank arrived at when it
- * did, null when it stayed on the same rung. Either total missing means no
- * before/after comparison exists, so no level-up is claimed.
+ * did, null when it stayed on the same rung. The announcer derives the
+ * before-total itself (new total minus the response's rewards), so both
+ * arguments are always real numbers — no missing-total escape hatch.
  */
-export function levelUpRank(
-  oldXp: number | undefined,
-  newXp: number | undefined,
-): RankInfo | null {
-  if (oldXp === undefined || newXp === undefined) return null;
+export function levelUpRank(oldXp: number, newXp: number): RankInfo | null {
   const after = rankForXp(newXp);
   return rankForXp(oldXp).level < after.level ? after : null;
 }
