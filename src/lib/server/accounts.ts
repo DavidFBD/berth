@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/server/db";
+import { CODE_ALPHABET, CODE_LENGTH } from "@/lib/invite-code";
 import type {
   Profile,
   ReferralPanel,
@@ -21,12 +22,10 @@ export type UserRow = {
   xp: number;
   referral_code: string | null;
   referred_by: string | null;
-  /** ISO timestamp; the late-claim window is measured from it. */
-  created_at: string;
 };
 
 const USER_COLUMNS =
-  "id, privy_did, wallet_address, email, avatar_id, xp, referral_code, referred_by, created_at" as const;
+  "id, privy_did, wallet_address, email, avatar_id, xp, referral_code, referred_by" as const;
 
 export function normalizeWallet(address: unknown): string | null {
   if (typeof address !== "string") return null;
@@ -173,24 +172,12 @@ export async function flushUnannounced(userId: string): Promise<RewardList> {
     .map((row) => ({ kind: row.kind, amount: row.amount }));
 }
 
-/* Unambiguous lowercase alphabet: no i/l/o/0/1 lookalikes, so a code read
-   aloud over a cup of tea survives the retelling. */
-const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
-const CODE_LENGTH = 8;
-
+/** The mint: random draws from the rulebook's alphabet (lib/invite-code). */
 function mintCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
   return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join(
     "",
   );
-}
-
-export function normalizeReferralCode(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim().toLowerCase();
-  return new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`).test(trimmed)
-    ? trimmed
-    : null;
 }
 
 /**
@@ -244,17 +231,28 @@ export async function bindReferral(
   return rows[0]?.referrer_id ?? null;
 }
 
-/** How long a fresh account can still hand-claim an invite code. */
-const LATE_CLAIM_WINDOW = "72 hours";
+/**
+ * The late-claim rule, stated ONCE: unclaimed, young (72 hours), and never
+ * poured — the payout moment IS the first verified pour, so a post-pour
+ * claim would bind a referral that can never pay out (and would invite
+ * retro-claiming settled accounts). Both the write (claimReferral) and the
+ * read (referralPanel's canClaim) ask this exact text, on the database's
+ * clock, so the hatch the UI offers is the hatch the server honours.
+ */
+const CLAIMABLE_SQL = `
+  users.referred_by is null
+  and users.created_at > now() - interval '72 hours'
+  and not exists (
+    select 1 from xp_events
+    where xp_events.user_id = users.id
+      and xp_events.kind in ('pour_in', 'pour_out')
+  )`;
 
 /**
  * The stripped-link recovery hatch: WhatsApp and friends sometimes eat the
  * ref off a shared URL (field-tested 2026-08-07), so a young account may
  * still present a friend's code by hand. Same self-referral and write-once
- * guards as bindReferral, plus two of its own: the account must be inside
- * the claim window, and must not have poured yet — the payout moment IS the
- * first verified pour, so a post-pour claim would bind a referral that can
- * never pay out (and would invite retro-claiming settled accounts).
+ * guards as bindReferral, plus the late-claim rule above.
  */
 export async function claimReferral(
   userId: string,
@@ -265,13 +263,8 @@ export async function claimReferral(
     `update users set referred_by = referrer.id, updated_at = now()
      from (select id from users where referral_code = $2) as referrer
      where users.id = $1
-       and users.referred_by is null
        and referrer.id <> $1
-       and users.created_at > now() - interval '${LATE_CLAIM_WINDOW}'
-       and not exists (
-         select 1 from xp_events
-         where user_id = $1 and kind in ('pour_in', 'pour_out')
-       )
+       and ${CLAIMABLE_SQL}
      returning referrer.id as referrer_id`,
     [userId, code],
   )) as { referrer_id: string }[];
@@ -330,27 +323,24 @@ export async function referralPanel(user: UserRow): Promise<ReferralPanel> {
       )) as { taps: number }[])
     : [{ taps: 0 }];
 
-  // Already referred means the claim question is moot; otherwise the hatch
-  // stays open only while the account is young and has never poured.
-  const pours = invitedBy
-    ? [{ n: 1 }]
-    : ((await sql.query(
-        `select count(*)::int as n from xp_events
-         where user_id = $1 and kind in ('pour_in', 'pour_out')`,
-        [user.id],
-      )) as { n: number }[]);
+  // The hatch question is CLAIMABLE_SQL's to answer — the panel asks the
+  // same predicate the claim write enforces, never a re-derivation.
+  const claimable = (await sql.query(
+    `select exists(
+       select 1 from users where users.id = $1 and ${CLAIMABLE_SQL}
+     ) as can`,
+    [user.id],
+  )) as { can: boolean }[];
 
   const { seated, poured, earned } = outbound[0] ?? {
     seated: 0,
     poured: 0,
     earned: 0,
   };
-  const withinWindow =
-    Date.now() - new Date(user.created_at).getTime() < 72 * 3600_000;
 
   return {
     invitedBy,
-    canClaim: !invitedBy && withinWindow && (pours[0]?.n ?? 0) === 0,
+    canClaim: claimable[0]?.can ?? false,
     stats: {
       taps: clicks[0]?.taps ?? 0,
       seated,

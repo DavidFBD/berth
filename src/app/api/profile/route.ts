@@ -1,11 +1,11 @@
 import { type NextRequest } from "next/server";
 import type { RewardList } from "@/lib/profile-types";
+import { normalizeInviteCode } from "@/lib/invite-code";
 import {
   awardXp,
   bindReferral,
   ensureReferralCode,
   flushUnannounced,
-  normalizeReferralCode,
   setEmail,
 } from "@/lib/server/accounts";
 import { fetchPrivyEmail } from "@/lib/server/privy";
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   // an old account clicking a friend's link stays unclaimed — the code is a
   // birth certificate, not a coupon. The XP moment comes later, at the
   // referred account's first verified pour (see xp/pour).
-  const inviteCode = normalizeReferralCode(read.caller.body.referralCode);
+  const inviteCode = normalizeInviteCode(read.caller.body.referralCode);
   if (resolved.created && inviteCode) {
     const referrerId = await bindReferral(user.id, inviteCode);
     if (referrerId) user = { ...user, referred_by: referrerId };

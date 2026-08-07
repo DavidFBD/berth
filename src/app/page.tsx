@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Home } from "@/components/home";
-import { INVITE_CODE_SHAPE, inviteCardMetadata } from "@/lib/invite-card";
+import { isInviteCode } from "@/lib/invite-code";
+import { inviteCardMetadata } from "@/lib/invite-card";
 
 /**
  * Server shell for the client app: it exists so a shared invite link can
@@ -15,7 +16,7 @@ export async function generateMetadata({
   searchParams: Promise<{ ref?: string | string[] }>;
 }): Promise<Metadata> {
   const { ref } = await searchParams;
-  if (typeof ref !== "string" || !INVITE_CODE_SHAPE.test(ref)) return {};
+  if (!isInviteCode(ref)) return {};
   return inviteCardMetadata();
 }
 

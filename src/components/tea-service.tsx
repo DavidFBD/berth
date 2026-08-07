@@ -17,6 +17,7 @@ import {
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { AVATARS, avatarSrc, type AvatarId } from "@/lib/avatars";
+import { CODE_LENGTH, isInviteCode } from "@/lib/invite-code";
 import { inviteLink } from "@/lib/referral";
 import {
   INVITE_UNLOCK_LEVEL,
@@ -338,7 +339,7 @@ function ClaimRow() {
         <input
           value={value}
           onChange={(event) => setValue(event.target.value.toLowerCase())}
-          maxLength={8}
+          maxLength={CODE_LENGTH}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -347,7 +348,7 @@ function ClaimRow() {
         />
         <button
           type="button"
-          disabled={value.length !== 8 || claim.isPending}
+          disabled={!isInviteCode(value) || claim.isPending}
           onClick={submit}
           className="h-10 shrink-0 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
         >

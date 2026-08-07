@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { InviteLanding } from "@/components/invite-landing";
-import { INVITE_CODE_SHAPE, inviteCardMetadata } from "@/lib/invite-card";
+import { normalizeInviteCode } from "@/lib/invite-code";
+import { inviteCardMetadata } from "@/lib/invite-card";
 
 /**
  * Path-based invite carrier: `/r/CODE`. Born because `?ref=` query params
@@ -15,11 +16,12 @@ type Params = { params: Promise<{ code: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { code } = await params;
-  return INVITE_CODE_SHAPE.test(code) ? inviteCardMetadata() : {};
+  return normalizeInviteCode(code) ? inviteCardMetadata() : {};
 }
 
 export default async function InvitePage({ params }: Params) {
   const { code } = await params;
-  if (!INVITE_CODE_SHAPE.test(code)) redirect("/");
-  return <InviteLanding code={code.toLowerCase()} />;
+  const normalized = normalizeInviteCode(code);
+  if (!normalized) redirect("/");
+  return <InviteLanding code={normalized} />;
 }

@@ -9,9 +9,10 @@
  * existing account is ignored, not honoured.
  */
 
+import { normalizeInviteCode } from "@/lib/invite-code";
+
 const STORAGE_KEY = "lsteatime.ref";
 const PARAM = "ref";
-const CODE_SHAPE = /^[a-z0-9]{6,12}$/;
 
 /**
  * Reads `?ref=` off the landing URL into storage. Module-scope-callable
@@ -33,12 +34,14 @@ export function captureReferralFromUrl(): void {
 /**
  * Puts a code in the pocket directly — the `/r/CODE` landing calls this
  * with its path segment, no query param involved (WhatsApp taught us that
- * query strings don't always survive the trip).
+ * query strings don't always survive the trip). The rulebook decides what
+ * fits the pocket: a code the mint can't produce is refused here, so the
+ * welcome screen never promises a seat the server would ignore.
  */
 export function pocketReferralCode(raw: string): void {
   if (typeof window === "undefined") return;
-  const code = raw.trim().toLowerCase();
-  if (!CODE_SHAPE.test(code)) return;
+  const code = normalizeInviteCode(raw);
+  if (!code) return;
   try {
     localStorage.setItem(STORAGE_KEY, code);
   } catch {

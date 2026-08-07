@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  normalizeReferralCode,
-  normalizeWallet,
-  toProfile,
-  type UserRow,
-} from "./accounts";
+import { normalizeWallet, toProfile, type UserRow } from "./accounts";
 
 describe("normalizeWallet", () => {
   const evm = "0xAbCd1234aBcD1234AbCd1234aBcD1234AbCd1234";
@@ -43,26 +38,6 @@ describe("normalizeWallet", () => {
   });
 });
 
-describe("normalizeReferralCode", () => {
-  it("lowercases and trims a well-shaped code", () => {
-    expect(normalizeReferralCode("  STEAMY42 ")).toBe("steamy42");
-  });
-
-  it("rejects lookalike characters the mint never uses", () => {
-    // i, l, o, 0, 1 are excluded from the alphabet on purpose.
-    expect(normalizeReferralCode("kettl e1")).toBeNull();
-    expect(normalizeReferralCode("kettle10")).toBeNull();
-    expect(normalizeReferralCode("oilfield")).toBeNull();
-  });
-
-  it("rejects wrong lengths and non-strings", () => {
-    expect(normalizeReferralCode("short")).toBeNull();
-    expect(normalizeReferralCode("waytoolongforacode")).toBeNull();
-    expect(normalizeReferralCode(undefined)).toBeNull();
-    expect(normalizeReferralCode(42)).toBeNull();
-  });
-});
-
 describe("toProfile", () => {
   const stale: UserRow = {
     id: "u1",
@@ -73,7 +48,6 @@ describe("toProfile", () => {
     xp: 25,
     referral_code: null,
     referred_by: null,
-    created_at: "2026-08-07T00:00:00.000Z",
   };
 
   it("patching the held row with a fresh total reflects the write without a re-read", () => {

@@ -1,9 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  claimReferral,
-  normalizeReferralCode,
-  referralPanel,
-} from "@/lib/server/accounts";
+import { normalizeInviteCode } from "@/lib/invite-code";
+import { claimReferral, referralPanel } from "@/lib/server/accounts";
 import {
   readRewardsCaller,
   resolveRewardsUser,
@@ -19,7 +16,7 @@ export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);
   if (!read.ok) return read.response;
 
-  const code = normalizeReferralCode(read.caller.body.code);
+  const code = normalizeInviteCode(read.caller.body.code);
   if (!code) {
     return NextResponse.json({ error: "bad code" }, { status: 400 });
   }

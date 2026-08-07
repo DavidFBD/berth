@@ -1,8 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  normalizeReferralCode,
-  recordReferralClick,
-} from "@/lib/server/accounts";
+import { normalizeInviteCode } from "@/lib/invite-code";
+import { recordReferralClick } from "@/lib/server/accounts";
 
 /**
  * Funnel telemetry beacon from the /r/CODE landing: one row per tap, no
@@ -14,7 +12,7 @@ export async function POST(request: NextRequest) {
     string,
     unknown
   >;
-  const code = normalizeReferralCode(body.code);
+  const code = normalizeInviteCode(body.code);
   if (code) {
     try {
       await recordReferralClick(code);

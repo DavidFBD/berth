@@ -17,9 +17,6 @@ const INVITE_IMAGE = {
   alt: "Two tea cups on a table, one steaming and one waiting, beside the words: a seat's been saved for you.",
 };
 
-/** Same shape the client-side pocket accepts; anything else is URL noise. */
-export const INVITE_CODE_SHAPE = /^[a-z0-9]{6,12}$/i;
-
 export function inviteCardMetadata(): Metadata {
   return {
     title: INVITE_TITLE,
