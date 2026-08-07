@@ -32,9 +32,13 @@ export const XP_ACTIONS = {
    * which is what makes the referral worth anything.
    */
   friend_poured: { amount: 250, once: false },
-  /** The referred side of the same moment: your first pour, having arrived
-   * via a friend's link. Once per account. */
-  invite_accepted: { amount: 50, once: true },
+  /**
+   * The referred side of the same moment: your first pour, having arrived
+   * via a friend's link. Once per account. Same amount as the referrer on
+   * purpose (David's call): an invitation reads better when both chairs at
+   * the table are worth the same.
+   */
+  invite_accepted: { amount: 250, once: true },
 } as const;
 
 export type XpKind = keyof typeof XP_ACTIONS;

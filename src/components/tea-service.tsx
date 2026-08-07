@@ -216,8 +216,8 @@ function InviteRow({ code }: { code: string }) {
           {copied ? "Link copied, off it goes" : "Set another place at the table"}
         </span>
         <span className="text-xs text-muted-foreground">
-          +{XP_ACTIONS.friend_poured.amount} XP when a friend pours their first
-          cup. They get +{XP_ACTIONS.invite_accepted.amount}.
+          +{XP_ACTIONS.friend_poured.amount} XP for you both when a friend
+          pours their first cup.
         </span>
       </span>
     </button>

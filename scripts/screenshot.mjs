@@ -27,12 +27,15 @@ const out = arg("out", `shot${mode ? `-${mode}` : ""}.png`);
 const browserName = arg("browser", "webkit");
 const [width, height] = arg("viewport", "390x844").split("x").map(Number);
 const settleMs = Number(arg("settle", "3000"));
+const dpr = Number(arg("dpr", "2"));
 
 const engine = browserName === "chromium" ? chromium : webkit;
 
-// Wait for the server rather than making the caller sequence it.
-const origin = new URL(url).origin;
-for (let tries = 0; ; tries++) {
+// Wait for the server rather than making the caller sequence it. Static
+// files (og cards and other art in scripts/) have no server to wait for.
+const isFile = new URL(url).protocol === "file:";
+const origin = isFile ? null : new URL(url).origin;
+for (let tries = 0; !isFile; tries++) {
   try {
     await fetch(origin, { signal: AbortSignal.timeout(2000) });
     break;
@@ -48,7 +51,7 @@ for (let tries = 0; ; tries++) {
 const browser = await engine.launch();
 const ctx = await browser.newContext({
   viewport: { width, height },
-  deviceScaleFactor: 2,
+  deviceScaleFactor: dpr,
 });
 const page = await ctx.newPage();
 if (mode) {
