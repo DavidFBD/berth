@@ -10,10 +10,10 @@ import {
   type SpokeChainKey,
 } from "@sodax/dapp-kit";
 import { getXChainType, useXAccounts } from "@sodax/wallet-sdk-react";
-import { isEvmChainKeyType } from "@sodax/sdk";
 
 import { DEPOSIT_SOURCE_CHAINS } from "@/lib/chains";
-import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { resolveAccount } from "@/lib/account";
+import { useAccountSession } from "@/hooks/use-account";
 
 /** One vault share (18 decimals) — reads the price-per-share via previewRedeem. */
 const ONE_SHARE = 10n ** 18n;
@@ -64,23 +64,18 @@ export function useUserVaultPosition(
   vault: Address | undefined,
 ): UserVaultPosition {
   const xAccounts = useXAccounts();
-  const privy = usePrivyEmbeddedWallet();
-  // The embedded EVM wallet NEVER enters the external wallet store, so an
-  // email user's EVM deposits would otherwise be invisible here — the pour
-  // succeeds, the shares land in the embedded address's hub wallets, and the
-  // cup still claims to await its first pour (and withdraw finds nothing).
-  const embeddedEvm =
-    privy.enabled && privy.authenticated ? privy.embedded?.address : undefined;
+  const session = useAccountSession();
 
-  // One holder row per source chain whose family has an account. On EVM the
-  // embedded wallet wins when signed in via email, mirroring useVaultWallet.
+  // One holder row per source chain whose family has an account, resolved
+  // through the one rule in lib/account — the address whose shares are read
+  // here is by construction the address that signed the deposit. (The
+  // embedded EVM wallet never enters the external wallet store, so anything
+  // less than the shared rule made email users' deposits invisible.)
   const nextHolders: LeverageYieldShareHolder[] = DEPOSIT_SOURCE_CHAINS.flatMap(
     (chainKey) => {
       const chainType = getXChainType(chainKey);
       const external = chainType ? xAccounts[chainType]?.address : undefined;
-      const address = isEvmChainKeyType(chainKey)
-        ? (embeddedEvm ?? external)
-        : external;
+      const { address } = resolveAccount(chainKey, session, external);
       return address ? [{ chainKey, address }] : [];
     },
   );

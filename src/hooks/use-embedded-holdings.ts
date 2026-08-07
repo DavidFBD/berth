@@ -19,7 +19,8 @@ import {
   getNativeGasToken,
   toBalanceReadToken,
 } from "@/lib/chains";
-import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { resolveAccount } from "@/lib/account";
+import { useAccountSession } from "@/hooks/use-account";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 
 export type EmbeddedHolding = {
@@ -81,13 +82,11 @@ export type EmbeddedHoldingsResult = {
  * Holdings are valued via the money market oracle and sorted by USD value.
  */
 export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
-  const privy = usePrivyEmbeddedWallet();
+  const session = useAccountSession();
   const solanaAccount = useXAccount({ xChainType: "SOLANA" });
   const prices = useUsdPrices();
 
-  const emailMode =
-    privy.enabled && privy.authenticated && Boolean(privy.embedded);
-  const evmAddress = privy.embedded?.address;
+  const emailMode = session.emailSession;
 
   const swept = useQueries({
     queries: EMBEDDED_CHAINS.map((chainKey) => ({
@@ -95,10 +94,11 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
         xService: getXService(getXChainType(chainKey)!),
         xChainId: chainKey,
         xTokens: getDepositTokens(chainKey).map(toBalanceReadToken),
+        // The store address passed here is the Solana account: EVM rows
+        // resolve to the embedded address and never read it, and
+        // EMBEDDED_CHAINS contains nothing but EVM + Solana.
         address: emailMode
-          ? isEvmChainKeyType(chainKey)
-            ? evmAddress
-            : solanaAccount.address
+          ? resolveAccount(chainKey, session, solanaAccount.address).address
           : undefined,
       }),
       // Must come AFTER the spread — see SWEEP_INTERVAL_MS.

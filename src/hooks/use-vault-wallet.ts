@@ -7,14 +7,12 @@ import {
 } from "@sodax/wallet-sdk-react";
 import {
   ChainKeys,
-  isEvmChainKeyType,
   type GetWalletProviderType,
   type SpokeChainKey,
 } from "@sodax/sdk";
-import {
-  usePrivyEmbeddedWallet,
-  usePrivyEvmWalletProvider,
-} from "@/hooks/use-privy-evm-wallet";
+import { resolveAccount } from "@/lib/account";
+import { useAccountSession } from "@/hooks/use-account";
+import { usePrivyEvmWalletProvider } from "@/hooks/use-privy-evm-wallet";
 
 export type VaultWalletMode = "email" | "external";
 
@@ -38,34 +36,32 @@ export type VaultWallet = {
 };
 
 /**
- * Per-chain wallet resolution with Privy preferred on EVM: a user signed in
- * via email gets their embedded wallet for any EVM source chain; every other
- * case (non-EVM chains, no Privy session) falls back to the SODAX wallet
- * store (external wallets). The embedded bridge switches chains silently, so
- * email mode never reports a wrong network.
+ * The signing face of the account module: address resolution goes through
+ * the one rule in lib/account, and this hook adds the matching provider and
+ * chain handling. The embedded bridge switches chains silently, so email
+ * mode never reports a wrong network.
  */
 export function useVaultWallet(
   chainKey: SpokeChainKey | null | undefined,
 ): VaultWallet {
   const key = chainKey ?? ChainKeys.SONIC_MAINNET;
 
-  const privy = usePrivyEmbeddedWallet();
+  const session = useAccountSession();
   const privyProvider = usePrivyEvmWalletProvider(chainKey);
 
   const externalAccount = useXAccount({ xChainId: key });
   const externalProvider = useWalletProvider({ xChainId: key });
   const evmSwitch = useEvmSwitchChain({ xChainId: key });
 
-  const emailMode =
-    privy.enabled &&
-    privy.authenticated &&
-    Boolean(privy.embedded) &&
-    Boolean(chainKey) &&
-    isEvmChainKeyType(key);
+  const resolved = resolveAccount(
+    chainKey,
+    session,
+    chainKey ? externalAccount.address : undefined,
+  );
 
-  if (emailMode) {
+  if (resolved.mode === "email") {
     return {
-      address: privy.embedded?.address,
+      address: resolved.address,
       // The bridge resolves asynchronously; consumers already handle an
       // undefined provider (CTA shows a busy state).
       walletProvider: privyProvider?.provider,
@@ -77,7 +73,7 @@ export function useVaultWallet(
   }
 
   return {
-    address: chainKey ? externalAccount.address : undefined,
+    address: resolved.address,
     walletProvider: chainKey ? externalProvider : undefined,
     mode: "external",
     isWrongChain: evmSwitch.isWrongChain,

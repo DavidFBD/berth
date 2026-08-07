@@ -3,9 +3,8 @@
 import { useMemo, useState } from "react";
 import { CaretLeft, MagnifyingGlass } from "@phosphor-icons/react";
 import { useXBalances } from "@sodax/dapp-kit";
-import { getXChainType, useXAccount, useXService } from "@sodax/wallet-sdk-react";
+import { getXChainType, useXService } from "@sodax/wallet-sdk-react";
 import {
-  isEvmChainKeyType,
   tokenLogo,
   type SpokeChainKey,
   type XToken,
@@ -33,7 +32,7 @@ import {
   EMBEDDED_CHAINS,
   useEmbeddedHoldings,
 } from "@/hooks/use-embedded-holdings";
-import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { useAccount } from "@/hooks/use-account";
 
 /**
  * Lettered circle standing in for a logo that is missing or failed to load.
@@ -179,7 +178,6 @@ export function TokenPicker({
   const [chainKey, setChainKey] = useState<SpokeChainKey | null>(null);
   const [search, setSearch] = useState("");
 
-  const privy = usePrivyEmbeddedWallet();
   const {
     emailMode,
     isLoading: holdingsLoading,
@@ -201,19 +199,11 @@ export function TokenPicker({
     [chainKey],
   );
 
-  const account = useXAccount({
-    xChainId: chainKey ?? DEPOSIT_SOURCE_CHAINS[0],
-  });
   const xService = useXService({
     xChainType: getXChainType(chainKey ?? undefined),
   });
-  // Email mode holds EVM funds at the embedded address, which never enters
-  // the external wallet store; Solana is bridged into the store, so the
-  // external account resolves there.
-  const address =
-    emailMode && chainKey && isEvmChainKeyType(chainKey)
-      ? privy.embedded?.address
-      : account.address;
+  // One rule for whose balances decorate the list — see lib/account.
+  const { address } = useAccount(chainKey ?? DEPOSIT_SOURCE_CHAINS[0]);
   const balancesQuery = useXBalances({
     params: {
       xService,
