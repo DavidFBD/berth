@@ -42,6 +42,18 @@ export type ErrorReportContext = {
   txHashes?: string[];
 };
 
+/**
+ * The pour half of a report: what was being attempted, independent of how it
+ * failed. Assembled once per run by `useVaultAction` and completed into a
+ * full context at failure time — so every report, pipeline or solver-fill,
+ * carries the same description without any caller re-deciding which fields
+ * matter.
+ */
+export type PourReportContext = Omit<
+  ErrorReportContext,
+  "friendlyMessage" | "errorCode" | "rawMessage"
+>;
+
 export type ErrorReportPayload = ErrorReportContext & {
   fingerprint: string;
   logs: CapturedLog[];

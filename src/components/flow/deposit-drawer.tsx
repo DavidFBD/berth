@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { formatUnits } from "viem";
 import { toast } from "sonner";
 import { ArrowsDownUp, CaretDown, Flame } from "@phosphor-icons/react";
@@ -11,7 +11,7 @@ import {
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
-import { useQuote, useStatus, useXBalances } from "@sodax/dapp-kit";
+import { useQuote, useXBalances } from "@sodax/dapp-kit";
 import {
   getXChainType,
   isNativeToken,
@@ -48,10 +48,6 @@ import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
-import { useErrorReporter } from "@/hooks/use-error-reporter";
-import { useAwardPour } from "@/hooks/use-profile";
-import { addressHint, type ErrorReportContext } from "@/lib/error-report";
-import { FILL_FAILED_MESSAGE } from "@/lib/error-copy";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
@@ -88,15 +84,13 @@ export function DepositDrawer({
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const meta = vault ? getVaultMeta(vault.name) : null;
-  const action = useVaultAction();
-  const pending =
-    action.step === "building" ||
-    action.step === "approving" ||
-    action.step === "signing";
+  // The pour machine owns everything past the first tap: pipeline, solver
+  // fill, toasts, XP, failure reporting. The drawer renders its states.
+  const action = useVaultAction({ onPoured });
 
   // Privy embedded wallet on EVM chains when signed in via email; external
   // wallets otherwise. Email mode switches chains silently.
-  const { address, walletProvider, isWrongChain, handleSwitchChain, ensureChain } =
+  const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureChain } =
     useVaultWallet(srcChainKey);
 
   // Email mode is balance-first: land the user on what they already hold so
@@ -116,10 +110,6 @@ export function DepositDrawer({
   }
 
   const prices = useUsdPrices();
-  // Reports a failed FILL, which happens after useVaultAction has already
-  // succeeded and handed off, so it needs its own reporter.
-  const { report: reportFill, reportState: fillReportState } =
-    useErrorReporter();
 
   const xService = useXService({ xChainType: getXChainType(srcChainKey) });
   const balancesQuery = useXBalances({
@@ -191,104 +181,13 @@ export function DepositDrawer({
       ? applySlippage(quoted, DEFAULT_SLIPPAGE_PCT)
       : undefined;
 
-  // Fill tracking after the intent lands on the hub.
-  const statusQuery = useStatus({
-    params: {
-      intentTxHash: action.response
-        ? (action.response.intentDeliveryInfo.dstTxHash as `0x${string}`)
-        : undefined,
-    },
-  });
-  const statusCode = statusQuery.data?.ok
-    ? statusQuery.data.value.status
-    : undefined;
-  const fillTxHash = statusQuery.data?.ok
-    ? statusQuery.data.value.fill_tx_hash
-    : undefined;
-
-  /**
-   * Everything a fill-failure report needs, refreshed every render. The effect
-   * below must fire on terminal status ALONE — depending on the amount or quote
-   * would re-run it mid-typing and re-toast — so it reads the latest context
-   * from here instead of closing over stale values.
-   */
-  const fillContextRef = useRef<Partial<ErrorReportContext>>({});
-  // Synced after commit, not during render: writing a ref while rendering
-  // misbehaves under concurrent rendering (and the lint rule rightly says so).
-  useEffect(() => {
-    fillContextRef.current = {
-      vaultName: vault?.name,
-      srcChainKey,
-      tokenSymbol: token?.symbol,
-      amount: parsed ? `${parsed} (raw, ${token?.decimals}dp)` : undefined,
-      addressHint: addressHint(address),
-      txHashes: [
-        action.response?.intentDeliveryInfo.dstTxHash,
-        fillTxHash,
-      ].filter((hash): hash is string => !!hash),
-    };
-  });
-
-  const { mutate: awardPour } = useAwardPour();
-  const toastedRef = useRef(false);
-  useEffect(() => {
-    if (toastedRef.current) return;
-    if (statusCode === 3) {
-      toastedRef.current = true;
-      onPoured?.();
-      toast.success("Your cup is poured.", {
-        description: "The steam does the rest.",
-      });
-      // Rewards ride the same context the failure report does: the first
-      // hash is the intent's hub tx, the ledger's dedup handle.
-      const intentTxHash = fillContextRef.current.txHashes?.[0];
-      if (intentTxHash) awardPour({ direction: "in", intentTxHash });
-    } else if (statusCode === 4) {
-      toastedRef.current = true;
-      toast.error(FILL_FAILED_MESSAGE, {
-        description: "The pour couldn't be filled. Nothing was lost, try again.",
-      });
-      // The signature went through and the intent reached the hub, then the
-      // solver failed to fill it. A failed transaction with the user's funds
-      // already in motion, so it matters more than a build-time error, not
-      // less — and nothing else in this flow reported it.
-      reportFill({
-        action: "deposit",
-        step: "filling",
-        ...fillContextRef.current,
-        errorCode: "SOLVER_FILL_FAILED",
-        friendlyMessage: FILL_FAILED_MESSAGE,
-        rawMessage: "Solver reported status 4 (failed) for the deposit intent.",
-      } as ErrorReportContext);
-    }
-  }, [statusCode, onPoured, reportFill, awardPour]);
-
   const finish = () => {
     action.reset();
     setAmount("");
-    toastedRef.current = false;
-    setTrackingTimedOut(false);
   };
 
-  // Dismissing mid-tracking would drop the intent hash and the only progress
-  // view — fills take under a minute, so keep the drawer up until terminal.
-  // But the status poll can legitimately never turn terminal (NOT_FOUND / a
-  // failing endpoint), so release the lock after a bounded wait rather than
-  // trapping the user forever.
-  const [trackingTimedOut, setTrackingTimedOut] = useState(false);
-  useEffect(() => {
-    if (action.step !== "done") return;
-    const timer = setTimeout(() => setTrackingTimedOut(true), 90_000);
-    return () => clearTimeout(timer);
-  }, [action.step]);
-  const trackingActive =
-    action.step === "done" &&
-    statusCode !== 3 &&
-    statusCode !== 4 &&
-    !trackingTimedOut;
-
   const handleOpenChange = (next: boolean) => {
-    if (!next && (pending || trackingActive)) return;
+    if (!next && action.locked) return;
     onOpenChange(next);
     if (!next) finish();
   };
@@ -351,6 +250,13 @@ export function DepositDrawer({
       inputAmount: parsed,
       minOutputAmount: minReceived,
       walletProvider,
+      walletMode: mode,
+      fillToasts: {
+        successTitle: "Your cup is poured.",
+        successDescription: "The steam does the rest.",
+        failureDescription:
+          "The pour couldn't be filled. Nothing was lost, try again.",
+      },
       ensureReady: ensureChain,
     });
   };
@@ -400,14 +306,12 @@ export function DepositDrawer({
                       onClick: () => void handleDeposit(),
                     };
 
-  const showTracking = action.step === "done" && action.response !== null;
-
   return (
     <>
       <Drawer
         open={open}
         onOpenChange={handleOpenChange}
-        disablePointerDismissal={pending || trackingActive}
+        disablePointerDismissal={action.locked}
       >
         <DrawerContent>
           <DrawerHeader>
@@ -421,12 +325,12 @@ export function DepositDrawer({
             </DrawerDescription>
           </DrawerHeader>
 
-          {vault && showTracking ? (
+          {vault && action.fillPhase ? (
             <div className="p-4">
               <IntentTracking
-                reportState={fillReportState}
-                statusCode={statusCode}
-                fillTxHash={fillTxHash}
+                reportState={action.reportState}
+                phase={action.fillPhase}
+                fillTxHash={action.fillTxHash}
                 successTitle="Your cup is poured."
                 successBody={meta ? `${meta.teaName} is steeping. The steam does the rest.` : "Your tea is steeping."}
                 onDone={() => {
@@ -435,7 +339,7 @@ export function DepositDrawer({
                 }}
               />
             </div>
-          ) : vault && pending ? (
+          ) : vault && action.pending ? (
             <div className="p-4">
               <ActionStepper
                 step={action.step}

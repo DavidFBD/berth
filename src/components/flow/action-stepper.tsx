@@ -7,6 +7,7 @@ import { shortenAddress } from "@/lib/format";
 import { SteamPlume, TeapotArt } from "@/components/tea/tea-art";
 import { CANCELLED_MESSAGE } from "@/lib/error-copy";
 import type { ReportState } from "@/lib/error-report";
+import type { FillPhase } from "@/lib/pour-lifecycle";
 import type { VaultActionStep } from "@/hooks/use-vault-action";
 
 const STEPS = [
@@ -119,12 +120,11 @@ export function ActionStepper({
 
 /**
  * The steeping tracker (design system SteepingTracker) — shown while the
- * cross-chain fill completes. Callers own the `useStatus` poll and pass the
- * raw solver status code: -1 / undefined → registering, 1 / 2 → steeping,
- * 3 → poured, 4 → kettle trouble.
+ * cross-chain fill completes. The pour machine owns the status poll and hands
+ * over its phase; solver status codes never reach this component.
  */
 export function IntentTracking({
-  statusCode,
+  phase,
   fillTxHash,
   successTitle,
   successBody,
@@ -133,7 +133,7 @@ export function IntentTracking({
   className,
   reportState = "idle",
 }: {
-  statusCode: number | undefined;
+  phase: FillPhase;
   fillTxHash?: string;
   successTitle: string;
   successBody: string;
@@ -143,7 +143,7 @@ export function IntentTracking({
   /** Reporting state for a failed fill, so the screen can say the team has it. */
   reportState?: ReportState;
 }) {
-  if (statusCode === 3) {
+  if (phase === "filled") {
     return (
       <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
         <div className="flex flex-col items-center">
@@ -166,7 +166,7 @@ export function IntentTracking({
     );
   }
 
-  if (statusCode === 4) {
+  if (phase === "failed") {
     return (
       <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
         <div className="flex flex-col items-center">
@@ -194,7 +194,7 @@ export function IntentTracking({
     );
   }
 
-  const filling = statusCode === 1 || statusCode === 2;
+  const filling = phase === "filling";
   return (
     <div className={cn("flex flex-col items-center gap-3 px-3 py-6 text-center", className)}>
       <div className="flex flex-col items-center">

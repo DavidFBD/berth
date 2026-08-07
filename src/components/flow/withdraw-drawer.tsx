@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { formatUnits } from "viem";
-import { toast } from "sonner";
 import { CaretDown } from "@phosphor-icons/react";
 import {
   ChainKeys,
@@ -12,7 +11,7 @@ import {
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
-import { useQuote, useStatus } from "@sodax/dapp-kit";
+import { useQuote } from "@sodax/dapp-kit";
 import {
   Drawer,
   DrawerContent,
@@ -30,10 +29,6 @@ import { getVaultMeta } from "@/lib/vaults-meta";
 import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
-import { useErrorReporter } from "@/hooks/use-error-reporter";
-import { useAwardPour } from "@/hooks/use-profile";
-import { addressHint, type ErrorReportContext } from "@/lib/error-report";
-import { FILL_FAILED_MESSAGE } from "@/lib/error-copy";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
@@ -81,24 +76,18 @@ export function WithdrawDrawer({
   const [customRecipient, setCustomRecipient] = useState<string | null>(null);
 
   const meta = vault ? getVaultMeta(vault.name) : null;
+  // The pour machine owns everything past the first tap: pipeline, solver
+  // fill, toasts, XP, failure reporting. The drawer renders its states.
   const action = useVaultAction();
-  const pending =
-    action.step === "building" ||
-    action.step === "approving" ||
-    action.step === "signing";
 
   // Privy embedded wallet on EVM chains when signed in via email; external
   // wallets otherwise. Email mode switches chains silently.
-  const { address, walletProvider, isWrongChain, handleSwitchChain, ensureChain } =
+  const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureChain } =
     useVaultWallet(srcChainKey);
   // Funds are delivered to the user's wallet ON the destination chain (the
   // SDK would otherwise default to `srcAddress`, the wrong format across
   // chain families) — unless the user typed a custom cash-out address.
   const ownRecipient = useVaultWallet(dstChainKey).address;
-  // A failed FILL lands after useVaultAction has handed off, so it needs its
-  // own reporter — see the deposit drawer.
-  const { report: reportFill, reportState: fillReportState } =
-    useErrorReporter();
   const trimmedCustom = customRecipient?.trim() ?? "";
   const dstIsEvm = dstChainKey ? isEvmChainKeyType(dstChainKey) : false;
   const customLooksValid =
@@ -150,100 +139,14 @@ export function WithdrawDrawer({
     minReceived !== undefined &&
     minReceived < BTC_DUST_SATS;
 
-  const statusQuery = useStatus({
-    params: {
-      intentTxHash: action.response
-        ? (action.response.intentDeliveryInfo.dstTxHash as `0x${string}`)
-        : undefined,
-    },
-  });
-  const statusCode = statusQuery.data?.ok
-    ? statusQuery.data.value.status
-    : undefined;
-  const fillTxHash = statusQuery.data?.ok
-    ? statusQuery.data.value.fill_tx_hash
-    : undefined;
-
-  /**
-   * Everything a fill-failure report needs, synced after commit so the effect
-   * below can fire on terminal status alone without closing over stale values.
-   */
-  const fillContextRef = useRef<Partial<ErrorReportContext>>({});
-  useEffect(() => {
-    fillContextRef.current = {
-      vaultName: vault?.name,
-      srcChainKey,
-      dstChainKey: dstChainKey ?? undefined,
-      tokenSymbol: outputToken?.symbol,
-      amount: parsed ? `${parsed} shares (18dp)` : undefined,
-      addressHint: addressHint(address),
-      txHashes: [
-        action.response?.intentDeliveryInfo.dstTxHash,
-        fillTxHash,
-      ].filter((hash): hash is string => !!hash),
-    };
-  });
-
-  const { mutate: awardPour } = useAwardPour();
-  const toastedRef = useRef(false);
-  useEffect(() => {
-    if (toastedRef.current) return;
-    if (statusCode === 3) {
-      toastedRef.current = true;
-      toast.success("Poured back.", {
-        description: dstChainKey
-          ? `Funds delivered on ${getChainName(dstChainKey)}.`
-          : "Funds delivered.",
-      });
-      // Rewards ride the same context the failure report does: the first
-      // hash is the intent's hub tx, the ledger's dedup handle.
-      const intentTxHash = fillContextRef.current.txHashes?.[0];
-      if (intentTxHash) awardPour({ direction: "out", intentTxHash });
-    } else if (statusCode === 4) {
-      toastedRef.current = true;
-      toast.error(FILL_FAILED_MESSAGE, {
-        description: "Your cup is untouched. Please try again.",
-      });
-      // Signed, delivered to the hub, then unfilled by the solver: a failed
-      // transaction with funds already in motion. Nothing else reported it.
-      reportFill({
-        action: "withdraw",
-        step: "filling",
-        ...fillContextRef.current,
-        errorCode: "SOLVER_FILL_FAILED",
-        friendlyMessage: FILL_FAILED_MESSAGE,
-        rawMessage: "Solver reported status 4 (failed) for the withdraw intent.",
-      } as ErrorReportContext);
-    }
-  }, [statusCode, dstChainKey, reportFill, awardPour]);
-
   const finish = () => {
     action.reset();
     setAmount("");
     setCustomRecipient(null);
-    toastedRef.current = false;
-    setTrackingTimedOut(false);
   };
 
-  // Dismissing mid-tracking would drop the intent hash and the only progress
-  // view — fills take under a minute, so keep the drawer up until terminal.
-  // But the status poll can legitimately never turn terminal (NOT_FOUND / a
-  // failing endpoint), so release the lock after a bounded wait rather than
-  // trapping the user forever.
-  const [trackingTimedOut, setTrackingTimedOut] = useState(false);
-  useEffect(() => {
-    if (action.step !== "done") return;
-    const timer = setTimeout(() => setTrackingTimedOut(true), 90_000);
-    return () => clearTimeout(timer);
-  }, [action.step]);
-  const trackingActive =
-    action.step === "done" &&
-    statusCode !== 3 &&
-    statusCode !== 4 &&
-    !trackingTimedOut;
-
   const handleOpenChange = (next: boolean) => {
-    if (!next && (pending || trackingActive)) return;
+    if (!next && action.locked) return;
     onOpenChange(next);
     if (!next) finish();
   };
@@ -273,10 +176,17 @@ export function WithdrawDrawer({
       srcAddress: address,
       dstChainKey,
       outputToken: outputToken.address,
+      outputTokenSymbol: outputToken.symbol,
       inputAmount: parsed,
       minOutputAmount: minReceived,
       recipient,
       walletProvider,
+      walletMode: mode,
+      fillToasts: {
+        successTitle: "Poured back.",
+        successDescription: `Funds delivered on ${getChainName(dstChainKey)}.`,
+        failureDescription: "Your cup is untouched. Please try again.",
+      },
       ensureReady: ensureChain,
     });
   };
@@ -331,14 +241,12 @@ export function WithdrawDrawer({
                         onClick: () => void handleWithdraw(),
                       };
 
-  const showTracking = action.step === "done" && action.response !== null;
-
   return (
     <>
       <Drawer
         open={open}
         onOpenChange={handleOpenChange}
-        disablePointerDismissal={pending || trackingActive}
+        disablePointerDismissal={action.locked}
       >
         <DrawerContent>
           <DrawerHeader>
@@ -352,12 +260,12 @@ export function WithdrawDrawer({
             </DrawerDescription>
           </DrawerHeader>
 
-          {vault && showTracking ? (
+          {vault && action.fillPhase ? (
             <div className="p-4">
               <IntentTracking
-                reportState={fillReportState}
-                statusCode={statusCode}
-                fillTxHash={fillTxHash}
+                reportState={action.reportState}
+                phase={action.fillPhase}
+                fillTxHash={action.fillTxHash}
                 successTitle="Back in your teapot."
                 successBody={
                   dstChainKey && outputToken
@@ -370,7 +278,7 @@ export function WithdrawDrawer({
                 }}
               />
             </div>
-          ) : vault && pending ? (
+          ) : vault && action.pending ? (
             <div className="p-4">
               <ActionStepper step={action.step} approveNeeded={false} />
             </div>

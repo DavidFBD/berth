@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   useLeverageYieldDeposit,
   useLeverageYieldVaultSwap,
   useLeverageYieldWithdraw,
   useSodaxContext,
+  useStatus,
   useSwapApprove,
 } from "@sodax/dapp-kit";
 import type {
@@ -19,31 +21,46 @@ import type {
 } from "@sodax/sdk";
 import {
   addressHint,
-  type ErrorReportContext,
+  type PourReportContext,
   type ReportState,
 } from "@/lib/error-report";
 import {
   CANCELLED_MESSAGE,
+  FILL_FAILED_MESSAGE,
   extractErrorCode,
   friendlyError,
   rawErrorMessage,
 } from "@/lib/error-copy";
+import {
+  TRACKING_RELEASE_MS,
+  fillPhase,
+  isPipelineStep,
+  isPourLocked,
+  resolveTracking,
+  type FillPhase,
+  type PourStep,
+} from "@/lib/pour-lifecycle";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
+import { useAwardPour } from "@/hooks/use-profile";
 
-// Re-exported so existing consumers keep one import site for error copy.
+// Re-exported so existing consumers keep one import site for error copy and
+// the step union.
 export { CANCELLED_MESSAGE };
-
-/** Where the orchestrated deposit/withdraw currently is. */
-export type VaultActionStep =
-  | "idle"
-  | "building"
-  | "approving"
-  | "signing"
-  | "done"
-  | "error";
+export type { PourStep as VaultActionStep };
 
 /** Any connected wallet provider — the exact family is resolved at runtime. */
 type AnyWalletProvider = GetWalletProviderType<SpokeChainKey>;
+
+/**
+ * The toast copy for the fill's terminal moment. Supplied per run because the
+ * voice differs by direction (and the withdraw description names the
+ * destination chain), while the one-shot firing belongs to the machine.
+ */
+export interface FillToastCopy {
+  successTitle: string;
+  successDescription: string;
+  failureDescription: string;
+}
 
 export interface RunDepositArgs {
   /** Vault proxy address on the Sonic hub (doubles as the lsoda* share token). */
@@ -60,6 +77,9 @@ export interface RunDepositArgs {
   /** Minimum lsoda* shares out, 18 decimals, slippage already applied. */
   minOutputAmount: bigint;
   walletProvider: AnyWalletProvider;
+  /** Which wallet source is signing, for error reports. */
+  walletMode: "email" | "external";
+  fillToasts: FillToastCopy;
   /**
    * Re-assert the wallet is on `srcChainKey` (embedded wallets: chain state
    * is global and can be stolen by a competing switch). Awaited before every
@@ -80,6 +100,8 @@ export interface RunWithdrawArgs {
   dstChainKey: SpokeChainKey;
   /** Output spoke-side token address on `dstChainKey`. */
   outputToken: string;
+  /** Symbol of `outputToken`, for error reports only. */
+  outputTokenSymbol?: string;
   /** lsoda* shares to swap back, 18 decimals. */
   inputAmount: bigint;
   /** Minimum output in OUTPUT token decimals, slippage already applied. */
@@ -91,38 +113,61 @@ export interface RunWithdrawArgs {
    */
   recipient: string;
   walletProvider: AnyWalletProvider;
+  /** Which wallet source is signing, for error reports. */
+  walletMode: "email" | "external";
+  fillToasts: FillToastCopy;
   /** See RunDepositArgs.ensureReady. */
   ensureReady?: () => Promise<boolean>;
 }
 
 export interface UseVaultActionResult {
-  step: VaultActionStep;
+  step: PourStep;
   error: string | null;
   /**
    * Whether the current error reached the issue tracker. `unsent` covers both
    * "not worth reporting" (user cancelled) and "reporting failed", because the
-   * user-facing distinction is only ever "the team has this" or not.
+   * user-facing distinction is only ever "the team has this" or not. One state
+   * for the whole pour: a pipeline failure and a fill failure never coexist.
    */
   reportState: ReportState;
-  response: VaultSwapResponse | null;
   /**
    * Whether the current deposit needed an approval tx: null until the
    * allowance check has run, then true/false. Drives the stepper so a
    * skipped approval isn't rendered as a completed one.
    */
   approveRequired: boolean | null;
+  /** Solver fill progress for the steeping screen; null before handoff. */
+  fillPhase: FillPhase | null;
+  /** The fill's spoke-side tx hash, once the solver reports one. */
+  fillTxHash: string | undefined;
+  /** True mid-pipeline: between first tap and signature. */
+  pending: boolean;
+  /** True while the drawer must refuse dismissal. */
+  locked: boolean;
   runDeposit: (args: RunDepositArgs) => Promise<boolean>;
   runWithdraw: (args: RunWithdrawArgs) => Promise<boolean>;
   reset: () => void;
 }
 
+/** Everything the machine remembers about the run in flight. */
+type ActivePour = {
+  context: PourReportContext;
+  fillToasts: FillToastCopy;
+};
+
 /**
- * Orchestrates the full deposit (build → allowance → approve → sign) and
- * withdraw (build → sign) flows for a leverage-yield vault. All mutations go
- * through `mutateAsyncSafe`, so nothing here ever throws — failures land in
- * `error` with friendly copy and the method resolves `false`.
+ * The whole pour, one machine: build → allowance → approve → sign, then the
+ * solver fill (tracking → filled | fillFailed). All mutations go through
+ * `mutateAsyncSafe`, so nothing here ever throws — failures land in `error`
+ * with friendly copy and the run methods resolve `false`. Post-signature, the
+ * hook owns the status poll and the terminal one-shots: success toast, XP
+ * award, and the solver-fill failure report all fire exactly once, from here.
+ * Callers never see the raw response or the solver's status codes.
  */
-export function useVaultAction(): UseVaultActionResult {
+export function useVaultAction(options?: {
+  /** Fired once when a deposit fills — the cup's bloom moment. */
+  onPoured?: () => void;
+}): UseVaultActionResult {
   const { sodax } = useSodaxContext();
   const queryClient = useQueryClient();
 
@@ -130,45 +175,141 @@ export function useVaultAction(): UseVaultActionResult {
   const buildWithdraw = useLeverageYieldWithdraw();
   const vaultSwap = useLeverageYieldVaultSwap();
   const approve = useSwapApprove();
+  const { mutate: awardPour } = useAwardPour();
 
-  const [step, setStep] = useState<VaultActionStep>("idle");
+  const [step, setStep] = useState<PourStep>("idle");
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<VaultSwapResponse | null>(null);
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
+  const [trackingTimedOut, setTrackingTimedOut] = useState(false);
   const runningRef = useRef(false);
   const { reportState, report, resetReport } = useErrorReporter();
   /**
-   * Context for the current run, so a failure can be reported with the pour
-   * that caused it. A ref because `fail` is called from deep in the pipeline
-   * and must see the latest value without re-creating every callback.
+   * The pour being run, so a failure anywhere — pipeline or solver fill — can
+   * be reported with the pour that caused it. A ref because `fail` is called
+   * from deep in the pipeline and must see the latest value without
+   * re-creating every callback. Set at run start with every field the report
+   * needs, so no failure path assembles context of its own.
    */
-  const reportContextRef = useRef<Partial<ErrorReportContext>>({});
+  const pourRef = useRef<ActivePour | null>(null);
+  /** Kept fresh without retriggering the terminal-resolution effect. */
+  const onPouredRef = useRef(options?.onPoured);
+  useEffect(() => {
+    onPouredRef.current = options?.onPoured;
+  });
 
   /** Advance the pipeline, keeping the report's "failed at" in step. */
-  const advance = useCallback((next: VaultActionStep) => {
-    reportContextRef.current.step = next;
+  const advance = useCallback((next: PourStep) => {
+    if (pourRef.current) pourRef.current.context.step = next;
     setStep(next);
   }, []);
 
-  const fail = useCallback((message: string, raw?: unknown) => {
-    // The friendly copy hides the SDK error entirely — keep the raw object
-    // on the console so field failures are diagnosable. This console line is
-    // also what the log buffer captures into the issue.
-    if (raw !== undefined) console.error("[vault-action]", raw);
-    setError(message);
-    setStep("error");
+  const fail = useCallback(
+    (message: string, raw?: unknown) => {
+      // The friendly copy hides the SDK error entirely — keep the raw object
+      // on the console so field failures are diagnosable. This console line is
+      // also what the log buffer captures into the issue.
+      if (raw !== undefined) console.error("[vault-action]", raw);
+      setError(message);
+      setStep("error");
 
-    // A cancelled pour isn't a bug; everything else goes to the team so the
-    // user never has to describe what happened.
-    report({
-      action: "deposit",
-      step: "unknown",
-      ...reportContextRef.current,
-      friendlyMessage: message,
-      errorCode: extractErrorCode(raw),
-      rawMessage: rawErrorMessage(raw),
-    } as ErrorReportContext);
-  }, [report]);
+      // A cancelled pour isn't a bug; everything else goes to the team so the
+      // user never has to describe what happened. `fail` is only reachable
+      // inside a run, after pourRef is set — a missing context would be a
+      // reporting bug, not a pour, so don't guess an attribution.
+      const pour = pourRef.current;
+      if (!pour) return;
+      report({
+        ...pour.context,
+        friendlyMessage: message,
+        errorCode: extractErrorCode(raw),
+        rawMessage: rawErrorMessage(raw),
+      });
+    },
+    [report],
+  );
+
+  // Fill tracking after the intent lands on the hub. The cast is the one
+  // place the raw response shape is reached into, and it stays inside the
+  // machine.
+  const statusQuery = useStatus({
+    params: {
+      intentTxHash: response
+        ? (response.intentDeliveryInfo.dstTxHash as `0x${string}`)
+        : undefined,
+    },
+  });
+  const statusCode = statusQuery.data?.ok
+    ? statusQuery.data.value.status
+    : undefined;
+  const fillTxHash = statusQuery.data?.ok
+    ? statusQuery.data.value.fill_tx_hash
+    : undefined;
+
+  // Terminal resolution, applied during render (house pattern: render-time
+  // state adjustment, not an effect). Only the "tracking" step resolves, and
+  // resolving leaves it, so continued polling can't re-resolve.
+  const resolution = resolveTracking(step, statusCode);
+  if (resolution) setStep(resolution);
+
+  // The terminal one-shots: toast, XP award, solver-fill failure report.
+  // The step transition is the trigger; the ref guards against dependency
+  // identity changes re-running the effect after it has fired.
+  const terminalFiredRef = useRef(false);
+  useEffect(() => {
+    if (step !== "filled" && step !== "fillFailed") return;
+    if (terminalFiredRef.current) return;
+    terminalFiredRef.current = true;
+    const pour = pourRef.current;
+    const intentTxHash = response?.intentDeliveryInfo.dstTxHash;
+
+    if (step === "filled") {
+      if (pour?.context.action === "deposit") onPouredRef.current?.();
+      if (pour) {
+        toast.success(pour.fillToasts.successTitle, {
+          description: pour.fillToasts.successDescription,
+        });
+      }
+      // Rewards ride the same handle the failure report does: the intent's
+      // hub tx hash is the ledger's dedup key.
+      if (intentTxHash) {
+        awardPour({
+          direction: pour?.context.action === "withdraw" ? "out" : "in",
+          intentTxHash,
+        });
+      }
+    } else if (pour) {
+      toast.error(FILL_FAILED_MESSAGE, {
+        description: pour.fillToasts.failureDescription,
+      });
+      // The signature went through and the intent reached the hub, then the
+      // solver failed to fill it. A failed transaction with the user's funds
+      // already in motion, so it matters more than a build-time error, not
+      // less — and nothing else in this flow reports it.
+      report({
+        ...pour.context,
+        step: "filling",
+        txHashes: [intentTxHash, fillTxHash].filter(
+          (hash): hash is string => !!hash,
+        ),
+        errorCode: "SOLVER_FILL_FAILED",
+        friendlyMessage: FILL_FAILED_MESSAGE,
+        rawMessage: `Solver reported status 4 (failed) for the ${pour.context.action} intent.`,
+      });
+    }
+  }, [step, response, fillTxHash, awardPour, report]);
+
+  // The status poll can legitimately never turn terminal (NOT_FOUND / a
+  // failing endpoint) — release the dismissal lock after a bounded wait
+  // rather than trapping the user forever.
+  useEffect(() => {
+    if (step !== "tracking") return;
+    const timer = setTimeout(
+      () => setTrackingTimedOut(true),
+      TRACKING_RELEASE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [step]);
 
   /**
    * Approvals return once the tx is submitted; poll the allowance until the
@@ -200,15 +341,20 @@ export function useVaultAction(): UseVaultActionResult {
       resetReport();
       setResponse(null);
       setApproveRequired(null);
-      reportContextRef.current = {
-        action: "deposit",
-        step: "building",
-        vaultName: args.vaultName,
-        srcChainKey: args.srcChainKey,
-        tokenSymbol: args.token.symbol,
-        amount: `${args.inputAmount} (raw, ${args.token.decimals}dp)`,
-        addressHint: addressHint(args.srcAddress),
-        walletMode: args.ensureReady ? "email" : "external",
+      setTrackingTimedOut(false);
+      terminalFiredRef.current = false;
+      pourRef.current = {
+        context: {
+          action: "deposit",
+          step: "building",
+          vaultName: args.vaultName,
+          srcChainKey: args.srcChainKey,
+          tokenSymbol: args.token.symbol,
+          amount: `${args.inputAmount} (raw, ${args.token.decimals}dp)`,
+          addressHint: addressHint(args.srcAddress),
+          walletMode: args.walletMode,
+        },
+        fillToasts: args.fillToasts,
       };
       // Every on-chain send is preceded by a chain re-assertion: embedded
       // wallets share one provider whose chain any competing switch can
@@ -314,7 +460,7 @@ export function useVaultAction(): UseVaultActionResult {
         }
 
         setResponse(swapped.value);
-        setStep("done");
+        advance("tracking");
         void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
         return true;
       } finally {
@@ -331,15 +477,21 @@ export function useVaultAction(): UseVaultActionResult {
       setError(null);
       resetReport();
       setResponse(null);
-      reportContextRef.current = {
-        action: "withdraw",
-        step: "building",
-        vaultName: args.vaultName,
-        srcChainKey: args.srcChainKey,
-        dstChainKey: args.dstChainKey,
-        amount: `${args.inputAmount} shares (18dp)`,
-        addressHint: addressHint(args.srcAddress),
-        walletMode: args.ensureReady ? "email" : "external",
+      setTrackingTimedOut(false);
+      terminalFiredRef.current = false;
+      pourRef.current = {
+        context: {
+          action: "withdraw",
+          step: "building",
+          vaultName: args.vaultName,
+          srcChainKey: args.srcChainKey,
+          dstChainKey: args.dstChainKey,
+          tokenSymbol: args.outputTokenSymbol,
+          amount: `${args.inputAmount} shares (18dp)`,
+          addressHint: addressHint(args.srcAddress),
+          walletMode: args.walletMode,
+        },
+        fillToasts: args.fillToasts,
       };
       const onRightChain = async (): Promise<boolean> => {
         if (!args.ensureReady) return true;
@@ -390,7 +542,7 @@ export function useVaultAction(): UseVaultActionResult {
         }
 
         setResponse(swapped.value);
-        setStep("done");
+        advance("tracking");
         void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
         return true;
       } finally {
@@ -406,14 +558,20 @@ export function useVaultAction(): UseVaultActionResult {
     resetReport();
     setResponse(null);
     setApproveRequired(null);
+    setTrackingTimedOut(false);
+    terminalFiredRef.current = false;
+    pourRef.current = null;
   }, [resetReport]);
 
   return {
     step,
     error,
     reportState,
-    response,
     approveRequired,
+    fillPhase: fillPhase(step, statusCode),
+    fillTxHash,
+    pending: isPipelineStep(step),
+    locked: isPourLocked(step, trackingTimedOut),
     runDeposit,
     runWithdraw,
     reset,
