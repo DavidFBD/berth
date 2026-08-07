@@ -49,6 +49,7 @@ import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
+import { useAwardPour } from "@/hooks/use-profile";
 import { addressHint, type ErrorReportContext } from "@/lib/error-report";
 import { FILL_FAILED_MESSAGE } from "@/lib/error-copy";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
@@ -228,6 +229,7 @@ export function DepositDrawer({
     };
   });
 
+  const { mutate: awardPour } = useAwardPour();
   const toastedRef = useRef(false);
   useEffect(() => {
     if (toastedRef.current) return;
@@ -237,6 +239,10 @@ export function DepositDrawer({
       toast.success("Your cup is poured.", {
         description: "The steam does the rest.",
       });
+      // Rewards ride the same context the failure report does: the first
+      // hash is the intent's hub tx, the ledger's dedup handle.
+      const intentTxHash = fillContextRef.current.txHashes?.[0];
+      if (intentTxHash) awardPour({ direction: "in", intentTxHash });
     } else if (statusCode === 4) {
       toastedRef.current = true;
       toast.error(FILL_FAILED_MESSAGE, {
@@ -255,7 +261,7 @@ export function DepositDrawer({
         rawMessage: "Solver reported status 4 (failed) for the deposit intent.",
       } as ErrorReportContext);
     }
-  }, [statusCode, onPoured, reportFill]);
+  }, [statusCode, onPoured, reportFill, awardPour]);
 
   const finish = () => {
     action.reset();

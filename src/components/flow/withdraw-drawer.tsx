@@ -31,6 +31,7 @@ import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
+import { useAwardPour } from "@/hooks/use-profile";
 import { addressHint, type ErrorReportContext } from "@/lib/error-report";
 import { FILL_FAILED_MESSAGE } from "@/lib/error-copy";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
@@ -183,6 +184,7 @@ export function WithdrawDrawer({
     };
   });
 
+  const { mutate: awardPour } = useAwardPour();
   const toastedRef = useRef(false);
   useEffect(() => {
     if (toastedRef.current) return;
@@ -193,6 +195,10 @@ export function WithdrawDrawer({
           ? `Funds delivered on ${getChainName(dstChainKey)}.`
           : "Funds delivered.",
       });
+      // Rewards ride the same context the failure report does: the first
+      // hash is the intent's hub tx, the ledger's dedup handle.
+      const intentTxHash = fillContextRef.current.txHashes?.[0];
+      if (intentTxHash) awardPour({ direction: "out", intentTxHash });
     } else if (statusCode === 4) {
       toastedRef.current = true;
       toast.error(FILL_FAILED_MESSAGE, {
@@ -209,7 +215,7 @@ export function WithdrawDrawer({
         rawMessage: "Solver reported status 4 (failed) for the withdraw intent.",
       } as ErrorReportContext);
     }
-  }, [statusCode, dstChainKey, reportFill]);
+  }, [statusCode, dstChainKey, reportFill, awardPour]);
 
   const finish = () => {
     action.reset();

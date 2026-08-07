@@ -1,0 +1,85 @@
+/**
+ * The rewards system, shared by server (award rules) and client (display).
+ *
+ * Values live here and nowhere else. Server routes import the amounts so the
+ * client can never invent its own numbers; the client imports the curve so
+ * progress bars match what the ledger will actually say.
+ */
+
+/** Everything that can earn XP, with how much and how often. */
+export const XP_ACTIONS = {
+  /** A pour into a cup, deduped by the intent's hub tx hash. */
+  pour_in: { amount: 100, once: false },
+  /** A pour back out, same dedup. Both directions are part of playing. */
+  pour_out: { amount: 100, once: false },
+  /** First time we see this account. */
+  account_created: { amount: 25, once: true },
+  /** An email lands on the account (sign-in or later linking). */
+  email_linked: { amount: 150, once: true },
+  /** Picking a face for the pantry, once. */
+  avatar_set: { amount: 25, once: true },
+  /**
+   * Trying a mode for the first time. Repeatable kind, but the dedup ref is
+   * `userId:modeId`, so each theme pays exactly once per account — the whole
+   * ladder caps at modes × 10 XP no matter how much the switch is toggled.
+   */
+  theme_tried: { amount: 10, once: false },
+} as const;
+
+export type XpKind = keyof typeof XP_ACTIONS;
+
+export function isXpKind(value: string): value is XpKind {
+  return value in XP_ACTIONS;
+}
+
+/**
+ * Rank ladder. Names are deliberately theme-agnostic: personalities restyle
+ * the app's voice, but your rank is your rank in every parlour.
+ */
+export const RANKS = [
+  { level: 1, xp: 0, name: "New Leaf" },
+  { level: 2, xp: 100, name: "First Steep" },
+  { level: 3, xp: 250, name: "Warm Cup" },
+  { level: 4, xp: 500, name: "Second Pour" },
+  { level: 5, xp: 900, name: "Full Pot" },
+  { level: 6, xp: 1500, name: "House Blend" },
+  { level: 7, xp: 2400, name: "Silver Kettle" },
+  { level: 8, xp: 3600, name: "Golden Kettle" },
+  { level: 9, xp: 5200, name: "Master Blender" },
+  { level: 10, xp: 7500, name: "Tea Sage" },
+] as const;
+
+export type RankInfo = {
+  level: number;
+  name: string;
+  /** XP into the current level. */
+  into: number;
+  /** XP span of the current level; 0 at the top of the ladder. */
+  span: number;
+  /** 0..1 progress toward the next rank; 1 at the top. */
+  progress: number;
+  nextName: string | null;
+};
+
+/** Where a given XP total sits on the ladder. */
+export function rankForXp(xp: number): RankInfo {
+  let current: (typeof RANKS)[number] = RANKS[0];
+  let next: (typeof RANKS)[number] | null = null;
+  for (const rank of RANKS) {
+    if (xp >= rank.xp) current = rank;
+    else {
+      next = rank;
+      break;
+    }
+  }
+  const span = next ? next.xp - current.xp : 0;
+  const into = xp - current.xp;
+  return {
+    level: current.level,
+    name: current.name,
+    into,
+    span,
+    progress: next ? Math.min(into / span, 1) : 1,
+    nextName: next?.name ?? null,
+  };
+}

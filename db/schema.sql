@@ -1,0 +1,37 @@
+-- LSTeaTime accounts + rewards ledger. Idempotent: safe to re-run.
+
+create table if not exists users (
+  id uuid primary key default gen_random_uuid(),
+  -- Identity is either of these (or both after linking). Wallet addresses
+  -- are stored lowercased.
+  privy_did text unique,
+  wallet_address text unique,
+  email text,
+  avatar_id text,
+  -- Denormalized total for cheap reads; xp_events is the source of truth.
+  xp integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint users_identity check (privy_did is not null or wallet_address is not null)
+);
+
+create table if not exists xp_events (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  kind text not null,
+  amount integer not null,
+  -- Dedup handle for repeatable kinds (the intent's hub tx hash for pours).
+  -- Null for once-per-account kinds.
+  ref text,
+  created_at timestamptz not null default now()
+);
+
+-- A pour's tx hash can be claimed once, ever, by anyone.
+create unique index if not exists xp_events_kind_ref_unique
+  on xp_events (kind, ref) where ref is not null;
+
+-- Once-per-account kinds (account_created, email_linked, avatar_set).
+create unique index if not exists xp_events_once_per_user
+  on xp_events (user_id, kind) where ref is null;
+
+create index if not exists xp_events_user_idx on xp_events (user_id, created_at desc);

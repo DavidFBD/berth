@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
 import { SettingsDrawer } from "@/components/settings-drawer";
+import { TeaService, XpChip } from "@/components/tea-service";
 import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
@@ -58,25 +59,28 @@ export function AccountButton({
   if (!privy.ready) return <Skeleton className="h-8 w-24" />;
 
   // Not signed in via email but past the AuthGate means an external wallet
-  // is connected. The welcome screen owns sign-in, so the header shows only
-  // the wallet pill; no competing calls to action.
-  if (!privy.authenticated) return <ConnectButton />;
+  // is connected. The welcome screen owns sign-in, so the header shows the
+  // wallet pill plus the rewards chip; the chip opens the tea service.
+  if (!privy.authenticated) return <ExternalAccountEntry />;
 
   const email = privy.user?.email?.address;
   const address = privy.embedded?.address;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setAccountOpen(true)}
-        className="flex h-8 min-w-0 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-      >
-        <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
-        <span className="truncate">
-          {email ?? (address ? shortenAddress(address) : "Account")}
-        </span>
-      </button>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <XpChip onClick={() => setAccountOpen(true)} />
+        <button
+          type="button"
+          onClick={() => setAccountOpen(true)}
+          className="flex h-8 min-w-0 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+          <span className="truncate">
+            {email ?? (address ? shortenAddress(address) : "Account")}
+          </span>
+        </button>
+      </div>
 
       <Drawer open={accountOpen} onOpenChange={setAccountOpen}>
         <DrawerContent>
@@ -88,6 +92,7 @@ export function AccountButton({
           </DrawerHeader>
 
           <div className="flex flex-col gap-2 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+            <TeaService />
             {address ? (
               <>
                 <ReceiveRow
@@ -149,6 +154,34 @@ export function AccountButton({
 
       <SettingsDrawer open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
+  );
+}
+
+/**
+ * Header entry for external-wallet visitors: the familiar connect pill plus
+ * the rewards chip, which opens a small drawer holding the tea service
+ * (rank, avatar shelf, and the email invitation with its reward).
+ */
+function ExternalAccountEntry() {
+  const [serviceOpen, setServiceOpen] = useState(false);
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <XpChip onClick={() => setServiceOpen(true)} />
+      <ConnectButton />
+      <Drawer open={serviceOpen} onOpenChange={setServiceOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Your tea service</DrawerTitle>
+            <DrawerDescription>
+              Rewards for playing, and a face for your table.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+            <TeaService />
+          </div>
+        </DrawerContent>
+      </Drawer>
+    </div>
   );
 }
 
