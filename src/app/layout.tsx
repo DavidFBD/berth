@@ -92,7 +92,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "A teapot and three cups of tea beside the words: LSTeaTime, a calming little game of filling tea cups.",
+        alt: "A steaming cup of marbled tea beside the words: LSTeaTime, a calming little game of filling teacups. The cups earn while they steep.",
       },
     ],
   },
