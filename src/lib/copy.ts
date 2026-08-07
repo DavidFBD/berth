@@ -139,6 +139,8 @@ export type Copy = {
   insidePot: string;
   insidePotSub: string;
   potTotalLabel: string;
+  /** Label for the dashboard's grand total: teapot plus every steeping cup. */
+  onTheTable: string;
 
   /* — welcome screen & footer — */
   tagline: string;
@@ -302,6 +304,7 @@ const ORIGINAL: Copy = {
   insidePot: "Inside the pot",
   insidePotSub: "What you hold, and which shelf it sits on.",
   potTotalLabel: "In the pot",
+  onTheTable: "On the table",
 
   tagline:
     "A calming little game of filling up tea cups. The cups earn while they steep.",
@@ -311,7 +314,7 @@ const ORIGINAL: Copy = {
   preferOwnWallet: "Prefer your own wallet? Connect it instead",
   mottoLead: "Tea is the way.",
   mottoDisplay: "LSTeaTime is the best time.",
-  poweredBy: "Powered by SODAX · real funds, real tea, no testnet",
+  poweredBy: "Powered by SODAX · real funds, real tea",
 
   pourIntoTitle: (teaName) => `Pour into ${teaName}`,
   pourTitleFallback: "Pour a cup",
@@ -470,6 +473,7 @@ const GANGSTER: Copy = {
   insidePot: "Inside the stash",
   insidePotSub: "What you're holding, and which shelf it rides on.",
   potTotalLabel: "In the stash",
+  onTheTable: "The whole spread",
 
   tagline:
     "Fill your cups, let them steep, watch the stash grow. Real recognize tea.",
@@ -479,7 +483,7 @@ const GANGSTER: Copy = {
   preferOwnWallet: "Got your own wallet? Bring it through",
   mottoLead: "Tea is the way.",
   mottoDisplay: "Sip game immaculate.",
-  poweredBy: "Powered by SODAX · real funds, real tea, no testnet",
+  poweredBy: "Powered by SODAX · real funds, real tea",
 
   pourIntoTitle: (teaName) => `Pour up: ${teaName}`,
   pourTitleFallback: "Pour up",
@@ -619,6 +623,7 @@ const NAN: Copy = {
   signIn: "Come in, love",
   insidePot: "Under the tea cosy",
   insidePotSub: "Everything you've got, and which shelf it's keeping warm on.",
+  onTheTable: "All told, dear",
 
   tagline:
     "Sit down, have a biscuit, and let your cups steep themselves lovely.",
@@ -775,6 +780,7 @@ const TERMINAL: Copy = {
   insidePot: "./pot",
   insidePotSub: "positions by chain. gas warnings inline_",
   potTotalLabel: "total",
+  onTheTable: "sum(everything)",
 
   tagline: "terminal-grade leveraged staking. numbers go up while you sleep_",
   signInEmail: "auth --email",
@@ -930,6 +936,7 @@ const VAPORWAVE: Copy = {
   signIn: "Ｅｎｔｅｒ",
   insidePot: "Inside the fountain",
   insidePotSub: "Your artifacts, and which arcade they sit in.",
+  onTheTable: "Ｎｅｔ　ｗｏｒｔｈ",
 
   tagline:
     "A calming little game in the eternal sunset. The cups steep forever.",
@@ -1086,6 +1093,7 @@ const SUMIE: Copy = {
   insidePot: "Within",
   insidePotSub: "What is held, and where.",
   potTotalLabel: "Within",
+  onTheTable: "All, together",
 
   tagline: "Cups fill. Tea steeps. Nothing more is needed.",
   signInEmail: "Enter with email",
@@ -1239,6 +1247,7 @@ const AURORA: Copy = {
   insidePot: "Inside the pot",
   insidePotSub: "What you hold, and which shelf it rests on.",
   potTotalLabel: "In the pot",
+  onTheTable: "The whole table",
 
   tagline:
     "A calm little game of filling tea cups under the northern lights. The cups earn while they steep.",

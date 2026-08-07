@@ -369,6 +369,22 @@ export function DepositDrawer({
                           on {getChainName(srcChainKey)}
                         </span>
                       </div>
+                      {/* What you hold of it, right on the pill — the picker
+                          shouldn't be the only place that prices the shelf. */}
+                      {address && balance !== undefined && balance > 0n && (
+                        <div className="flex shrink-0 flex-col items-end">
+                          <span className="money text-sm text-foreground">
+                            {balanceWorthUsd !== undefined
+                              ? `≈ ${money.format(balanceWorthUsd)}`
+                              : formatTokenAmount(balance, token.decimals)}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {balanceWorthUsd !== undefined
+                              ? `${formatTokenAmount(balance, token.decimals)} ${token.symbol}`
+                              : token.symbol}
+                          </span>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <span className="flex-1 text-sm text-muted-foreground">

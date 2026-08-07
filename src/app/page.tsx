@@ -11,6 +11,7 @@ import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { TeapotModule } from "@/components/tea/teapot-module";
+import { TableTotal } from "@/components/tea/table-total";
 import { AuthGate } from "@/components/welcome-screen";
 
 export default function Home() {
@@ -56,6 +57,7 @@ export default function Home() {
         </div>
       </header>
 
+      <TableTotal />
       <TeapotModule onTopUp={() => setAccountOpen(true)} />
 
       <div className="mt-4">
