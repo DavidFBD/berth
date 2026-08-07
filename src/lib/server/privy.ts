@@ -25,14 +25,28 @@ export async function verifyPrivyAuth(
 ): Promise<string | null> {
   if (!authorization?.startsWith("Bearer ")) return null;
   const token = authorization.slice("Bearer ".length);
-  const { payload } = await jwtVerify(token, getJwks(), {
-    issuer: "privy.io",
-    audience: process.env.PRIVY_APP_ID,
-  });
-  if (typeof payload.sub !== "string" || !payload.sub.startsWith("did:privy:")) {
-    throw new Error("Privy token has no DID subject");
+  try {
+    const { payload } = await jwtVerify(token, getJwks(), {
+      issuer: "privy.io",
+      audience: process.env.PRIVY_APP_ID,
+    });
+    if (
+      typeof payload.sub !== "string" ||
+      !payload.sub.startsWith("did:privy:")
+    ) {
+      throw new Error("Privy token has no DID subject");
+    }
+    return payload.sub;
+  } catch (error) {
+    // Every rejection becomes a 401 upstream, and a silent 401 hides the
+    // whole rewards UI — this line is what makes that diagnosable from
+    // `vercel logs` (it already cost one evening to learn).
+    console.error(
+      "[privy-auth] token verification failed:",
+      error instanceof Error ? `${error.name}: ${error.message}` : error,
+    );
+    throw error;
   }
-  return payload.sub;
 }
 
 type PrivyLinkedAccount = {
