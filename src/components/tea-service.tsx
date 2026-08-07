@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { motion } from "motion/react";
 import { EnvelopeSimple } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { AVATARS, avatarSrc, type AvatarId } from "@/lib/avatars";
@@ -129,15 +130,23 @@ export function XpChip({ onClick }: { onClick?: () => void }) {
   const rank = rankForXp(profile.data.xp);
   const src = avatarSrc(profile.data.avatarId);
 
+  // Keyed on the XP total: every fresh award remounts the inner span, which
+  // replays the little settle-in pop — the chip "receives" the reward.
   const inner = (
-    <>
+    <motion.span
+      key={profile.data.xp}
+      initial={{ scale: 1.25 }}
+      animate={{ scale: 1 }}
+      transition={{ type: "spring", stiffness: 500, damping: 15 }}
+      className="flex items-center gap-1.5"
+    >
       {src ? (
         <Image src={src} alt="" width={20} height={20} className="size-5 rounded-full" />
       ) : (
         <span aria-hidden className="text-xs leading-none">🍵</span>
       )}
       <span className="text-xs font-medium">Lv {rank.level}</span>
-    </>
+    </motion.span>
   );
 
   if (!onClick) {

@@ -4,9 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
 import { useXAccount } from "@sodax/wallet-sdk-react";
 import { ChainKeys } from "@sodax/sdk";
-import { toast } from "sonner";
-import { rankForXp } from "@/lib/xp";
 import type { AvatarId } from "@/lib/avatars";
+import { announceRewards } from "@/components/xp-toast";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 
 export type Profile = {
@@ -50,24 +49,10 @@ async function postProfileApi(
 }
 
 /**
- * One friendly line per fresh reward. The server only returns rewards it
- * just paid out, so refetches stay quiet.
+ * One small ceremony per fresh reward (see xp-toast.tsx). The server only
+ * returns rewards it just paid out, so refetches stay quiet.
  */
-function toastRewards(rewards: RewardList | undefined, oldXp?: number, newXp?: number) {
-  if (!rewards?.length) return;
-  const total = rewards.reduce((sum, reward) => sum + reward.amount, 0);
-  if (oldXp !== undefined && newXp !== undefined) {
-    const before = rankForXp(oldXp);
-    const after = rankForXp(newXp);
-    if (after.level > before.level) {
-      toast.success(`You brewed up to ${after.name}`, {
-        description: `Level ${after.level}. +${total} XP for playing.`,
-      });
-      return;
-    }
-  }
-  toast.success(`+${total} XP`, { description: "Rewards for playing." });
-}
+const toastRewards = announceRewards;
 
 /** The account profile, synced on first read. Disabled until an identity exists. */
 export function useProfile() {
