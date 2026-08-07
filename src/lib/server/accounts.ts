@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/server/db";
+import type { Profile } from "@/lib/profile-types";
 import { XP_ACTIONS, type XpKind } from "@/lib/xp";
 
 export type UserRow = {
@@ -149,7 +150,7 @@ export async function setEmail(userId: string, email: string): Promise<void> {
 }
 
 /** The shape every profile-ish endpoint returns to the client. */
-export function toProfile(user: UserRow) {
+export function toProfile(user: UserRow): Profile {
   return {
     xp: user.xp,
     avatarId: user.avatar_id,

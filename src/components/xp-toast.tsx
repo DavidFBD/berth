@@ -3,15 +3,15 @@
 import { motion } from "motion/react";
 import { Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
-import { rankForXp, type RankInfo } from "@/lib/xp";
-
-type RewardList = { kind: string; amount: number }[];
+import type { RewardList } from "@/lib/profile-types";
+import { levelUpRank, type RankInfo } from "@/lib/xp";
 
 /**
  * The achievement announcer. Every XP payout gets a small ceremony instead
  * of a plain toast: a spring-popped pill for ordinary rewards, and a
- * steam-wreathed card when a rank boundary is crossed. Same motion stack as
- * the rest of the app; sonner only provides the placement.
+ * steam-wreathed card when a rank boundary is crossed (the boundary logic is
+ * levelUpRank in lib/xp). Same motion stack as the rest of the app; sonner
+ * only provides the placement.
  */
 export function announceRewards(
   rewards: RewardList | undefined,
@@ -20,12 +20,10 @@ export function announceRewards(
 ) {
   if (!rewards?.length) return;
   const total = rewards.reduce((sum, reward) => sum + reward.amount, 0);
-  const after = newXp !== undefined ? rankForXp(newXp) : null;
-  const levelUp =
-    after !== null && oldXp !== undefined && rankForXp(oldXp).level < after.level;
+  const reached = levelUpRank(oldXp, newXp);
 
-  if (levelUp && after) {
-    toast.custom(() => <LevelUpCard rank={after} total={total} />, {
+  if (reached) {
+    toast.custom(() => <LevelUpCard rank={reached} total={total} />, {
       duration: 5000,
     });
   } else {

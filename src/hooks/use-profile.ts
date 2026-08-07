@@ -5,16 +5,11 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useXAccount } from "@sodax/wallet-sdk-react";
 import { ChainKeys } from "@sodax/sdk";
 import type { AvatarId } from "@/lib/avatars";
+import type { Profile, ProfileResponse } from "@/lib/profile-types";
 import { announceRewards } from "@/components/xp-toast";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 
-export type Profile = {
-  xp: number;
-  avatarId: string | null;
-  hasEmail: boolean;
-};
-
-type RewardList = { kind: string; amount: number }[];
+export type { Profile } from "@/lib/profile-types";
 
 /**
  * Who this browser is, for the rewards account: the Privy session when
@@ -35,7 +30,7 @@ async function postProfileApi(
   path: string,
   body: Record<string, unknown>,
   token: string | null,
-): Promise<(Profile & { rewards?: RewardList }) | null> {
+): Promise<ProfileResponse | null> {
   const response = await fetch(path, {
     method: "POST",
     headers: {
@@ -54,6 +49,10 @@ async function postProfileApi(
  */
 const toastRewards = announceRewards;
 
+function profileOf(data: ProfileResponse): Profile {
+  return { xp: data.xp, avatarId: data.avatarId, hasEmail: data.hasEmail };
+}
+
 /** The account profile, synced on first read. Disabled until an identity exists. */
 export function useProfile() {
   const { authenticated, wallet, key, getAccessToken } = useIdentity();
@@ -71,20 +70,30 @@ export function useProfile() {
       );
       if (!data) throw new Error("profile sync failed");
       toastRewards(data.rewards);
-      return { xp: data.xp, avatarId: data.avatarId, hasEmail: data.hasEmail };
+      return profileOf(data);
     },
   });
 }
 
-export function useSetAvatar() {
+/**
+ * The one mutation core behind every XP endpoint: token fetch, wallet
+ * attachment, the no-identity guard (nothing to award to means no request at
+ * all), the cache write, and the reward ceremony. Each public hook is just a
+ * path plus its own body fields.
+ */
+function useProfileMutation<TVars>(
+  path: string,
+  toBody: (vars: TVars) => Record<string, unknown>,
+) {
   const queryClient = useQueryClient();
   const { authenticated, wallet, key, getAccessToken } = useIdentity();
   return useMutation({
-    mutationFn: async (avatarId: AvatarId) => {
+    mutationFn: async (vars: TVars) => {
+      if (!key) return null;
       const token = authenticated ? await getAccessToken() : null;
       return postProfileApi(
-        "/api/profile/avatar",
-        { avatarId, walletAddress: wallet },
+        path,
+        { ...toBody(vars), walletAddress: wallet },
         token,
       );
     },
@@ -92,13 +101,16 @@ export function useSetAvatar() {
       if (!data) return;
       const previous = queryClient.getQueryData<Profile>(["profile", key]);
       toastRewards(data.rewards, previous?.xp, data.xp);
-      queryClient.setQueryData<Profile>(["profile", key], {
-        xp: data.xp,
-        avatarId: data.avatarId,
-        hasEmail: data.hasEmail,
-      });
+      queryClient.setQueryData<Profile>(["profile", key], profileOf(data));
     },
   });
+}
+
+/** Pick a face from the preset shelf; the first pick pays a one-time reward. */
+export function useSetAvatar() {
+  return useProfileMutation("/api/profile/avatar", (avatarId: AvatarId) => ({
+    avatarId,
+  }));
 }
 
 /**
@@ -106,29 +118,7 @@ export function useSetAvatar() {
  * enforces the once; the client just reports the tasting).
  */
 export function useAwardTheme() {
-  const queryClient = useQueryClient();
-  const { authenticated, wallet, key, getAccessToken } = useIdentity();
-  return useMutation({
-    mutationFn: async (mode: string) => {
-      if (!key) return null;
-      const token = authenticated ? await getAccessToken() : null;
-      return postProfileApi(
-        "/api/xp/theme",
-        { mode, walletAddress: wallet },
-        token,
-      );
-    },
-    onSuccess: (data) => {
-      if (!data) return;
-      const previous = queryClient.getQueryData<Profile>(["profile", key]);
-      toastRewards(data.rewards, previous?.xp, data.xp);
-      queryClient.setQueryData<Profile>(["profile", key], {
-        xp: data.xp,
-        avatarId: data.avatarId,
-        hasEmail: data.hasEmail,
-      });
-    },
-  });
+  return useProfileMutation("/api/xp/theme", (mode: string) => ({ mode }));
 }
 
 /**
@@ -137,32 +127,11 @@ export function useAwardTheme() {
  * dedups by tx hash, so a retry on next sync would be safe too).
  */
 export function useAwardPour() {
-  const queryClient = useQueryClient();
-  const { authenticated, wallet, key, getAccessToken } = useIdentity();
-  return useMutation({
-    mutationFn: async ({
-      direction,
-      intentTxHash,
-    }: {
-      direction: "in" | "out";
-      intentTxHash: string;
-    }) => {
-      const token = authenticated ? await getAccessToken() : null;
-      return postProfileApi(
-        "/api/xp/pour",
-        { direction, intentTxHash, walletAddress: wallet },
-        token,
-      );
-    },
-    onSuccess: (data) => {
-      if (!data) return;
-      const previous = queryClient.getQueryData<Profile>(["profile", key]);
-      toastRewards(data.rewards, previous?.xp, data.xp);
-      queryClient.setQueryData<Profile>(["profile", key], {
-        xp: data.xp,
-        avatarId: data.avatarId,
-        hasEmail: data.hasEmail,
-      });
-    },
-  });
+  return useProfileMutation(
+    "/api/xp/pour",
+    (vars: { direction: "in" | "out"; intentTxHash: string }) => ({
+      direction: vars.direction,
+      intentTxHash: vars.intentTxHash,
+    }),
+  );
 }

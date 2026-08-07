@@ -83,3 +83,17 @@ export function rankForXp(xp: number): RankInfo {
     nextName: next?.name ?? null,
   };
 }
+
+/**
+ * Whether an XP change crossed a rank boundary: the rank arrived at when it
+ * did, null when it stayed on the same rung. Either total missing means no
+ * before/after comparison exists, so no level-up is claimed.
+ */
+export function levelUpRank(
+  oldXp: number | undefined,
+  newXp: number | undefined,
+): RankInfo | null {
+  if (oldXp === undefined || newXp === undefined) return null;
+  const after = rankForXp(newXp);
+  return rankForXp(oldXp).level < after.level ? after : null;
+}

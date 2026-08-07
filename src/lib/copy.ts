@@ -11,13 +11,11 @@
  * Original's line rather than crashing or rendering blank.
  */
 
-export type ModeId =
-  | "original"
-  | "gangster"
-  | "nan"
-  | "terminal"
-  | "vaporwave"
-  | "sumie";
+import { isModeId, type ModeId } from "@/lib/modes";
+
+// The id list itself lives in lib/modes.ts so the server can validate a mode
+// without pulling this whole script into its bundle.
+export { isModeId, type ModeId };
 
 export type ModeMeta = {
   id: ModeId;
@@ -91,10 +89,6 @@ export const MODES: readonly ModeMeta[] = [
 ];
 
 export const DEFAULT_MODE: ModeId = "original";
-
-export function isModeId(value: unknown): value is ModeId {
-  return MODES.some((mode) => mode.id === value);
-}
 
 /** Every line of personality the UI speaks, keyed once. */
 export type Copy = {

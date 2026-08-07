@@ -1,12 +1,12 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { verifyPrivyAuth, fetchPrivyEmail } from "@/lib/server/privy";
+import { type NextRequest } from "next/server";
+import type { RewardList } from "@/lib/profile-types";
+import { awardXp, setEmail } from "@/lib/server/accounts";
+import { fetchPrivyEmail } from "@/lib/server/privy";
 import {
-  awardXp,
-  getOrCreateUser,
-  normalizeWallet,
-  setEmail,
-  toProfile,
-} from "@/lib/server/accounts";
+  readRewardsCaller,
+  resolveRewardsUser,
+  rewardsResponse,
+} from "@/lib/server/rewards-route";
 
 /**
  * Profile sync: the client calls this once per session (and after identity
@@ -16,47 +16,35 @@ import {
  * the wallet address rides along for linking and for wallet-only users.
  */
 export async function POST(request: NextRequest) {
-  let did: string | null;
-  try {
-    did = await verifyPrivyAuth(request.headers.get("authorization"));
-  } catch {
-    return NextResponse.json({ error: "invalid token" }, { status: 401 });
-  }
+  const read = await readRewardsCaller(request);
+  if (!read.ok) return read.response;
+  const resolved = await resolveRewardsUser(read.caller);
+  if (!resolved.ok) return resolved.response;
 
-  const body = (await request.json().catch(() => ({}))) as {
-    walletAddress?: unknown;
-  };
-  const wallet = normalizeWallet(body.walletAddress);
+  let { user } = resolved;
+  const rewards: RewardList = [];
 
-  const result = await getOrCreateUser({ did, wallet });
-  if (!result) {
-    return NextResponse.json({ error: "no identity" }, { status: 400 });
-  }
-  let { user } = result;
-
-  const rewards: { kind: string; amount: number }[] = [];
-  if (result.created) {
-    const { awarded } = await awardXp(user.id, "account_created", null);
-    if (awarded > 0) rewards.push({ kind: "account_created", amount: awarded });
+  // The once-per-user index makes this idempotent: replays award 0.
+  const welcome = await awardXp(user.id, "account_created", null);
+  user = { ...user, xp: welcome.xp };
+  if (welcome.awarded > 0) {
+    rewards.push({ kind: "account_created", amount: welcome.awarded });
   }
 
   // Email enrichment: only Privy sessions can have one, and it's stored on
   // first sight. The award is once-per-account, so the claimed wallet row
   // getting an email later still only pays out a single time.
-  if (did && !user.email) {
-    const email = await fetchPrivyEmail(did);
+  if (read.caller.did && !user.email) {
+    const email = await fetchPrivyEmail(read.caller.did);
     if (email) {
       await setEmail(user.id, email);
-      user = { ...user, email };
-      const { awarded } = await awardXp(user.id, "email_linked", null);
-      if (awarded > 0) rewards.push({ kind: "email_linked", amount: awarded });
+      const linked = await awardXp(user.id, "email_linked", null);
+      user = { ...user, email, xp: linked.xp };
+      if (linked.awarded > 0) {
+        rewards.push({ kind: "email_linked", amount: linked.awarded });
+      }
     }
   }
 
-  // Re-read the total: awards above moved it.
-  const fresh = await getOrCreateUser({ did, wallet });
-  return NextResponse.json({
-    ...toProfile(fresh?.user ?? user),
-    rewards,
-  });
+  return rewardsResponse(user, {}, rewards);
 }
