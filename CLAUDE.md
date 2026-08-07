@@ -28,7 +28,9 @@ only in Chromium is not verified. If the browser build is missing:
 - No dashes as punctuation in user-facing copy (reads as AI). Commas, periods.
 - No raw emoji in UI; glyphs are Phosphor duotone or nothing.
 - Every user-facing string lives in a mode's voice in `src/lib/copy.ts`;
-  never hardcode copy in components.
+  never hardcode copy in components. One deliberate exception: the rewards
+  panel (tea-service.tsx) is theme-agnostic by design, ranks and rewards read
+  the same in every parlour.
 
 ## Ritual
 

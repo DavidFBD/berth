@@ -24,6 +24,17 @@ export const XP_ACTIONS = {
    * ladder caps at modes × 10 XP no matter how much the switch is toggled.
    */
   theme_tried: { amount: 10, once: false },
+  /**
+   * A friend you invited poured their first cup. Paid to the REFERRER; the
+   * dedup ref is the referred account's id, so each friend pays exactly once
+   * no matter how many pours they go on to make. The trigger is a verified
+   * on-chain pour, not a signup — accounts are free to mint, pours are not,
+   * which is what makes the referral worth anything.
+   */
+  friend_poured: { amount: 250, once: false },
+  /** The referred side of the same moment: your first pour, having arrived
+   * via a friend's link. Once per account. */
+  invite_accepted: { amount: 50, once: true },
 } as const;
 
 export type XpKind = keyof typeof XP_ACTIONS;

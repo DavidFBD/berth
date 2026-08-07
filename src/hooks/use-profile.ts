@@ -8,6 +8,10 @@ import type { AvatarId } from "@/lib/avatars";
 import type { Profile, ProfileResponse } from "@/lib/profile-types";
 import { announceRewards } from "@/components/xp-toast";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import {
+  clearPendingReferral,
+  pendingReferralCode,
+} from "@/lib/referral";
 
 export type { Profile } from "@/lib/profile-types";
 
@@ -50,7 +54,12 @@ async function postProfileApi(
 const toastRewards = announceRewards;
 
 function profileOf(data: ProfileResponse): Profile {
-  return { xp: data.xp, avatarId: data.avatarId, hasEmail: data.hasEmail };
+  return {
+    xp: data.xp,
+    avatarId: data.avatarId,
+    hasEmail: data.hasEmail,
+    referralCode: data.referralCode,
+  };
 }
 
 /** The account profile, synced on first read. Disabled until an identity exists. */
@@ -65,10 +74,13 @@ export function useProfile() {
       const token = authenticated ? await getAccessToken() : null;
       const data = await postProfileApi(
         "/api/profile",
-        { walletAddress: wallet },
+        // The pocketed invite code rides along; the server only binds it to
+        // an account created this very request, then it's spent either way.
+        { walletAddress: wallet, referralCode: pendingReferralCode() },
         token,
       );
       if (!data) throw new Error("profile sync failed");
+      clearPendingReferral();
       toastRewards(data.rewards);
       return profileOf(data);
     },

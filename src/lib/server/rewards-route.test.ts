@@ -9,6 +9,8 @@ const stale: UserRow = {
   email: null,
   avatar_id: null,
   xp: 25,
+  referral_code: null,
+  referred_by: null,
 };
 
 describe("rewardsResponse", () => {
@@ -22,6 +24,7 @@ describe("rewardsResponse", () => {
       xp: 125,
       avatarId: "kettle",
       hasEmail: false,
+      referralCode: null,
       rewards: [{ kind: "avatar_set", amount: 25 }],
     });
   });
@@ -32,6 +35,7 @@ describe("rewardsResponse", () => {
       xp: 25,
       avatarId: null,
       hasEmail: false,
+      referralCode: null,
       rewards: [],
     });
   });

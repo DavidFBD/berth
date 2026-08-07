@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
-import { CaretDown, Coffee, EnvelopeSimple } from "@phosphor-icons/react";
+import {
+  CaretDown,
+  Check,
+  Coffee,
+  EnvelopeSimple,
+  UserPlus,
+} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { AVATARS, avatarSrc, type AvatarId } from "@/lib/avatars";
+import { inviteLink } from "@/lib/referral";
 import { rankForXp, XP_ACTIONS } from "@/lib/xp";
 import { useProfile, useSetAvatar } from "@/hooks/use-profile";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -145,6 +152,10 @@ export function TeaService() {
         )}
       </AnimatePresence>
 
+      {profile.data.referralCode && (
+        <InviteRow code={profile.data.referralCode} />
+      )}
+
       {/* The invitation: wallet guests can put a name to the account. The
           server pays the reward once the Privy session and the wallet meet
           on one row, so this button only has to open the door. */}
@@ -166,6 +177,50 @@ export function TeaService() {
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * The referral corner: tap to copy your invite link. The reward fires when
+ * the invited friend pours a first verified cup — not at signup — so the
+ * promise line names the pour, and the payout arrives on a later sync.
+ */
+function InviteRow({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink(code));
+    } catch {
+      return; // Clipboard denied: leave the row unchanged rather than lie.
+    }
+    setCopied(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 2400);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-colors hover:bg-muted"
+    >
+      {copied ? (
+        <Check className="size-5 shrink-0 text-primary" />
+      ) : (
+        <UserPlus className="size-5 shrink-0 text-primary" />
+      )}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-sm font-medium text-foreground">
+          {copied ? "Link copied, off it goes" : "Set another place at the table"}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          +{XP_ACTIONS.friend_poured.amount} XP when a friend pours their first
+          cup. They get +{XP_ACTIONS.invite_accepted.amount}.
+        </span>
+      </span>
+    </button>
   );
 }
 

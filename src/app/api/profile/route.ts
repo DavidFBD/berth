@@ -1,6 +1,12 @@
 import { type NextRequest } from "next/server";
 import type { RewardList } from "@/lib/profile-types";
-import { awardXp, setEmail } from "@/lib/server/accounts";
+import {
+  awardXp,
+  bindReferral,
+  ensureReferralCode,
+  normalizeReferralCode,
+  setEmail,
+} from "@/lib/server/accounts";
 import { fetchPrivyEmail } from "@/lib/server/privy";
 import {
   readRewardsCaller,
@@ -23,6 +29,19 @@ export async function POST(request: NextRequest) {
 
   let { user } = resolved;
   const rewards: RewardList = [];
+
+  // Referral binding: only an account born THIS request can be claimed, so
+  // an old account clicking a friend's link stays unclaimed — the code is a
+  // birth certificate, not a coupon. The XP moment comes later, at the
+  // referred account's first verified pour (see xp/pour).
+  const inviteCode = normalizeReferralCode(read.caller.body.referralCode);
+  if (resolved.created && inviteCode) {
+    const referrerId = await bindReferral(user.id, inviteCode);
+    if (referrerId) user = { ...user, referred_by: referrerId };
+  }
+
+  // Everyone gets a code of their own to hand out.
+  user = await ensureReferralCode(user);
 
   // The once-per-user index makes this idempotent: replays award 0.
   const welcome = await awardXp(user.id, "account_created", null);

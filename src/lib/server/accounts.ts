@@ -9,10 +9,12 @@ export type UserRow = {
   email: string | null;
   avatar_id: string | null;
   xp: number;
+  referral_code: string | null;
+  referred_by: string | null;
 };
 
 const USER_COLUMNS =
-  "id, privy_did, wallet_address, email, avatar_id, xp" as const;
+  "id, privy_did, wallet_address, email, avatar_id, xp, referral_code, referred_by" as const;
 
 export function normalizeWallet(address: unknown): string | null {
   if (typeof address !== "string") return null;
@@ -130,6 +132,77 @@ export async function awardXp(
   return { awarded: rows[0]?.awarded ?? 0, xp: rows[0]?.xp ?? 0 };
 }
 
+/* Unambiguous lowercase alphabet: no i/l/o/0/1 lookalikes, so a code read
+   aloud over a cup of tea survives the retelling. */
+const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+const CODE_LENGTH = 8;
+
+function mintCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
+  return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join(
+    "",
+  );
+}
+
+export function normalizeReferralCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`).test(trimmed)
+    ? trimmed
+    : null;
+}
+
+/**
+ * Gives the account its shareable code, minting one on first ask. The
+ * `where referral_code is null` guard makes concurrent syncs converge on one
+ * code; a (vanishingly rare) alphabet collision just falls through to the
+ * next attempt.
+ */
+export async function ensureReferralCode(user: UserRow): Promise<UserRow> {
+  if (user.referral_code) return user;
+  const sql = getSql();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const rows = (await sql.query(
+        `update users set referral_code = $2, updated_at = now()
+         where id = $1 and referral_code is null
+         returning ${USER_COLUMNS}`,
+        [user.id, mintCode()],
+      )) as UserRow[];
+      if (rows[0]) return rows[0];
+      // Someone else's sync won the race: read the code they minted.
+      const existing = (await sql.query(
+        `select ${USER_COLUMNS} from users where id = $1`,
+        [user.id],
+      )) as UserRow[];
+      if (existing[0]?.referral_code) return existing[0];
+    } catch {
+      // Unique collision on the code itself; mint another.
+    }
+  }
+  return user;
+}
+
+/**
+ * Binds who invited this account. Callable only for rows created this
+ * request (the route enforces that), and self-referral dies in the SQL: the
+ * code must belong to a DIFFERENT user, and referred_by only writes once.
+ */
+export async function bindReferral(
+  userId: string,
+  code: string,
+): Promise<string | null> {
+  const sql = getSql();
+  const rows = (await sql.query(
+    `update users set referred_by = referrer.id, updated_at = now()
+     from (select id from users where referral_code = $2) as referrer
+     where users.id = $1 and users.referred_by is null and referrer.id <> $1
+     returning referrer.id as referrer_id`,
+    [userId, code],
+  )) as { referrer_id: string }[];
+  return rows[0]?.referrer_id ?? null;
+}
+
 export async function setAvatar(
   userId: string,
   avatarId: string,
@@ -155,5 +228,6 @@ export function toProfile(user: UserRow): Profile {
     xp: user.xp,
     avatarId: user.avatar_id,
     hasEmail: user.email !== null,
+    referralCode: user.referral_code,
   };
 }

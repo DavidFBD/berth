@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMounted } from "@/hooks/use-mounted";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { SodaxProvider, createSodaxQueryClient } from "@sodax/dapp-kit";
@@ -13,10 +13,14 @@ import { SettingsProvider } from "@/components/settings-provider";
 import { WalletDiagnostics } from "@/components/dev/wallet-diagnostics";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
 import { installLogCapture } from "@/lib/error-log-buffer";
+import { captureReferralFromUrl, stripReferralParam } from "@/lib/referral";
 
 // At module scope, so the buffer is recording before any provider mounts and
 // misses nothing during startup. Idempotent and a no-op on the server.
 installLogCapture();
+// Same timing story: a friend's ?ref= code must be pocketed at first paint,
+// before AuthGate hides the app behind the welcome screen.
+captureReferralFromUrl();
 
 /** App-wide Phosphor default: every icon renders duotone unless overridden. */
 const ICON_DEFAULTS = { weight: "duotone" as const };
@@ -27,6 +31,10 @@ export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => createSodaxQueryClient());
   // Privy's /solana hooks are not SSR-safe — mount the bridge client-only.
   const mounted = useMounted();
+
+  // The code is already pocketed (module scope, above); once the router has
+  // hydrated it's safe to tidy the param out of the address bar.
+  useEffect(() => stripReferralParam(), []);
 
   return (
     <AppPrivyProvider>

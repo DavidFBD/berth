@@ -11,6 +11,8 @@ export type Profile = {
   xp: number;
   avatarId: string | null;
   hasEmail: boolean;
+  /** The account's own invite code; null only until the first profile sync mints it. */
+  referralCode: string | null;
 };
 
 /** A payout the server made in THIS response. Refetches stay quiet. */

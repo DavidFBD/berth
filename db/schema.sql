@@ -35,3 +35,12 @@ create unique index if not exists xp_events_once_per_user
   on xp_events (user_id, kind) where ref is null;
 
 create index if not exists xp_events_user_idx on xp_events (user_id, created_at desc);
+
+-- Referrals: every account gets a short shareable code (minted lazily on
+-- profile sync); referred_by binds once, at account creation only, so an
+-- existing account can never be retro-claimed by a link click.
+alter table users add column if not exists referral_code text;
+alter table users add column if not exists referred_by uuid references users(id);
+
+create unique index if not exists users_referral_code_unique
+  on users (referral_code) where referral_code is not null;
