@@ -149,9 +149,11 @@ export function XpChip({ onClick }: { onClick?: () => void }) {
     </motion.span>
   );
 
+  // shrink-0 + nowrap: a squeezed header must truncate its neighbours, not
+  // fold "Lv 2" onto two lines.
   if (!onClick) {
     return (
-      <span className="flex h-8 items-center gap-1.5 rounded-full border border-border bg-card px-2.5">
+      <span className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-2.5">
         {inner}
       </span>
     );
@@ -161,7 +163,7 @@ export function XpChip({ onClick }: { onClick?: () => void }) {
       type="button"
       onClick={onClick}
       aria-label={`Your rewards: ${rank.name}, level ${rank.level}`}
-      className="flex h-8 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 transition-colors hover:bg-muted"
+      className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-2.5 transition-colors hover:bg-muted"
     >
       {inner}
     </button>

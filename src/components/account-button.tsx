@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
 import { useAddFunds } from "@privy-io/react-auth";
@@ -30,6 +31,9 @@ import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { useProfile } from "@/hooks/use-profile";
+import { rankForXp } from "@/lib/xp";
+import { avatarSrc } from "@/lib/avatars";
 import { shortenAddress } from "@/lib/format";
 
 /**
@@ -68,19 +72,7 @@ export function AccountButton({
 
   return (
     <>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <XpChip onClick={() => setAccountOpen(true)} />
-        <button
-          type="button"
-          onClick={() => setAccountOpen(true)}
-          className="flex h-8 min-w-0 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-        >
-          <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
-          <span className="truncate">
-            {email ?? (address ? shortenAddress(address) : "Account")}
-          </span>
-        </button>
-      </div>
+      <AccountPill onClick={() => setAccountOpen(true)} email={email} />
 
       <Drawer open={accountOpen} onOpenChange={setAccountOpen}>
         <DrawerContent>
@@ -154,6 +146,73 @@ export function AccountButton({
 
       <SettingsDrawer open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
+  );
+}
+
+/**
+ * The one header pill for email users: the chosen face wearing the
+ * signed-in dot, plus the level. Both header buttons used to open the same
+ * pantry drawer, and the truncated email was noise — the address book
+ * belongs inside the pantry, where the email already reads in full.
+ */
+function AccountPill({
+  onClick,
+  email,
+}: {
+  onClick: () => void;
+  email?: string;
+}) {
+  const profile = useProfile();
+  const rank = profile.data ? rankForXp(profile.data.xp) : null;
+  const src = profile.data ? avatarSrc(profile.data.avatarId) : undefined;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={[
+        "Your pantry",
+        rank ? `${rank.name}, level ${rank.level}` : null,
+        email ? `signed in as ${email}` : "signed in",
+      ]
+        .filter(Boolean)
+        .join(", ")}
+      className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-card px-2.5 transition-colors hover:bg-muted"
+    >
+      {/* Keyed on the XP total: every fresh award remounts the inner span,
+          replaying the settle-in pop — the pill "receives" the reward. */}
+      <motion.span
+        key={profile.data?.xp ?? -1}
+        initial={{ scale: 1.25 }}
+        animate={{ scale: 1 }}
+        transition={{ type: "spring", stiffness: 500, damping: 15 }}
+        className="flex items-center gap-1.5"
+      >
+        <span className="relative flex size-5 shrink-0 items-center justify-center">
+          {src ? (
+            <Image
+              src={src}
+              alt=""
+              width={20}
+              height={20}
+              className="size-5 rounded-full"
+            />
+          ) : (
+            <span aria-hidden className="text-sm leading-none">
+              🍵
+            </span>
+          )}
+          {/* The signed-in dot lives on the avatar, presence-badge style. */}
+          <span
+            aria-hidden
+            className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-card"
+          />
+        </span>
+        <span className="text-xs font-medium text-foreground">
+          {rank ? `Lv ${rank.level}` : "Pantry"}
+        </span>
+      </motion.span>
+    </button>
   );
 }
 
