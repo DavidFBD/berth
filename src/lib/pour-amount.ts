@@ -18,37 +18,42 @@ export const SHARE_DECIMALS = 18;
 export const BTC_DUST_SATS = 546n;
 
 export type PourAmounts = {
-  /** Whether the field is being read as dollars (priced tokens only). */
-  usdMode: boolean;
+  /** Whether the field is being read as money (priced tokens only). */
+  moneyMode: boolean;
   /** Pre-fee amount, in the entry token's decimals: what the build receives. */
   buildAmount: bigint | undefined;
-  /** Approximate USD value of `buildAmount`, when priced. */
-  usd: number | undefined;
+  /**
+   * Approximate worth of `buildAmount` in the price's own currency — feed a
+   * USD price, get USD; feed a display-currency price, get display currency.
+   */
+  worth: number | undefined;
 };
 
 /**
- * What the typed text means. Dollars are how people think about a pour, so
- * USD is the entry mode whenever the oracle prices the token; unpriced
- * tokens fall back to token entry even if the field is nominally in USD.
+ * What the typed text means. Money is how people think about a pour, so the
+ * user's display currency is the entry mode whenever the oracle prices the
+ * token (callers pass the token price ALREADY in that currency: oracle USD ×
+ * the FX rate); unpriced tokens fall back to token entry even if the field
+ * is nominally in money.
  */
 export function pourAmounts(
   text: string,
-  denom: "usd" | "token",
+  denom: "money" | "token",
   decimals: number | undefined,
-  priceUsd: number | undefined,
+  price: number | undefined,
 ): PourAmounts {
   if (decimals === undefined) {
-    return { usdMode: false, buildAmount: undefined, usd: undefined };
+    return { moneyMode: false, buildAmount: undefined, worth: undefined };
   }
-  const usdMode = denom === "usd" && priceUsd !== undefined;
-  const buildAmount = usdMode
-    ? usdToTokenAmount(text, priceUsd, decimals)
+  const moneyMode = denom === "money" && price !== undefined;
+  const buildAmount = moneyMode
+    ? usdToTokenAmount(text, price, decimals)
     : parseAmount(text, decimals);
-  const usd =
-    buildAmount !== undefined && priceUsd !== undefined
-      ? Number(formatUnits(buildAmount, decimals)) * priceUsd
+  const worth =
+    buildAmount !== undefined && price !== undefined
+      ? Number(formatUnits(buildAmount, decimals)) * price
       : undefined;
-  return { usdMode, buildAmount, usd };
+  return { moneyMode, buildAmount, worth };
 }
 
 /**
@@ -100,20 +105,22 @@ export function depositMax(
 }
 
 /**
- * Render an amount as field text in the given denomination. USD rounds DOWN
- * to whole cents so the converted token amount never exceeds the amount it
- * was derived from (Max must stay spendable; a flip must keep meaning the
- * same pour).
+ * Render an amount as field text in the given denomination. Money rounds
+ * DOWN at the currency's own precision (cents for EUR, whole yen for JPY) so
+ * the converted token amount never exceeds the amount it was derived from
+ * (Max must stay spendable; a flip must keep meaning the same pour).
  */
 export function amountText(
   amount: bigint,
   decimals: number,
-  usdMode: boolean,
-  priceUsd: number | undefined,
+  moneyMode: boolean,
+  price: number | undefined,
+  moneyFractionDigits = 2,
 ): string {
-  if (usdMode && priceUsd !== undefined) {
-    const usd = Number(formatUnits(amount, decimals)) * priceUsd;
-    return (Math.floor(usd * 100) / 100).toFixed(2);
+  if (moneyMode && price !== undefined) {
+    const worth = Number(formatUnits(amount, decimals)) * price;
+    const scale = 10 ** moneyFractionDigits;
+    return (Math.floor(worth * scale) / scale).toFixed(moneyFractionDigits);
   }
   return formatUnits(amount, decimals);
 }

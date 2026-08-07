@@ -14,26 +14,27 @@ import {
 } from "./pour-amount";
 
 describe("pourAmounts", () => {
-  it("reads dollars when priced and the field is in USD", () => {
-    // $10 of a $2 token with 6 decimals = 5 tokens.
-    const result = pourAmounts("10", "usd", 6, 2);
-    expect(result.usdMode).toBe(true);
+  it("reads money when priced and the field is in money", () => {
+    // 10 (in whatever currency the price speaks) of a 2-per-token price
+    // with 6 decimals = 5 tokens.
+    const result = pourAmounts("10", "money", 6, 2);
+    expect(result.moneyMode).toBe(true);
     expect(result.buildAmount).toBe(5_000_000n);
-    expect(result.usd).toBeCloseTo(10);
+    expect(result.worth).toBeCloseTo(10);
   });
 
   it("reads tokens in token mode", () => {
     const result = pourAmounts("1.5", "token", 8, 3);
-    expect(result.usdMode).toBe(false);
+    expect(result.moneyMode).toBe(false);
     expect(result.buildAmount).toBe(150_000_000n);
-    expect(result.usd).toBeCloseTo(4.5);
+    expect(result.worth).toBeCloseTo(4.5);
   });
 
-  it("falls back to token entry for unpriced tokens, even in USD denom", () => {
-    const result = pourAmounts("2", "usd", 6, undefined);
-    expect(result.usdMode).toBe(false);
+  it("falls back to token entry for unpriced tokens, even in money denom", () => {
+    const result = pourAmounts("2", "money", 6, undefined);
+    expect(result.moneyMode).toBe(false);
     expect(result.buildAmount).toBe(2_000_000n);
-    expect(result.usd).toBeUndefined();
+    expect(result.worth).toBeUndefined();
   });
 
   it("rejects garbage, zero, and negatives", () => {
@@ -43,8 +44,12 @@ describe("pourAmounts", () => {
   });
 
   it("yields nothing without a token", () => {
-    const result = pourAmounts("5", "usd", undefined, 2);
-    expect(result).toEqual({ usdMode: false, buildAmount: undefined, usd: undefined });
+    const result = pourAmounts("5", "money", undefined, 2);
+    expect(result).toEqual({
+      moneyMode: false,
+      buildAmount: undefined,
+      worth: undefined,
+    });
   });
 });
 
@@ -92,9 +97,14 @@ describe("depositMax", () => {
 });
 
 describe("amountText", () => {
-  it("floors USD to whole cents so Max stays spendable", () => {
-    // 1.999999 tokens at $1 = $1.999999 → "1.99", never "2.00".
+  it("floors money to whole cents so Max stays spendable", () => {
+    // 1.999999 tokens at 1-per-token = 1.999999 → "1.99", never "2.00".
     expect(amountText(1_999_999n, 6, true, 1)).toBe("1.99");
+  });
+
+  it("floors at the currency's own precision (whole yen)", () => {
+    // 1.9 tokens at ¥150 = ¥285 exactly; 285.75 would floor to 285.
+    expect(amountText(1_905_000n, 6, true, 150, 0)).toBe("285");
   });
 
   it("prints exact token units in token mode", () => {

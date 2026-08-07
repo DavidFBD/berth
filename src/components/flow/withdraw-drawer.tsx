@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatUnits } from "viem";
-import { CaretDown } from "@phosphor-icons/react";
+import { ArrowsDownUp, CaretDown } from "@phosphor-icons/react";
 import {
   ChainKeys,
   isEvmChainKeyType,
@@ -10,6 +10,7 @@ import {
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
+import { useLeverageYieldPreviewRedeem } from "@sodax/dapp-kit";
 import {
   Drawer,
   DrawerContent,
@@ -26,15 +27,21 @@ import { getVaultMeta } from "@/lib/vaults-meta";
 import { formatTokenAmount } from "@/lib/format";
 import {
   SHARE_DECIMALS,
+  amountText,
   belowBtcDust,
   pourAmounts,
   withdrawGate,
 } from "@/lib/pour-amount";
+import { useMoney } from "@/components/settings-provider";
 import { usePourQuote } from "@/hooks/use-pour-quote";
+import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
+
+/** One vault share (18 decimals) — reads the price-per-share via previewRedeem. */
+const ONE_SHARE = 10n ** 18n;
 
 /**
  * Mirror of the deposit flow: swap lsoda* shares (held in the hub wallet
@@ -69,6 +76,9 @@ export function WithdrawDrawer({
   const [dstChainKey, setDstChainKey] = useState<SpokeChainKey | null>(null);
   const [outputToken, setOutputToken] = useState<XToken | null>(null);
   const [amount, setAmount] = useState("");
+  // What the typed amount means: the user's display currency (default, when
+  // the share price is known) or raw shares for the exact-amount crowd.
+  const [denom, setDenom] = useState<"money" | "token">("money");
   const [pickerOpen, setPickerOpen] = useState(false);
   // Optional: pour to somebody else's address (e.g. an exchange deposit
   // address — the no-bank-rails cash-out path). null = own wallet.
@@ -99,9 +109,36 @@ export function WithdrawDrawer({
       : undefined
     : ownRecipient;
 
-  // The amount pipeline: shares parsed at 18dp, the quote asked for the
-  // post-fee amount, the slippage floor — all in the pour-amount module.
-  const { buildAmount } = pourAmounts(amount, "token", SHARE_DECIMALS, undefined);
+  // A pour-back is money, not shares: the field takes the user's display
+  // currency whenever the share price is known (vault price-per-share ×
+  // hub-asset oracle price × FX), with a tap-to-flip line for exact shares.
+  // The ticker never leads; this crowd thinks in euros, not lsoda*.
+  const money = useMoney();
+  const prices = useUsdPrices();
+  const { data: pricePerShare } = useLeverageYieldPreviewRedeem({
+    params: { vault: vault?.vault, shares: ONE_SHARE },
+  });
+  const assetPriceUsd = vault ? prices.priceOfHubAsset(vault.asset) : undefined;
+  const sharePriceUsd =
+    pricePerShare !== undefined && assetPriceUsd !== undefined
+      ? Number(formatUnits(pricePerShare, SHARE_DECIMALS)) * assetPriceUsd
+      : undefined;
+  const entryPrice =
+    sharePriceUsd !== undefined ? sharePriceUsd * money.rate : undefined;
+  const sharesWorthUsd = (shares: bigint): number | undefined =>
+    sharePriceUsd !== undefined
+      ? Number(formatUnits(shares, SHARE_DECIMALS)) * sharePriceUsd
+      : undefined;
+
+  // The amount pipeline: money or shares in, shares (18dp) out; the quote is
+  // asked for the post-fee amount and the slippage floor applied — all in
+  // the pour-amount module.
+  const { moneyMode, buildAmount } = pourAmounts(
+    amount,
+    denom,
+    SHARE_DECIMALS,
+    entryPrice,
+  );
   const quote = usePourQuote({
     enabled: open && !!vault && !!dstChainKey && !!outputToken,
     src: vault
@@ -114,6 +151,16 @@ export function WithdrawDrawer({
     buildAmount,
   });
   const dustBlocked = belowBtcDust(dstChainKey, outputToken?.symbol, quote.minOut);
+  // What the quote is worth in the user's money; undefined for unpriced
+  // output tokens, which keep their token-denominated rows.
+  const quotedWorthUsd =
+    outputToken && quote.quoted !== undefined
+      ? prices.usdValue(outputToken, quote.quoted)
+      : undefined;
+  const minOutWorthUsd =
+    outputToken && quote.minOut !== undefined
+      ? prices.usdValue(outputToken, quote.minOut)
+      : undefined;
 
   const finish = () => {
     action.reset();
@@ -129,7 +176,33 @@ export function WithdrawDrawer({
 
   const handleMax = () => {
     if (availableShares <= 0n) return;
-    setAmount(formatUnits(availableShares, SHARE_DECIMALS));
+    setAmount(
+      amountText(
+        availableShares,
+        SHARE_DECIMALS,
+        moneyMode,
+        entryPrice,
+        money.fractionDigits,
+      ),
+    );
+  };
+
+  // Flip the entry denomination, carrying the current value across so the
+  // number in the field keeps meaning the same pour-back.
+  const flipDenom = () => {
+    if (entryPrice === undefined) return;
+    setDenom(moneyMode ? "token" : "money");
+    if (buildAmount) {
+      setAmount(
+        amountText(
+          buildAmount,
+          SHARE_DECIMALS,
+          !moneyMode,
+          entryPrice,
+          money.fractionDigits,
+        ),
+      );
+    }
   };
 
   const handleWithdraw = async () => {
@@ -280,27 +353,58 @@ export function WithdrawDrawer({
           ) : vault ? (
             <>
               <div className="flex flex-col gap-4 overflow-y-auto p-4">
-                {/* Shares amount */}
+                {/* Amount: money leads, shares live behind the flip */}
                 <div className="flex flex-col gap-1.5">
-                  <input
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    inputMode="decimal"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    placeholder="0"
-                    aria-label="Shares to withdraw"
-                    className={cn(
-                      "w-full bg-transparent text-4xl font-semibold text-foreground tabular-nums outline-none",
-                      "placeholder:text-muted-foreground/40",
+                  <div className="flex items-baseline gap-0.5">
+                    {moneyMode && (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "text-4xl font-semibold tabular-nums",
+                          amount
+                            ? "text-foreground"
+                            : "text-muted-foreground/40",
+                        )}
+                      >
+                        {money.symbol}
+                      </span>
                     )}
-                  />
+                    <input
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      placeholder="0"
+                      aria-label={
+                        moneyMode
+                          ? `Amount to pour back in ${money.currency}`
+                          : "Shares to withdraw"
+                      }
+                      className={cn(
+                        "w-full bg-transparent text-4xl font-semibold text-foreground tabular-nums outline-none",
+                        "placeholder:text-muted-foreground/40",
+                      )}
+                    />
+                  </div>
+                  {entryPrice !== undefined && (
+                    <button
+                      type="button"
+                      onClick={flipDenom}
+                      className="flex w-fit items-center gap-1 text-xs text-muted-foreground tabular-nums transition-colors hover:text-foreground"
+                    >
+                      <ArrowsDownUp className="size-3.5" />
+                      {moneyMode
+                        ? `≈ ${buildAmount ? formatTokenAmount(buildAmount, SHARE_DECIMALS) : "0"} ${vault.name}`
+                        : `≈ ${money.format(sharesWorthUsd(buildAmount ?? 0n) ?? 0)}`}
+                    </button>
+                  )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
-                      Your cup holds{" "}
-                      {formatTokenAmount(availableShares, SHARE_DECIMALS)}{" "}
-                      {vault.name}
+                      {sharePriceUsd !== undefined
+                        ? `Your cup holds ≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)}`
+                        : `Your cup holds ${formatTokenAmount(availableShares, SHARE_DECIMALS)} ${vault.name}`}
                     </span>
                     {availableShares > 0n && (
                       <Button variant="ghost" size="xs" onClick={handleMax}>
@@ -315,11 +419,12 @@ export function WithdrawDrawer({
                   {totalShares !== undefined &&
                     totalShares > availableShares && (
                       <p className="text-xs text-muted-foreground">
-                        {formatTokenAmount(availableShares, SHARE_DECIMALS)} of
-                        your {formatTokenAmount(totalShares, SHARE_DECIMALS)}{" "}
-                        total shares sit under {getChainName(srcChainKey)}. The
-                        rest were deposited via other chains and become
-                        withdrawable in a follow-up pass.
+                        {sharePriceUsd !== undefined
+                          ? `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)} of your ≈ ${money.format(sharesWorthUsd(totalShares) ?? 0)} total`
+                          : `${formatTokenAmount(availableShares, SHARE_DECIMALS)} of your ${formatTokenAmount(totalShares, SHARE_DECIMALS)} total shares`}{" "}
+                        sits under {getChainName(srcChainKey)}. The rest were
+                        deposited via other chains and become withdrawable in
+                        a follow-up pass.
                       </p>
                     )}
                 </div>
@@ -416,14 +521,26 @@ export function WithdrawDrawer({
                             You&apos;ll get back
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
-                            ≈ {formatTokenAmount(quote.quoted, outputToken.decimals)}{" "}
-                            {outputToken.symbol}
+                            {quotedWorthUsd !== undefined
+                              ? `≈ ${money.format(quotedWorthUsd)}`
+                              : `≈ ${formatTokenAmount(quote.quoted, outputToken.decimals)} ${outputToken.symbol}`}
                           </span>
                         </div>
+                        {quotedWorthUsd !== undefined && (
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>As</span>
+                            <span className="tabular-nums">
+                              {formatTokenAmount(quote.quoted, outputToken.decimals)}{" "}
+                              {outputToken.symbol} on {getChainName(dstChainKey)}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>At least, once poured</span>
                           <span className="tabular-nums">
-                            {formatTokenAmount(quote.minOut, outputToken.decimals)}
+                            {minOutWorthUsd !== undefined
+                              ? `≈ ${money.format(minOutWorthUsd)}`
+                              : formatTokenAmount(quote.minOut, outputToken.decimals)}
                           </span>
                         </div>
                       </>

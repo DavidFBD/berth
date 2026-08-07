@@ -109,7 +109,7 @@ export const USD_MONEY: Money = { currency: "USD", rate: 1 };
  * 0 for JPY/KRW). Intl knows; asking it once per currency is enough.
  */
 const fractionDigitsCache = new Map<string, number>();
-function currencyFractionDigits(currency: string): number {
+export function currencyFractionDigits(currency: string): number {
   let digits = fractionDigitsCache.get(currency);
   if (digits === undefined) {
     digits =
@@ -120,6 +120,28 @@ function currencyFractionDigits(currency: string): number {
     fractionDigitsCache.set(currency, digits);
   }
   return digits;
+}
+
+/**
+ * The bare currency sign ("$", "€", "¥"), for the amount field's prefix.
+ * Narrow form so AUD reads "$" rather than "A$" next to a number the user
+ * is typing.
+ */
+const symbolCache = new Map<string, string>();
+export function currencySymbol(currency: string): string {
+  let symbol = symbolCache.get(currency);
+  if (symbol === undefined) {
+    symbol =
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        currencyDisplay: "narrowSymbol",
+      })
+        .formatToParts(0)
+        .find((part) => part.type === "currency")?.value ?? currency;
+    symbolCache.set(currency, symbol);
+  }
+  return symbol;
 }
 
 function formatCurrency(value: number, currency: string, digits: number, compact = false): string {

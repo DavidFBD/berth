@@ -33,7 +33,8 @@ import {
   toBalanceReadToken,
 } from "@/lib/chains";
 import { getVaultMeta } from "@/lib/vaults-meta";
-import { formatTokenAmount, formatUsd } from "@/lib/format";
+import { formatTokenAmount } from "@/lib/format";
+import { useMoney } from "@/components/settings-provider";
 import {
   SHARE_DECIMALS,
   amountText,
@@ -78,8 +79,9 @@ export function DepositDrawer({
   );
   const [token, setToken] = useState<XToken | null>(null);
   const [amount, setAmount] = useState("");
-  // What the typed amount means: dollars (default, when priced) or tokens.
-  const [denom, setDenom] = useState<"usd" | "token">("usd");
+  // What the typed amount means: the user's display currency (default, when
+  // priced) or tokens.
+  const [denom, setDenom] = useState<"money" | "token">("money");
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const meta = vault ? getVaultMeta(vault.name) : null;
@@ -128,28 +130,38 @@ export function DepositDrawer({
       : undefined
     : undefined;
 
-  // Dollars are how people think about a pour, so the amount field takes
-  // USD whenever the oracle prices the token, with a tap-to-flip line for
-  // exact token amounts. Unpriced tokens fall back to token entry.
-  const price = token ? prices.priceOf(token) : undefined;
+  // Money is how people think about a pour, so the amount field takes the
+  // user's display currency whenever the oracle prices the token, with a
+  // tap-to-flip line for exact token amounts. Unpriced tokens fall back to
+  // token entry. The oracle speaks USD; entry converts at the FX rate.
+  const money = useMoney();
+  const priceUsd = token ? prices.priceOf(token) : undefined;
+  const entryPrice =
+    priceUsd !== undefined ? priceUsd * money.rate : undefined;
 
   // What Max must hold back so the pour can pay its own network fee.
   const { buffer: gasBuffer } = useNativeGasBuffer({
     chainKey: srcChainKey,
     token,
     isNative: !!token && isNativeToken(token),
-    priceUsd: price,
+    priceUsd,
     balance,
   });
 
   // The amount pipeline: what the text means, what the quote is asked for
   // (post-fee), and the slippage floor all live in the pour-amount module.
-  const { usdMode, buildAmount, usd: parsedUsd } = pourAmounts(
+  const { moneyMode, buildAmount } = pourAmounts(
     amount,
     denom,
     token?.decimals,
-    price,
+    entryPrice,
   );
+  const worthUsd =
+    token && buildAmount ? prices.usdValue(token, buildAmount) : undefined;
+  const balanceWorthUsd =
+    token && balance !== undefined && balance > 0n
+      ? prices.usdValue(token, balance)
+      : undefined;
   const quote = usePourQuote({
     enabled: open && !!vault && !!token,
     src: token ? { address: token.address, chainKey: srcChainKey } : null,
@@ -181,16 +193,32 @@ export function DepositDrawer({
       toast.info("Not enough left over for the kettle (network fees)");
       return;
     }
-    setAmount(amountText(max.amount, token.decimals, usdMode, price));
+    setAmount(
+      amountText(
+        max.amount,
+        token.decimals,
+        moneyMode,
+        entryPrice,
+        money.fractionDigits,
+      ),
+    );
   };
 
   // Flip the entry denomination, carrying the current value across so the
   // number in the field keeps meaning the same pour.
   const flipDenom = () => {
-    if (!token || price === undefined) return;
-    setDenom(usdMode ? "token" : "usd");
+    if (!token || entryPrice === undefined) return;
+    setDenom(moneyMode ? "token" : "money");
     if (buildAmount) {
-      setAmount(amountText(buildAmount, token.decimals, !usdMode, price));
+      setAmount(
+        amountText(
+          buildAmount,
+          token.decimals,
+          !moneyMode,
+          entryPrice,
+          money.fractionDigits,
+        ),
+      );
     }
   };
 
@@ -388,7 +416,7 @@ export function DepositDrawer({
                 {/* Amount */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-baseline gap-0.5">
-                    {usdMode && (
+                    {moneyMode && (
                       <span
                         aria-hidden
                         className={cn(
@@ -398,7 +426,7 @@ export function DepositDrawer({
                             : "text-muted-foreground/40",
                         )}
                       >
-                        $
+                        {money.symbol}
                       </span>
                     )}
                     <input
@@ -410,8 +438,8 @@ export function DepositDrawer({
                       spellCheck={false}
                       placeholder="0"
                       aria-label={
-                        usdMode
-                          ? "Deposit amount in dollars"
+                        moneyMode
+                          ? `Deposit amount in ${money.currency}`
                           : "Deposit amount"
                       }
                       disabled={!token}
@@ -421,23 +449,25 @@ export function DepositDrawer({
                       )}
                     />
                   </div>
-                  {token && price !== undefined && (
+                  {token && entryPrice !== undefined && (
                     <button
                       type="button"
                       onClick={flipDenom}
                       className="flex w-fit items-center gap-1 text-xs text-muted-foreground tabular-nums transition-colors hover:text-foreground"
                     >
                       <ArrowsDownUp className="size-3.5" />
-                      {usdMode
+                      {moneyMode
                         ? `≈ ${buildAmount ? formatTokenAmount(buildAmount, token.decimals) : "0"} ${token.symbol}`
-                        : `≈ ${parsedUsd !== undefined ? formatUsd(parsedUsd) : "$0"}`}
+                        : `≈ ${money.format(worthUsd ?? 0)}`}
                     </button>
                   )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
                       {token && address
                         ? balance !== undefined
-                          ? `Teapot holds ${formatTokenAmount(balance, token.decimals)} ${token.symbol}`
+                          ? balanceWorthUsd !== undefined
+                            ? `Teapot holds ≈ ${money.format(balanceWorthUsd)} (${formatTokenAmount(balance, token.decimals)} ${token.symbol})`
+                            : `Teapot holds ${formatTokenAmount(balance, token.decimals)} ${token.symbol}`
                           : "Peeking in the teapot…"
                         : " "}
                     </span>

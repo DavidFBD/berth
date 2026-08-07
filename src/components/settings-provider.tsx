@@ -26,6 +26,8 @@ import {
   type Currency,
 } from "@/lib/currencies";
 import {
+  currencyFractionDigits,
+  currencySymbol,
   formatMoney,
   formatMoneyPrecise,
   splitAccruingMoney,
@@ -146,6 +148,16 @@ export function useMoney() {
     return {
       /** The currency actually being printed (USD while rates settle). */
       currency: money.currency,
+      /**
+       * USD → display multiplier, for the one place that must convert the
+       * OTHER way: amount entry, where the typed number is already in the
+       * display currency and the math needs USD.
+       */
+      rate: money.rate,
+      /** The bare sign for the amount field's prefix ("$", "€", "¥"). */
+      symbol: currencySymbol(money.currency),
+      /** Conventional fraction digits (2 for EUR, 0 for JPY). */
+      fractionDigits: currencyFractionDigits(money.currency),
       format: (usd: number) => formatMoney(usd, money),
       formatPrecise: (usd: number) => formatMoneyPrecise(usd, money),
       split: (usd: number) => splitAccruingMoney(usd, money),
