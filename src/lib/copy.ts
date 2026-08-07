@@ -142,6 +142,85 @@ export type Copy = {
   mottoDisplay: string;
   poweredBy: string;
 
+  /* — pour flow: deposit drawer — */
+  pourIntoTitle: (teaName: string) => string;
+  pourTitleFallback: string;
+  pourSub: string;
+  pickCupToPour: string;
+  whatPouring: string;
+  gasShortWarning: (chainName: string, symbol: string) => string;
+  gasShortCta: (symbol: string) => string;
+  /** `amount` arrives pre-formatted: "≈ €130 (142 USDC)" or "142 USDC". */
+  teapotHolds: (amount: string) => string;
+  peekingTeapot: string;
+  maxLabel: string;
+  youllSteep: string;
+  atLeastOncePoured: string;
+  fetchingQuote: string;
+  noRouteForPair: string;
+  burnerCostChecking: string;
+  nothingForKettle: string;
+  connectChainWallet: (chainName: string) => string;
+  ctaPourHowMuch: string;
+  ctaTooMuch: string;
+  ctaSwitchNetwork: string;
+  ctaNoRoute: string;
+  ctaReadingLeaves: string;
+  pourFilledTitle: string;
+  pourFilledBody: string;
+  pourFillFailedBody: string;
+  steepingBody: (teaName: string | null) => string;
+
+  /* — pour flow: withdraw drawer — */
+  pourBackTitle: (teaName: string) => string;
+  pourBackTitleFallback: string;
+  pourBackSub: string;
+  pickCupPourBack: string;
+  /** `amount` arrives pre-formatted: "≈ €131" or "146.2 lsodaWEETH". */
+  cupHolds: (amount: string) => string;
+  signOnceOn: (chainName: string) => string;
+  /** `part`/`total` arrive pre-formatted in money or shares. */
+  splitSharesNote: (part: string, total: string, chainName: string) => string;
+  whereTo: string;
+  whereShouldWePour: string;
+  pourToDifferentAddress: string;
+  useMyWallet: string;
+  tripleCheckAddress: (symbol: string, chainName: string) => string;
+  cashOutLink: string;
+  youllGetBack: string;
+  asTokenLabel: string;
+  ctaAddressLooksOff: string;
+  ctaPourBackHowMuch: string;
+  ctaCupNotThatFull: string;
+  ctaTooSmallForBtc: string;
+  pouredBackTitle: string;
+  pouredBackBody: (chainName: string) => string;
+  pourBackFailedBody: string;
+  backInTeapotTitle: string;
+  backInTeapotBody: (symbol: string, chainName: string) => string;
+  backInTeapotBodyFallback: string;
+
+  /* — pour flow: stepper + steeping tracker — */
+  brewing: string;
+  stepBuild: string;
+  stepApprove: string;
+  stepSign: string;
+  stepSkipped: string;
+  stepMsgBuilding: string;
+  stepMsgApproving: string;
+  stepMsgSigning: string;
+  keepThisOpen: string;
+  teaSteeping: string;
+  goodTeaMinute: string;
+  carryingTray: string;
+  lovely: string;
+  kettleActingUpTitle: string;
+  fillFailedScreenBody: string;
+  closeLabel: string;
+  kitchenTold: string;
+  lettingKitchenKnow: string;
+  kitchenToldNoReport: string;
+
   /* — settings — */
   settingsTitle: string;
   settingsSub: string;
@@ -211,6 +290,89 @@ const ORIGINAL: Copy = {
   mottoLead: "Tea is the way.",
   mottoDisplay: "LSTeaTime is the best time.",
   poweredBy: "Powered by SODAX · real funds, real tea, no testnet",
+
+  pourIntoTitle: (teaName) => `Pour into ${teaName}`,
+  pourTitleFallback: "Pour a cup",
+  pourSub: "Any asset, any network. It all becomes tea.",
+  pickCupToPour: "Pick a cup to pour into.",
+  whatPouring: "What are you pouring?",
+  gasShortWarning: (chainName, symbol) =>
+    `The ${chainName} shelf has no ${symbol} to light the burner. This pour pays its network fee in ${symbol}, so it can't start until a splash arrives.`,
+  gasShortCta: (symbol) => `Send a splash of ${symbol} to your teapot address`,
+  teapotHolds: (amount) => `Teapot holds ${amount}`,
+  peekingTeapot: "Peeking in the teapot…",
+  maxLabel: "Max",
+  youllSteep: "You'll steep",
+  atLeastOncePoured: "At least, once poured",
+  fetchingQuote: "Fetching quote…",
+  noRouteForPair: "No route for this pair",
+  burnerCostChecking: "Checking what the burner costs. One moment.",
+  nothingForKettle: "Not enough left over for the kettle (network fees)",
+  connectChainWallet: (chainName) => `Connect a ${chainName} wallet`,
+  ctaPourHowMuch: "Pour how much?",
+  ctaTooMuch: "A touch more than your teapot holds",
+  ctaSwitchNetwork: "Switch network",
+  ctaNoRoute: "No blend path for this pair",
+  ctaReadingLeaves: "Reading the leaves…",
+  pourFilledTitle: "Your cup is poured.",
+  pourFilledBody: "The steam does the rest.",
+  pourFillFailedBody: "The pour couldn't be filled. Nothing was lost, try again.",
+  steepingBody: (teaName) =>
+    teaName
+      ? `${teaName} is steeping. The steam does the rest.`
+      : "Your tea is steeping.",
+
+  pourBackTitle: (teaName) => `Pour back from ${teaName}`,
+  pourBackTitleFallback: "Pour back",
+  pourBackSub: "Back to any asset, on any network. The tea keeps its warmth.",
+  pickCupPourBack: "Pick a cup to pour back from.",
+  cupHolds: (amount) => `Your cup holds ${amount}`,
+  signOnceOn: (chainName) =>
+    `You'll sign once on ${chainName}, the chain you deposited from.`,
+  splitSharesNote: (part, total, chainName) =>
+    `${part} of your ${total} total sits under ${chainName}. The rest were deposited via other chains and become withdrawable in a follow-up pass.`,
+  whereTo: "Where to?",
+  whereShouldWePour: "Where should we pour it?",
+  pourToDifferentAddress: "Pouring to a different address",
+  useMyWallet: "Use my wallet",
+  tripleCheckAddress: (symbol, chainName) =>
+    `Triple-check this. Tea poured to the wrong address is gone for good, and the receiving side (your exchange) must accept ${symbol} on ${chainName}.`,
+  cashOutLink: "Cash out? Pour to an exchange address instead →",
+  youllGetBack: "You'll get back",
+  asTokenLabel: "As",
+  ctaAddressLooksOff: "That address looks off",
+  ctaPourBackHowMuch: "Pour back how much?",
+  ctaCupNotThatFull: "Your cup isn't quite that full",
+  ctaTooSmallForBtc: "Too small a sip for Bitcoin",
+  pouredBackTitle: "Poured back.",
+  pouredBackBody: (chainName) => `Funds delivered on ${chainName}.`,
+  pourBackFailedBody: "Your cup is untouched. Please try again.",
+  backInTeapotTitle: "Back in your teapot.",
+  backInTeapotBody: (symbol, chainName) =>
+    `${symbol} is on its way to you on ${chainName}, ready when you are.`,
+  backInTeapotBodyFallback: "Ready when you are.",
+
+  brewing: "Brewing…",
+  stepBuild: "Build",
+  stepApprove: "Approve",
+  stepSign: "Sign",
+  stepSkipped: "skipped",
+  stepMsgBuilding: "Measuring the leaves…",
+  stepMsgApproving: "Warming the pot. Approve in your wallet…",
+  stepMsgSigning: "One gentle stir. Confirm in your wallet…",
+  keepThisOpen: "Keep this open, good tea takes a minute.",
+  teaSteeping: "Your tea is steeping…",
+  goodTeaMinute: "Good tea takes a minute, usually less.",
+  carryingTray: "Carrying the tray over to the solver network.",
+  lovely: "Lovely",
+  kettleActingUpTitle: "The kettle's acting up.",
+  fillFailedScreenBody:
+    "Nothing was lost and your funds are safe. If they don't reappear shortly, keep the fill hash handy for support.",
+  closeLabel: "Close",
+  kitchenTold: "The kitchen has been told, so someone can look into it.",
+  lettingKitchenKnow: "Letting the kitchen know…",
+  kitchenToldNoReport:
+    "The kitchen has been told, so someone can look into it. No need to report it.",
 
   settingsTitle: "The back room",
   settingsSub: "How the tea house looks, and what the money speaks.",
@@ -283,6 +445,80 @@ const GANGSTER: Copy = {
   mottoDisplay: "Sip game immaculate.",
   poweredBy: "Powered by SODAX · real funds, real tea, no testnet",
 
+  pourIntoTitle: (teaName) => `Pour up: ${teaName}`,
+  pourTitleFallback: "Pour up",
+  pourSub: "Any asset, any network. It all becomes tea.",
+  pickCupToPour: "Pick a cup to pour up.",
+  whatPouring: "What you pouring?",
+  gasShortWarning: (chainName, symbol) =>
+    `The ${chainName} shelf's got no ${symbol} to spark the burner. This pour pays its network fee in ${symbol}, so it's parked till a splash lands.`,
+  gasShortCta: (symbol) => `Send a splash of ${symbol} to the stash`,
+  teapotHolds: (amount) => `Stash holds ${amount}`,
+  peekingTeapot: "Checking the stash…",
+  youllSteep: "You'll be steeping",
+  atLeastOncePoured: "Floor price, once poured",
+  fetchingQuote: "Getting a number…",
+  noRouteForPair: "No route for this pair",
+  burnerCostChecking: "Pricing the burner. Hold tight.",
+  nothingForKettle: "Nothing left over for the kettle (network fees)",
+  connectChainWallet: (chainName) => `Connect a ${chainName} wallet`,
+  ctaPourHowMuch: "Pour up how much?",
+  ctaTooMuch: "That's more than the stash holds",
+  ctaSwitchNetwork: "Switch network",
+  ctaNoRoute: "No blend path for this pair",
+  ctaReadingLeaves: "Reading the leaves…",
+  pourFilledTitle: "Cup's poured.",
+  pourFilledBody: "The steam handles the rest.",
+  pourFillFailedBody: "The pour didn't fill. Nothing lost, run it back.",
+  steepingBody: (teaName) =>
+    teaName ? `${teaName}'s steeping. The steam handles the rest.` : "Tea's steeping.",
+
+  pourBackTitle: (teaName) => `Cash out: ${teaName}`,
+  pourBackTitleFallback: "Cash out",
+  pourBackSub: "Back to anything, on any network. The tea keeps its warmth.",
+  pickCupPourBack: "Pick a cup to cash out.",
+  cupHolds: (amount) => `Your cup's holding ${amount}`,
+  signOnceOn: (chainName) =>
+    `One signature on ${chainName}, the chain you rolled in from.`,
+  splitSharesNote: (part, total, chainName) =>
+    `${part} of your ${total} total rides under ${chainName}. The rest came in through other chains and cash out in a follow-up pass.`,
+  whereTo: "Where's it going?",
+  whereShouldWePour: "Where should we send it?",
+  pourToDifferentAddress: "Sending to a different address",
+  useMyWallet: "Use my wallet",
+  tripleCheckAddress: (symbol, chainName) =>
+    `Triple-check this. Tea sent to the wrong address is gone for good, and the receiving side (your exchange) has to take ${symbol} on ${chainName}.`,
+  cashOutLink: "Cashing out? Send it to an exchange address →",
+  youllGetBack: "You're getting back",
+  asTokenLabel: "As",
+  ctaAddressLooksOff: "That address looks off",
+  ctaPourBackHowMuch: "Cash out how much?",
+  ctaCupNotThatFull: "Cup's not that deep",
+  ctaTooSmallForBtc: "Too small a sip for Bitcoin",
+  pouredBackTitle: "Cashed out.",
+  pouredBackBody: (chainName) => `Funds landed on ${chainName}.`,
+  pourBackFailedBody: "Your cup's untouched. Run it back.",
+  backInTeapotTitle: "Back in the stash.",
+  backInTeapotBody: (symbol, chainName) =>
+    `${symbol} is en route on ${chainName}, ready when you are.`,
+  backInTeapotBodyFallback: "Ready when you are.",
+
+  brewing: "Brewing…",
+  stepMsgBuilding: "Measuring the leaves…",
+  stepMsgApproving: "Warming the pot. Approve in your wallet…",
+  stepMsgSigning: "One smooth stir. Confirm in your wallet…",
+  keepThisOpen: "Keep this open. Good tea takes a minute.",
+  teaSteeping: "Tea's steeping…",
+  goodTeaMinute: "Good tea takes a minute, usually less.",
+  carryingTray: "Tray's on its way to the solver network.",
+  lovely: "Smooth",
+  kettleActingUpTitle: "Kettle's acting up.",
+  fillFailedScreenBody:
+    "Nothing was lost and your funds are safe. If they don't show shortly, keep the fill hash handy for support.",
+  kitchenTold: "The kitchen's been told. Someone's on it.",
+  lettingKitchenKnow: "Putting the kitchen on notice…",
+  kitchenToldNoReport: "The kitchen's been told. Someone's on it, no need to report.",
+
   settingsTitle: "The back office",
   settingsSub: "How the lounge looks, and what the money talks.",
 
@@ -341,6 +577,84 @@ const NAN: Copy = {
   preferOwnWallet: "Brought your own wallet? That's fine too, dear",
   mottoLead: "Tea is the way.",
   mottoDisplay: "There's always time for a cuppa.",
+
+  pourIntoTitle: (teaName) => `A pour of ${teaName}, dear?`,
+  pourTitleFallback: "Pour a cuppa",
+  pourSub: "Anything you like, from anywhere. It all becomes tea, love.",
+  pickCupToPour: "Pick a cup to pour into, dear.",
+  whatPouring: "What are we pouring, love?",
+  gasShortWarning: (chainName, symbol) =>
+    `The ${chainName} shelf hasn't a drop of ${symbol} for the stove, love. This pour pays its little network fee in ${symbol}, so it'll wait until a splash arrives.`,
+  gasShortCta: (symbol) => `Send a splash of ${symbol} over to your teapot, dear`,
+  teapotHolds: (amount) => `The pot's holding ${amount}`,
+  peekingTeapot: "Just peeking in the pot…",
+  youllSteep: "You'll be steeping",
+  atLeastOncePoured: "At the very least, once poured",
+  fetchingQuote: "Asking the kitchen…",
+  noRouteForPair: "That pairing won't take, dear",
+  burnerCostChecking: "Just checking what the stove costs, love. One moment.",
+  nothingForKettle: "Not enough left for the kettle, I'm afraid (network fees)",
+  connectChainWallet: (chainName) => `Connect a ${chainName} wallet, dear`,
+  ctaPourHowMuch: "How much shall we pour?",
+  ctaTooMuch: "A touch more than the pot holds, love",
+  ctaSwitchNetwork: "Switch over, dear",
+  ctaNoRoute: "No blend path for that pair, I'm afraid",
+  ctaReadingLeaves: "Reading the leaves…",
+  pourFilledTitle: "There we are, poured.",
+  pourFilledBody: "The steam does the rest, love.",
+  pourFillFailedBody: "The pour didn't take, I'm afraid. Nothing lost. Try again, dear.",
+  steepingBody: (teaName) =>
+    teaName
+      ? `${teaName} is steeping nicely. The steam does the rest.`
+      : "Your tea is steeping nicely.",
+
+  pourBackTitle: (teaName) => `Tip back your ${teaName}, dear?`,
+  pourBackTitleFallback: "Tip it back",
+  pourBackSub: "Back to whatever you like, wherever you like. The tea keeps its warmth.",
+  pickCupPourBack: "Pick a cup to tip back, dear.",
+  cupHolds: (amount) => `Your cup's holding ${amount}`,
+  signOnceOn: (chainName) =>
+    `Just the one signature on ${chainName}, love, the chain you came in on.`,
+  splitSharesNote: (part, total, chainName) =>
+    `${part} of your ${total} sits under ${chainName}, dear. The rest came in by other doors and can be tipped back in another little pass.`,
+  whereTo: "Where to, love?",
+  whereShouldWePour: "Where shall we pour it, dear?",
+  pourToDifferentAddress: "Pouring to a different address",
+  useMyWallet: "Back to my wallet, please",
+  tripleCheckAddress: (symbol, chainName) =>
+    `Do triple-check this, love. Tea poured to a wrong address is gone for good, and the receiving side (your exchange) must take ${symbol} on ${chainName}.`,
+  cashOutLink: "Cashing out? Pour it to an exchange address instead →",
+  youllGetBack: "You'll get back",
+  asTokenLabel: "As",
+  ctaAddressLooksOff: "That address looks a bit off, dear",
+  ctaPourBackHowMuch: "How much shall we tip back?",
+  ctaCupNotThatFull: "The cup isn't quite that full, love",
+  ctaTooSmallForBtc: "Too small a sip for Bitcoin, I'm afraid",
+  pouredBackTitle: "Tipped back, dear.",
+  pouredBackBody: (chainName) => `All delivered on ${chainName}, love.`,
+  pourBackFailedBody: "Your cup's untouched, dear. Do try again.",
+  backInTeapotTitle: "Back in your teapot, love.",
+  backInTeapotBody: (symbol, chainName) =>
+    `Your ${symbol} is on its way over on ${chainName}. Ready when you are, dear.`,
+  backInTeapotBodyFallback: "Ready when you are, dear.",
+
+  brewing: "Brewing, dear…",
+  stepMsgBuilding: "Measuring the leaves…",
+  stepMsgApproving: "Warming the pot. Say yes in your wallet, love…",
+  stepMsgSigning: "One gentle stir. Confirm in your wallet, dear…",
+  keepThisOpen: "Keep this open, love. Good tea takes a minute.",
+  teaSteeping: "Your tea is steeping…",
+  goodTeaMinute: "Good tea takes a minute, usually less.",
+  carryingTray: "Carrying the tray over now, dear.",
+  lovely: "Lovely",
+  kettleActingUpTitle: "The kettle's playing up, dear.",
+  fillFailedScreenBody:
+    "Nothing was lost and your funds are quite safe, love. If they don't reappear shortly, keep the fill hash handy for support.",
+  closeLabel: "Close",
+  kitchenTold: "The kitchen's been told, dear. Someone will see to it.",
+  lettingKitchenKnow: "Just letting the kitchen know…",
+  kitchenToldNoReport:
+    "The kitchen's been told, dear. Someone will see to it, no need to report.",
 
   settingsTitle: "The good cupboard",
   settingsSub: "How the parlour looks, and what the money speaks.",
@@ -406,6 +720,88 @@ const TERMINAL: Copy = {
   mottoLead: "gm. tea is the way.",
   mottoDisplay: "wagmi, one cup at a time_",
 
+  pourIntoTitle: (teaName) => `pour > ${teaName.toLowerCase()}`,
+  pourTitleFallback: "pour",
+  pourSub: "any asset, any network. compiles to tea_",
+  pickCupToPour: "select target cup_",
+  whatPouring: "select input asset_",
+  gasShortWarning: (chainName, symbol) =>
+    `err: ${chainName.toLowerCase()} gas = 0. pour pays fees in ${symbol.toLowerCase()}. blocked until funded_`,
+  gasShortCta: (symbol) => `fund ${symbol.toLowerCase()} → wallet address`,
+  teapotHolds: (amount) => `balance: ${amount}`,
+  peekingTeapot: "reading balance…",
+  maxLabel: "max",
+  youllSteep: "output (est.)",
+  atLeastOncePoured: "min output",
+  fetchingQuote: "fetching quote…",
+  noRouteForPair: "err: no route for pair_",
+  burnerCostChecking: "estimating gas. hold_",
+  nothingForKettle: "err: balance ≤ gas reserve_",
+  connectChainWallet: (chainName) => `connect ${chainName.toLowerCase()} wallet`,
+  ctaPourHowMuch: "enter amount_",
+  ctaTooMuch: "err: amount > balance",
+  ctaSwitchNetwork: "switch network",
+  ctaNoRoute: "err: no route",
+  ctaReadingLeaves: "quoting…",
+  pourFilledTitle: "pour filled.",
+  pourFilledBody: "position live. steam handles the rest_",
+  pourFillFailedBody: "fill failed. no funds lost. retry_",
+  steepingBody: (teaName) =>
+    teaName
+      ? `${teaName.toLowerCase()} steeping. position updates on fill_`
+      : "steeping. position updates on fill_",
+
+  pourBackTitle: (teaName) => `withdraw > ${teaName.toLowerCase()}`,
+  pourBackTitleFallback: "withdraw",
+  pourBackSub: "exit to any asset on any network. warmth persists_",
+  pickCupPourBack: "select source cup_",
+  cupHolds: (amount) => `position: ${amount}`,
+  signOnceOn: (chainName) =>
+    `1 signature on ${chainName.toLowerCase()} (deposit origin)_`,
+  splitSharesNote: (part, total, chainName) =>
+    `${part} of ${total} total mapped to ${chainName.toLowerCase()}. remainder exits via follow-up pass_`,
+  whereTo: "select destination_",
+  whereShouldWePour: "select output asset_",
+  pourToDifferentAddress: "custom destination address",
+  useMyWallet: "use own wallet",
+  tripleCheckAddress: (symbol, chainName) =>
+    `verify twice, send once. wrong address = unrecoverable. receiving side must accept ${symbol.toLowerCase()} on ${chainName.toLowerCase()}_`,
+  cashOutLink: "cash out? route to exchange address →",
+  youllGetBack: "output (est.)",
+  asTokenLabel: "as",
+  ctaAddressLooksOff: "err: address malformed",
+  ctaPourBackHowMuch: "enter amount_",
+  ctaCupNotThatFull: "err: amount > position",
+  ctaTooSmallForBtc: "err: below btc dust limit",
+  pouredBackTitle: "withdrawn.",
+  pouredBackBody: (chainName) => `funds delivered on ${chainName.toLowerCase()}_`,
+  pourBackFailedBody: "fill failed. position untouched. retry_",
+  backInTeapotTitle: "exit complete.",
+  backInTeapotBody: (symbol, chainName) =>
+    `${symbol.toLowerCase()} inbound on ${chainName.toLowerCase()}_`,
+  backInTeapotBodyFallback: "inbound_",
+
+  brewing: "executing…",
+  stepBuild: "build",
+  stepApprove: "approve",
+  stepSign: "sign",
+  stepSkipped: "skipped",
+  stepMsgBuilding: "building intent…",
+  stepMsgApproving: "awaiting approval sig…",
+  stepMsgSigning: "awaiting sig…",
+  keepThisOpen: "keep tab open. ~1 min_",
+  teaSteeping: "steeping…",
+  goodTeaMinute: "eta < 1 min_",
+  carryingTray: "relaying to solver network…",
+  lovely: "ack",
+  kettleActingUpTitle: "err: solver fill failed.",
+  fillFailedScreenBody:
+    "no funds lost. if balance doesn't update shortly, keep the fill hash for support_",
+  closeLabel: "close",
+  kitchenTold: "issue filed. team notified_",
+  lettingKitchenKnow: "filing issue…",
+  kitchenToldNoReport: "issue filed. team notified. no action needed_",
+
   settingsTitle: "~/.config",
   settingsSub: "skin + display currency_",
   modeSectionLabel: "skin",
@@ -464,6 +860,84 @@ const VAPORWAVE: Copy = {
   preferOwnWallet: "Your own wallet? Bring it to the plaza",
   mottoLead: "Tea is the way.",
   mottoDisplay: "ＬＳＴｅａＴｉｍｅ ４ｅｖｅｒ",
+
+  pourIntoTitle: (teaName) => `Ｐｏｕｒ ～ ${teaName}`,
+  pourTitleFallback: "Ｐｏｕｒ",
+  pourSub: "Any artifact, any network. It all becomes tea in the fountain.",
+  pickCupToPour: "Choose a cup in the plaza.",
+  whatPouring: "What flows in?",
+  gasShortWarning: (chainName, symbol) =>
+    `The ${chainName} arcade holds no ${symbol} to light the neon. This pour pays its network fee in ${symbol}, so it waits until a splash arrives.`,
+  gasShortCta: (symbol) => `Send a splash of ${symbol} to your fountain`,
+  teapotHolds: (amount) => `The fountain holds ${amount}`,
+  peekingTeapot: "Gazing into the fountain…",
+  youllSteep: "You'll steep",
+  atLeastOncePoured: "At least, once poured",
+  fetchingQuote: "Asking the sunset…",
+  noRouteForPair: "No path through the grid for this pair",
+  burnerCostChecking: "Pricing the neon. One moment in eternity.",
+  nothingForKettle: "Nothing left for the neon (network fees)",
+  connectChainWallet: (chainName) => `Connect a ${chainName} wallet`,
+  ctaPourHowMuch: "How much flows?",
+  ctaTooMuch: "More than the fountain holds",
+  ctaSwitchNetwork: "Switch network",
+  ctaNoRoute: "No blend path through the grid",
+  ctaReadingLeaves: "Reading the horizon…",
+  pourFilledTitle: "Poured into forever.",
+  pourFilledBody: "The steam does the rest.",
+  pourFillFailedBody: "The pour dissolved before filling. Nothing was lost. Flow again.",
+  steepingBody: (teaName) =>
+    teaName
+      ? `${teaName} steeps in the eternal sunset. The steam does the rest.`
+      : "Your tea steeps in the eternal sunset.",
+
+  pourBackTitle: (teaName) => `Ｒｅｌｅａｓｅ ～ ${teaName}`,
+  pourBackTitleFallback: "Ｒｅｌｅａｓｅ",
+  pourBackSub: "Back to any artifact, on any network. The warmth never leaves the plaza.",
+  pickCupPourBack: "Choose a cup to release.",
+  cupHolds: (amount) => `Your cup holds ${amount}`,
+  signOnceOn: (chainName) =>
+    `One signature on ${chainName}, the arcade you first entered through.`,
+  splitSharesNote: (part, total, chainName) =>
+    `${part} of your ${total} rests under ${chainName}. The rest entered through other arcades and release in a later wave.`,
+  whereTo: "Where does it flow?",
+  whereShouldWePour: "Where should it flow?",
+  pourToDifferentAddress: "Flowing to a different address",
+  useMyWallet: "Back to my wallet",
+  tripleCheckAddress: (symbol, chainName) =>
+    `Triple-check this. Tea that flows to a wrong address is gone beyond the grid, and the receiving side (your exchange) must accept ${symbol} on ${chainName}.`,
+  cashOutLink: "Leaving the plaza? Flow to an exchange address →",
+  youllGetBack: "Returning to you",
+  asTokenLabel: "As",
+  ctaAddressLooksOff: "That address shimmers wrong",
+  ctaPourBackHowMuch: "Release how much?",
+  ctaCupNotThatFull: "The cup holds less than that",
+  ctaTooSmallForBtc: "Too small a sip for Bitcoin",
+  pouredBackTitle: "Released.",
+  pouredBackBody: (chainName) => `Delivered on ${chainName}, under the same sunset.`,
+  pourBackFailedBody: "Your cup is untouched. Flow again.",
+  backInTeapotTitle: "Back in your fountain.",
+  backInTeapotBody: (symbol, chainName) =>
+    `${symbol} drifts toward you on ${chainName}, ready when you are.`,
+  backInTeapotBodyFallback: "Ready when you are.",
+
+  brewing: "Ｂｒｅｗｉｎｇ…",
+  stepMsgBuilding: "Measuring the leaves…",
+  stepMsgApproving: "Warming the pot. Approve in your wallet…",
+  stepMsgSigning: "One slow stir. Confirm in your wallet…",
+  keepThisOpen: "Stay in the plaza. Good tea takes a minute, and minutes are long here.",
+  teaSteeping: "Your tea is steeping…",
+  goodTeaMinute: "Good tea takes a minute. Time is generous here.",
+  carryingTray: "The tray glides across the grid to the solvers.",
+  lovely: "Ｌｏｖｅｌｙ",
+  kettleActingUpTitle: "The kettle flickers.",
+  fillFailedScreenBody:
+    "Nothing was lost and your funds are safe. If they don't reappear shortly, keep the fill hash handy for support.",
+  closeLabel: "Close",
+  kitchenTold: "The control room has been told. Someone is looking into it.",
+  lettingKitchenKnow: "Signalling the control room…",
+  kitchenToldNoReport:
+    "The control room has been told. Someone is looking into it, no need to report.",
 
   settingsTitle: "The control room",
   settingsSub: "Reality settings. Adjust the sunset, choose the money.",
@@ -528,6 +1002,78 @@ const SUMIE: Copy = {
   preferOwnWallet: "Your own wallet? Connect it",
   mottoLead: "Tea is the way.",
   mottoDisplay: "Stillness, steeping.",
+
+  pourIntoTitle: (teaName) => `Pour. ${teaName}.`,
+  pourTitleFallback: "Pour",
+  pourSub: "Any asset. Any network. Tea.",
+  pickCupToPour: "Choose a cup.",
+  whatPouring: "What is poured?",
+  gasShortWarning: (chainName, symbol) =>
+    `${chainName} holds no ${symbol} for the flame. The fee is paid in ${symbol}. The pour waits.`,
+  gasShortCta: (symbol) => `Send ${symbol} to the pot`,
+  teapotHolds: (amount) => `The pot holds ${amount}`,
+  peekingTeapot: "Looking…",
+  youllSteep: "Becomes",
+  atLeastOncePoured: "At least",
+  fetchingQuote: "Asking…",
+  noRouteForPair: "No path for this pair",
+  burnerCostChecking: "Weighing the flame. A moment.",
+  nothingForKettle: "Nothing spare for the flame (network fees)",
+  connectChainWallet: (chainName) => `Connect a ${chainName} wallet`,
+  ctaPourHowMuch: "How much?",
+  ctaTooMuch: "More than the pot holds",
+  ctaSwitchNetwork: "Switch network",
+  ctaNoRoute: "No path",
+  ctaReadingLeaves: "Reading…",
+  pourFilledTitle: "Poured.",
+  pourFilledBody: "The steam does the rest.",
+  pourFillFailedBody: "Unfilled. Nothing lost. Pour again.",
+  steepingBody: (teaName) => (teaName ? `${teaName} steeps.` : "It steeps."),
+
+  pourBackTitle: (teaName) => `Return. ${teaName}.`,
+  pourBackTitleFallback: "Return",
+  pourBackSub: "Back to any asset, any network. The warmth remains.",
+  pickCupPourBack: "Choose a cup to return.",
+  cupHolds: (amount) => `The cup holds ${amount}`,
+  signOnceOn: (chainName) => `One signature, on ${chainName}. Where you entered.`,
+  splitSharesNote: (part, total, chainName) =>
+    `${part} of ${total} rests under ${chainName}. The rest returns in another pass.`,
+  whereTo: "Where?",
+  whereShouldWePour: "Where to?",
+  pourToDifferentAddress: "Another address",
+  useMyWallet: "My wallet",
+  tripleCheckAddress: (symbol, chainName) =>
+    `Look three times. A wrong address does not return. The receiver must accept ${symbol} on ${chainName}.`,
+  cashOutLink: "To an exchange address instead →",
+  youllGetBack: "Returns as",
+  asTokenLabel: "As",
+  ctaAddressLooksOff: "The address is wrong",
+  ctaPourBackHowMuch: "How much?",
+  ctaCupNotThatFull: "The cup holds less",
+  ctaTooSmallForBtc: "Too small for Bitcoin",
+  pouredBackTitle: "Returned.",
+  pouredBackBody: (chainName) => `Delivered. ${chainName}.`,
+  pourBackFailedBody: "The cup is untouched. Pour again.",
+  backInTeapotTitle: "Returned to the pot.",
+  backInTeapotBody: (symbol, chainName) => `${symbol} arrives on ${chainName}.`,
+  backInTeapotBodyFallback: "It arrives.",
+
+  brewing: "Brewing.",
+  stepMsgBuilding: "Measuring.",
+  stepMsgApproving: "Warming. Approve in your wallet.",
+  stepMsgSigning: "One stir. Confirm in your wallet.",
+  keepThisOpen: "Stay. Good tea takes a minute.",
+  teaSteeping: "It steeps.",
+  goodTeaMinute: "A minute. Often less.",
+  carryingTray: "The tray is carried.",
+  lovely: "Well",
+  kettleActingUpTitle: "The kettle falters.",
+  fillFailedScreenBody:
+    "Nothing was lost. Your funds are safe. If they do not reappear, keep the fill hash for support.",
+  closeLabel: "Close",
+  kitchenTold: "The kitchen knows.",
+  lettingKitchenKnow: "Telling the kitchen.",
+  kitchenToldNoReport: "The kitchen knows. Nothing more is needed.",
 
   settingsTitle: "The alcove",
   settingsSub: "Appearance. Currency.",

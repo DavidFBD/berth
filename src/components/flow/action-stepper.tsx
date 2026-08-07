@@ -9,20 +9,26 @@ import { CANCELLED_MESSAGE } from "@/lib/error-copy";
 import type { ReportState } from "@/lib/error-report";
 import type { FillPhase } from "@/lib/pour-lifecycle";
 import type { VaultActionStep } from "@/hooks/use-vault-action";
+import { useCopy } from "@/components/settings-provider";
+import type { Copy } from "@/lib/copy";
 
-const STEPS = [
-  { key: "building", label: "Build" },
-  { key: "approving", label: "Approve" },
-  { key: "signing", label: "Sign" },
-] as const;
+/* Step keys are the machine's; every label and message speaks the mode's
+   voice via useCopy. Failure copy shown here is presentation only — the
+   REPORTED message stays mode-blind in error-copy.ts so fingerprints keep
+   grouping one bug as one issue. */
+const STEP_KEYS = ["building", "approving", "signing"] as const;
+type StepKey = (typeof STEP_KEYS)[number];
 
-type StepKey = (typeof STEPS)[number]["key"];
+const STEP_LABEL: Record<StepKey, (copy: Copy) => string> = {
+  building: (copy) => copy.stepBuild,
+  approving: (copy) => copy.stepApprove,
+  signing: (copy) => copy.stepSign,
+};
 
-/* The brewing ritual — per the design system's pour flow microcopy. */
-const STEP_MESSAGE: Record<StepKey, string> = {
-  building: "Measuring the leaves…",
-  approving: "Warming the pot. Approve in your wallet…",
-  signing: "One gentle stir. Confirm in your wallet…",
+const STEP_MESSAGE: Record<StepKey, (copy: Copy) => string> = {
+  building: (copy) => copy.stepMsgBuilding,
+  approving: (copy) => copy.stepMsgApproving,
+  signing: (copy) => copy.stepMsgSigning,
 };
 
 /**
@@ -39,19 +45,22 @@ export function ActionStepper({
   approveNeeded?: boolean;
   className?: string;
 }) {
-  const activeIndex = STEPS.findIndex((s) => s.key === step);
+  const copy = useCopy();
+  const activeIndex = STEP_KEYS.findIndex((key) => key === step);
   if (activeIndex === -1) return null;
 
   return (
     <div className={cn("flex flex-col gap-5 px-2 py-4", className)}>
-      <p className="text-center font-display text-lg text-foreground">Brewing…</p>
+      <p className="text-center font-display text-lg text-foreground">
+        {copy.brewing}
+      </p>
       <div className="flex items-center">
-        {STEPS.map((s, index) => {
-          const skipped = s.key === "approving" && !approveNeeded;
+        {STEP_KEYS.map((key, index) => {
+          const skipped = key === "approving" && !approveNeeded;
           const done = index < activeIndex || (skipped && index <= activeIndex);
           const active = index === activeIndex && !skipped;
           return (
-            <div key={s.key} className={cn("flex items-center", index > 0 && "flex-1")}>
+            <div key={key} className={cn("flex items-center", index > 0 && "flex-1")}>
               {index > 0 && (
                 <div
                   className={cn(
@@ -94,10 +103,10 @@ export function ActionStepper({
                       : "font-medium text-muted-foreground",
                   )}
                 >
-                  {s.label}
+                  {STEP_LABEL[key](copy)}
                   {skipped && (
                     <span className="block text-center text-[9px] leading-tight text-muted-foreground/70">
-                      skipped
+                      {copy.stepSkipped}
                     </span>
                   )}
                 </span>
@@ -108,11 +117,9 @@ export function ActionStepper({
       </div>
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-sm font-medium text-foreground">
-          {STEP_MESSAGE[STEPS[activeIndex].key]}
+          {STEP_MESSAGE[STEP_KEYS[activeIndex]](copy)}
         </p>
-        <p className="text-xs text-muted-foreground">
-          Keep this open, good tea takes a minute.
-        </p>
+        <p className="text-xs text-muted-foreground">{copy.keepThisOpen}</p>
       </div>
     </div>
   );
@@ -143,6 +150,7 @@ export function IntentTracking({
   /** Reporting state for a failed fill, so the screen can say the team has it. */
   reportState?: ReportState;
 }) {
+  const copy = useCopy();
   if (phase === "filled") {
     return (
       <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
@@ -160,7 +168,7 @@ export function IntentTracking({
           )}
         </div>
         <Button className="h-12 w-full text-base" onClick={onDone}>
-          Lovely
+          {copy.lovely}
         </Button>
       </div>
     );
@@ -175,20 +183,19 @@ export function IntentTracking({
         </div>
         <div className="flex flex-col gap-1">
           <p className="font-display text-lg text-destructive">
-            The kettle&apos;s acting up.
+            {copy.kettleActingUpTitle}
           </p>
           <p className="text-sm text-muted-foreground">
-            Nothing was lost and your funds are safe. If they don&apos;t reappear
-            shortly, keep the fill hash handy for support.
+            {copy.fillFailedScreenBody}
           </p>
           {reportState === "filed" && (
             <p className="text-xs text-muted-foreground opacity-75">
-              The kitchen has been told, so someone can look into it.
+              {copy.kitchenTold}
             </p>
           )}
         </div>
         <Button variant="outline" className="h-12 w-full text-base" onClick={onDone}>
-          Close
+          {copy.closeLabel}
         </Button>
       </div>
     );
@@ -203,12 +210,10 @@ export function IntentTracking({
       </div>
       <div className="flex flex-col gap-1">
         <p className="font-display text-lg text-foreground">
-          Your tea is steeping…
+          {copy.teaSteeping}
         </p>
         <p className="text-xs text-muted-foreground">
-          {filling
-            ? "Good tea takes a minute, usually less."
-            : "Carrying the tray over to the solver network."}
+          {filling ? copy.goodTeaMinute : copy.carryingTray}
         </p>
       </div>
       <div className="mt-1 h-1 w-40 overflow-hidden rounded-full bg-muted">
@@ -227,7 +232,9 @@ export function IntentTracking({
 /**
  * The failure message, plus a quiet note when the failure has already been
  * handed to the team. A cancelled pour is styled gently and never reported:
- * the user chose it, so there is nothing to look into.
+ * the user chose it, so there is nothing to look into. The message itself
+ * comes from error-copy.ts and stays mode-blind on purpose (fingerprinting);
+ * only the report-status note speaks the mode.
  */
 export function ActionError({
   message,
@@ -236,6 +243,7 @@ export function ActionError({
   message: string;
   reportState: ReportState;
 }) {
+  const copy = useCopy();
   const cancelled = message === CANCELLED_MESSAGE;
   return (
     <div
@@ -251,9 +259,9 @@ export function ActionError({
       {!cancelled && reportState !== "idle" && (
         <p className="mt-1.5 text-[12px] opacity-75">
           {reportState === "sending"
-            ? "Letting the kitchen know…"
+            ? copy.lettingKitchenKnow
             : reportState === "filed"
-              ? "The kitchen has been told, so someone can look into it. No need to report it."
+              ? copy.kitchenToldNoReport
               : null}
         </p>
       )}

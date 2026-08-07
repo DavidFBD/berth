@@ -32,7 +32,7 @@ import {
   pourAmounts,
   withdrawGate,
 } from "@/lib/pour-amount";
-import { useMoney } from "@/components/settings-provider";
+import { useCopy, useMoney } from "@/components/settings-provider";
 import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useVaultAction } from "@/hooks/use-vault-action";
@@ -85,6 +85,7 @@ export function WithdrawDrawer({
   const [customRecipient, setCustomRecipient] = useState<string | null>(null);
 
   const meta = vault ? getVaultMeta(vault.name) : null;
+  const copy = useCopy();
   // The pour machine owns everything past the first tap: pipeline, solver
   // fill, toasts, XP, failure reporting. The drawer renders its states.
   const action = useVaultAction();
@@ -232,9 +233,9 @@ export function WithdrawDrawer({
       walletProvider,
       walletMode: mode,
       fillToasts: {
-        successTitle: "Poured back.",
-        successDescription: `Funds delivered on ${getChainName(dstChainKey)}.`,
-        failureDescription: "Your cup is untouched. Please try again.",
+        successTitle: copy.pouredBackTitle,
+        successDescription: copy.pouredBackBody(getChainName(dstChainKey)),
+        failureDescription: copy.pourBackFailedBody,
       },
       ensureReady: ensureChain,
     });
@@ -266,43 +267,45 @@ export function WithdrawDrawer({
     switch (gate.kind) {
       case "connectSource":
         return {
-          label: `Connect ${getChainName(srcChainKey)} wallet`,
+          label: copy.connectChainWallet(getChainName(srcChainKey)),
           disabled: !onConnectWallet,
           onClick: onConnectWallet,
         };
       case "pickDestination":
         return {
-          label: "Where to?",
+          label: copy.whereTo,
           disabled: false,
           onClick: () => setPickerOpen(true),
         };
       case "invalidRecipient":
-        return { label: "That address looks off", disabled: true };
+        return { label: copy.ctaAddressLooksOff, disabled: true };
       case "connectDestination":
         return {
-          label: `Connect ${dstChainKey ? getChainName(dstChainKey) : ""} wallet`,
+          label: copy.connectChainWallet(
+            dstChainKey ? getChainName(dstChainKey) : "",
+          ),
           disabled: !onConnectWallet,
           onClick: onConnectWallet,
         };
       case "enterAmount":
-        return { label: "Pour back how much?", disabled: true };
+        return { label: copy.ctaPourBackHowMuch, disabled: true };
       case "insufficient":
-        return { label: "Your cup isn't quite that full", disabled: true };
+        return { label: copy.ctaCupNotThatFull, disabled: true };
       case "wrongChain":
         return {
-          label: "Switch network",
+          label: copy.ctaSwitchNetwork,
           disabled: false,
           onClick: handleSwitchChain,
         };
       case "noRoute":
-        return { label: "No blend path for this pair", disabled: true };
+        return { label: copy.ctaNoRoute, disabled: true };
       case "belowDust":
-        return { label: "Too small a sip for Bitcoin", disabled: true };
+        return { label: copy.ctaTooSmallForBtc, disabled: true };
       case "quotePending":
-        return { label: "Reading the leaves…", disabled: true, busy: true };
+        return { label: copy.ctaReadingLeaves, disabled: true, busy: true };
       default:
         return {
-          label: "Pour back",
+          label: copy.pourBack,
           disabled: false,
           onClick: () => void handleWithdraw(),
         };
@@ -319,12 +322,12 @@ export function WithdrawDrawer({
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>
-              {meta ? `Pour back from ${meta.teaName}` : "Pour back"}
+              {meta ? copy.pourBackTitle(meta.teaName) : copy.pourBackTitleFallback}
             </DrawerTitle>
             <DrawerDescription>
               {vault
-                ? "Back to any asset, on any network. The tea keeps its warmth."
-                : "Pick a cup to pour back from."}
+                ? copy.pourBackSub
+                : copy.pickCupPourBack}
             </DrawerDescription>
           </DrawerHeader>
 
@@ -334,11 +337,14 @@ export function WithdrawDrawer({
                 reportState={action.reportState}
                 phase={action.fillPhase}
                 fillTxHash={action.fillTxHash}
-                successTitle="Back in your teapot."
+                successTitle={copy.backInTeapotTitle}
                 successBody={
                   dstChainKey && outputToken
-                    ? `${outputToken.symbol} is on its way to you on ${getChainName(dstChainKey)}, ready when you are.`
-                    : "Ready when you are."
+                    ? copy.backInTeapotBody(
+                        outputToken.symbol,
+                        getChainName(dstChainKey),
+                      )
+                    : copy.backInTeapotBodyFallback
                 }
                 onDone={() => {
                   onOpenChange(false);
@@ -403,28 +409,36 @@ export function WithdrawDrawer({
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
                       {sharePriceUsd !== undefined
-                        ? `Your cup holds ≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)}`
-                        : `Your cup holds ${formatTokenAmount(availableShares, SHARE_DECIMALS)} ${vault.name}`}
+                        ? copy.cupHolds(
+                            `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)}`,
+                          )
+                        : copy.cupHolds(
+                            `${formatTokenAmount(availableShares, SHARE_DECIMALS)} ${vault.name}`,
+                          )}
                     </span>
                     {availableShares > 0n && (
                       <Button variant="ghost" size="xs" onClick={handleMax}>
-                        Max
+                        {copy.maxLabel}
                       </Button>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    You&apos;ll sign once on {getChainName(srcChainKey)}, the
-                    chain you deposited from.
+                    {copy.signOnceOn(getChainName(srcChainKey))}
                   </p>
                   {totalShares !== undefined &&
                     totalShares > availableShares && (
                       <p className="text-xs text-muted-foreground">
                         {sharePriceUsd !== undefined
-                          ? `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)} of your ≈ ${money.format(sharesWorthUsd(totalShares) ?? 0)} total`
-                          : `${formatTokenAmount(availableShares, SHARE_DECIMALS)} of your ${formatTokenAmount(totalShares, SHARE_DECIMALS)} total shares`}{" "}
-                        sits under {getChainName(srcChainKey)}. The rest were
-                        deposited via other chains and become withdrawable in
-                        a follow-up pass.
+                          ? copy.splitSharesNote(
+                              `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)}`,
+                              `≈ ${money.format(sharesWorthUsd(totalShares) ?? 0)}`,
+                              getChainName(srcChainKey),
+                            )
+                          : copy.splitSharesNote(
+                              formatTokenAmount(availableShares, SHARE_DECIMALS),
+                              `${formatTokenAmount(totalShares, SHARE_DECIMALS)} shares`,
+                              getChainName(srcChainKey),
+                            )}
                       </p>
                     )}
                 </div>
@@ -452,7 +466,7 @@ export function WithdrawDrawer({
                     </>
                   ) : (
                     <span className="flex-1 text-sm text-muted-foreground">
-                      Where should we pour it?
+                      {copy.whereShouldWePour}
                     </span>
                   )}
                   <CaretDown className="size-4 text-muted-foreground" />
@@ -466,14 +480,14 @@ export function WithdrawDrawer({
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-muted-foreground">
-                            Pouring to a different address
+                            {copy.pourToDifferentAddress}
                           </span>
                           <Button
                             variant="ghost"
                             size="xs"
                             onClick={() => setCustomRecipient(null)}
                           >
-                            Use my wallet
+                            {copy.useMyWallet}
                           </Button>
                         </div>
                         <input
@@ -489,10 +503,10 @@ export function WithdrawDrawer({
                           className="money w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
                         />
                         <p className="text-[11.5px] leading-snug text-destructive">
-                          Triple-check this. Tea poured to the wrong address is
-                          gone for good, and the receiving side (your
-                          exchange) must accept {outputToken.symbol} on{" "}
-                          {getChainName(dstChainKey)}.
+                          {copy.tripleCheckAddress(
+                            outputToken.symbol,
+                            getChainName(dstChainKey),
+                          )}
                         </p>
                       </>
                     ) : (
@@ -501,7 +515,7 @@ export function WithdrawDrawer({
                         onClick={() => setCustomRecipient("")}
                         className="self-start py-1 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground"
                       >
-                        Cash out? Pour to an exchange address instead →
+                        {copy.cashOutLink}
                       </button>
                     )}
                   </div>
@@ -512,13 +526,13 @@ export function WithdrawDrawer({
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
                     {quote.noRoute ? (
                       <span className="text-destructive">
-                        No route for this pair
+                        {copy.noRouteForPair}
                       </span>
                     ) : quote.quoted !== undefined && quote.minOut !== undefined ? (
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">
-                            You&apos;ll get back
+                            {copy.youllGetBack}
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
                             {quotedWorthUsd !== undefined
@@ -528,7 +542,7 @@ export function WithdrawDrawer({
                         </div>
                         {quotedWorthUsd !== undefined && (
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>As</span>
+                            <span>{copy.asTokenLabel}</span>
                             <span className="tabular-nums">
                               {formatTokenAmount(quote.quoted, outputToken.decimals)}{" "}
                               {outputToken.symbol} on {getChainName(dstChainKey)}
@@ -536,7 +550,7 @@ export function WithdrawDrawer({
                           </div>
                         )}
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>At least, once poured</span>
+                          <span>{copy.atLeastOncePoured}</span>
                           <span className="tabular-nums">
                             {minOutWorthUsd !== undefined
                               ? `≈ ${money.format(minOutWorthUsd)}`
@@ -546,7 +560,7 @@ export function WithdrawDrawer({
                       </>
                     ) : (
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <Spinner className="size-3.5" /> Fetching quote…
+                        <Spinner className="size-3.5" /> {copy.fetchingQuote}
                       </div>
                     )}
                   </div>
