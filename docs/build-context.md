@@ -63,6 +63,14 @@ Mobile-first Next.js 16 App Router app (React 19, TS, Tailwind v4, shadcn/ui bas
 
 Withdraw (mirror, NO approval step): `useLeverageYieldWithdraw().mutateAsyncSafe({ vault, srcChainKey, srcAddress, dstChainKey, outputToken, inputAmount: shares18dp, minOutputAmount })` → `vaultSwap({ ...built.value, walletProvider })` (payload carries `hubWalletSwap: true`). Quote with `token_src = vault.vault`, `token_dst = outputToken`. Max = user's share balance for that chainKey row. BTC output: minOutputAmount ≥ 546 sats.
 
+## Server-side SDK use (verified 2026-08-07)
+
+- `new Sodax(sodaxConfig)` works in Node/route handlers (module singleton in `lib/server/pour-verify.ts`); `sodaxConfig` is a plain constant, safe to import server-side.
+- `sodax.swaps.getIntent(txHash): Promise<Result<Intent>>` decodes the IntentCreated log from a hub tx receipt and validates the canonical Intents contract (`0x6382…96ef` on Sonic). Intent carries `creator`, `inputToken`, `outputToken`, `srcAddress`/`dstAddress` (bytes hex: 20-byte for EVM sources, longer for Solana etc.).
+- CAVEAT: `getIntent` POLLS for missing receipts (built for just-submitted hashes) — an invented hash held a route open ~116s. Always gate with one cheap `eth_getTransactionReceipt` first and race a timeout (see pour-verify.ts).
+- `sodax.leverageYield.listVaults()` is sync and works server-side without initialization.
+- SIWE needs no extra deps: `viem/siwe` ships `createSiweMessage`/`parseSiweMessage`/`validateSiweMessage`/`generateSiweNonce`; verify signatures with a public client's `verifyMessage` (handles EOA + ERC-1271 + ERC-6492). Client signing via wallet-sdk-react `useXSignMessage({ xChainType, message })`.
+
 ## Error handling
 
 - All mutations: use `mutateAsyncSafe` (never rejects) and branch `.ok`. Error is `SodaxError`-ish: read `.code` where present.
