@@ -9,8 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { ThemeProvider, useTheme } from "next-themes";
-import { useQuery } from "@tanstack/react-query";
 
+import { useTokenPrices } from "@/hooks/use-token-prices";
 import {
   COPY,
   DEFAULT_MODE,
@@ -22,14 +22,13 @@ import {
 import {
   DEFAULT_CURRENCY,
   isCurrency,
+  resolveMoney,
   type Currency,
-  type FxRates,
 } from "@/lib/currencies";
 import {
   formatMoney,
   formatMoneyPrecise,
   splitAccruingMoney,
-  type Money,
 } from "@/lib/format";
 
 const CURRENCY_STORAGE_KEY = "lsteatime.currency";
@@ -132,38 +131,18 @@ export function useCurrency(): CurrencyContextValue {
   return useContext(CurrencyContext);
 }
 
-type FxPayload = { fx?: FxRates };
-
-/** Refetch a little ahead of the route's 5-minute server cache. */
-const FX_REFETCH_MS = 4 * 60 * 1000;
-
 /**
  * Everything a component needs to print money in the user's currency.
- * All inputs stay USD; the hook owns the one multiplication. When the FX
- * rate hasn't arrived (or the fetch degraded), it speaks USD rather than
- * guessing — a wrong currency symbol on a right number is worse than a
- * moment of dollars.
+ * All inputs stay USD; the hook owns the one multiplication. Rates ride the
+ * shared `useTokenPrices` fetch, and `resolveMoney` speaks USD until the FX
+ * rate for the chosen currency has actually arrived.
  */
 export function useMoney() {
   const { currency } = useCurrency();
-  const { data: fx } = useQuery({
-    queryKey: ["tokenPrices", "fx"],
-    queryFn: async (): Promise<FxRates> => {
-      const response = await fetch("/api/token-prices");
-      if (!response.ok) return {};
-      const payload = (await response.json()) as FxPayload;
-      return payload.fx ?? {};
-    },
-    staleTime: FX_REFETCH_MS,
-    refetchInterval: FX_REFETCH_MS,
-  });
+  const fx = useTokenPrices().data?.fx;
 
   return useMemo(() => {
-    const rate = fx?.[currency];
-    const money: Money =
-      rate !== undefined && rate > 0
-        ? { currency, rate }
-        : { currency: "USD", rate: 1 };
+    const money = resolveMoney(currency, fx);
     return {
       /** The currency actually being printed (USD while rates settle). */
       currency: money.currency,

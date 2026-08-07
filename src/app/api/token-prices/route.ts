@@ -26,7 +26,7 @@ const PRICES_REVALIDATE_SECONDS = 300;
 /** ECB publishes once a business day; half a day of cache is generous. */
 const FX_REVALIDATE_SECONDS = 43_200;
 
-type TokenPricesResponse = {
+export type TokenPricesResponse = {
   /** Symbol (original casing, as in COINGECKO_IDS) → USD price. */
   prices: Record<string, number>;
   /** USD → display-currency multipliers, e.g. { EUR: 0.92 }. */
