@@ -36,46 +36,78 @@ function useIdentity() {
   return { authenticated, wallet: wallet ?? null, key, getAccessToken };
 }
 
-async function postRewardsApi<T>(
-  path: string,
-  body: Record<string, unknown>,
-  auth: { token: string | null; walletSession: string | null },
-): Promise<T | null> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(auth.token ? { authorization: `Bearer ${auth.token}` } : {}),
-      ...(auth.walletSession
-        ? { "x-wallet-session": auth.walletSession }
-        : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) return null;
-  return response.json();
-}
-
-const postProfileApi = postRewardsApi<ProfileResponse>;
-
 /**
- * The auth ritual every rewards call performs: Privy token when signed in,
- * SIWE wallet session otherwise, null when neither materializes. Shared by
- * the profile query, the mutations, and the referral-corner hooks.
+ * The one request core every rewards hook goes through: identity, the auth
+ * ritual (Privy token when signed in, SIWE wallet session otherwise — guests
+ * prove their address once with a free signature; the server takes nobody's
+ * word for a wallet), and the authenticated POST. `call` resolves null when
+ * no session materializes or the server says no — public hooks decide
+ * whether null is an error (queries throw) or a quiet miss (mutations).
  */
-function useRewardsAuth() {
+function useRewardsCall() {
   const { authenticated, wallet, key, getAccessToken } = useIdentity();
   const ensureWalletSession = useEnsureWalletSession();
-  const resolve = async () => {
+
+  const call = async <T>(
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<T | null> => {
     const auth = authenticated
       ? { token: await getAccessToken(), walletSession: null }
       : {
           token: null,
           walletSession: wallet ? await ensureWalletSession(wallet) : null,
         };
-    return auth.token || auth.walletSession ? auth : null;
+    if (!auth.token && !auth.walletSession) return null;
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(auth.token ? { authorization: `Bearer ${auth.token}` } : {}),
+        ...(auth.walletSession
+          ? { "x-wallet-session": auth.walletSession }
+          : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) return null;
+    return response.json();
   };
-  return { key, resolve };
+
+  return { key, call };
+}
+
+/**
+ * Query flavour of the core: keyed on the identity, gated on `enabled`,
+ * throws on a miss so React Query owns retries. `select` unwraps the
+ * envelope where the useful value sits one level in.
+ */
+function useRewardsQuery<TWire, TData = TWire>(
+  name: string,
+  path: string,
+  options: {
+    enabled?: boolean;
+    staleTime: number;
+    body?: () => Record<string, unknown>;
+    select?: (data: TWire) => TData;
+    onData?: (data: TWire) => void;
+  },
+) {
+  const { key, call } = useRewardsCall();
+  return useQuery({
+    queryKey: [name, key],
+    enabled: (options.enabled ?? true) && key !== null,
+    staleTime: options.staleTime,
+    retry: 1,
+    queryFn: async (): Promise<TData> => {
+      const data = await call<TWire>(path, options.body?.() ?? {});
+      if (!data) throw new Error(`${name} failed`);
+      options.onData?.(data);
+      return options.select
+        ? options.select(data)
+        : (data as unknown as TData);
+    },
+  });
 }
 
 /**
@@ -95,51 +127,35 @@ function profileOf(data: ProfileResponse): Profile {
 
 /** The account profile, synced on first read. Disabled until an identity exists. */
 export function useProfile() {
-  const { key, resolve } = useRewardsAuth();
-  return useQuery({
-    queryKey: ["profile", key],
-    enabled: key !== null,
+  return useRewardsQuery<ProfileResponse, Profile>("profile", "/api/profile", {
     staleTime: 5 * 60_000,
-    retry: 1,
-    queryFn: async (): Promise<Profile> => {
-      // Guests prove their address once (SIWE, free signature) — the server
-      // no longer takes anyone's word for a wallet. Declining just means no
-      // rewards session; the tea itself never needed one.
-      const auth = await resolve();
-      if (!auth) throw new Error("no rewards session");
-      const data = await postProfileApi(
-        "/api/profile",
-        // The pocketed invite code rides along; the server only binds it to
-        // an account created this very request, then it's spent either way.
-        { referralCode: pendingReferralCode() },
-        auth,
-      );
-      if (!data) throw new Error("profile sync failed");
+    // The pocketed invite code rides along; the server only binds it to an
+    // account created this very request, then it's spent either way.
+    body: () => ({ referralCode: pendingReferralCode() }),
+    onData: (data) => {
       clearPendingReferral();
       toastRewards(data.rewards, data.xp);
-      return profileOf(data);
     },
+    select: profileOf,
   });
 }
 
 /**
- * The one mutation core behind every XP endpoint: token fetch, wallet
- * attachment, the no-identity guard (nothing to award to means no request at
- * all), the cache write, and the reward ceremony. Each public hook is just a
- * path plus its own body fields.
+ * Mutation flavour of the core: the no-identity guard (nothing to award to
+ * means no request at all), the cache write, the reward ceremony, and the
+ * invalidations every award implies. Each public hook is a path plus its
+ * own body fields.
  */
 function useProfileMutation<TVars>(
   path: string,
   toBody: (vars: TVars) => Record<string, unknown>,
 ) {
   const queryClient = useQueryClient();
-  const { key, resolve } = useRewardsAuth();
+  const { key, call } = useRewardsCall();
   return useMutation({
     mutationFn: async (vars: TVars) => {
       if (!key) return null;
-      const auth = await resolve();
-      if (!auth) return null;
-      return postProfileApi(path, toBody(vars), auth);
+      return call<ProfileResponse>(path, toBody(vars));
     },
     onSuccess: (data) => {
       if (!data) return;
@@ -189,70 +205,38 @@ export function useAwardPour() {
  * Fetched only while the pantry is open — `enabled` gates it.
  */
 export function useReferralPanel(enabled: boolean) {
-  const { key, resolve } = useRewardsAuth();
-  return useQuery({
-    queryKey: ["referral-panel", key],
-    enabled: enabled && key !== null,
+  return useRewardsQuery<ReferralPanel>("referral-panel", "/api/referral/panel", {
+    enabled,
     staleTime: 60_000,
-    retry: 1,
-    queryFn: async (): Promise<ReferralPanel> => {
-      const auth = await resolve();
-      if (!auth) throw new Error("no rewards session");
-      const data = await postRewardsApi<ReferralPanel>(
-        "/api/referral/panel",
-        {},
-        auth,
-      );
-      if (!data) throw new Error("referral panel failed");
-      return data;
-    },
-  });
-}
-
-/**
- * Hand-claiming an invite code (the stripped-link recovery hatch). Success
- * replaces the cached panel; a 422 surfaces as null so the row can say
- * "didn't take" without throwing.
- */
-export function useClaimInvite() {
-  const queryClient = useQueryClient();
-  const { key, resolve } = useRewardsAuth();
-  return useMutation({
-    mutationFn: async (code: string): Promise<ReferralPanel | null> => {
-      if (!key) return null;
-      const auth = await resolve();
-      if (!auth) return null;
-      return postRewardsApi<ReferralPanel>(
-        "/api/referral/claim",
-        { code },
-        auth,
-      );
-    },
-    onSuccess: (data) => {
-      if (!data) return;
-      queryClient.setQueryData<ReferralPanel>(["referral-panel", key], data);
-    },
   });
 }
 
 /** The house ledger, newest first. Fetched only while it's unfolded. */
 export function useXpHistory(enabled: boolean) {
-  const { key, resolve } = useRewardsAuth();
-  return useQuery({
-    queryKey: ["xp-history", key],
-    enabled: enabled && key !== null,
-    staleTime: 60_000,
-    retry: 1,
-    queryFn: async () => {
-      const auth = await resolve();
-      if (!auth) throw new Error("no rewards session");
-      const data = await postRewardsApi<XpHistoryResponse>(
-        "/api/xp/history",
-        {},
-        auth,
-      );
-      if (!data) throw new Error("ledger fetch failed");
-      return data.events;
+  return useRewardsQuery<XpHistoryResponse, XpHistoryResponse["events"]>(
+    "xp-history",
+    "/api/xp/history",
+    { enabled, staleTime: 60_000, select: (data) => data.events },
+  );
+}
+
+/**
+ * Hand-claiming an invite code (the stripped-link recovery hatch). Success
+ * replaces the cached panel; a 422 surfaces as null so the row can say
+ * "didn't take" without throwing. Pays no XP, so the profile cache is
+ * untouched on purpose — the reward moment stays at the first pour.
+ */
+export function useClaimInvite() {
+  const queryClient = useQueryClient();
+  const { key, call } = useRewardsCall();
+  return useMutation({
+    mutationFn: async (code: string) => {
+      if (!key) return null;
+      return call<ReferralPanel>("/api/referral/claim", { code });
+    },
+    onSuccess: (data) => {
+      if (!data) return;
+      queryClient.setQueryData<ReferralPanel>(["referral-panel", key], data);
     },
   });
 }
