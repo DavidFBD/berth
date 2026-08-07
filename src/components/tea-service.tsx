@@ -3,18 +3,36 @@
 import { useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
+import { toast } from "sonner";
 import {
   CaretDown,
   Check,
   Coffee,
   EnvelopeSimple,
+  HandHeart,
+  LockSimple,
+  Receipt,
+  Ticket,
   UserPlus,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { AVATARS, avatarSrc, type AvatarId } from "@/lib/avatars";
 import { inviteLink } from "@/lib/referral";
-import { rankForXp, XP_ACTIONS } from "@/lib/xp";
-import { useProfile, useSetAvatar } from "@/hooks/use-profile";
+import {
+  INVITE_UNLOCK_LEVEL,
+  RANKS,
+  rankForXp,
+  XP_ACTIONS,
+} from "@/lib/xp";
+import type { ReferralPanel } from "@/lib/profile-types";
+import { REWARD_REASONS } from "@/components/xp-toast";
+import {
+  useClaimInvite,
+  useProfile,
+  useReferralPanel,
+  useSetAvatar,
+  useXpHistory,
+} from "@/hooks/use-profile";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 
 /**
@@ -152,9 +170,9 @@ export function TeaService() {
         )}
       </AnimatePresence>
 
-      {profile.data.referralCode && (
-        <InviteRow code={profile.data.referralCode} />
-      )}
+      <InviteCorner xp={xp} code={profile.data.referralCode} />
+
+      <LedgerRow />
 
       {/* The invitation: wallet guests can put a name to the account. The
           server pays the reward once the Privy session and the wallet meet
@@ -181,29 +199,183 @@ export function TeaService() {
 }
 
 /**
- * The referral corner: tap to copy your invite link. The reward fires when
- * the invited friend pours a first verified cup — not at signup — so the
- * promise line names the pour, and the payout arrives on a later sync.
+ * The referral corner, both directions of the invitation (field feedback
+ * round, 2026-08-07). Inbound: who set your seat, and the hand-claim hatch
+ * for codes that links lost in transit. Outbound: the invite link as a rank
+ * perk — locked below INVITE_UNLOCK_LEVEL, full-size until the first friend
+ * takes a seat, then shrunk to make room for the earned/steeping numbers.
  */
-function InviteRow({ code }: { code: string }) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+function InviteCorner({ xp, code }: { xp: number; code: string | null }) {
+  const panel = useReferralPanel(true);
+  const level = rankForXp(xp).level;
+  const unlockRank = RANKS[INVITE_UNLOCK_LEVEL - 1];
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink(code));
-    } catch {
-      return; // Clipboard denied: leave the row unchanged rather than lie.
-    }
-    setCopied(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 2400);
+  const invitedBy = panel.data?.invitedBy ?? null;
+  const stats = panel.data?.stats;
+
+  return (
+    <>
+      {invitedBy && <ThankYouRow invitedBy={invitedBy} />}
+      {panel.data && !invitedBy && panel.data.canClaim && <ClaimRow />}
+
+      {level < INVITE_UNLOCK_LEVEL ? (
+        <div className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/40 px-3 py-2">
+          <LockSimple className="size-5 shrink-0 text-muted-foreground" />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-sm font-medium text-muted-foreground">
+              Invites unlock at {unlockRank.name}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Reach level {INVITE_UNLOCK_LEVEL} and you can set places at the
+              table too.
+            </span>
+          </span>
+        </div>
+      ) : code && stats && stats.seated > 0 ? (
+        <BrewingRow code={code} stats={stats} />
+      ) : code ? (
+        <InviteRow code={code} taps={stats?.taps ?? 0} />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The referred side's welcome: who set the seat (avatar and rank only, no
+ * names) and — crucially — when the shared reward actually lands, so a
+ * fresh account knows its +250 is steeping, not missing.
+ */
+function ThankYouRow({
+  invitedBy,
+}: {
+  invitedBy: NonNullable<ReferralPanel["invitedBy"]>;
+}) {
+  const src = avatarSrc(invitedBy.avatarId);
+  const amount = XP_ACTIONS.invite_accepted.amount;
+  return (
+    <div className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2">
+      {src ? (
+        <Image
+          src={src}
+          alt=""
+          width={36}
+          height={36}
+          className="size-9 shrink-0 rounded-full"
+        />
+      ) : (
+        <HandHeart className="size-5 shrink-0 text-primary" />
+      )}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-sm font-medium text-foreground">
+          A friend saved your seat
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {invitedBy.firstPourPaid
+            ? `Your first pour paid you both +${amount} XP. Lovely.`
+            : `Pour your first cup and +${amount} XP lands for you both.`}
+        </span>
+      </span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">
+        Level {invitedBy.level} host
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The stripped-link recovery hatch: links shared through chat apps sometimes
+ * arrive without their code, so a young account can still type it in. The
+ * server enforces every guard; a miss just reads as "didn't take".
+ */
+function ClaimRow() {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [missed, setMissed] = useState(false);
+  const claim = useClaimInvite();
+
+  const submit = () => {
+    setMissed(false);
+    claim.mutate(value, {
+      onSuccess: (data) => {
+        if (data?.invitedBy) {
+          toast.success("Invite claimed", {
+            description: "Your first pour pays you both.",
+          });
+        } else {
+          setMissed(true);
+        }
+      },
+      onError: () => setMissed(true),
+    });
   };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-colors hover:bg-muted"
+      >
+        <Ticket className="size-5 shrink-0 text-primary" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground">
+            {"Arrived on a friend's invite?"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Enter their code and your first pour pays you both.
+          </span>
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg bg-muted/60 px-3 py-2.5">
+      <span className="text-sm font-medium text-foreground">
+        {"Your friend's invite code"}
+      </span>
+      <div className="flex items-center gap-2">
+        <input
+          value={value}
+          onChange={(event) => setValue(event.target.value.toLowerCase())}
+          maxLength={8}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="eight letters"
+          className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-sm text-foreground outline-none focus:border-primary"
+        />
+        <button
+          type="button"
+          disabled={value.length !== 8 || claim.isPending}
+          onClick={submit}
+          className="h-10 shrink-0 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
+        >
+          Claim
+        </button>
+      </div>
+      {missed && (
+        <span className="text-xs text-muted-foreground">
+          {"That code didn't take. Check it with your friend, codes never use the letters i, l, o or the digits 0 and 1."}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The full-size invite row, shown until the first friend takes a seat. The
+ * reward fires when the invited friend pours a first verified cup — not at
+ * signup — so the promise line names the pour, and the payout arrives on a
+ * later sync. Taps count quietly once the link starts traveling.
+ */
+function InviteRow({ code, taps }: { code: string; taps: number }) {
+  const { copied, copy } = useCopiedFlag();
 
   return (
     <button
       type="button"
-      onClick={copy}
+      onClick={() => copy(inviteLink(code))}
       className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-colors hover:bg-muted"
     >
       {copied ? (
@@ -218,9 +390,188 @@ function InviteRow({ code }: { code: string }) {
         <span className="text-xs text-muted-foreground">
           +{XP_ACTIONS.friend_poured.amount} XP for you both when a friend
           pours their first cup.
+          {taps > 0 && ` Your link's been tapped ${taps === 1 ? "once" : `${taps} times`}.`}
         </span>
       </span>
     </button>
+  );
+}
+
+/**
+ * Once a friend is seated the big button has done its teaching job — it
+ * shrinks to a corner glyph and the space shows the brewing numbers: seats,
+ * pours, banked XP, and the XP still steeping on friends yet to pour. The
+ * nudge is a clipboard line, not a message we send; the referrer stays the
+ * messenger.
+ */
+function BrewingRow({
+  code,
+  stats,
+}: {
+  code: string;
+  stats: ReferralPanel["stats"];
+}) {
+  const { copied, copy } = useCopiedFlag();
+
+  const nudge = () => {
+    void navigator.clipboard
+      .writeText(
+        `A seat's still warm for you at LSTeaTime. One pour and we both earn ${XP_ACTIONS.friend_poured.amount} XP: ${inviteLink(code)}`,
+      )
+      .then(() =>
+        toast.success("Nudge copied", {
+          description: "Pass it along however you like.",
+        }),
+      )
+      .catch(() => {});
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg bg-muted/60 px-3 py-2.5">
+      <div className="flex items-center gap-3">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground">
+            Friends at the table
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {stats.seated} seated · {stats.poured} poured
+            {stats.taps > 0 && ` · ${stats.taps} link taps`}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={() => copy(inviteLink(code))}
+          aria-label="Copy your invite link"
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background/60 text-primary transition-colors hover:bg-background"
+        >
+          {copied ? <Check className="size-4.5" /> : <UserPlus className="size-4.5" />}
+        </button>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">
+          <span className="money font-medium text-foreground">
+            +{stats.earnedXp.toLocaleString()} XP
+          </span>{" "}
+          banked
+          {stats.steepingXp > 0 && (
+            <>
+              {" · "}
+              <span className="money font-medium text-primary">
+                {stats.steepingXp.toLocaleString()} XP
+              </span>{" "}
+              steeping
+            </>
+          )}
+        </span>
+        {stats.steepingXp > 0 && (
+          <button
+            type="button"
+            onClick={nudge}
+            className="shrink-0 text-xs font-medium text-primary underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary"
+          >
+            Copy a gentle nudge
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Two-and-a-bit seconds of "copied" before a row reads normal again. */
+function useCopiedFlag() {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copy = (text: string) => {
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopied(false), 2400);
+      })
+      .catch(() => {
+        // Clipboard denied: leave the row unchanged rather than lie.
+      });
+  };
+  return { copied, copy };
+}
+
+const LEDGER_DATE = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "short",
+});
+
+/**
+ * The house ledger: every award, attributable after the fact. Folded by
+ * default; the list only fetches while it's open.
+ */
+function LedgerRow() {
+  const [open, setOpen] = useState(false);
+  const history = useXpHistory(open);
+
+  return (
+    <div className="flex flex-col rounded-lg bg-muted/40">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="house-ledger"
+        onClick={() => setOpen(!open)}
+        className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60"
+      >
+        <Receipt className="size-5 shrink-0 text-primary" />
+        <span className="flex-1 text-sm font-medium text-foreground">
+          House ledger
+        </span>
+        <CaretDown
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="ledger"
+            id="house-ledger"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            className="overflow-hidden"
+          >
+            <ul className="flex flex-col gap-1 px-3 pb-2.5">
+              {history.isLoading && (
+                <li className="py-1 text-xs text-muted-foreground">
+                  Fetching the book…
+                </li>
+              )}
+              {history.data?.length === 0 && (
+                <li className="py-1 text-xs text-muted-foreground">
+                  Nothing written yet. Pour something.
+                </li>
+              )}
+              {history.data?.map((entry, index) => (
+                <li
+                  key={`${entry.at}-${index}`}
+                  className="flex items-baseline gap-2 py-0.5 text-xs"
+                >
+                  <span className="money shrink-0 font-medium text-foreground">
+                    +{entry.amount}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    {REWARD_REASONS[entry.kind]}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground/70">
+                    {LEDGER_DATE.format(new Date(entry.at))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 

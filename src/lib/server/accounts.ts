@@ -1,6 +1,16 @@
 import { getSql } from "@/lib/server/db";
-import type { Profile } from "@/lib/profile-types";
-import { XP_ACTIONS, type XpKind } from "@/lib/xp";
+import type {
+  Profile,
+  ReferralPanel,
+  RewardList,
+} from "@/lib/profile-types";
+import {
+  INVITE_UNLOCK_LEVEL,
+  isXpKind,
+  rankForXp,
+  XP_ACTIONS,
+  type XpKind,
+} from "@/lib/xp";
 
 export type UserRow = {
   id: string;
@@ -11,10 +21,12 @@ export type UserRow = {
   xp: number;
   referral_code: string | null;
   referred_by: string | null;
+  /** ISO timestamp; the late-claim window is measured from it. */
+  created_at: string;
 };
 
 const USER_COLUMNS =
-  "id, privy_did, wallet_address, email, avatar_id, xp, referral_code, referred_by" as const;
+  "id, privy_did, wallet_address, email, avatar_id, xp, referral_code, referred_by, created_at" as const;
 
 export function normalizeWallet(address: unknown): string | null {
   if (typeof address !== "string") return null;
@@ -113,13 +125,21 @@ export async function awardXp(
   userId: string,
   kind: XpKind,
   ref: string | null,
+  options: {
+    /**
+     * false parks the reward as unseen news: pass it when the award lands
+     * during someone ELSE's request (friend_poured), so the owner's next
+     * profile sync can flush it into a visible ceremony.
+     */
+    announced?: boolean;
+  } = {},
 ): Promise<{ awarded: number; xp: number }> {
   const sql = getSql();
   const amount = XP_ACTIONS[kind].amount;
   const rows = (await sql.query(
     `with ins as (
-       insert into xp_events (user_id, kind, amount, ref)
-       values ($1, $2, $3, $4)
+       insert into xp_events (user_id, kind, amount, ref, announced)
+       values ($1, $2, $3, $4, $5)
        on conflict do nothing
        returning amount
      )
@@ -127,9 +147,30 @@ export async function awardXp(
      set xp = xp + coalesce((select amount from ins), 0), updated_at = now()
      where id = $1
      returning xp, coalesce((select amount from ins), 0) as awarded`,
-    [userId, kind, amount, ref],
+    [userId, kind, amount, ref, options.announced ?? true],
   )) as { xp: number; awarded: number }[];
   return { awarded: rows[0]?.awarded ?? 0, xp: rows[0]?.xp ?? 0 };
+}
+
+/**
+ * Collects rewards that landed while the account's owner wasn't looking
+ * (announced=false) and marks them told. The caller folds the result into
+ * the response's rewards list, so the referrer's "+250, a friend poured"
+ * finally gets its toast instead of arriving as a silent balance bump.
+ */
+export async function flushUnannounced(userId: string): Promise<RewardList> {
+  const sql = getSql();
+  const rows = (await sql.query(
+    `update xp_events set announced = true
+     where user_id = $1 and announced = false
+     returning kind, amount`,
+    [userId],
+  )) as { kind: string; amount: number }[];
+  return rows
+    .filter((row): row is { kind: XpKind; amount: number } =>
+      isXpKind(row.kind),
+    )
+    .map((row) => ({ kind: row.kind, amount: row.amount }));
 }
 
 /* Unambiguous lowercase alphabet: no i/l/o/0/1 lookalikes, so a code read
@@ -203,6 +244,124 @@ export async function bindReferral(
   return rows[0]?.referrer_id ?? null;
 }
 
+/** How long a fresh account can still hand-claim an invite code. */
+const LATE_CLAIM_WINDOW = "72 hours";
+
+/**
+ * The stripped-link recovery hatch: WhatsApp and friends sometimes eat the
+ * ref off a shared URL (field-tested 2026-08-07), so a young account may
+ * still present a friend's code by hand. Same self-referral and write-once
+ * guards as bindReferral, plus two of its own: the account must be inside
+ * the claim window, and must not have poured yet — the payout moment IS the
+ * first verified pour, so a post-pour claim would bind a referral that can
+ * never pay out (and would invite retro-claiming settled accounts).
+ */
+export async function claimReferral(
+  userId: string,
+  code: string,
+): Promise<string | null> {
+  const sql = getSql();
+  const rows = (await sql.query(
+    `update users set referred_by = referrer.id, updated_at = now()
+     from (select id from users where referral_code = $2) as referrer
+     where users.id = $1
+       and users.referred_by is null
+       and referrer.id <> $1
+       and users.created_at > now() - interval '${LATE_CLAIM_WINDOW}'
+       and not exists (
+         select 1 from xp_events
+         where user_id = $1 and kind in ('pour_in', 'pour_out')
+       )
+     returning referrer.id as referrer_id`,
+    [userId, code],
+  )) as { referrer_id: string }[];
+  return rows[0]?.referrer_id ?? null;
+}
+
+/** Records one invite-link landing. Junk codes never make a row. */
+export async function recordReferralClick(code: string): Promise<void> {
+  const sql = getSql();
+  await sql.query(
+    `insert into referral_clicks (code)
+     select $1 where exists (select 1 from users where referral_code = $1)`,
+    [code],
+  );
+}
+
+/**
+ * Everything the pantry's referral corner shows, both directions: who set
+ * this account's seat (avatar and rank only — never the referrer's email or
+ * address), and how the account's own invitations are brewing.
+ */
+export async function referralPanel(user: UserRow): Promise<ReferralPanel> {
+  const sql = getSql();
+
+  let invitedBy: ReferralPanel["invitedBy"] = null;
+  if (user.referred_by) {
+    const referrer = (await sql.query(
+      `select avatar_id, xp from users where id = $1`,
+      [user.referred_by],
+    )) as { avatar_id: string | null; xp: number }[];
+    const accepted = (await sql.query(
+      `select 1 from xp_events where user_id = $1 and kind = 'invite_accepted'`,
+      [user.id],
+    )) as unknown[];
+    if (referrer[0]) {
+      invitedBy = {
+        avatarId: referrer[0].avatar_id,
+        level: rankForXp(referrer[0].xp).level,
+        firstPourPaid: accepted.length > 0,
+      };
+    }
+  }
+
+  const outbound = (await sql.query(
+    `select
+       (select count(*) from users where referred_by = $1)::int as seated,
+       (select count(*) from xp_events where user_id = $1 and kind = 'friend_poured')::int as poured,
+       (select coalesce(sum(amount), 0) from xp_events where user_id = $1 and kind = 'friend_poured')::int as earned`,
+    [user.id],
+  )) as { seated: number; poured: number; earned: number }[];
+
+  const clicks = user.referral_code
+    ? ((await sql.query(
+        `select count(*)::int as taps from referral_clicks where code = $1`,
+        [user.referral_code],
+      )) as { taps: number }[])
+    : [{ taps: 0 }];
+
+  // Already referred means the claim question is moot; otherwise the hatch
+  // stays open only while the account is young and has never poured.
+  const pours = invitedBy
+    ? [{ n: 1 }]
+    : ((await sql.query(
+        `select count(*)::int as n from xp_events
+         where user_id = $1 and kind in ('pour_in', 'pour_out')`,
+        [user.id],
+      )) as { n: number }[]);
+
+  const { seated, poured, earned } = outbound[0] ?? {
+    seated: 0,
+    poured: 0,
+    earned: 0,
+  };
+  const withinWindow =
+    Date.now() - new Date(user.created_at).getTime() < 72 * 3600_000;
+
+  return {
+    invitedBy,
+    canClaim: !invitedBy && withinWindow && (pours[0]?.n ?? 0) === 0,
+    stats: {
+      taps: clicks[0]?.taps ?? 0,
+      seated,
+      poured,
+      earnedXp: earned,
+      steepingXp:
+        Math.max(0, seated - poured) * XP_ACTIONS.friend_poured.amount,
+    },
+  };
+}
+
 export async function setAvatar(
   userId: string,
   avatarId: string,
@@ -222,12 +381,20 @@ export async function setEmail(userId: string, email: string): Promise<void> {
   );
 }
 
-/** The shape every profile-ish endpoint returns to the client. */
+/**
+ * The shape every profile-ish endpoint returns to the client. The invite
+ * code is a rank perk: minted for everyone (so inbound links always
+ * resolve), revealed only from INVITE_UNLOCK_LEVEL — below that the client
+ * shows the locked row instead of a link.
+ */
 export function toProfile(user: UserRow): Profile {
   return {
     xp: user.xp,
     avatarId: user.avatar_id,
     hasEmail: user.email !== null,
-    referralCode: user.referral_code,
+    referralCode:
+      rankForXp(user.xp).level >= INVITE_UNLOCK_LEVEL
+        ? user.referral_code
+        : null,
   };
 }

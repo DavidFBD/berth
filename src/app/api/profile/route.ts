@@ -4,6 +4,7 @@ import {
   awardXp,
   bindReferral,
   ensureReferralCode,
+  flushUnannounced,
   normalizeReferralCode,
   setEmail,
 } from "@/lib/server/accounts";
@@ -64,6 +65,11 @@ export async function POST(request: NextRequest) {
       }
     }
   }
+
+  // News that broke while this account wasn't looking — a friend's first
+  // pour pays the referrer during the FRIEND's request, so the ceremony
+  // waits here, on the owner's next sync, where it can actually be seen.
+  rewards.push(...(await flushUnannounced(user.id)));
 
   return rewardsResponse(user, {}, rewards);
 }

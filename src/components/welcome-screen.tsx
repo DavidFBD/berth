@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Envelope } from "@phosphor-icons/react";
+import { Envelope, HandHeart } from "@phosphor-icons/react";
 import { useConnectedChains } from "@sodax/wallet-sdk-react";
 import { Button } from "@/components/ui/button";
 import { WalletDrawer } from "@/components/wallet";
@@ -10,6 +10,8 @@ import { CupArt, SteamPlume } from "@/components/tea/tea-art";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useCopy } from "@/components/settings-provider";
+import { useMounted } from "@/hooks/use-mounted";
+import { pendingReferralCode } from "@/lib/referral";
 
 /* eslint-disable @next/next/no-img-element -- tiny local brand mark */
 
@@ -53,6 +55,9 @@ function WelcomeScreen() {
   const privy = usePrivyEmbeddedWallet();
   const [walletsOpen, setWalletsOpen] = useState(false);
   const copy = useCopy();
+  // localStorage read, so mounted-gated: the server render must not guess.
+  const mounted = useMounted();
+  const invited = mounted && pendingReferralCode() !== null;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-6 px-6 py-10 text-center sm:max-w-lg">
@@ -63,6 +68,15 @@ function WelcomeScreen() {
           {copy.tagline}
         </p>
       </div>
+
+      {/* The invitation announces itself before sign-in: name the deal
+          (both sides, and WHEN it pays) while the visitor decides. */}
+      {invited && (
+        <div className="flex items-center gap-2.5 rounded-full border border-primary/30 bg-card px-4 py-2.5">
+          <HandHeart className="size-5 shrink-0 text-primary" />
+          <span className="text-sm text-foreground">{copy.inviteWaiting}</span>
+        </div>
+      )}
 
       {/* The three blends, warmed and waiting */}
       <div className="flex items-end gap-4">

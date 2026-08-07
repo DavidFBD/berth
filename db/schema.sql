@@ -50,3 +50,19 @@ alter table users add column if not exists referred_by uuid references users(id)
 
 create unique index if not exists users_referral_code_unique
   on users (referral_code) where referral_code is not null;
+
+-- A reward can land on a row from someone ELSE's request (friend_poured is
+-- written during the friend's pour). announced=false parks the news until
+-- the owner's next profile sync, which flips it and toasts the ceremony.
+alter table xp_events add column if not exists announced boolean not null default true;
+
+-- One row per invite-link landing (the /r/CODE page beacons it), so a
+-- referrer can see taps next to seats. Uncounted, unauthenticated, unpaid:
+-- purely funnel telemetry.
+create table if not exists referral_clicks (
+  id bigint generated always as identity primary key,
+  code text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists referral_clicks_code_idx on referral_clicks (code);

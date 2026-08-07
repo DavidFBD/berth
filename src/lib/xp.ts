@@ -43,6 +43,14 @@ export const XP_ACTIONS = {
 
 export type XpKind = keyof typeof XP_ACTIONS;
 
+/**
+ * Handing out your own invite link is itself a rank perk (David's call,
+ * field-tested 2026-08-07): a referred newcomer arrives at level 2 and the
+ * locked invite row becomes their next goal. Server gates the code in
+ * toProfile; the client only decides how to say it.
+ */
+export const INVITE_UNLOCK_LEVEL = 3;
+
 export function isXpKind(value: string): value is XpKind {
   return value in XP_ACTIONS;
 }

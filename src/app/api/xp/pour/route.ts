@@ -53,9 +53,11 @@ export async function POST(request: NextRequest) {
     if (accepted.awarded > 0) {
       rewards.push({ kind: "invite_accepted", amount: accepted.awarded });
     }
-    // The referrer's reward lands on their row now and greets them on their
-    // next sync; no ceremony in THIS caller's response.
-    await awardXp(user.referred_by, "friend_poured", user.id);
+    // The referrer's reward lands on their row now, parked unannounced; their
+    // next profile sync flushes it into a visible toast (see profile route).
+    await awardXp(user.referred_by, "friend_poured", user.id, {
+      announced: false,
+    });
   }
 
   return rewardsResponse(user, { xp }, rewards);

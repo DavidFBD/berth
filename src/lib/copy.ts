@@ -156,6 +156,8 @@ export type Copy = {
   connectWallet: string;
   noSeedPhrases: string;
   preferOwnWallet: string;
+  /** Shown on the welcome screen when an invite code is waiting in the pocket. */
+  inviteWaiting: string;
   mottoLead: string;
   mottoDisplay: string;
   poweredBy: string;
@@ -334,6 +336,8 @@ const ORIGINAL: Copy = {
   connectWallet: "Connect a wallet",
   noSeedPhrases: "No seed phrases, no extensions. Your pantry sets itself up.",
   preferOwnWallet: "Prefer your own wallet? Connect it instead",
+  inviteWaiting:
+    "A friend saved you a seat. Your first pour treats you both.",
   mottoLead: "Tea is the way.",
   mottoDisplay: "LSTeaTime is the best time.",
   poweredBy: "Powered by SODAX · real funds, real tea",
@@ -520,6 +524,7 @@ const GANGSTER: Copy = {
   connectWallet: "Connect a wallet",
   noSeedPhrases: "No seed phrases, no extensions. The crib sets itself up.",
   preferOwnWallet: "Got your own wallet? Bring it through",
+  inviteWaiting: "Your people saved you a seat. First pour pays you both.",
   mottoLead: "Tea is the way.",
   mottoDisplay: "Sip game immaculate.",
   poweredBy: "Powered by SODAX · real funds, real tea",
@@ -686,6 +691,8 @@ const NAN: Copy = {
   signInEmail: "Come in with email",
   noSeedPhrases: "No seed phrases, no extensions. Nan sorts the pantry herself.",
   preferOwnWallet: "Brought your own wallet? That's fine too, dear",
+  inviteWaiting:
+    "A friend's kept you a chair, love. Your first cuppa treats the both of you.",
   mottoLead: "Tea is the way.",
   mottoDisplay: "There's always time for a cuppa.",
 
@@ -860,6 +867,7 @@ const TERMINAL: Copy = {
   connectWallet: "connect wallet",
   noSeedPhrases: "no seed phrase. no extension. keys provision on auth_",
   preferOwnWallet: "byo wallet? connect it",
+  inviteWaiting: "referral detected. first pour pays both parties_",
   mottoLead: "gm. tea is the way.",
   mottoDisplay: "wagmi, one cup at a time_",
 
@@ -1033,6 +1041,8 @@ const VAPORWAVE: Copy = {
   signInEmail: "Enter with email",
   noSeedPhrases: "No seed phrases, no extensions. The plaza builds itself.",
   preferOwnWallet: "Your own wallet? Bring it to the plaza",
+  inviteWaiting:
+    "A seat glows for you in the plaza. Your first pour rewards you both.",
   mottoLead: "Tea is the way.",
   mottoDisplay: "ＬＳＴｅａＴｉｍｅ ４ｅｖｅｒ",
 
@@ -1207,6 +1217,7 @@ const SUMIE: Copy = {
   connectWallet: "Connect a wallet",
   noSeedPhrases: "No seed phrases. No extensions.",
   preferOwnWallet: "Your own wallet? Connect it",
+  inviteWaiting: "A seat waits. One pour rewards two.",
   mottoLead: "Tea is the way.",
   mottoDisplay: "Stillness, steeping.",
 
@@ -1379,6 +1390,8 @@ const AURORA: Copy = {
   connectWallet: "Connect a wallet",
   noSeedPhrases: "No seed phrases, no extensions. Your cabin sets itself up.",
   preferOwnWallet: "Prefer your own wallet? Connect it instead",
+  inviteWaiting:
+    "A friend warmed a seat for you by the stove. Your first pour treats you both.",
   mottoLead: "Tea is the way.",
   mottoDisplay: "Steam rises. Lights dance.",
 
@@ -1530,6 +1543,8 @@ const LSD: Copy = {
     "A kaleidoscopic little game of filling tea cups. The cups earn while they steep. The walls breathe a bit.",
   noSeedPhrases:
     "No seed phrases, no extensions. Your pantry assembles itself from pure colour.",
+  inviteWaiting:
+    "A friend saved you a seat on the spiral. Your first pour pays you both, in stereo.",
   mottoLead: "Tea is the way.",
   mottoDisplay: "The tea drinks you back.",
 

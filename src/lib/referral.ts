@@ -23,15 +23,26 @@ const CODE_SHAPE = /^[a-z0-9]{6,12}$/;
 export function captureReferralFromUrl(): void {
   if (typeof window === "undefined") return;
   try {
-    const code = new URL(window.location.href).searchParams
-      .get(PARAM)
-      ?.trim()
-      .toLowerCase();
-    if (!code || !CODE_SHAPE.test(code)) return;
+    const code = new URL(window.location.href).searchParams.get(PARAM);
+    if (code) pocketReferralCode(code);
+  } catch {
+    // Malformed URL: the invite just doesn't stick. Nothing to do.
+  }
+}
+
+/**
+ * Puts a code in the pocket directly — the `/r/CODE` landing calls this
+ * with its path segment, no query param involved (WhatsApp taught us that
+ * query strings don't always survive the trip).
+ */
+export function pocketReferralCode(raw: string): void {
+  if (typeof window === "undefined") return;
+  const code = raw.trim().toLowerCase();
+  if (!CODE_SHAPE.test(code)) return;
+  try {
     localStorage.setItem(STORAGE_KEY, code);
   } catch {
-    // Storage denied (private mode) or malformed URL: the invite just
-    // doesn't stick. Nothing to do.
+    // Storage denied (private mode): the invite just doesn't stick.
   }
 }
 
@@ -71,11 +82,16 @@ export function clearPendingReferral(): void {
   }
 }
 
-/** The shareable invite link for a code, on the current origin. */
+/**
+ * The shareable invite link for a code, on the current origin. Path-based
+ * (`/r/CODE`) rather than `?ref=`: link sanitizers and chat apps strip query
+ * params often enough that the code now travels as part of the path. The
+ * old query shape stays accepted for links already in the wild.
+ */
 export function inviteLink(code: string): string {
   const origin =
     typeof window === "undefined"
       ? "https://lsteatime.com"
       : window.location.origin;
-  return `${origin}/?${PARAM}=${code}`;
+  return `${origin}/r/${code}`;
 }

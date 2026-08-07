@@ -5,7 +5,12 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useXAccount } from "@sodax/wallet-sdk-react";
 import { ChainKeys } from "@sodax/sdk";
 import type { AvatarId } from "@/lib/avatars";
-import type { Profile, ProfileResponse } from "@/lib/profile-types";
+import type {
+  Profile,
+  ProfileResponse,
+  ReferralPanel,
+  XpHistoryResponse,
+} from "@/lib/profile-types";
 import { announceRewards } from "@/components/xp-toast";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import {
@@ -31,11 +36,11 @@ function useIdentity() {
   return { authenticated, wallet: wallet ?? null, key, getAccessToken };
 }
 
-async function postProfileApi(
+async function postRewardsApi<T>(
   path: string,
   body: Record<string, unknown>,
   auth: { token: string | null; walletSession: string | null },
-): Promise<ProfileResponse | null> {
+): Promise<T | null> {
   const response = await fetch(path, {
     method: "POST",
     headers: {
@@ -49,6 +54,28 @@ async function postProfileApi(
   });
   if (!response.ok) return null;
   return response.json();
+}
+
+const postProfileApi = postRewardsApi<ProfileResponse>;
+
+/**
+ * The auth ritual every rewards call performs: Privy token when signed in,
+ * SIWE wallet session otherwise, null when neither materializes. Shared by
+ * the profile query, the mutations, and the referral-corner hooks.
+ */
+function useRewardsAuth() {
+  const { authenticated, wallet, key, getAccessToken } = useIdentity();
+  const ensureWalletSession = useEnsureWalletSession();
+  const resolve = async () => {
+    const auth = authenticated
+      ? { token: await getAccessToken(), walletSession: null }
+      : {
+          token: null,
+          walletSession: wallet ? await ensureWalletSession(wallet) : null,
+        };
+    return auth.token || auth.walletSession ? auth : null;
+  };
+  return { key, resolve };
 }
 
 /**
@@ -68,8 +95,7 @@ function profileOf(data: ProfileResponse): Profile {
 
 /** The account profile, synced on first read. Disabled until an identity exists. */
 export function useProfile() {
-  const { authenticated, wallet, key, getAccessToken } = useIdentity();
-  const ensureWalletSession = useEnsureWalletSession();
+  const { key, resolve } = useRewardsAuth();
   return useQuery({
     queryKey: ["profile", key],
     enabled: key !== null,
@@ -79,12 +105,8 @@ export function useProfile() {
       // Guests prove their address once (SIWE, free signature) — the server
       // no longer takes anyone's word for a wallet. Declining just means no
       // rewards session; the tea itself never needed one.
-      const auth = authenticated
-        ? { token: await getAccessToken(), walletSession: null }
-        : { token: null, walletSession: wallet ? await ensureWalletSession(wallet) : null };
-      if (!auth.token && !auth.walletSession) {
-        throw new Error("no rewards session");
-      }
+      const auth = await resolve();
+      if (!auth) throw new Error("no rewards session");
       const data = await postProfileApi(
         "/api/profile",
         // The pocketed invite code rides along; the server only binds it to
@@ -111,15 +133,12 @@ function useProfileMutation<TVars>(
   toBody: (vars: TVars) => Record<string, unknown>,
 ) {
   const queryClient = useQueryClient();
-  const { authenticated, wallet, key, getAccessToken } = useIdentity();
-  const ensureWalletSession = useEnsureWalletSession();
+  const { key, resolve } = useRewardsAuth();
   return useMutation({
     mutationFn: async (vars: TVars) => {
       if (!key) return null;
-      const auth = authenticated
-        ? { token: await getAccessToken(), walletSession: null }
-        : { token: null, walletSession: wallet ? await ensureWalletSession(wallet) : null };
-      if (!auth.token && !auth.walletSession) return null;
+      const auth = await resolve();
+      if (!auth) return null;
       return postProfileApi(path, toBody(vars), auth);
     },
     onSuccess: (data) => {
@@ -127,6 +146,10 @@ function useProfileMutation<TVars>(
       const previous = queryClient.getQueryData<Profile>(["profile", key]);
       toastRewards(data.rewards, previous?.xp, data.xp);
       queryClient.setQueryData<Profile>(["profile", key], profileOf(data));
+      // Every award moves the ledger, and a pour can move the referral
+      // corner (steeping → poured); both are cheap refetches on next open.
+      void queryClient.invalidateQueries({ queryKey: ["xp-history", key] });
+      void queryClient.invalidateQueries({ queryKey: ["referral-panel", key] });
     },
   });
 }
@@ -159,4 +182,78 @@ export function useAwardPour() {
       intentTxHash: vars.intentTxHash,
     }),
   );
+}
+
+/**
+ * The referral corner's data: who set this seat, whether a code can still
+ * be hand-claimed, and how the account's own invitations are brewing.
+ * Fetched only while the pantry is open — `enabled` gates it.
+ */
+export function useReferralPanel(enabled: boolean) {
+  const { key, resolve } = useRewardsAuth();
+  return useQuery({
+    queryKey: ["referral-panel", key],
+    enabled: enabled && key !== null,
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: async (): Promise<ReferralPanel> => {
+      const auth = await resolve();
+      if (!auth) throw new Error("no rewards session");
+      const data = await postRewardsApi<ReferralPanel>(
+        "/api/referral/panel",
+        {},
+        auth,
+      );
+      if (!data) throw new Error("referral panel failed");
+      return data;
+    },
+  });
+}
+
+/**
+ * Hand-claiming an invite code (the stripped-link recovery hatch). Success
+ * replaces the cached panel; a 422 surfaces as null so the row can say
+ * "didn't take" without throwing.
+ */
+export function useClaimInvite() {
+  const queryClient = useQueryClient();
+  const { key, resolve } = useRewardsAuth();
+  return useMutation({
+    mutationFn: async (code: string): Promise<ReferralPanel | null> => {
+      if (!key) return null;
+      const auth = await resolve();
+      if (!auth) return null;
+      return postRewardsApi<ReferralPanel>(
+        "/api/referral/claim",
+        { code },
+        auth,
+      );
+    },
+    onSuccess: (data) => {
+      if (!data) return;
+      queryClient.setQueryData<ReferralPanel>(["referral-panel", key], data);
+    },
+  });
+}
+
+/** The house ledger, newest first. Fetched only while it's unfolded. */
+export function useXpHistory(enabled: boolean) {
+  const { key, resolve } = useRewardsAuth();
+  return useQuery({
+    queryKey: ["xp-history", key],
+    enabled: enabled && key !== null,
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: async () => {
+      const auth = await resolve();
+      if (!auth) throw new Error("no rewards session");
+      const data = await postRewardsApi<XpHistoryResponse>(
+        "/api/xp/history",
+        {},
+        auth,
+      );
+      if (!data) throw new Error("ledger fetch failed");
+      return data.events;
+    },
+  });
 }
