@@ -27,10 +27,13 @@ only in Chromium is not verified. If the browser build is missing:
 
 - No dashes as punctuation in user-facing copy (reads as AI). Commas, periods.
 - No raw emoji in UI; glyphs are Phosphor duotone or nothing.
-- Every user-facing string lives in a mode's voice in `src/lib/copy.ts`;
-  never hardcode copy in components. One deliberate exception: the rewards
-  panel (tea-service.tsx) is theme-agnostic by design, ranks and rewards read
-  the same in every parlour.
+- Every user-facing string lives in `src/lib/copy.ts`; never hardcode copy
+  in components. Original is the BASE voice and defines every key; the other
+  parlours are `Partial<Copy>` overrides, so a new line costs one edit in the
+  base plus overrides only where a voice has something to say.
+- Rewards copy (tea-service.tsx) lives in the base voice ONLY, on purpose:
+  ranks and rewards read the same in every parlour. The seam is open if a
+  voice ever earns a flavored rewards corner, but agnostic is the default.
 
 ## Ritual
 

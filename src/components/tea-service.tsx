@@ -35,18 +35,22 @@ import {
   useXpHistory,
 } from "@/hooks/use-profile";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { useCopy } from "@/components/settings-provider";
 
 /**
  * The rewards corner of an account surface: rank, progress toward the next
  * one, the avatar shelf, and (for wallet-only guests) the email invitation.
  * Rendered inside both the pantry drawer (email users) and the external
- * account drawer, so ranks read the same in every theme by design — the
- * ladder lives in xp.ts, not in personality copy.
+ * account drawer. Its prose lives in the BASE voice of lib/copy — ranks and
+ * rewards read the same in every parlour by design (CLAUDE.md), but the
+ * strings sit behind useCopy() like everyone else's, so a parlour may
+ * flavour them someday at the cost of one override.
  */
 export function TeaService() {
   const profile = useProfile();
   const setAvatar = useSetAvatar();
   const privy = usePrivyEmbeddedWallet();
+  const copy = useCopy();
   /**
    * Whether the avatar shelf is unfolded. null = no explicit choice, and the
    * default does the smart thing: open while the pick is still unmade (it
@@ -92,13 +96,13 @@ export function TeaService() {
             {rank.name}
           </span>
           <span className="text-xs text-muted-foreground">
-            Level {rank.level} · {xp.toLocaleString()} XP
+            {copy.rankLine(rank.level, xp.toLocaleString())}
           </span>
         </div>
         <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
           {avatarId == null
-            ? `Pick a face · +${XP_ACTIONS.avatar_set.amount} XP`
-            : "New face"}
+            ? copy.pickFace(XP_ACTIONS.avatar_set.amount)
+            : copy.newFace}
           <CaretDown
             className={cn(
               "size-3.5 transition-transform",
@@ -117,7 +121,7 @@ export function TeaService() {
             />
           </div>
           <span className="text-[11px] text-muted-foreground">
-            {rank.span - rank.into} XP to {rank.nextName}
+            {copy.xpToNext(String(rank.span - rank.into), rank.nextName)}
           </span>
         </div>
       )}
@@ -187,10 +191,10 @@ export function TeaService() {
           <EnvelopeSimple className="size-5 shrink-0 text-primary" />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="text-sm font-medium text-foreground">
-              Add an email to your table
+              {copy.addEmailTitle}
             </span>
             <span className="text-xs text-muted-foreground">
-              Keeps your seat saved. +{XP_ACTIONS.email_linked.amount} XP
+              {copy.addEmailSub(XP_ACTIONS.email_linked.amount)}
             </span>
           </span>
         </button>
@@ -208,6 +212,7 @@ export function TeaService() {
  */
 function InviteCorner({ xp, code }: { xp: number; code: string | null }) {
   const panel = useReferralPanel(true);
+  const copy = useCopy();
   const level = rankForXp(xp).level;
   const unlockRank = RANKS[INVITE_UNLOCK_LEVEL - 1];
 
@@ -224,11 +229,10 @@ function InviteCorner({ xp, code }: { xp: number; code: string | null }) {
           <LockSimple className="size-5 shrink-0 text-muted-foreground" />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="text-sm font-medium text-muted-foreground">
-              Invites unlock at {unlockRank.name}
+              {copy.inviteLockedTitle(unlockRank.name)}
             </span>
             <span className="text-xs text-muted-foreground">
-              Reach level {INVITE_UNLOCK_LEVEL} and you can set places at the
-              table too.
+              {copy.inviteLockedSub(INVITE_UNLOCK_LEVEL)}
             </span>
           </span>
         </div>
@@ -253,6 +257,7 @@ function ThankYouRow({
 }) {
   const src = avatarSrc(invitedBy.avatarId);
   const amount = XP_ACTIONS.invite_accepted.amount;
+  const copy = useCopy();
   return (
     <div className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2">
       {src ? (
@@ -268,16 +273,16 @@ function ThankYouRow({
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-sm font-medium text-foreground">
-          A friend saved your seat
+          {copy.friendSavedSeat}
         </span>
         <span className="text-xs text-muted-foreground">
           {invitedBy.firstPourPaid
-            ? `Your first pour paid you both +${amount} XP. Lovely.`
-            : `Pour your first cup and +${amount} XP lands for you both.`}
+            ? copy.inviteFirstPourPaid(amount)
+            : copy.inviteFirstPourPending(amount)}
         </span>
       </span>
       <span className="shrink-0 text-[11px] text-muted-foreground">
-        Level {invitedBy.level} host
+        {copy.levelHost(invitedBy.level)}
       </span>
     </div>
   );
@@ -293,14 +298,15 @@ function ClaimRow() {
   const [value, setValue] = useState("");
   const [missed, setMissed] = useState(false);
   const claim = useClaimInvite();
+  const copy = useCopy();
 
   const submit = () => {
     setMissed(false);
     claim.mutate(value, {
       onSuccess: (data) => {
         if (data?.invitedBy) {
-          toast.success("Invite claimed", {
-            description: "Your first pour pays you both.",
+          toast.success(copy.claimSuccessTitle, {
+            description: copy.claimSuccessSub,
           });
         } else {
           setMissed(true);
@@ -320,10 +326,10 @@ function ClaimRow() {
         <Ticket className="size-5 shrink-0 text-primary" />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium text-foreground">
-            {"Arrived on a friend's invite?"}
+            {copy.claimAskTitle}
           </span>
           <span className="text-xs text-muted-foreground">
-            Enter their code and your first pour pays you both.
+            {copy.claimAskSub}
           </span>
         </span>
       </button>
@@ -333,7 +339,7 @@ function ClaimRow() {
   return (
     <div className="flex flex-col gap-2 rounded-lg bg-muted/60 px-3 py-2.5">
       <span className="text-sm font-medium text-foreground">
-        {"Your friend's invite code"}
+        {copy.claimInputLabel}
       </span>
       <div className="flex items-center gap-2">
         <input
@@ -343,7 +349,7 @@ function ClaimRow() {
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          placeholder="eight letters"
+          placeholder={copy.claimPlaceholder}
           className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-sm text-foreground outline-none focus:border-primary"
         />
         <button
@@ -352,13 +358,11 @@ function ClaimRow() {
           onClick={submit}
           className="h-10 shrink-0 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
         >
-          Claim
+          {copy.claimCta}
         </button>
       </div>
       {missed && (
-        <span className="text-xs text-muted-foreground">
-          {"That code didn't take. Check it with your friend, codes never use the letters i, l, o or the digits 0 and 1."}
-        </span>
+        <span className="text-xs text-muted-foreground">{copy.claimMissed}</span>
       )}
     </div>
   );
@@ -371,12 +375,13 @@ function ClaimRow() {
  * later sync. Taps count quietly once the link starts traveling.
  */
 function InviteRow({ code, taps }: { code: string; taps: number }) {
-  const { copied, copy } = useCopiedFlag();
+  const { copied, copyText } = useCopiedFlag();
+  const copy = useCopy();
 
   return (
     <button
       type="button"
-      onClick={() => copy(inviteLink(code))}
+      onClick={() => copyText(inviteLink(code))}
       className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-colors hover:bg-muted"
     >
       {copied ? (
@@ -386,12 +391,11 @@ function InviteRow({ code, taps }: { code: string; taps: number }) {
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-sm font-medium text-foreground">
-          {copied ? "Link copied, off it goes" : "Set another place at the table"}
+          {copied ? copy.inviteRowCopied : copy.inviteRowTitle}
         </span>
         <span className="text-xs text-muted-foreground">
-          +{XP_ACTIONS.friend_poured.amount} XP for you both when a friend
-          pours their first cup.
-          {taps > 0 && ` Your link's been tapped ${taps === 1 ? "once" : `${taps} times`}.`}
+          {copy.inviteRowSub(XP_ACTIONS.friend_poured.amount)}
+          {taps > 0 && ` ${copy.inviteTaps(taps)}`}
         </span>
       </span>
     </button>
@@ -412,16 +416,17 @@ function BrewingRow({
   code: string;
   stats: ReferralPanel["stats"];
 }) {
-  const { copied, copy } = useCopiedFlag();
+  const { copied, copyText } = useCopiedFlag();
+  const copy = useCopy();
 
   const nudge = () => {
     void navigator.clipboard
       .writeText(
-        `A seat's still warm for you at LSTeaTime. One pour and we both earn ${XP_ACTIONS.friend_poured.amount} XP: ${inviteLink(code)}`,
+        copy.nudgeMessage(XP_ACTIONS.friend_poured.amount, inviteLink(code)),
       )
       .then(() =>
-        toast.success("Nudge copied", {
-          description: "Pass it along however you like.",
+        toast.success(copy.nudgeCopiedTitle, {
+          description: copy.nudgeCopiedSub,
         }),
       )
       .catch(() => {});
@@ -432,16 +437,15 @@ function BrewingRow({
       <div className="flex items-center gap-3">
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium text-foreground">
-            Friends at the table
+            {copy.friendsAtTable}
           </span>
           <span className="text-xs text-muted-foreground">
-            {stats.seated} seated · {stats.poured} poured
-            {stats.taps > 0 && ` · ${stats.taps} link taps`}
+            {copy.friendsTally(stats.seated, stats.poured, stats.taps)}
           </span>
         </span>
         <button
           type="button"
-          onClick={() => copy(inviteLink(code))}
+          onClick={() => copyText(inviteLink(code))}
           aria-label="Copy your invite link"
           className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background/60 text-primary transition-colors hover:bg-background"
         >
@@ -453,14 +457,14 @@ function BrewingRow({
           <span className="money font-medium text-foreground">
             +{stats.earnedXp.toLocaleString()} XP
           </span>{" "}
-          banked
+          {copy.xpBankedWord}
           {stats.steepingXp > 0 && (
             <>
               {" · "}
               <span className="money font-medium text-primary">
                 {stats.steepingXp.toLocaleString()} XP
               </span>{" "}
-              steeping
+              {copy.xpSteepingWord}
             </>
           )}
         </span>
@@ -470,7 +474,7 @@ function BrewingRow({
             onClick={nudge}
             className="shrink-0 text-xs font-medium text-primary underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary"
           >
-            Copy a gentle nudge
+            {copy.copyNudge}
           </button>
         )}
       </div>
@@ -482,7 +486,7 @@ function BrewingRow({
 function useCopiedFlag() {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const copy = (text: string) => {
+  const copyText = (text: string) => {
     void navigator.clipboard
       .writeText(text)
       .then(() => {
@@ -494,7 +498,7 @@ function useCopiedFlag() {
         // Clipboard denied: leave the row unchanged rather than lie.
       });
   };
-  return { copied, copy };
+  return { copied, copyText };
 }
 
 const LEDGER_DATE = new Intl.DateTimeFormat(undefined, {
@@ -509,6 +513,7 @@ const LEDGER_DATE = new Intl.DateTimeFormat(undefined, {
 function LedgerRow() {
   const [open, setOpen] = useState(false);
   const history = useXpHistory(open);
+  const copy = useCopy();
 
   return (
     <div className="flex flex-col rounded-lg bg-muted/40">
@@ -521,7 +526,7 @@ function LedgerRow() {
       >
         <Receipt className="size-5 shrink-0 text-primary" />
         <span className="flex-1 text-sm font-medium text-foreground">
-          House ledger
+          {copy.houseLedger}
         </span>
         <CaretDown
           className={cn(
@@ -544,12 +549,12 @@ function LedgerRow() {
             <ul className="flex flex-col gap-1 px-3 pb-2.5">
               {history.isLoading && (
                 <li className="py-1 text-xs text-muted-foreground">
-                  Fetching the book…
+                  {copy.ledgerLoading}
                 </li>
               )}
               {history.data?.length === 0 && (
                 <li className="py-1 text-xs text-muted-foreground">
-                  Nothing written yet. Pour something.
+                  {copy.ledgerEmpty}
                 </li>
               )}
               {history.data?.map((entry, index) => (

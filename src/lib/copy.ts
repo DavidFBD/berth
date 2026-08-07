@@ -293,6 +293,47 @@ export type Copy = {
   loreHouseTitle: string;
   loreHouseBody: string;
   loreCta: string;
+
+  /* — rewards corner (tea service). Defined in the base voice only: ranks
+       and rewards read the same in every parlour by design (CLAUDE.md), so
+       no parlour overrides these today — but the seam is open, and a voice
+       MAY flavour them later at the usual cost of one override. — */
+  rankLine: (level: number, xp: string) => string;
+  xpToNext: (xp: string, rankName: string) => string;
+  pickFace: (amount: number) => string;
+  newFace: string;
+  addEmailTitle: string;
+  addEmailSub: (amount: number) => string;
+  inviteLockedTitle: (rankName: string) => string;
+  inviteLockedSub: (level: number) => string;
+  friendSavedSeat: string;
+  inviteFirstPourPaid: (amount: number) => string;
+  inviteFirstPourPending: (amount: number) => string;
+  levelHost: (level: number) => string;
+  claimAskTitle: string;
+  claimAskSub: string;
+  claimInputLabel: string;
+  claimPlaceholder: string;
+  claimCta: string;
+  claimMissed: string;
+  claimSuccessTitle: string;
+  claimSuccessSub: string;
+  inviteRowTitle: string;
+  inviteRowCopied: string;
+  inviteRowSub: (amount: number) => string;
+  /** Appended to inviteRowSub once the link starts traveling; taps ≥ 1. */
+  inviteTaps: (taps: number) => string;
+  friendsAtTable: string;
+  friendsTally: (seated: number, poured: number, taps: number) => string;
+  xpBankedWord: string;
+  xpSteepingWord: string;
+  copyNudge: string;
+  nudgeCopiedTitle: string;
+  nudgeCopiedSub: string;
+  nudgeMessage: (amount: number, link: string) => string;
+  houseLedger: string;
+  ledgerLoading: string;
+  ledgerEmpty: string;
 };
 
 const ORIGINAL: Copy = {
@@ -478,13 +519,57 @@ const ORIGINAL: Copy = {
   loreHouseBody:
     "The house pays you to play: pours, first tastes of every voice, and friends who join the table all earn XP, from New Leaf all the way to Tea Sage. And the house keeps one small rule, written by the door:",
   loreCta: "Take a seat",
+
+  rankLine: (level, xp) => `Level ${level} · ${xp} XP`,
+  xpToNext: (xp, rankName) => `${xp} XP to ${rankName}`,
+  pickFace: (amount) => `Pick a face · +${amount} XP`,
+  newFace: "New face",
+  addEmailTitle: "Add an email to your table",
+  addEmailSub: (amount) => `Keeps your seat saved. +${amount} XP`,
+  inviteLockedTitle: (rankName) => `Invites unlock at ${rankName}`,
+  inviteLockedSub: (level) =>
+    `Reach level ${level} and you can set places at the table too.`,
+  friendSavedSeat: "A friend saved your seat",
+  inviteFirstPourPaid: (amount) =>
+    `Your first pour paid you both +${amount} XP. Lovely.`,
+  inviteFirstPourPending: (amount) =>
+    `Pour your first cup and +${amount} XP lands for you both.`,
+  levelHost: (level) => `Level ${level} host`,
+  claimAskTitle: "Arrived on a friend's invite?",
+  claimAskSub: "Enter their code and your first pour pays you both.",
+  claimInputLabel: "Your friend's invite code",
+  claimPlaceholder: "eight letters",
+  claimCta: "Claim",
+  claimMissed:
+    "That code didn't take. Check it with your friend, codes never use the letters i, l, o or the digits 0 and 1.",
+  claimSuccessTitle: "Invite claimed",
+  claimSuccessSub: "Your first pour pays you both.",
+  inviteRowTitle: "Set another place at the table",
+  inviteRowCopied: "Link copied, off it goes",
+  inviteRowSub: (amount) =>
+    `+${amount} XP for you both when a friend pours their first cup.`,
+  inviteTaps: (taps) =>
+    taps === 1 ? "Your link's been tapped once." : `Your link's been tapped ${taps} times.`,
+  friendsAtTable: "Friends at the table",
+  friendsTally: (seated, poured, taps) =>
+    `${seated} seated · ${poured} poured${taps > 0 ? ` · ${taps} link taps` : ""}`,
+  xpBankedWord: "banked",
+  xpSteepingWord: "steeping",
+  copyNudge: "Copy a gentle nudge",
+  nudgeCopiedTitle: "Nudge copied",
+  nudgeCopiedSub: "Pass it along however you like.",
+  nudgeMessage: (amount, link) =>
+    `A seat's still warm for you at LSTeaTime. One pour and we both earn ${amount} XP: ${link}`,
+  houseLedger: "House ledger",
+  ledgerLoading: "Fetching the book…",
+  ledgerEmpty: "Nothing written yet. Pour something.",
 };
 
 /**
  * Gangster: 90s hip-hop by way of a velvet-wallpaper tea lounge. The register
  * is stack/grind/re-up — confident and fond, never a caricature.
  */
-const GANGSTER: Copy = {
+const GANGSTER: Partial<Copy> = {
   ...ORIGINAL,
   pour: "Pour up",
   pourFirst: "Pour ya first cup",
@@ -657,7 +742,7 @@ const GANGSTER: Copy = {
 };
 
 /** Nan's Parlour: a doting grandmother runs the place. Everything is lovely. */
-const NAN: Copy = {
+const NAN: Partial<Copy> = {
   ...ORIGINAL,
   pour: "Pour a cuppa",
   pourFirst: "Your first cuppa, dear",
@@ -828,7 +913,7 @@ const NAN: Copy = {
 };
 
 /** Degen Terminal: lowercase, dense, permanently online. */
-const TERMINAL: Copy = {
+const TERMINAL: Partial<Copy> = {
   ...ORIGINAL,
   pour: "exec pour",
   pourFirst: "exec first_pour",
@@ -1008,7 +1093,7 @@ const TERMINAL: Copy = {
 };
 
 /** Vaporwave: the mall at eternal sunset. Wide letters, wide time. */
-const VAPORWAVE: Copy = {
+const VAPORWAVE: Partial<Copy> = {
   ...ORIGINAL,
   pour: "Ｐｏｕｒ",
   pourFirst: "First pour ～",
@@ -1178,7 +1263,7 @@ const VAPORWAVE: Copy = {
 };
 
 /** Sumi-e: ink and silence. Every word that can go, goes. */
-const SUMIE: Copy = {
+const SUMIE: Partial<Copy> = {
   ...ORIGINAL,
   pour: "Pour",
   pourFirst: "First pour",
@@ -1348,7 +1433,7 @@ const SUMIE: Copy = {
  * says a fox sweeps its tail across the snow and sparks the sky alight.
  * The register is quiet and warm; the cold does the contrast work.
  */
-const AURORA: Copy = {
+const AURORA: Partial<Copy> = {
   ...ORIGINAL,
   pour: "Pour",
   pourFirst: "Pour your first cup",
@@ -1519,7 +1604,7 @@ const AURORA: Copy = {
  * that breathe a little. The trip stays warm and benign; safety copy
  * (addresses, failures) inherits Original's sober lines untouched.
  */
-const LSD: Copy = {
+const LSD: Partial<Copy> = {
   ...ORIGINAL,
   awaitsFirstPour: "The cup shimmers, waiting.",
   earnedSoFar: "Manifested",
@@ -1612,13 +1697,20 @@ const LSD: Copy = {
   loreCta: "Come through",
 };
 
+/**
+ * Original is the BASE VOICE: it alone must define every key. The other
+ * parlours are Partial overrides layered on top, so a brand-new line costs
+ * one edit (write it in the base) and each voice flavours it only when it
+ * has something to say. Before this, every key cost 8 edits — and the
+ * referral round proved the toll steers prose out of the seam entirely.
+ */
 export const COPY: Record<ModeId, Copy> = {
   original: ORIGINAL,
-  gangster: GANGSTER,
-  nan: NAN,
-  terminal: TERMINAL,
-  vaporwave: VAPORWAVE,
-  sumie: SUMIE,
-  aurora: AURORA,
-  lsd: LSD,
+  gangster: { ...ORIGINAL, ...GANGSTER },
+  nan: { ...ORIGINAL, ...NAN },
+  terminal: { ...ORIGINAL, ...TERMINAL },
+  vaporwave: { ...ORIGINAL, ...VAPORWAVE },
+  sumie: { ...ORIGINAL, ...SUMIE },
+  aurora: { ...ORIGINAL, ...AURORA },
+  lsd: { ...ORIGINAL, ...LSD },
 };
