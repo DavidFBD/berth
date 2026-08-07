@@ -1,17 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { formatUnits } from "viem";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  useLeverageYieldEffectiveApr,
-  useSodaxContext,
-  type LeverageYieldVault,
-} from "@sodax/dapp-kit";
+import { useSodaxContext, type LeverageYieldVault } from "@sodax/dapp-kit";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { CupArt, SteamPlume } from "@/components/tea/tea-art";
 import { SILK_CUP } from "@/components/tea/silk";
+import { useCupView } from "@/hooks/use-cup-view";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { formatRayAsPercent } from "@/lib/format";
 import { getVaultMeta } from "@/lib/vaults-meta";
@@ -158,28 +154,9 @@ function ShelfCup({
   const accent = `var(--cup-${meta.cupKey})`;
   const deep = `var(--cup-${meta.cupKey}-deep)`;
 
-  const { data: apr } = useLeverageYieldEffectiveApr({
-    params: { vault: vault.vault },
-  });
-  const position = useUserVaultPosition(vault.vault);
-
-  const steeping =
-    position.underlyingValue !== undefined
-      ? Number(formatUnits(position.underlyingValue, 18))
-      : 0;
-  const hasTea = position.hasPosition;
-  const [t1, t2, t3] = meta.steamThresholds;
-  const steamLevel = !hasTea
-    ? 0
-    : steeping >= t3
-      ? 4
-      : steeping >= t2
-        ? 3
-        : steeping >= t1
-          ? 2
-          : 1;
-  const fill = !hasTea ? 0 : Math.min(1, 0.25 + (steeping / t3) * 0.75);
-  const aprNegative = apr !== undefined && apr.effectiveNetAprRay < 0n;
+  // Same shared cup view as the opened card, so the miniature and the card
+  // always steam and fill alike for the same position.
+  const { steamLevel, fill, apr, aprNegative } = useCupView(vault);
 
   return (
     <motion.button

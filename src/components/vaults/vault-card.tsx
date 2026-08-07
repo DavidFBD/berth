@@ -1,13 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { formatUnits } from "viem";
 import { AnimatePresence, motion } from "motion/react";
 
-import {
-  useLeverageYieldEffectiveApr,
-  type LeverageYieldVault,
-} from "@sodax/dapp-kit";
+import { type LeverageYieldVault } from "@sodax/dapp-kit";
 import { CaretDown, CaretUp } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
@@ -15,19 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CupArt, SteamPlume } from "@/components/tea/tea-art";
 import { SILK_CUP } from "@/components/tea/silk";
 import { TokenLogo } from "@/components/flow/token-picker";
-import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
-import { useUsdPrices } from "@/hooks/use-usd-prices";
-import { useEarnedYield } from "@/hooks/use-earned-yield";
+import { useCupView } from "@/hooks/use-cup-view";
 import { useTickingValue } from "@/hooks/use-ticking-value";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { formatRayAsPercent, formatTokenAmount } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { getVaultMeta, USD_STEAM_BANDS } from "@/lib/vaults-meta";
-
-/** RAY (1e27) rate → percent number for arithmetic (projection line). */
-function rayToPercent(ray: bigint): number {
-  return Number((ray * 10_000n) / 10n ** 25n) / 10_000;
-}
+import { getVaultMeta } from "@/lib/vaults-meta";
 
 function Row({
   label,
@@ -122,102 +111,38 @@ export function VaultCard({
   const deep = `var(--cup-${meta.cupKey}-deep)`;
   const soft = `var(--cup-${meta.cupKey}-soft)`;
 
-  const { data: apr, isLoading: isAprLoading } = useLeverageYieldEffectiveApr({
-    params: { vault: vault.vault },
-  });
-  const position = useUserVaultPosition(vault.vault);
-  const prices = useUsdPrices();
-
-  const steeping =
-    position.underlyingValue !== undefined
-      ? Number(formatUnits(position.underlyingValue, 18))
-      : 0;
-  const hasTea = position.hasPosition;
-
-  // The position is denominated in the vault's hub asset (the sodaX wrapper),
-  // which is a money market reserve — so the oracle already prices it and the
-  // card can speak dollars. Token units remain the fallback.
-  const price = prices.priceOfHubAsset(vault.asset);
-  const steepingUsd = price !== undefined ? steeping * price : undefined;
-
-  // Heat by worth when priced, by token units otherwise.
-  const heat = steepingUsd ?? steeping;
-  const [t1, t2, t3] =
-    steepingUsd !== undefined ? USD_STEAM_BANDS : meta.steamThresholds;
-  const steamLevel = !hasTea
-    ? 0
-    : heat >= t3
-      ? 4
-      : heat >= t2
-        ? 3
-        : heat >= t1
-          ? 2
-          : 1;
-  const fill = !hasTea ? 0 : Math.min(1, 0.25 + (heat / t3) * 0.75);
-
-  const aprNegative = apr !== undefined && apr.effectiveNetAprRay < 0n;
-  const aprPct = apr !== undefined ? rayToPercent(apr.effectiveNetAprRay) : 0;
-  const projection = steeping * (aprPct / 100);
-  const projectionUsd = price !== undefined ? projection * price : undefined;
-  // The carrot: principal PLUS a year of this rate — the pot they'd be
-  // looking at, not the increment. The future-tense label and "≈" carry
-  // the "projected, not promised" honesty.
-  const yearTotal = steeping + projection;
-  const yearTotalUsd =
-    steepingUsd !== undefined && projectionUsd !== undefined
-      ? steepingUsd + projectionUsd
-      : undefined;
-
-  // What this cup has actually made. Not readable on chain — the vault mints
-  // shares and forgets their price — so it comes off a locally anchored
-  // price-per-share. See hooks/use-earned-yield.
-  const earnedPosition = useEarnedYield({
-    vault: vault.vault,
-    shares: position.shares,
-    pricePerShare: position.pricePerShare,
-    ownerKey: position.ownerKey,
-  });
-  const earned =
-    earnedPosition.earned !== undefined
-      ? Number(formatUnits(earnedPosition.earned, 18))
-      : undefined;
-
-  // Tick in whichever unit the row is speaking, so the number moves at the
-  // same rate the projection promises.
-  const earnedBase =
-    earned !== undefined && price !== undefined ? earned * price : earned;
-  const earnedPerYear = (price !== undefined ? projectionUsd : projection) ?? 0;
-
-  // A leveraged vault's price-per-share is a SAWTOOTH: borrow interest
-  // accrues against it block by block, but the staking side only lands when
-  // the LSD's exchange-rate oracle ticks (about daily). So between ticks a
-  // fresh position drifts microscopically negative — accounting noise, not
-  // loss. Within a tight band on a positive-rate vault we pin the display at
-  // zero (and don't tick) until the oracle catches it up; a negative beyond
-  // the band, or a genuinely negative rate, stays honestly red.
-  const potForFloor = (price !== undefined ? steepingUsd : steeping) ?? 0;
-  const sawtoothNoise =
-    earnedBase !== undefined &&
-    earnedBase < 0 &&
-    !aprNegative &&
-    -earnedBase < potForFloor * 0.001;
+  // Steam, fill, and every figure come from the shared cup view, so the card
+  // can never disagree with the shelf miniature about the same position. The
+  // "≈" and future-tense label carry the "projected, not promised" honesty.
+  const cup = useCupView(vault);
+  const {
+    hasTea,
+    priced,
+    steepingUsd,
+    apr,
+    isAprLoading,
+    aprNegative,
+    yearTotal,
+    yearTotalUsd,
+    sawtoothSuppressed,
+  } = cup;
 
   const earnedTicking = useTickingValue(
-    earnedBase,
-    earnedPerYear,
-    hasTea && earnedBase !== undefined && !sawtoothNoise,
+    cup.earnedDisplay,
+    cup.earnedPerYear,
+    hasTea && cup.earnedDisplay !== undefined && !sawtoothSuppressed,
   );
   const earnedColor =
-    !sawtoothNoise && earnedTicking !== undefined && earnedTicking < 0
+    !sawtoothSuppressed && earnedTicking !== undefined && earnedTicking < 0
       ? "var(--destructive)"
       : deep;
   // A position we only met after it was funded has an unknowable entry price,
   // so the figure is growth since we started watching — say so rather than
   // pass it off as lifetime earnings.
-  const earnedLabel = earnedPosition.exact
+  const earnedLabel = cup.earnedExact
     ? copy.earnedSoFar
     : copy.earnedSince(
-        earnedPosition.since?.toLocaleDateString("en-US", {
+        cup.earnedSince?.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
         }) ?? "",
@@ -234,11 +159,16 @@ export function VaultCard({
       <div className="flex gap-3.5">
         {/* The cup, steaming to scale */}
         <div className="flex w-21 shrink-0 flex-col items-center">
-          <SteamPlume level={steamLevel} bloom={bloom} width={70} height={44} />
+          <SteamPlume
+            level={cup.steamLevel}
+            bloom={bloom}
+            width={70}
+            height={44}
+          />
           <CupArt
             accent={accent}
             deep={deep}
-            fill={fill}
+            fill={cup.fill}
             bowl={meta.cupKey === "sencha"}
             size={78}
             silk={SILK_CUP[meta.cupKey]}
@@ -283,7 +213,7 @@ export function VaultCard({
                 >
                   {steepingUsd !== undefined
                     ? money.format(steepingUsd)
-                    : `${formatTokenAmount(position.underlyingValue ?? 0n, 18)} ${meta.underlyingSymbol}`}
+                    : `${formatTokenAmount(cup.underlyingValue ?? 0n, 18)} ${meta.underlyingSymbol}`}
                 </span>
                 <span className="text-[13px] text-muted-foreground">
                   {copy.inThePot}
@@ -308,23 +238,19 @@ export function VaultCard({
                       <span className="min-w-0">{earnedLabel}</span>
                     </div>
                     <div className="mt-1 text-[15px] font-bold">
-                      {sawtoothNoise ? (
+                      {sawtoothSuppressed ? (
                         // Flat zero, quiet ink, no tick: interpolating up
                         // from a negative base would cross zero and then
                         // flicker back on every fresh chain read.
                         <span className="money text-muted-foreground">
-                          {price !== undefined
+                          {priced
                             ? money.format(0)
                             : `0.000000 ${meta.underlyingSymbol}`}
                         </span>
                       ) : (
                         <EarnedFigure
                           value={earnedTicking}
-                          symbol={
-                            price === undefined
-                              ? meta.underlyingSymbol
-                              : undefined
-                          }
+                          symbol={priced ? undefined : meta.underlyingSymbol}
                           color={earnedColor}
                           split={money.split}
                         />
