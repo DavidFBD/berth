@@ -53,6 +53,8 @@ type PrivyLinkedAccount = {
   type: string;
   address?: string;
   email?: string;
+  chain_type?: string;
+  wallet_client_type?: string;
 };
 
 /**
@@ -61,7 +63,9 @@ type PrivyLinkedAccount = {
  * no email-ish account linked yet, or on any API hiccup — email enrichment
  * must never fail a profile request.
  */
-export async function fetchPrivyEmail(did: string): Promise<string | null> {
+async function fetchPrivyUser(
+  did: string,
+): Promise<PrivyLinkedAccount[] | null> {
   const appId = process.env.PRIVY_APP_ID;
   const secret = process.env.PRIVY_APP_SECRET;
   if (!appId || !secret) return null;
@@ -83,12 +87,49 @@ export async function fetchPrivyEmail(did: string): Promise<string | null> {
     const user = (await response.json()) as {
       linked_accounts?: PrivyLinkedAccount[];
     };
-    for (const account of user.linked_accounts ?? []) {
-      if (account.type === "email" && account.address) return account.address;
-      if (account.email) return account.email; // google_oauth and friends
-    }
-    return null;
+    return user.linked_accounts ?? [];
   } catch {
     return null;
   }
+}
+
+export async function fetchPrivyEmail(did: string): Promise<string | null> {
+  const accounts = await fetchPrivyUser(did);
+  for (const account of accounts ?? []) {
+    if (account.type === "email" && account.address) return account.address;
+    if (account.email) return account.email; // google_oauth and friends
+  }
+  return null;
+}
+
+/**
+ * An embedded wallet address never changes once minted, so a warm serverless
+ * container can skip the REST round-trip on every XP request after the first.
+ */
+const walletCache = new Map<string, { address: string | null; at: number }>();
+const WALLET_CACHE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The DID's embedded EVM wallet, from Privy's own records — the server-side
+ * verified answer to "which wallet is this email user", replacing the old
+ * client-asserted body field. Null when none is minted yet or the API
+ * hiccups; identity then rests on the DID alone, which is fine.
+ */
+export async function fetchPrivyWallet(did: string): Promise<string | null> {
+  const cached = walletCache.get(did);
+  if (cached && Date.now() - cached.at < WALLET_CACHE_MS && cached.address) {
+    return cached.address;
+  }
+  const accounts = await fetchPrivyUser(did);
+  if (accounts === null) return null; // API hiccup: don't cache the failure
+  const embedded = accounts.find(
+    (account) =>
+      account.type === "wallet" &&
+      account.wallet_client_type === "privy" &&
+      account.chain_type === "ethereum" &&
+      account.address,
+  );
+  const address = embedded?.address?.toLowerCase() ?? null;
+  walletCache.set(did, { address, at: Date.now() });
+  return address;
 }

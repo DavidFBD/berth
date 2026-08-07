@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyPrivyAuth } from "@/lib/server/privy";
+import { fetchPrivyWallet, verifyPrivyAuth } from "@/lib/server/privy";
+import { verifyWalletSession } from "@/lib/server/wallet-session";
 import {
   awardXp,
   getOrCreateUser,
@@ -31,10 +32,12 @@ export type CallerResult =
   | { ok: false; response: NextResponse };
 
 /**
- * Auth prologue plus body parse. A present-but-invalid token is a 401,
- * never a silent downgrade to anonymous; a missing one is a wallet-only
- * caller, trusted by address — a recorded product decision (the stakes are
- * teapots).
+ * Auth prologue plus body parse. Every identity is now verified, never
+ * asserted: a Privy caller's wallet comes from Privy's own records (the
+ * embedded address, resolved server-side), and a wallet-only caller must
+ * present a SIWE session token for the address it claims to be. The old
+ * trusted-by-address guest path is gone — a request with neither proof
+ * gets a 401 and the client knows to run the SIWE handshake.
  */
 export async function readRewardsCaller(
   request: NextRequest,
@@ -52,10 +55,26 @@ export async function readRewardsCaller(
     string,
     unknown
   >;
-  return {
-    ok: true,
-    caller: { did, wallet: normalizeWallet(body.walletAddress), body },
-  };
+
+  if (did) {
+    const wallet = normalizeWallet(await fetchPrivyWallet(did));
+    return { ok: true, caller: { did, wallet, body } };
+  }
+
+  const sessionToken = request.headers.get("x-wallet-session");
+  const wallet = sessionToken
+    ? normalizeWallet(await verifyWalletSession(sessionToken))
+    : null;
+  if (!wallet) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "wallet session required" },
+        { status: 401 },
+      ),
+    };
+  }
+  return { ok: true, caller: { did: null, wallet, body } };
 }
 
 export type UserResult =

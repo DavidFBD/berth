@@ -9,9 +9,8 @@ import {
 
 /**
  * Pick a face from the preset shelf. First pick pays the one-time reward.
- * Auth: Privy token when present; wallet-only users are trusted by address
- * (low stakes: the only thing an imposter could do is choose a different
- * teapot — SIWE hardening is noted in thoughts.md if that ever matters).
+ * Auth: Privy token, or a SIWE wallet session (readRewardsCaller enforces
+ * one of the two — nobody is trusted by address anymore).
  */
 export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);

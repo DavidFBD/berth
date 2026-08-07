@@ -12,6 +12,7 @@ import {
   clearPendingReferral,
   pendingReferralCode,
 } from "@/lib/referral";
+import { useEnsureWalletSession } from "@/hooks/use-wallet-session";
 
 export type { Profile } from "@/lib/profile-types";
 
@@ -33,13 +34,16 @@ function useIdentity() {
 async function postProfileApi(
   path: string,
   body: Record<string, unknown>,
-  token: string | null,
+  auth: { token: string | null; walletSession: string | null },
 ): Promise<ProfileResponse | null> {
   const response = await fetch(path, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(auth.token ? { authorization: `Bearer ${auth.token}` } : {}),
+      ...(auth.walletSession
+        ? { "x-wallet-session": auth.walletSession }
+        : {}),
     },
     body: JSON.stringify(body),
   });
@@ -65,19 +69,28 @@ function profileOf(data: ProfileResponse): Profile {
 /** The account profile, synced on first read. Disabled until an identity exists. */
 export function useProfile() {
   const { authenticated, wallet, key, getAccessToken } = useIdentity();
+  const ensureWalletSession = useEnsureWalletSession();
   return useQuery({
     queryKey: ["profile", key],
     enabled: key !== null,
     staleTime: 5 * 60_000,
     retry: 1,
     queryFn: async (): Promise<Profile> => {
-      const token = authenticated ? await getAccessToken() : null;
+      // Guests prove their address once (SIWE, free signature) — the server
+      // no longer takes anyone's word for a wallet. Declining just means no
+      // rewards session; the tea itself never needed one.
+      const auth = authenticated
+        ? { token: await getAccessToken(), walletSession: null }
+        : { token: null, walletSession: wallet ? await ensureWalletSession(wallet) : null };
+      if (!auth.token && !auth.walletSession) {
+        throw new Error("no rewards session");
+      }
       const data = await postProfileApi(
         "/api/profile",
         // The pocketed invite code rides along; the server only binds it to
         // an account created this very request, then it's spent either way.
-        { walletAddress: wallet, referralCode: pendingReferralCode() },
-        token,
+        { referralCode: pendingReferralCode() },
+        auth,
       );
       if (!data) throw new Error("profile sync failed");
       clearPendingReferral();
@@ -99,15 +112,15 @@ function useProfileMutation<TVars>(
 ) {
   const queryClient = useQueryClient();
   const { authenticated, wallet, key, getAccessToken } = useIdentity();
+  const ensureWalletSession = useEnsureWalletSession();
   return useMutation({
     mutationFn: async (vars: TVars) => {
       if (!key) return null;
-      const token = authenticated ? await getAccessToken() : null;
-      return postProfileApi(
-        path,
-        { ...toBody(vars), walletAddress: wallet },
-        token,
-      );
+      const auth = authenticated
+        ? { token: await getAccessToken(), walletSession: null }
+        : { token: null, walletSession: wallet ? await ensureWalletSession(wallet) : null };
+      if (!auth.token && !auth.walletSession) return null;
+      return postProfileApi(path, toBody(vars), auth);
     },
     onSuccess: (data) => {
       if (!data) return;
