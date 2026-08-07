@@ -20,7 +20,7 @@ Mobile-first Next.js 16 App Router app (React 19, TS, Tailwind v4, shadcn/ui bas
 
 - Import ONLY from package roots: `@sodax/dapp-kit`, `@sodax/wallet-sdk-react`, `@sodax/sdk` (dapp-kit re-exports the whole sdk — `ChainKeys`, types, `getSupportedSolverTokens`, `adjustAmountByFee` are importable from `@sodax/dapp-kit` too). NEVER deep-import dist paths. NEVER import `@sodax/types` (not installed).
 - Every file using any sodax/react-query hook: `"use client"`.
-- No new npm deps. `viem` is available (`parseUnits`, `formatUnits`).
+- No new npm deps. `viem` is available (`parseUnits`, `formatUnits`). Exception: `vitest` + `vite-tsconfig-paths` are installed as dev deps for the test suite (`pnpm test`); tests live in colocated `src/**/*.test.ts` files and cover pure module cores only.
 - ALWAYS `ChainKeys.*` constants, never chain-key string literals.
 
 ## Wallet layer (`@sodax/wallet-sdk-react`)
