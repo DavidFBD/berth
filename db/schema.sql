@@ -30,6 +30,12 @@ create table if not exists xp_events (
 create unique index if not exists xp_events_kind_ref_unique
   on xp_events (kind, ref) where ref is not null;
 
+-- …and once ACROSS directions too: without this, the same hash could pay
+-- pour_in to one account and pour_out to another (kind differs, so the
+-- index above alone permits it).
+create unique index if not exists xp_events_pour_ref_unique
+  on xp_events (ref) where kind in ('pour_in', 'pour_out');
+
 -- Once-per-account kinds (account_created, email_linked, avatar_set).
 create unique index if not exists xp_events_once_per_user
   on xp_events (user_id, kind) where ref is null;

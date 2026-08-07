@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { RewardList } from "@/lib/profile-types";
 import { awardXp } from "@/lib/server/accounts";
-import { hubTxSucceeded } from "@/lib/server/hub-tx";
+import { verifyPourTx } from "@/lib/server/pour-verify";
 import {
   readRewardsCaller,
   resolveRewardsUser,
@@ -26,8 +26,16 @@ export async function POST(request: NextRequest) {
   if (!resolved.ok) return resolved.response;
   const { user } = resolved;
 
-  if (!(await hubTxSucceeded(txHash))) {
-    return NextResponse.json({ error: "tx not confirmed" }, { status: 422 });
+  // The hash must be a real intent on the canonical contract, must touch a
+  // tea vault on the claimed side, and (when its source speaks EVM) must
+  // have been poured by this account's own wallet. See pour-verify.ts.
+  const verdict = await verifyPourTx({
+    txHash,
+    direction: kind === "pour_out" ? "out" : "in",
+    accountWallet: user.wallet_address,
+  });
+  if (!verdict.ok) {
+    return NextResponse.json({ error: verdict.reason }, { status: 422 });
   }
 
   const rewards: RewardList = [];
