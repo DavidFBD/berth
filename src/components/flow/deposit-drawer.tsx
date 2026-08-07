@@ -1,17 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { formatUnits } from "viem";
 import { toast } from "sonner";
 import { ArrowsDownUp, CaretDown, Flame } from "@phosphor-icons/react";
 import {
   ChainKeys,
-  adjustAmountByFee,
   type LeverageYieldVault,
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
-import { useQuote, useXBalances } from "@sodax/dapp-kit";
+import { useXBalances } from "@sodax/dapp-kit";
 import {
   getXChainType,
   isNativeToken,
@@ -34,15 +32,16 @@ import {
   getNativeGasToken,
   toBalanceReadToken,
 } from "@/lib/chains";
-import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { getVaultMeta } from "@/lib/vaults-meta";
+import { formatTokenAmount, formatUsd } from "@/lib/format";
 import {
-  applySlippage,
-  formatTokenAmount,
-  formatUsd,
-  parseAmount,
-  usdToTokenAmount,
-} from "@/lib/format";
+  SHARE_DECIMALS,
+  amountText,
+  depositGate,
+  depositMax,
+  pourAmounts,
+} from "@/lib/pour-amount";
+import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
@@ -133,7 +132,6 @@ export function DepositDrawer({
   // USD whenever the oracle prices the token, with a tap-to-flip line for
   // exact token amounts. Unpriced tokens fall back to token entry.
   const price = token ? prices.priceOf(token) : undefined;
-  const usdMode = denom === "usd" && price !== undefined;
 
   // What Max must hold back so the pour can pay its own network fee.
   const { buffer: gasBuffer } = useNativeGasBuffer({
@@ -143,43 +141,23 @@ export function DepositDrawer({
     priceUsd: price,
     balance,
   });
-  const parsed = token
-    ? usdMode
-      ? usdToTokenAmount(amount, price, token.decimals)
-      : parseAmount(amount, token.decimals)
-    : undefined;
-  const parsedUsd =
-    token && parsed ? prices.usdValue(token, parsed) : undefined;
-  // The partner fee is deducted from the input before the swap — quote on the
-  // post-fee amount or minOutputAmount is unfillable.
-  const quoteAmount = parsed
-    ? adjustAmountByFee(parsed, PARTNER_FEE, "exact_input")
-    : undefined;
 
-  const quoteQuery = useQuote({
-    params: {
-      payload:
-        open && vault && token && quoteAmount
-          ? {
-              token_src: token.address,
-              token_src_blockchain_id: srcChainKey,
-              token_dst: vault.vault,
-              token_dst_blockchain_id: ChainKeys.SONIC_MAINNET,
-              amount: quoteAmount,
-              quote_type: "exact_input",
-            }
-          : undefined,
-    },
-    queryOptions: { retry: false },
+  // The amount pipeline: what the text means, what the quote is asked for
+  // (post-fee), and the slippage floor all live in the pour-amount module.
+  const { usdMode, buildAmount, usd: parsedUsd } = pourAmounts(
+    amount,
+    denom,
+    token?.decimals,
+    price,
+  );
+  const quote = usePourQuote({
+    enabled: open && !!vault && !!token,
+    src: token ? { address: token.address, chainKey: srcChainKey } : null,
+    dst: vault
+      ? { address: vault.vault, chainKey: ChainKeys.SONIC_MAINNET }
+      : null,
+    buildAmount,
   });
-  const quoted = quoteQuery.data?.ok
-    ? quoteQuery.data.value.quoted_amount
-    : undefined;
-  const noRoute = quoteQuery.data ? !quoteQuery.data.ok : false;
-  const minReceived =
-    quoted !== undefined
-      ? applySlippage(quoted, DEFAULT_SLIPPAGE_PCT)
-      : undefined;
 
   const finish = () => {
     action.reset();
@@ -194,39 +172,25 @@ export function DepositDrawer({
 
   const handleMax = () => {
     if (!token || balance === undefined) return;
-    if (gasBuffer === undefined) {
+    const max = depositMax(balance, gasBuffer);
+    if (max.kind === "bufferLoading") {
       toast.info("Checking what the burner costs. One moment.");
       return;
     }
-    // Withhold only what the network actually charges (see useNativeGasBuffer);
-    // non-native pours pay their fee from the native balance, so buffer is 0.
-    const max = balance > gasBuffer ? balance - gasBuffer : 0n;
-    if (max <= 0n) {
+    if (max.kind === "nothingSpendable") {
       toast.info("Not enough left over for the kettle (network fees)");
       return;
     }
-    // Match the active denomination; in USD mode round DOWN so the
-    // converted token amount never exceeds the spendable balance.
-    if (usdMode) {
-      const usd = Number(formatUnits(max, token.decimals)) * price;
-      setAmount((Math.floor(usd * 100) / 100).toFixed(2));
-    } else {
-      setAmount(formatUnits(max, token.decimals));
-    }
+    setAmount(amountText(max.amount, token.decimals, usdMode, price));
   };
 
   // Flip the entry denomination, carrying the current value across so the
   // number in the field keeps meaning the same pour.
   const flipDenom = () => {
     if (!token || price === undefined) return;
-    if (usdMode) {
-      setDenom("token");
-      if (parsed) setAmount(formatUnits(parsed, token.decimals));
-    } else {
-      setDenom("usd");
-      if (parsedUsd !== undefined) {
-        setAmount((Math.floor(parsedUsd * 100) / 100).toFixed(2));
-      }
+    setDenom(usdMode ? "token" : "usd");
+    if (buildAmount) {
+      setAmount(amountText(buildAmount, token.decimals, !usdMode, price));
     }
   };
 
@@ -234,8 +198,8 @@ export function DepositDrawer({
     if (
       !vault ||
       !token ||
-      !parsed ||
-      minReceived === undefined ||
+      !buildAmount ||
+      quote.minOut === undefined ||
       !address ||
       !walletProvider
     ) {
@@ -247,8 +211,8 @@ export function DepositDrawer({
       srcChainKey,
       srcAddress: address,
       token,
-      inputAmount: parsed,
-      minOutputAmount: minReceived,
+      inputAmount: buildAmount,
+      minOutputAmount: quote.minOut,
       walletProvider,
       walletMode: mode,
       fillToasts: {
@@ -267,44 +231,57 @@ export function DepositDrawer({
     busy?: boolean;
     onClick?: () => void;
   };
-  // Token-first: a user whose only wallet is on another family (e.g. Phantom)
-  // must be routed to the picker, not told to "connect" while already
-  // connected — the source chain defaults to Ethereum until they pick.
-  const cta: Cta = !token
-    ? {
-        label: "What are you pouring?",
-        disabled: false,
-        onClick: () => setPickerOpen(true),
-      }
-    : !address
-      ? {
+  // The gate (pour-amount module) decides why the pour can't go yet; this
+  // map only speaks it in the tea voice.
+  const gate = depositGate({
+    hasToken: !!token,
+    address,
+    buildAmount,
+    balance,
+    isWrongChain,
+    noRoute: quote.noRoute,
+    quoted: quote.quoted,
+    minOut: quote.minOut,
+    hasWalletProvider: !!walletProvider,
+  });
+  const cta: Cta = (() => {
+    switch (gate.kind) {
+      case "pickToken":
+        return {
+          label: "What are you pouring?",
+          disabled: false,
+          onClick: () => setPickerOpen(true),
+        };
+      case "connectSource":
+        return {
           label: `Connect a ${getChainName(srcChainKey)} wallet`,
           disabled: !onConnectWallet,
           onClick: onConnectWallet,
-        }
-      : !parsed
-        ? { label: "Pour how much?", disabled: true }
-        : balance === undefined
-          ? { label: "Peeking in the teapot…", disabled: true, busy: true }
-          : parsed > balance
-            ? { label: "A touch more than your teapot holds", disabled: true }
-            : isWrongChain
-              ? {
-                  label: "Switch network",
-                  disabled: false,
-                  onClick: handleSwitchChain,
-                }
-              : noRoute
-                ? { label: "No blend path for this pair", disabled: true }
-                : quoted === undefined ||
-                    minReceived === undefined ||
-                    !walletProvider
-                  ? { label: "Reading the leaves…", disabled: true, busy: true }
-                  : {
-                      label: "Pour",
-                      disabled: false,
-                      onClick: () => void handleDeposit(),
-                    };
+        };
+      case "enterAmount":
+        return { label: "Pour how much?", disabled: true };
+      case "balanceLoading":
+        return { label: "Peeking in the teapot…", disabled: true, busy: true };
+      case "insufficient":
+        return { label: "A touch more than your teapot holds", disabled: true };
+      case "wrongChain":
+        return {
+          label: "Switch network",
+          disabled: false,
+          onClick: handleSwitchChain,
+        };
+      case "noRoute":
+        return { label: "No blend path for this pair", disabled: true };
+      case "quotePending":
+        return { label: "Reading the leaves…", disabled: true, busy: true };
+      default:
+        return {
+          label: "Pour",
+          disabled: false,
+          onClick: () => void handleDeposit(),
+        };
+    }
+  })();
 
   return (
     <>
@@ -452,7 +429,7 @@ export function DepositDrawer({
                     >
                       <ArrowsDownUp className="size-3.5" />
                       {usdMode
-                        ? `≈ ${parsed ? formatTokenAmount(parsed, token.decimals) : "0"} ${token.symbol}`
+                        ? `≈ ${buildAmount ? formatTokenAmount(buildAmount, token.decimals) : "0"} ${token.symbol}`
                         : `≈ ${parsedUsd !== undefined ? formatUsd(parsedUsd) : "$0"}`}
                     </button>
                   )}
@@ -473,26 +450,26 @@ export function DepositDrawer({
                 </div>
 
                 {/* Live quote */}
-                {token && parsed ? (
+                {token && buildAmount ? (
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
-                    {noRoute ? (
+                    {quote.noRoute ? (
                       <span className="text-destructive">
                         No route for this pair
                       </span>
-                    ) : quoted !== undefined && minReceived !== undefined ? (
+                    ) : quote.quoted !== undefined && quote.minOut !== undefined ? (
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">
                             You&apos;ll steep
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
-                            ≈ {formatTokenAmount(quoted, 18)} {vault.name}
+                            ≈ {formatTokenAmount(quote.quoted, SHARE_DECIMALS)} {vault.name}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>At least, once poured</span>
                           <span className="tabular-nums">
-                            {formatTokenAmount(minReceived, 18)}
+                            {formatTokenAmount(quote.minOut, SHARE_DECIMALS)}
                           </span>
                         </div>
                       </>

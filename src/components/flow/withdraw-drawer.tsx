@@ -5,13 +5,11 @@ import { formatUnits } from "viem";
 import { CaretDown } from "@phosphor-icons/react";
 import {
   ChainKeys,
-  adjustAmountByFee,
   isEvmChainKeyType,
   type LeverageYieldVault,
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
-import { useQuote } from "@sodax/dapp-kit";
 import {
   Drawer,
   DrawerContent,
@@ -24,18 +22,19 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { getChainName } from "@/lib/chains";
-import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { getVaultMeta } from "@/lib/vaults-meta";
-import { applySlippage, formatTokenAmount, parseAmount } from "@/lib/format";
+import { formatTokenAmount } from "@/lib/format";
+import {
+  SHARE_DECIMALS,
+  belowBtcDust,
+  pourAmounts,
+  withdrawGate,
+} from "@/lib/pour-amount";
+import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
-
-/** lsoda* shares are 18-decimal ERC-4626 tokens on the Sonic hub. */
-const SHARE_DECIMALS = 18;
-/** Bitcoin dust limit — the solver can't deliver less than this. */
-const BTC_DUST_SATS = 546n;
 
 /**
  * Mirror of the deposit flow: swap lsoda* shares (held in the hub wallet
@@ -100,44 +99,21 @@ export function WithdrawDrawer({
       : undefined
     : ownRecipient;
 
-  const parsed = parseAmount(amount, SHARE_DECIMALS);
-  // The partner fee is deducted from the input shares before the swap —
-  // quote on the post-fee amount or minOutputAmount is unfillable.
-  const quoteAmount = parsed
-    ? adjustAmountByFee(parsed, PARTNER_FEE, "exact_input")
-    : undefined;
-
-  const quoteQuery = useQuote({
-    params: {
-      payload:
-        open && vault && dstChainKey && outputToken && quoteAmount
-          ? {
-              token_src: vault.vault,
-              token_src_blockchain_id: ChainKeys.SONIC_MAINNET,
-              token_dst: outputToken.address,
-              token_dst_blockchain_id: dstChainKey,
-              amount: quoteAmount,
-              quote_type: "exact_input",
-            }
-          : undefined,
-    },
-    queryOptions: { retry: false },
+  // The amount pipeline: shares parsed at 18dp, the quote asked for the
+  // post-fee amount, the slippage floor — all in the pour-amount module.
+  const { buildAmount } = pourAmounts(amount, "token", SHARE_DECIMALS, undefined);
+  const quote = usePourQuote({
+    enabled: open && !!vault && !!dstChainKey && !!outputToken,
+    src: vault
+      ? { address: vault.vault, chainKey: ChainKeys.SONIC_MAINNET }
+      : null,
+    dst:
+      dstChainKey && outputToken
+        ? { address: outputToken.address, chainKey: dstChainKey }
+        : null,
+    buildAmount,
   });
-  const quoted = quoteQuery.data?.ok
-    ? quoteQuery.data.value.quoted_amount
-    : undefined;
-  const noRoute = quoteQuery.data ? !quoteQuery.data.ok : false;
-  const minReceived =
-    quoted !== undefined
-      ? applySlippage(quoted, DEFAULT_SLIPPAGE_PCT)
-      : undefined;
-  // Dust floor applies to native BTC only — guard on the token, not just the
-  // chain, in case Bitcoin's solver list ever gains a non-BTC (non-8dp) token.
-  const belowBtcDust =
-    dstChainKey === ChainKeys.BITCOIN_MAINNET &&
-    outputToken?.symbol === "BTC" &&
-    minReceived !== undefined &&
-    minReceived < BTC_DUST_SATS;
+  const dustBlocked = belowBtcDust(dstChainKey, outputToken?.symbol, quote.minOut);
 
   const finish = () => {
     action.reset();
@@ -161,8 +137,8 @@ export function WithdrawDrawer({
       !vault ||
       !dstChainKey ||
       !outputToken ||
-      !parsed ||
-      minReceived === undefined ||
+      !buildAmount ||
+      quote.minOut === undefined ||
       !address ||
       !recipient ||
       !walletProvider
@@ -177,8 +153,8 @@ export function WithdrawDrawer({
       dstChainKey,
       outputToken: outputToken.address,
       outputTokenSymbol: outputToken.symbol,
-      inputAmount: parsed,
-      minOutputAmount: minReceived,
+      inputAmount: buildAmount,
+      minOutputAmount: quote.minOut,
       recipient,
       walletProvider,
       walletMode: mode,
@@ -197,49 +173,68 @@ export function WithdrawDrawer({
     busy?: boolean;
     onClick?: () => void;
   };
-  const cta: Cta = !address
-    ? {
-        label: `Connect ${getChainName(srcChainKey)} wallet`,
-        disabled: !onConnectWallet,
-        onClick: onConnectWallet,
-      }
-    : !dstChainKey || !outputToken
-      ? {
+  // The gate (pour-amount module) decides why the pour-back can't go yet;
+  // this map only speaks it in the tea voice.
+  const gate = withdrawGate({
+    address,
+    hasDestination: !!dstChainKey && !!outputToken,
+    recipient,
+    usingCustomRecipient: usingCustom,
+    buildAmount,
+    availableShares,
+    isWrongChain,
+    noRoute: quote.noRoute,
+    belowDust: dustBlocked,
+    quoted: quote.quoted,
+    minOut: quote.minOut,
+    hasWalletProvider: !!walletProvider,
+  });
+  const cta: Cta = (() => {
+    switch (gate.kind) {
+      case "connectSource":
+        return {
+          label: `Connect ${getChainName(srcChainKey)} wallet`,
+          disabled: !onConnectWallet,
+          onClick: onConnectWallet,
+        };
+      case "pickDestination":
+        return {
           label: "Where to?",
           disabled: false,
           onClick: () => setPickerOpen(true),
-        }
-      : !recipient
-        ? usingCustom
-          ? { label: "That address looks off", disabled: true }
-          : {
-              label: `Connect ${getChainName(dstChainKey)} wallet`,
-              disabled: !onConnectWallet,
-              onClick: onConnectWallet,
-            }
-        : !parsed
-          ? { label: "Pour back how much?", disabled: true }
-          : parsed > availableShares
-            ? { label: "Your cup isn't quite that full", disabled: true }
-            : isWrongChain
-              ? {
-                  label: "Switch network",
-                  disabled: false,
-                  onClick: handleSwitchChain,
-                }
-              : noRoute
-                ? { label: "No blend path for this pair", disabled: true }
-                : belowBtcDust
-                  ? { label: "Too small a sip for Bitcoin", disabled: true }
-                  : quoted === undefined ||
-                      minReceived === undefined ||
-                      !walletProvider
-                    ? { label: "Reading the leaves…", disabled: true, busy: true }
-                    : {
-                        label: "Pour back",
-                        disabled: false,
-                        onClick: () => void handleWithdraw(),
-                      };
+        };
+      case "invalidRecipient":
+        return { label: "That address looks off", disabled: true };
+      case "connectDestination":
+        return {
+          label: `Connect ${dstChainKey ? getChainName(dstChainKey) : ""} wallet`,
+          disabled: !onConnectWallet,
+          onClick: onConnectWallet,
+        };
+      case "enterAmount":
+        return { label: "Pour back how much?", disabled: true };
+      case "insufficient":
+        return { label: "Your cup isn't quite that full", disabled: true };
+      case "wrongChain":
+        return {
+          label: "Switch network",
+          disabled: false,
+          onClick: handleSwitchChain,
+        };
+      case "noRoute":
+        return { label: "No blend path for this pair", disabled: true };
+      case "belowDust":
+        return { label: "Too small a sip for Bitcoin", disabled: true };
+      case "quotePending":
+        return { label: "Reading the leaves…", disabled: true, busy: true };
+      default:
+        return {
+          label: "Pour back",
+          disabled: false,
+          onClick: () => void handleWithdraw(),
+        };
+    }
+  })();
 
   return (
     <>
@@ -408,27 +403,27 @@ export function WithdrawDrawer({
                 )}
 
                 {/* Live quote */}
-                {dstChainKey && outputToken && parsed ? (
+                {dstChainKey && outputToken && buildAmount ? (
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
-                    {noRoute ? (
+                    {quote.noRoute ? (
                       <span className="text-destructive">
                         No route for this pair
                       </span>
-                    ) : quoted !== undefined && minReceived !== undefined ? (
+                    ) : quote.quoted !== undefined && quote.minOut !== undefined ? (
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">
                             You&apos;ll get back
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
-                            ≈ {formatTokenAmount(quoted, outputToken.decimals)}{" "}
+                            ≈ {formatTokenAmount(quote.quoted, outputToken.decimals)}{" "}
                             {outputToken.symbol}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>At least, once poured</span>
                           <span className="tabular-nums">
-                            {formatTokenAmount(minReceived, outputToken.decimals)}
+                            {formatTokenAmount(quote.minOut, outputToken.decimals)}
                           </span>
                         </div>
                       </>

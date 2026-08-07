@@ -13,6 +13,14 @@ export function formatRayAsPercent(ray: bigint, digits = 2): string {
   return `${scaled.toFixed(digits)}%`;
 }
 
+/**
+ * The same RAY→percent conversion as {@link formatRayAsPercent}, returned as
+ * a number for arithmetic (projections) rather than display.
+ */
+export function rayToPercentNumber(ray: bigint): number {
+  return Number((ray * 10_000n) / RAY_PER_PERCENT) / 10_000;
+}
+
 /** WAD = 1e18. Used for the vault leverage multiplier, e.g. "3.2x". */
 export function formatWadAsMultiplier(wad: bigint, digits = 1): string {
   const scaled = Number((wad * 1_000n) / 10n ** 18n) / 1_000;
@@ -219,8 +227,5 @@ export function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}…${address.slice(-chars)}`;
 }
 
-/** Apply slippage tolerance (in percent, e.g. 0.5) to a quoted output. */
-export function applySlippage(quoted: bigint, slippagePct: number): bigint {
-  const bps = BigInt(Math.round(slippagePct * 100));
-  return (quoted * (10_000n - bps)) / 10_000n;
-}
+// applySlippage lives in @/lib/pour-amount: it is pour domain logic, not
+// formatting.

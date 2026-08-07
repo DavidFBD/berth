@@ -11,7 +11,8 @@ Mobile-first Next.js 16 App Router app (React 19, TS, Tailwind v4, shadcn/ui bas
 - `@/lib/sodax-config` → `sodaxConfig`, `walletConfig`, `DEFAULT_SLIPPAGE_PCT` (0.5)
 - `@/lib/chains` → `DEPOSIT_SOURCE_CHAINS: readonly SpokeChainKey[]`, `getChainName(chainKey)`, `getChainLogo(chainKey)` (URL string | undefined), `getDepositTokens(chainKey): readonly XToken[]` (production solver set minus lsoda*)
 - `@/lib/vaults-meta` → `getVaultMeta(name): VaultMeta` `{ title, underlyingSymbol, borrowSymbol, strategy, ecosystem, gradient, glyph }`
-- `@/lib/format` → `formatRayAsPercent(ray, digits?)`, `formatWadAsMultiplier(wad)`, `formatBps(bps)`, `formatTokenAmount(value, decimals, maxFrac?)`, `parseAmount(input, decimals): bigint | undefined`, `shortenAddress(addr)`, `applySlippage(quoted, slippagePct)`
+- `@/lib/format` → `formatRayAsPercent(ray, digits?)`, `formatWadAsMultiplier(wad)`, `formatBps(bps)`, `formatTokenAmount(value, decimals, maxFrac?)`, `parseAmount(input, decimals): bigint | undefined`, `shortenAddress(addr)`
+- `@/lib/pour-amount` → the amount pipeline for a pour (either direction): `pourAmounts(text, denom, decimals, priceUsd)`, `quoteInputFor(buildAmount)` (the pre-fee/post-fee pairing lives here and only here), `applySlippage`/`minReceivedFor`, `depositMax`, `amountText`, `belowBtcDust`, `depositGate`/`withdrawGate` (the CTA validation ladders), `SHARE_DECIMALS`, `BTC_DUST_SATS`. Quote via `@/hooks/use-pour-quote` (`usePourQuote`), which takes the PRE-fee build amount and owns fee adjust + slippage + Result unwrap.
 - `@/lib/utils` → `cn()`
 - `@/components/providers` already mounts SodaxProvider > QueryClientProvider > SodaxWalletProvider + `<Toaster />` (sonner). Toasts: `import { toast } from "sonner"`.
 - shadcn components in `@/components/ui/`: button, card, input, badge, skeleton, drawer, dialog, sheet, separator, sonner, tabs, scroll-area, select, spinner. Icons: `lucide-react`.

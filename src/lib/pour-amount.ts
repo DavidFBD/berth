@@ -1,0 +1,224 @@
+import { formatUnits } from "viem";
+import { ChainKeys, adjustAmountByFee, type SpokeChainKey } from "@sodax/sdk";
+import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
+import { parseAmount, usdToTokenAmount } from "@/lib/format";
+
+/**
+ * The amount pipeline for a pour, either direction: what the typed text
+ * means, what amount the quote must be asked for, what the minimum out is,
+ * what Max may spend, and the single reason a pour can't go yet. This is the
+ * app's real validation logic — it lives here, as data, so the drawers only
+ * render it and a table of inputs can exercise every branch.
+ */
+
+/** lsoda* shares are 18-decimal ERC-4626 tokens on the Sonic hub. */
+export const SHARE_DECIMALS = 18;
+
+/** Bitcoin dust limit — the solver can't deliver less than this. */
+export const BTC_DUST_SATS = 546n;
+
+export type PourAmounts = {
+  /** Whether the field is being read as dollars (priced tokens only). */
+  usdMode: boolean;
+  /** Pre-fee amount, in the entry token's decimals: what the build receives. */
+  buildAmount: bigint | undefined;
+  /** Approximate USD value of `buildAmount`, when priced. */
+  usd: number | undefined;
+};
+
+/**
+ * What the typed text means. Dollars are how people think about a pour, so
+ * USD is the entry mode whenever the oracle prices the token; unpriced
+ * tokens fall back to token entry even if the field is nominally in USD.
+ */
+export function pourAmounts(
+  text: string,
+  denom: "usd" | "token",
+  decimals: number | undefined,
+  priceUsd: number | undefined,
+): PourAmounts {
+  if (decimals === undefined) {
+    return { usdMode: false, buildAmount: undefined, usd: undefined };
+  }
+  const usdMode = denom === "usd" && priceUsd !== undefined;
+  const buildAmount = usdMode
+    ? usdToTokenAmount(text, priceUsd, decimals)
+    : parseAmount(text, decimals);
+  const usd =
+    buildAmount !== undefined && priceUsd !== undefined
+      ? Number(formatUnits(buildAmount, decimals)) * priceUsd
+      : undefined;
+  return { usdMode, buildAmount, usd };
+}
+
+/**
+ * The amount a quote must be asked for. The partner fee is deducted from the
+ * input before the swap, so quoting the pre-fee amount would produce an
+ * unfillable minOutputAmount — this pairing (build on the pre-fee amount,
+ * quote on the post-fee amount) is the pipeline's core invariant, and this
+ * function is its only implementation.
+ */
+export function quoteInputFor(buildAmount: bigint | undefined): bigint | undefined {
+  return buildAmount === undefined
+    ? undefined
+    : adjustAmountByFee(buildAmount, PARTNER_FEE, "exact_input");
+}
+
+/** Apply slippage tolerance (in percent, e.g. 0.5) to a quoted output. */
+export function applySlippage(quoted: bigint, slippagePct: number): bigint {
+  const bps = BigInt(Math.round(slippagePct * 100));
+  return (quoted * (10_000n - bps)) / 10_000n;
+}
+
+/** Minimum acceptable output for a quote, at the app's slippage tolerance. */
+export function minReceivedFor(quoted: bigint | undefined): bigint | undefined {
+  return quoted === undefined
+    ? undefined
+    : applySlippage(quoted, DEFAULT_SLIPPAGE_PCT);
+}
+
+export type DepositMax =
+  | { kind: "ready"; amount: bigint }
+  /** The gas buffer is still being priced — Max would guess wrong. */
+  | { kind: "bufferLoading" }
+  /** The whole balance would go to network fees. */
+  | { kind: "nothingSpendable" };
+
+/**
+ * What Max may spend: the balance minus what the network actually charges
+ * (see useNativeGasBuffer; non-native pours pay their fee from the native
+ * balance, so their buffer is 0).
+ */
+export function depositMax(
+  balance: bigint,
+  gasBuffer: bigint | undefined,
+): DepositMax {
+  if (gasBuffer === undefined) return { kind: "bufferLoading" };
+  const max = balance > gasBuffer ? balance - gasBuffer : 0n;
+  if (max <= 0n) return { kind: "nothingSpendable" };
+  return { kind: "ready", amount: max };
+}
+
+/**
+ * Render an amount as field text in the given denomination. USD rounds DOWN
+ * to whole cents so the converted token amount never exceeds the amount it
+ * was derived from (Max must stay spendable; a flip must keep meaning the
+ * same pour).
+ */
+export function amountText(
+  amount: bigint,
+  decimals: number,
+  usdMode: boolean,
+  priceUsd: number | undefined,
+): string {
+  if (usdMode && priceUsd !== undefined) {
+    const usd = Number(formatUnits(amount, decimals)) * priceUsd;
+    return (Math.floor(usd * 100) / 100).toFixed(2);
+  }
+  return formatUnits(amount, decimals);
+}
+
+/**
+ * Whether a withdraw's minimum output lands under Bitcoin's dust limit. Only
+ * native BTC — guard on the token, not just the chain, in case Bitcoin's
+ * solver list ever gains a non-BTC (non-8dp) token.
+ */
+export function belowBtcDust(
+  dstChainKey: SpokeChainKey | null,
+  tokenSymbol: string | undefined,
+  minOut: bigint | undefined,
+): boolean {
+  return (
+    dstChainKey === ChainKeys.BITCOIN_MAINNET &&
+    tokenSymbol === "BTC" &&
+    minOut !== undefined &&
+    minOut < BTC_DUST_SATS
+  );
+}
+
+/**
+ * The single reason a pour can't go yet, in the order the user can act on
+ * them. The drawers map each kind to its tea-voice label; the order and the
+ * conditions live here.
+ */
+export type PourGate =
+  | { kind: "ready" }
+  | { kind: "pickToken" }
+  | { kind: "connectSource" }
+  | { kind: "pickDestination" }
+  | { kind: "invalidRecipient" }
+  | { kind: "connectDestination" }
+  | { kind: "enterAmount" }
+  | { kind: "balanceLoading" }
+  | { kind: "insufficient" }
+  | { kind: "wrongChain" }
+  | { kind: "noRoute" }
+  | { kind: "belowDust" }
+  | { kind: "quotePending" };
+
+export function depositGate(state: {
+  hasToken: boolean;
+  address: string | undefined;
+  buildAmount: bigint | undefined;
+  balance: bigint | undefined;
+  isWrongChain: boolean;
+  noRoute: boolean;
+  quoted: bigint | undefined;
+  minOut: bigint | undefined;
+  hasWalletProvider: boolean;
+}): PourGate {
+  // Token-first: a user whose only wallet is on another family (e.g.
+  // Phantom) must be routed to the picker, not told to "connect" while
+  // already connected — the source chain defaults to Ethereum until they pick.
+  if (!state.hasToken) return { kind: "pickToken" };
+  if (!state.address) return { kind: "connectSource" };
+  if (!state.buildAmount) return { kind: "enterAmount" };
+  if (state.balance === undefined) return { kind: "balanceLoading" };
+  if (state.buildAmount > state.balance) return { kind: "insufficient" };
+  if (state.isWrongChain) return { kind: "wrongChain" };
+  if (state.noRoute) return { kind: "noRoute" };
+  if (
+    state.quoted === undefined ||
+    state.minOut === undefined ||
+    !state.hasWalletProvider
+  ) {
+    return { kind: "quotePending" };
+  }
+  return { kind: "ready" };
+}
+
+export function withdrawGate(state: {
+  address: string | undefined;
+  hasDestination: boolean;
+  recipient: string | undefined;
+  usingCustomRecipient: boolean;
+  buildAmount: bigint | undefined;
+  availableShares: bigint;
+  isWrongChain: boolean;
+  noRoute: boolean;
+  belowDust: boolean;
+  quoted: bigint | undefined;
+  minOut: bigint | undefined;
+  hasWalletProvider: boolean;
+}): PourGate {
+  if (!state.address) return { kind: "connectSource" };
+  if (!state.hasDestination) return { kind: "pickDestination" };
+  if (!state.recipient) {
+    return state.usingCustomRecipient
+      ? { kind: "invalidRecipient" }
+      : { kind: "connectDestination" };
+  }
+  if (!state.buildAmount) return { kind: "enterAmount" };
+  if (state.buildAmount > state.availableShares) return { kind: "insufficient" };
+  if (state.isWrongChain) return { kind: "wrongChain" };
+  if (state.noRoute) return { kind: "noRoute" };
+  if (state.belowDust) return { kind: "belowDust" };
+  if (
+    state.quoted === undefined ||
+    state.minOut === undefined ||
+    !state.hasWalletProvider
+  ) {
+    return { kind: "quotePending" };
+  }
+  return { kind: "ready" };
+}
