@@ -19,6 +19,38 @@ export const PARTNER_FEE: PartnerFee = {
 };
 
 /**
+ * Keyless publicnode endpoints instead of the defaults baked into viem and
+ * the SDK, which are best-effort and do die — polygon-rpc.com returns 401
+ * "API key disabled, tenant disabled" as of 2026-07-31. Pinned in BOTH
+ * configs below: the wallet SDK reads balances through its own clients, and
+ * the core SDK builds separate clients for allowance checks and receipt
+ * polling from ITS chain config (issue #12 was Polygon deposits dying on the
+ * SDK half after only the wallet half was pinned). Chains not listed here
+ * (HyperEVM, LightLink, Kaia, Redbelly) stay on their official default RPCs,
+ * which publicnode doesn't cover.
+ */
+const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
+  [ChainKeys.ETHEREUM_MAINNET]: {
+    rpcUrl: "https://ethereum-rpc.publicnode.com",
+  },
+  [ChainKeys.ARBITRUM_MAINNET]: {
+    rpcUrl: "https://arbitrum-one-rpc.publicnode.com",
+  },
+  [ChainKeys.BASE_MAINNET]: { rpcUrl: "https://base-rpc.publicnode.com" },
+  [ChainKeys.OPTIMISM_MAINNET]: {
+    rpcUrl: "https://optimism-rpc.publicnode.com",
+  },
+  [ChainKeys.POLYGON_MAINNET]: {
+    rpcUrl: "https://polygon-bor-rpc.publicnode.com",
+  },
+  [ChainKeys.BSC_MAINNET]: { rpcUrl: "https://bsc-rpc.publicnode.com" },
+  [ChainKeys.AVALANCHE_MAINNET]: {
+    rpcUrl: "https://avalanche-c-chain-rpc.publicnode.com",
+  },
+  [ChainKeys.SONIC_MAINNET]: { rpcUrl: "https://sonic-rpc.publicnode.com" },
+};
+
+/**
  * SDK config. SodaxOptions is a DeepPartial over the SDK's baked-in mainnet
  * defaults (chains, solver + relayer endpoints), so we only override what we
  * must. Both configs are module constants on purpose: SodaxProvider tracks
@@ -27,6 +59,7 @@ export const PARTNER_FEE: PartnerFee = {
 export const sodaxConfig: SodaxOptions = {
   fee: PARTNER_FEE,
   chains: {
+    ...PINNED_EVM_RPCS,
     [ChainKeys.BITCOIN_MAINNET]: {
       radfi: {
         // USER mode: deposits build a PSBT straight from the personal
@@ -60,31 +93,7 @@ export const walletConfig: SodaxWalletConfig = {
     ...(walletConnectProjectId
       ? { walletConnect: { projectId: walletConnectProjectId } }
       : {}),
-    // Keyless publicnode endpoints instead of viem's baked-in defaults, which
-    // are best-effort and do die — polygon-rpc.com returns 401 "tenant
-    // disabled" as of 2026-07-31, silently blanking Polygon balances. Chains
-    // not listed here (HyperEVM, LightLink, Kaia, Redbelly) stay on their
-    // official default RPCs, which publicnode doesn't cover.
-    chains: {
-      [ChainKeys.ETHEREUM_MAINNET]: {
-        rpcUrl: "https://ethereum-rpc.publicnode.com",
-      },
-      [ChainKeys.ARBITRUM_MAINNET]: {
-        rpcUrl: "https://arbitrum-one-rpc.publicnode.com",
-      },
-      [ChainKeys.BASE_MAINNET]: { rpcUrl: "https://base-rpc.publicnode.com" },
-      [ChainKeys.OPTIMISM_MAINNET]: {
-        rpcUrl: "https://optimism-rpc.publicnode.com",
-      },
-      [ChainKeys.POLYGON_MAINNET]: {
-        rpcUrl: "https://polygon-bor-rpc.publicnode.com",
-      },
-      [ChainKeys.BSC_MAINNET]: { rpcUrl: "https://bsc-rpc.publicnode.com" },
-      [ChainKeys.AVALANCHE_MAINNET]: {
-        rpcUrl: "https://avalanche-c-chain-rpc.publicnode.com",
-      },
-      [ChainKeys.SONIC_MAINNET]: { rpcUrl: "https://sonic-rpc.publicnode.com" },
-    },
+    chains: PINNED_EVM_RPCS,
   },
   // The SDK default (api.mainnet-beta.solana.com) 403s browser dapp traffic
   // outright, which blanked the embedded wallet's SOL from the teapot.
@@ -112,10 +121,7 @@ export const walletConfig: SodaxWalletConfig = {
  * falls back to the chain's default for the long-tail chains we don't pin.
  */
 export function getPinnedRpcUrl(chainKey: EvmChainKey): string | undefined {
-  const chains = walletConfig.EVM?.chains as
-    | Partial<Record<EvmChainKey, { rpcUrl?: string }>>
-    | undefined;
-  return chains?.[chainKey]?.rpcUrl;
+  return PINNED_EVM_RPCS[chainKey]?.rpcUrl;
 }
 
 /** Slippage tolerance applied to solver quotes, in percent. */
