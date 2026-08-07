@@ -153,6 +153,22 @@ export type Copy = {
   settingsSub: string;
   modeSectionLabel: string;
   currencySectionLabel: string;
+
+  /* — info drawer: the making-of story, retold in each mode's voice — */
+  infoTitle: string;
+  infoSub: string;
+  infoAgentsStat: string;
+  infoAgentsDetail: string;
+  infoMcpStat: string;
+  infoMcpDetail: string;
+  infoTimeStat: string;
+  infoTimeDetail: string;
+  /** The @sodax/dapp-kit paragraph; the component bolds the package name. */
+  infoPorcelain: string;
+  /** The quiet fee disclosure. Stays in every voice — honesty is house style. */
+  infoHouseRules: string;
+  infoBuildersCta: string;
+  infoDocsCta: string;
 };
 
 const ORIGINAL: Copy = {
@@ -203,6 +219,24 @@ const ORIGINAL: Copy = {
   settingsSub: "How the tea house looks, and what the money speaks.",
   modeSectionLabel: "Mode",
   currencySectionLabel: "Currency",
+
+  infoTitle: "How this was made",
+  infoSub: "Vibed together over many cups.",
+  infoAgentsStat: "25+ AI agents",
+  infoAgentsDetail:
+    "One measured the leaves, one warmed the pot, several argued about steam. Researchers, builders, and reviewers, all orchestrated by one Claude session.",
+  infoMcpStat: "1 MCP server",
+  infoMcpDetail:
+    "The SODAX Builders MCP poured live protocol data (chains, tokens, vaults, docs) straight into the agents' cups while they worked.",
+  infoTimeStat: "~1 afternoon",
+  infoTimeDetail:
+    "From an empty folder to a reviewed, cross-chain tea service: scaffolded, brewed, tasted adversarially, and refined. No crypto jargon survived the tasting.",
+  infoPorcelain:
+    "turns every pour into an intent-based cross-chain swap. Any asset on any of 20 networks in, leveraged staked-yield tea on Sonic out, one signature.",
+  infoHouseRules:
+    "House rules: every pour includes a 0.1% service charge. It keeps the kettle on and the parlour open.",
+  infoBuildersCta: "See how it's brewed at SODAX Builders",
+  infoDocsCta: "SODAX developer docs",
 };
 
 /**
@@ -254,6 +288,24 @@ const GANGSTER: Copy = {
 
   settingsTitle: "The back office",
   settingsSub: "How the lounge looks, and what the money talks.",
+
+  infoTitle: "How this got built",
+  infoSub: "Vibed together over many cups. Straight up.",
+  infoAgentsStat: "25+ AI agents",
+  infoAgentsDetail:
+    "One measured the leaves, one warmed the pot, a couple argued about steam. A whole crew of researchers, builders, and reviewers, all answering to one Claude running the table.",
+  infoMcpStat: "1 MCP server",
+  infoMcpDetail:
+    "The SODAX Builders MCP kept the crew fed with live protocol intel the whole time: chains, tokens, vaults, docs. No guesswork on this block.",
+  infoTimeStat: "~1 afternoon",
+  infoTimeDetail:
+    "Empty folder to a cross-chain tea lounge in one sitting. Scaffolded, brewed, stress-tested, polished. Jargon didn't make the cut.",
+  infoPorcelain:
+    "flips every pour into an intent-based cross-chain swap. Anything on 20 networks in, leveraged staked-yield tea on Sonic out, one signature. Smooth.",
+  infoHouseRules:
+    "House rules: every pour carries a 0.1% service charge. Keeps the lounge lit and the kettle hot.",
+  infoBuildersCta: "Peep the kitchen at SODAX Builders",
+  infoDocsCta: "SODAX developer docs",
 };
 
 /** Nan's Parlour: a doting grandmother runs the place. Everything is lovely. */
@@ -295,6 +347,24 @@ const NAN: Copy = {
 
   settingsTitle: "The good cupboard",
   settingsSub: "How the parlour looks, and what the money speaks.",
+
+  infoTitle: "How it all came together, dear",
+  infoSub: "Many hands and even more cuppas.",
+  infoAgentsStat: "25+ AI helpers",
+  infoAgentsDetail:
+    "One measured the leaves, one warmed the pot, and a few had a lovely little squabble about the steam. All kept in line by one very patient Claude.",
+  infoMcpStat: "1 MCP server",
+  infoMcpDetail:
+    "The SODAX Builders MCP passed fresh ingredients through the hatch the whole while: chains, tokens, vaults, docs. Nothing out of a packet in this house.",
+  infoTimeStat: "About an afternoon",
+  infoTimeDetail:
+    "From a bare cupboard to a proper tea service in an afternoon, would you believe. Everything tasted twice before it went out, of course.",
+  infoPorcelain:
+    "turns every pour into one of those clever cross-chain swaps. Anything from 20 networks in, lovely steeping tea on Sonic out, one little signature.",
+  infoHouseRules:
+    "House rules, love: each pour includes a small 0.1% service charge. It keeps the stove lit and the biscuit tin full.",
+  infoBuildersCta: "See how it's done at SODAX Builders, dear",
+  infoDocsCta: "The developer docs, if you're curious",
 };
 
 /** Degen Terminal: lowercase, dense, permanently online. */
@@ -343,6 +413,23 @@ const TERMINAL: Copy = {
   settingsSub: "skin + display currency_",
   modeSectionLabel: "skin",
   currencySectionLabel: "currency",
+
+  infoTitle: "> build_log",
+  infoSub: "compiled from vibes. reviewed anyway_",
+  infoAgentsStat: "25+ agents",
+  infoAgentsDetail:
+    "researchers, builders, reviewers spawned in parallel. one claude session as orchestrator. zero meetings_",
+  infoMcpStat: "1 mcp server",
+  infoMcpDetail:
+    "sodax builders mcp streamed live protocol state into the pipeline: chains, tokens, vaults, docs. cache warm, data fresh_",
+  infoTimeStat: "~1 afternoon",
+  infoTimeDetail:
+    "empty dir to cross-chain app in one session. scaffold, build, adversarial review, ship. jargon stripped at lint_",
+  infoPorcelain:
+    "compiles each pour to an intent-based cross-chain swap. ~200 assets / 20 networks in, leveraged lst yield on sonic out. 1 sig_",
+  infoHouseRules: "fee schedule: 0.1% per pour. keeps the node running_",
+  infoBuildersCta: "src: builders.sodax.com",
+  infoDocsCta: "docs: docs.sodax.com",
 };
 
 /** Vaporwave: the mall at eternal sunset. Wide letters, wide time. */
@@ -383,6 +470,24 @@ const VAPORWAVE: Copy = {
 
   settingsTitle: "The control room",
   settingsSub: "Reality settings. Adjust the sunset, choose the money.",
+
+  infoTitle: "ＨＯＷ ＩＴ ＷＡＳ ＭＡＤＥ",
+  infoSub: "Dreamt into the plaza over one long sunset.",
+  infoAgentsStat: "25+ AI agents",
+  infoAgentsDetail:
+    "One measured the leaves, one warmed the pot, several debated the steam until the mall lights hummed. All conducted by a single Claude, somewhere beyond the grid.",
+  infoMcpStat: "1 MCP server",
+  infoMcpDetail:
+    "The SODAX Builders MCP piped live protocol data into the plaza: chains, tokens, vaults, docs, flowing like fountain water.",
+  infoTimeStat: "One sunset",
+  infoTimeDetail:
+    "An empty folder became this arcade before the sun finished setting. The sun is always finishing setting.",
+  infoPorcelain:
+    "renders every pour as an intent-based cross-chain swap. Any artifact from 20 networks in, leveraged staked-yield tea on Sonic out, one signature.",
+  infoHouseRules:
+    "Plaza rules: every pour includes a 0.1% service charge. It keeps the fountain glowing after closing time.",
+  infoBuildersCta: "Visit the atrium: SODAX Builders",
+  infoDocsCta: "The archive: developer docs",
 };
 
 /** Sumi-e: ink and silence. Every word that can go, goes. */
@@ -429,6 +534,20 @@ const SUMIE: Copy = {
 
   settingsTitle: "The alcove",
   settingsSub: "Appearance. Currency.",
+
+  infoTitle: "Its making",
+  infoSub: "Many hands. One afternoon.",
+  infoAgentsStat: "25+ agents",
+  infoAgentsDetail: "Some measured. Some built. Some doubted. One session held the brush.",
+  infoMcpStat: "1 server",
+  infoMcpDetail: "Live protocol data, poured as needed. Chains, tokens, vaults, docs.",
+  infoTimeStat: "One afternoon",
+  infoTimeDetail: "An empty folder, then this. Each stroke examined before the ink dried.",
+  infoPorcelain:
+    "beneath. Each pour, one intent, one swap. Twenty networks in, steeping yield out, one signature.",
+  infoHouseRules: "Each pour carries a 0.1% charge. The kettle stays warm.",
+  infoBuildersCta: "SODAX Builders",
+  infoDocsCta: "Developer docs",
 };
 
 export const COPY: Record<ModeId, Copy> = {

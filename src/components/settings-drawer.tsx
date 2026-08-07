@@ -15,6 +15,7 @@ import {
 import { MODES } from "@/lib/copy";
 import { CURRENCIES } from "@/lib/currencies";
 import { cn } from "@/lib/utils";
+import { useAwardTheme } from "@/hooks/use-profile";
 
 /**
  * The back room: pick a mode (the app's whole personality — skin AND voice)
@@ -31,6 +32,7 @@ export function SettingsDrawer({
   const copy = useCopy();
   const { mode, setMode } = useMode();
   const { currency, setCurrency } = useCurrency();
+  const awardTheme = useAwardTheme();
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -54,7 +56,13 @@ export function SettingsDrawer({
                     <button
                       key={meta.id}
                       type="button"
-                      onClick={() => setMode(meta.id)}
+                      onClick={() => {
+                        setMode(meta.id);
+                        // First taste of a mode earns a sip of XP; the server
+                        // pays each theme once per account, so this can fire
+                        // on every tap without being farmable.
+                        if (meta.id !== mode) awardTheme.mutate(meta.id);
+                      }}
                       aria-pressed={selected}
                       className={cn(
                         "flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors",

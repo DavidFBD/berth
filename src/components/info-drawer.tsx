@@ -10,31 +10,22 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { useCopy } from "@/components/settings-provider";
 
-const STATS = [
-  {
-    icon: Robot,
-    stat: "25+ AI agents",
-    detail:
-      "One measured the leaves, one warmed the pot, several argued about steam. Researchers, builders, and reviewers, all orchestrated by one Claude session.",
-  },
-  {
-    icon: Wrench,
-    stat: "1 MCP server",
-    detail:
-      "The SODAX Builders MCP poured live protocol data (chains, tokens, vaults, docs) straight into the agents' cups while they worked.",
-  },
-  {
-    icon: Sparkle,
-    stat: "~1 afternoon",
-    detail:
-      "From an empty folder to a reviewed, cross-chain tea service: scaffolded, brewed, tasted adversarially, and refined. No crypto jargon survived the tasting.",
-  },
-];
-
-/** Header info button + drawer: the story of how this app was vibed together. */
+/**
+ * Header info button + drawer: the story of how this app was vibed together,
+ * retold in whichever voice the active mode speaks. Same facts in every
+ * telling — switching modes and rereading it is the easter egg.
+ */
 export function InfoDrawer() {
   const [open, setOpen] = useState(false);
+  const copy = useCopy();
+
+  const stats = [
+    { icon: Robot, stat: copy.infoAgentsStat, detail: copy.infoAgentsDetail },
+    { icon: Wrench, stat: copy.infoMcpStat, detail: copy.infoMcpDetail },
+    { icon: Sparkle, stat: copy.infoTimeStat, detail: copy.infoTimeDetail },
+  ];
 
   return (
     <>
@@ -51,14 +42,12 @@ export function InfoDrawer() {
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>How this was made</DrawerTitle>
-            <DrawerDescription>
-              Vibed together over many cups.
-            </DrawerDescription>
+            <DrawerTitle>{copy.infoTitle}</DrawerTitle>
+            <DrawerDescription>{copy.infoSub}</DrawerDescription>
           </DrawerHeader>
 
           <div className="flex flex-col gap-4 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
-            {STATS.map(({ icon: StatIcon, stat, detail }) => (
+            {stats.map(({ icon: StatIcon, stat, detail }) => (
               <div key={stat} className="flex gap-3">
                 <StatIcon className="mt-0.5 size-6 shrink-0 text-primary" />
                 <div className="flex flex-col gap-0.5">
@@ -73,11 +62,11 @@ export function InfoDrawer() {
             ))}
 
             <p className="text-sm text-muted-foreground">
-              Under the porcelain: <span className="text-foreground">@sodax/dapp-kit</span>{" "}
-              turns every pour into an intent-based cross-chain swap. Any
-              asset on any of 20 networks in, leveraged staked-yield tea on
-              Sonic out, one signature.
+              <span className="text-foreground">@sodax/dapp-kit</span>{" "}
+              {copy.infoPorcelain}
             </p>
+
+            <p className="text-xs text-muted-foreground">{copy.infoHouseRules}</p>
 
             <div className="flex flex-col gap-2">
               <a
@@ -86,7 +75,7 @@ export function InfoDrawer() {
                 rel="noreferrer"
                 className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
-                See how it&apos;s brewed at SODAX Builders
+                {copy.infoBuildersCta}
                 <ArrowSquareOut className="size-4 text-muted-foreground" />
               </a>
               <a
@@ -95,7 +84,7 @@ export function InfoDrawer() {
                 rel="noreferrer"
                 className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
-                SODAX developer docs
+                {copy.infoDocsCta}
                 <ArrowSquareOut className="size-4 text-muted-foreground" />
               </a>
             </div>
