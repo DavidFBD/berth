@@ -165,8 +165,11 @@ export type Copy = {
   infoTimeDetail: string;
   /** The @sodax/dapp-kit paragraph; the component bolds the package name. */
   infoPorcelain: string;
-  /** The quiet fee disclosure. Stays in every voice — honesty is house style. */
-  infoHouseRules: string;
+  /**
+   * The quiet fee disclosure. Stays in every voice — honesty is house style.
+   * Takes the live fee ("0.4%") so the words can never drift from the config.
+   */
+  infoHouseRules: (feePct: string) => string;
   infoBuildersCta: string;
   infoDocsCta: string;
 };
@@ -233,8 +236,8 @@ const ORIGINAL: Copy = {
     "From an empty folder to a reviewed, cross-chain tea service: scaffolded, brewed, tasted adversarially, and refined. No crypto jargon survived the tasting.",
   infoPorcelain:
     "turns every pour into an intent-based cross-chain swap. Any asset on any of 20 networks in, leveraged staked-yield tea on Sonic out, one signature.",
-  infoHouseRules:
-    "House rules: every pour includes a 0.1% service charge. It keeps the kettle on and the parlour open.",
+  infoHouseRules: (feePct) =>
+    `House rules: every pour includes a ${feePct} service charge. It keeps the tea warm and the flavours curated.`,
   infoBuildersCta: "See how it's brewed at SODAX Builders",
   infoDocsCta: "SODAX developer docs",
 };
@@ -302,8 +305,8 @@ const GANGSTER: Copy = {
     "Empty folder to a cross-chain tea lounge in one sitting. Scaffolded, brewed, stress-tested, polished. Jargon didn't make the cut.",
   infoPorcelain:
     "flips every pour into an intent-based cross-chain swap. Anything on 20 networks in, leveraged staked-yield tea on Sonic out, one signature. Smooth.",
-  infoHouseRules:
-    "House rules: every pour carries a 0.1% service charge. Keeps the lounge lit and the kettle hot.",
+  infoHouseRules: (feePct) =>
+    `House rules: every pour carries a ${feePct} service charge. Keeps the tea hot and the menu hand-picked.`,
   infoBuildersCta: "Peep the kitchen at SODAX Builders",
   infoDocsCta: "SODAX developer docs",
 };
@@ -361,8 +364,8 @@ const NAN: Copy = {
     "From a bare cupboard to a proper tea service in an afternoon, would you believe. Everything tasted twice before it went out, of course.",
   infoPorcelain:
     "turns every pour into one of those clever cross-chain swaps. Anything from 20 networks in, lovely steeping tea on Sonic out, one little signature.",
-  infoHouseRules:
-    "House rules, love: each pour includes a small 0.1% service charge. It keeps the stove lit and the biscuit tin full.",
+  infoHouseRules: (feePct) =>
+    `House rules, love: each pour includes a small ${feePct} service charge. It keeps the tea warm and the good flavours in stock.`,
   infoBuildersCta: "See how it's done at SODAX Builders, dear",
   infoDocsCta: "The developer docs, if you're curious",
 };
@@ -427,7 +430,7 @@ const TERMINAL: Copy = {
     "empty dir to cross-chain app in one session. scaffold, build, adversarial review, ship. jargon stripped at lint_",
   infoPorcelain:
     "compiles each pour to an intent-based cross-chain swap. ~200 assets / 20 networks in, leveraged lst yield on sonic out. 1 sig_",
-  infoHouseRules: "fee schedule: 0.1% per pour. keeps the node running_",
+  infoHouseRules: (feePct) => `fee schedule: ${feePct} per pour. keeps the tea warm + the flavors curated_`,
   infoBuildersCta: "src: builders.sodax.com",
   infoDocsCta: "docs: docs.sodax.com",
 };
@@ -484,8 +487,8 @@ const VAPORWAVE: Copy = {
     "An empty folder became this arcade before the sun finished setting. The sun is always finishing setting.",
   infoPorcelain:
     "renders every pour as an intent-based cross-chain swap. Any artifact from 20 networks in, leveraged staked-yield tea on Sonic out, one signature.",
-  infoHouseRules:
-    "Plaza rules: every pour includes a 0.1% service charge. It keeps the fountain glowing after closing time.",
+  infoHouseRules: (feePct) =>
+    `Plaza rules: every pour includes a ${feePct} service charge. It keeps the tea warm and the flavors curated, forever.`,
   infoBuildersCta: "Visit the atrium: SODAX Builders",
   infoDocsCta: "The archive: developer docs",
 };
@@ -545,7 +548,7 @@ const SUMIE: Copy = {
   infoTimeDetail: "An empty folder, then this. Each stroke examined before the ink dried.",
   infoPorcelain:
     "beneath. Each pour, one intent, one swap. Twenty networks in, steeping yield out, one signature.",
-  infoHouseRules: "Each pour carries a 0.1% charge. The kettle stays warm.",
+  infoHouseRules: (feePct) => `Each pour carries a ${feePct} charge. The tea stays warm. The flavours, chosen.`,
   infoBuildersCta: "SODAX Builders",
   infoDocsCta: "Developer docs",
 };

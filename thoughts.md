@@ -10,7 +10,7 @@ _(Struck-through = tackled — with a short status note from Claude. 🟡 = part
 - ~~Phosphor duotone icons~~ → **Done.**
 - ~~Desktop stage: looping video + hand holding an iPhone~~ → **Done**, assets baked and shipped in `public/stage/`.
 - ~~Info button explaining how this was vibed with SODAX~~ → **Done**, and now retold per mode (see below).
-- ~~0.1% fee to 0xbe59…Ca23~~ → **Done and verified earning on-chain** (SODA, sodaBTC, lsodaWEETH, BNB sitting at the fee wallet on Sonic). Claim later via `sodax.partners.feeClaim.*`.
+- ~~0.1% fee to 0xbe59…Ca23~~ → **Done and verified earning on-chain** (SODA, sodaBTC, lsodaWEETH, BNB sitting at the fee wallet on Sonic). Claim later via `sodax.partners.feeClaim.*`. **Raised to 0.4% on 2026-08-07**; the disclosure line now derives from the config so copy can't go stale, framed as keeping the tea warm and the flavours curated. Note: charged both directions, so a round trip costs ~0.8%.
 - ~~Native Bitcoin in and out~~ → **Done** via USER-mode PSBTs, 546-sat dust guard.
 - ~~LSTeaTime lore~~ → **Done**: footer + info sheet. Fuller lore page still an option.
 

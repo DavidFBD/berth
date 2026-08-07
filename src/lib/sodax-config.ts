@@ -8,12 +8,14 @@ import type { SodaxWalletConfig } from "@sodax/wallet-sdk-react";
 
 /**
  * Partner fee on every vault swap (deposit + withdraw intents). Percentage is
- * in basis points: 10 = 0.1%. The SDK deducts it from the input amount before
+ * in basis points: 40 = 0.4%. The SDK deducts it from the input amount before
  * the swap, so quotes must run on the post-fee amount (adjustAmountByFee).
+ * The info drawer's disclosure line derives from this value — change it here
+ * and the copy follows.
  */
 export const PARTNER_FEE: PartnerFee = {
   address: "0xbe59D5bf40Ac4A349bD748E0d7c19eF27Ad3Ca23",
-  percentage: 10,
+  percentage: 40,
 };
 
 /**
