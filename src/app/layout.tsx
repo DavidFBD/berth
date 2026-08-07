@@ -9,6 +9,7 @@ import {
   VT323,
   Young_Serif,
 } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "@/components/providers";
 import { DesktopStage } from "@/components/desktop-stage";
 import "./globals.css";
@@ -132,6 +133,7 @@ export default function RootLayout({
         <Providers>
           <DesktopStage>{children}</DesktopStage>
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
