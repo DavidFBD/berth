@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
-import { motion } from "motion/react";
-import { Coffee, EnvelopeSimple } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { CaretDown, Coffee, EnvelopeSimple } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { AVATARS, avatarSrc, type AvatarId } from "@/lib/avatars";
 import { rankForXp, XP_ACTIONS } from "@/lib/xp";
@@ -20,15 +21,30 @@ export function TeaService() {
   const profile = useProfile();
   const setAvatar = useSetAvatar();
   const privy = usePrivyEmbeddedWallet();
+  /**
+   * Whether the avatar shelf is unfolded. null = no explicit choice, and the
+   * default does the smart thing: open while the pick is still unmade (it
+   * pays XP and deserves the space), folded away once a face is chosen.
+   */
+  const [shelfToggled, setShelfToggled] = useState<boolean | null>(null);
 
   if (!profile.data) return null;
   const { xp, avatarId, hasEmail } = profile.data;
   const rank = rankForXp(xp);
   const currentSrc = avatarSrc(avatarId);
+  const shelfOpen = shelfToggled ?? avatarId == null;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-3 py-3">
-      <div className="flex items-center gap-3">
+      {/* The rank row doubles as the shelf's handle: tap your face to
+          swap it. */}
+      <button
+        type="button"
+        aria-expanded={shelfOpen}
+        aria-controls="avatar-shelf"
+        onClick={() => setShelfToggled(!shelfOpen)}
+        className="-m-1 flex items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-muted/60"
+      >
         {currentSrc ? (
           <Image
             src={currentSrc}
@@ -53,7 +69,18 @@ export function TeaService() {
             Level {rank.level} · {xp.toLocaleString()} XP
           </span>
         </div>
-      </div>
+        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          {avatarId == null
+            ? `Pick a face · +${XP_ACTIONS.avatar_set.amount} XP`
+            : "New face"}
+          <CaretDown
+            className={cn(
+              "size-3.5 transition-transform",
+              shelfOpen && "rotate-180",
+            )}
+          />
+        </span>
+      </button>
 
       {rank.nextName && (
         <div className="flex flex-col gap-1">
@@ -69,32 +96,54 @@ export function TeaService() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-2">
-        {AVATARS.map((avatar) => (
-          <button
-            key={avatar.id}
-            type="button"
-            aria-label={`Choose ${avatar.label}`}
-            aria-pressed={avatarId === avatar.id}
-            disabled={setAvatar.isPending}
-            onClick={() => setAvatar.mutate(avatar.id as AvatarId)}
-            className={cn(
-              "rounded-full p-0.5 transition-all",
-              avatarId === avatar.id
-                ? "ring-2 ring-primary"
-                : "opacity-80 hover:opacity-100",
-            )}
+      <AnimatePresence initial={false}>
+        {shelfOpen && (
+          <motion.div
+            key="shelf"
+            id="avatar-shelf"
+            initial={{ height: 0, opacity: 0, marginTop: -12 }}
+            animate={{ height: "auto", opacity: 1, marginTop: 0 }}
+            exit={{ height: 0, opacity: 0, marginTop: -12 }}
+            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            className="overflow-hidden"
           >
-            <Image
-              src={avatar.src}
-              alt={avatar.label}
-              width={56}
-              height={56}
-              className="size-full rounded-full"
-            />
-          </button>
-        ))}
-      </div>
+            <div className="grid grid-cols-4 gap-2 p-0.5">
+              {AVATARS.map((avatar) => (
+                <button
+                  key={avatar.id}
+                  type="button"
+                  aria-label={`Choose ${avatar.label}`}
+                  aria-pressed={avatarId === avatar.id}
+                  disabled={setAvatar.isPending}
+                  onClick={() =>
+                    setAvatar.mutate(avatar.id as AvatarId, {
+                      // Choice made: the shelf folds itself away again.
+                      // (null = the post never landed; keep it open.)
+                      onSuccess: (data) => {
+                        if (data) setShelfToggled(null);
+                      },
+                    })
+                  }
+                  className={cn(
+                    "rounded-full p-0.5 transition-all",
+                    avatarId === avatar.id
+                      ? "ring-2 ring-primary"
+                      : "opacity-80 hover:opacity-100",
+                  )}
+                >
+                  <Image
+                    src={avatar.src}
+                    alt={avatar.label}
+                    width={56}
+                    height={56}
+                    className="size-full rounded-full"
+                  />
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* The invitation: wallet guests can put a name to the account. The
           server pays the reward once the Privy session and the wallet meet
