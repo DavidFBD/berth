@@ -85,25 +85,33 @@ export function VaultList({
       <div className="rounded-2xl border border-border bg-card px-3 pt-3 pb-4 shadow-sm">
         <div className="grid grid-cols-3 items-end">
           {vaults.map((vault, index) => (
-            <ShelfCup
+            // First-mount ripple, left to right — decorative, so it never
+            // gates taps (pointer events stay live from frame one).
+            <motion.div
               key={vault.vault}
-              vault={vault}
-              selected={vault.vault === selected}
-              dimmed={
-                anyFilled && !filled[index] && vault.vault !== selected
-              }
-              onSelect={() => {
-                if (selected === vault.vault) {
-                  setSelected(null);
-                  return;
+              initial={{ opacity: 0, transform: "translateY(8px)" }}
+              animate={{ opacity: 1, transform: "translateY(0px)" }}
+              transition={{ duration: 0.3, ease: EASE_LIFT, delay: index * 0.06 }}
+            >
+              <ShelfCup
+                vault={vault}
+                selected={vault.vault === selected}
+                dimmed={
+                  anyFilled && !filled[index] && vault.vault !== selected
                 }
-                const from = selected
-                  ? vaults.findIndex((v) => v.vault === selected)
-                  : -1;
-                if (from >= 0) setSwapDir(index > from ? 1 : -1);
-                setSelected(vault.vault);
-              }}
-            />
+                onSelect={() => {
+                  if (selected === vault.vault) {
+                    setSelected(null);
+                    return;
+                  }
+                  const from = selected
+                    ? vaults.findIndex((v) => v.vault === selected)
+                    : -1;
+                  if (from >= 0) setSwapDir(index > from ? 1 : -1);
+                  setSelected(vault.vault);
+                }}
+              />
+            </motion.div>
           ))}
         </div>
         <div

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { AnimatePresence, motion } from "motion/react";
 import { ArrowsDownUp, CaretDown, Flame } from "@phosphor-icons/react";
 import {
   ChainKeys,
@@ -26,6 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { EASE_LIFT } from "@/lib/motion";
 import {
   DEPOSIT_SOURCE_CHAINS,
   getChainName,
@@ -328,6 +330,32 @@ export function DepositDrawer({
             </DrawerDescription>
           </DrawerHeader>
 
+          {/* The three acts (form → brewing → steeping) hand off with a soft
+              directional wash instead of a hard cut; the 2px blur masks the
+              crossfade so two states never read double-exposed. */}
+          <AnimatePresence initial={false} mode="popLayout">
+          <motion.div
+            key={
+              action.fillPhase ? "steeping" : action.pending ? "stepper" : "form"
+            }
+            className="flex min-h-0 flex-1 flex-col"
+            initial={{
+              opacity: 0,
+              transform: "translateY(10px)",
+              filter: "blur(2px)",
+            }}
+            animate={{
+              opacity: 1,
+              transform: "translateY(0px)",
+              filter: "blur(0px)",
+            }}
+            exit={{
+              opacity: 0,
+              transform: "translateY(-10px)",
+              filter: "blur(2px)",
+            }}
+            transition={{ duration: 0.22, ease: EASE_LIFT }}
+          >
           {vault && action.fillPhase ? (
             <div className="p-4">
               <IntentTracking
@@ -549,6 +577,8 @@ export function DepositDrawer({
               </DrawerFooter>
             </>
           ) : null}
+          </motion.div>
+          </AnimatePresence>
         </DrawerContent>
       </Drawer>
 

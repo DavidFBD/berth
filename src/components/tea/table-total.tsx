@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { formatUnits } from "viem";
 import { useSodaxContext } from "@sodax/dapp-kit";
 import { useCopy, useMoney } from "@/components/settings-provider";
@@ -82,6 +83,35 @@ function useSlotEarned(
   });
 }
 
+/**
+ * Glides the displayed number to a fresh value over ~350ms instead of
+ * teleporting — the header is exactly what the user watches right after a
+ * pour lands. First mount shows the value as-is (no count-up from zero).
+ * The digits themselves may move (they tick on the cards too); the banned
+ * thing is decoration ON the digits, per the motion-next-to-money rule.
+ */
+function useGlide(value: number): number {
+  const [shown, setShown] = useState(value);
+  const shownRef = useRef(value);
+  useEffect(() => {
+    const from = shownRef.current;
+    if (from === value) return;
+    const start = performance.now();
+    let raf = 0;
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / 350);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const v = from + (value - from) * eased;
+      shownRef.current = v;
+      setShown(v);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return shown;
+}
+
 export function TableTotal() {
   const copy = useCopy();
   const money = useMoney();
@@ -91,6 +121,8 @@ export function TableTotal() {
   // Wallet guests have no embedded sweep; their cups still count. Nothing
   // priced yet (or genuinely empty) renders nothing — a €0 headline is noise.
   const total = (teapot.totalUsd ?? 0) + cupsUsd;
+  const shownTotal = useGlide(total);
+  const shownEarned = useGlide(earnedUsd);
   if (total <= 0) return null;
 
   return (
@@ -98,7 +130,7 @@ export function TableTotal() {
       <div className="flex items-baseline justify-between">
         <span className="text-xs text-muted-foreground">{copy.onTheTable}</span>
         <span className="money text-sm font-semibold text-foreground">
-          ≈ {money.format(total)}
+          ≈ {money.format(shownTotal)}
         </span>
       </div>
       {/* The trophy line: only once there is genuinely something to show —
@@ -109,7 +141,7 @@ export function TableTotal() {
             {copy.earnedOverall}
           </span>
           <span className="money text-xs font-medium text-primary">
-            +{money.formatPrecise(earnedUsd)}
+            +{money.formatPrecise(shownEarned)}
           </span>
         </div>
       )}

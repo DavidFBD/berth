@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { ThemeProvider, useTheme } from "next-themes";
 
 import { useTokenPrices } from "@/hooks/use-token-prices";
@@ -120,7 +121,22 @@ export function useMode(): { mode: ModeId; setMode: (mode: ModeId) => void } {
   const { theme, setTheme } = useTheme();
   return {
     mode: isModeId(theme) ? theme : DEFAULT_MODE,
-    setMode: setTheme,
+    // Eight modes swap ~50 custom properties in one frame — a hard cut.
+    // Where the View Transitions API exists (Safari 18+, Chrome), wash the
+    // whole repaint in its default crossfade; reduced motion keeps the cut.
+    setMode: (mode: ModeId) => {
+      if (
+        typeof document !== "undefined" &&
+        "startViewTransition" in document &&
+        !matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        // flushSync so the class swap lands inside the transition's capture
+        // window; next-themes updates via React state otherwise too late.
+        document.startViewTransition(() => flushSync(() => setTheme(mode)));
+      } else {
+        setTheme(mode);
+      }
+    },
   };
 }
 

@@ -1,6 +1,6 @@
 # 007 — The tea level glides instead of ticking
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 7908485
 - **Severity**: MEDIUM
 - **Category**: Performance + Missed opportunity
