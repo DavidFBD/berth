@@ -16,7 +16,7 @@ import {
   UserPlus,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { SPRING_SHELF } from "@/lib/motion";
+import { SPRING_POP, SPRING_SHELF } from "@/lib/motion";
 import { AVATARS, avatarSrc, type AvatarId } from "@/lib/avatars";
 import { CODE_LENGTH, isInviteCode } from "@/lib/invite-code";
 import { inviteLink } from "@/lib/referral";
@@ -617,11 +617,15 @@ export function RankChip({
   const src = profile.data ? avatarSrc(profile.data.avatarId) : undefined;
 
   const inner = (
+    // Keyed on the LEVEL, not raw XP: the header chip pops when the rank
+    // actually changes, and sits still while ordinary XP trickles in. The
+    // celebration belongs to the level-up card; chrome stays quieter than
+    // the ceremony it echoes.
     <motion.span
-      key={profile.data?.xp ?? -1}
-      initial={{ scale: 1.25 }}
+      key={rank?.level ?? -1}
+      initial={{ scale: 1.12 }}
       animate={{ scale: 1 }}
-      transition={{ type: "spring", stiffness: 500, damping: 15 }}
+      transition={SPRING_POP}
       className="flex items-center gap-1.5"
     >
       <span className="relative flex size-5 shrink-0 items-center justify-center">

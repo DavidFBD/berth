@@ -102,14 +102,14 @@ function present({ rewards, newXp }: Announcement) {
 function XpPill({ reward }: { reward: Reward }) {
   return (
     <motion.div
-      initial={{ scale: 0.6, y: 14, opacity: 0 }}
+      initial={{ scale: 0.85, y: 10, opacity: 0 }}
       animate={{ scale: 1, y: 0, opacity: 1 }}
       transition={SPRING_POP}
       className="flex w-fit items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 shadow-lg"
     >
       <motion.span
-        initial={{ rotate: -90, scale: 0 }}
-        animate={{ rotate: 0, scale: 1 }}
+        initial={{ rotate: -90, scale: 0.4, opacity: 0 }}
+        animate={{ rotate: 0, scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 380, damping: 18, delay: 0.08 }}
         className="flex"
       >
@@ -141,7 +141,7 @@ function LevelUpCard({
 }) {
   return (
     <motion.div
-      initial={{ scale: 0.7, y: 18, opacity: 0 }}
+      initial={{ scale: 0.88, y: 14, opacity: 0 }}
       animate={{ scale: 1, y: 0, opacity: 1 }}
       transition={{ type: "spring", stiffness: 360, damping: 20 }}
       className="relative flex w-fit items-center gap-3 rounded-2xl border border-primary/40 bg-card px-4 py-3 shadow-lg"
@@ -158,15 +158,15 @@ function LevelUpCard({
               delay: 0.25 + wisp * 0.18,
               repeat: Infinity,
               repeatDelay: 0.5,
-              ease: "easeOut",
+              ease: "linear",
             }}
           />
         ))}
       </div>
       <motion.span
         aria-hidden
-        initial={{ rotate: -90, scale: 0 }}
-        animate={{ rotate: 0, scale: 1 }}
+        initial={{ rotate: -90, scale: 0.4, opacity: 0 }}
+        animate={{ rotate: 0, scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 320, damping: 16, delay: 0.1 }}
         className="leading-none"
       >
@@ -184,7 +184,7 @@ function LevelUpCard({
         <motion.span
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.32 }}
+          transition={{ type: "spring", stiffness: 300, damping: 24, delay: 0.32 }}
           className="text-xs text-muted-foreground"
         >
           Level {rank.level} · +{total} XP{reason ? ` ${reason}` : ""}

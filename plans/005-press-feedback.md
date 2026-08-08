@@ -1,6 +1,6 @@
 # 005 — Press feedback on everything tappable
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 7908485
 - **Severity**: MEDIUM
 - **Category**: Physicality & origin + Interruptibility
