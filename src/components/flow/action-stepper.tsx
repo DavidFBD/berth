@@ -68,15 +68,15 @@ export function ActionStepper({
                     index <= activeIndex ? "bg-accent" : "bg-border",
                   )}
                   style={{
-                    transitionDuration: "var(--duration-pour)",
-                    transitionTimingFunction: "var(--ease-tea)",
+                    transitionDuration: "200ms",
+                    transitionTimingFunction: "var(--ease-lift)",
                   }}
                 />
               )}
               <div className="flex flex-col items-center gap-1.5">
                 <div
                   className={cn(
-                    "relative grid size-7.5 place-items-center rounded-full border-2 text-[13px] font-bold transition-all",
+                    "relative grid size-7.5 place-items-center rounded-full border-2 text-[13px] font-bold transition-[color,background-color,border-color] duration-200 ease-lift",
                     done && !skipped &&
                       "border-accent bg-accent text-accent-foreground",
                     active && "border-accent bg-card text-accent",

@@ -10,6 +10,7 @@ import { SILK_CUP } from "@/components/tea/silk";
 import { useCupView } from "@/hooks/use-cup-view";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { formatRayAsPercent } from "@/lib/format";
+import { SPRING_CUP, SPRING_SHELF } from "@/lib/motion";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import { cn } from "@/lib/utils";
 import { VaultCard } from "./vault-card";
@@ -119,7 +120,7 @@ export function VaultList({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 320, damping: 34 }}
+            transition={SPRING_SHELF}
             className="overflow-hidden"
           >
             <div className="pt-4">
@@ -166,7 +167,7 @@ function ShelfCup({
       aria-label={`${meta.teaName}: ${selected ? "put the cup back" : "take the cup down"}`}
       whileTap={{ scale: 0.93 }}
       animate={{ y: selected ? -6 : 0 }}
-      transition={{ type: "spring", stiffness: 420, damping: 26 }}
+      transition={SPRING_CUP}
       className={cn(
         "flex flex-col items-center pb-2 transition-[opacity,filter] duration-300",
         // Muted, not invisible: a dimmed cup is still on offer, it just

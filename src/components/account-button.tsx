@@ -31,6 +31,7 @@ import { useMounted } from "@/hooks/use-mounted";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { shortenAddress } from "@/lib/format";
+import { SPRING_SHELF } from "@/lib/motion";
 
 /**
  * Header account entry point. Email login (Privy) is the default; the
@@ -264,7 +265,7 @@ function ReceiveRow({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            transition={SPRING_SHELF}
             className="overflow-hidden"
           >
             <div className="flex flex-col items-center gap-2 px-3 pb-3">

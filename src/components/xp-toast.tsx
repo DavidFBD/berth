@@ -5,6 +5,7 @@ import { Coffee, Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { Reward, RewardList } from "@/lib/profile-types";
 import { levelUpRank, REWARD_REASONS, type RankInfo } from "@/lib/xp";
+import { SPRING_POP } from "@/lib/motion";
 
 /**
  * The achievement announcer. Every XP payout gets a small ceremony instead
@@ -96,7 +97,6 @@ function present({ rewards, newXp }: Announcement) {
   });
 }
 
-const POP = { type: "spring", stiffness: 480, damping: 24 } as const;
 
 /** "+100 XP for pouring a cup", popped in with a spring and a late sparkle. */
 function XpPill({ reward }: { reward: Reward }) {
@@ -104,7 +104,7 @@ function XpPill({ reward }: { reward: Reward }) {
     <motion.div
       initial={{ scale: 0.6, y: 14, opacity: 0 }}
       animate={{ scale: 1, y: 0, opacity: 1 }}
-      transition={POP}
+      transition={SPRING_POP}
       className="flex w-fit items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 shadow-lg"
     >
       <motion.span

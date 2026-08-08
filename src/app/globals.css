@@ -48,6 +48,16 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Motion easings — in @theme so ease-* utilities exist. Roles:
+     tea = loops and on-screen morphs (flat start, wrong for entrances);
+     lift = entrances, exits, state flips (strong ease-out);
+     settle = long landings (drawer panel, the pot righting itself);
+     drawer = the iOS overlay curve. */
+  --ease-tea: cubic-bezier(0.33, 0, 0.15, 1);
+  --ease-lift: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* ————— LSTeaTime tokens (design system: Morning Tea / Evening Tea) ————— */
@@ -115,12 +125,12 @@
   --tea-ring: oklch(0.8 0.03 70 / 0.28);
   --shadow-cup: 0 10px 30px -12px oklch(0.42 0.05 55 / 0.25);
 
-  /* Motion — tea, not espresso */
+  /* Motion durations — tea, not espresso. Style-prop consumers use these
+     vars; class-side durations stick to the same scale (150/200/300/450/900).
+     The easing tokens live in @theme so ease-* utilities exist. */
   --duration-sip: 200ms;
   --duration-pour: 450ms;
   --duration-steep: 900ms;
-  --ease-tea: cubic-bezier(0.33, 0, 0.15, 1);
-  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
   --tracking-caps: 0.08em;
 }
 
@@ -634,9 +644,14 @@
     animation: lsd-hue-drift 36s linear infinite;
   }
 
+  /* Both ends spell the full filter list: mismatched lists interpolate
+     discretely per spec, so a bare hue-rotate() target would snap, not drift. */
   @keyframes lsd-hue-drift {
+    from {
+      filter: saturate(1.4) contrast(1.04) hue-rotate(0deg);
+    }
     to {
-      filter: hue-rotate(360deg);
+      filter: saturate(1.4) contrast(1.04) hue-rotate(360deg);
     }
   }
 }

@@ -15,6 +15,7 @@ import { useCupView } from "@/hooks/use-cup-view";
 import { useTickingValue } from "@/hooks/use-ticking-value";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { formatRayAsPercent, formatTokenAmount } from "@/lib/format";
+import { SPRING_SHELF } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { getVaultMeta } from "@/lib/vaults-meta";
 
@@ -339,7 +340,7 @@ export function VaultCard({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            transition={SPRING_SHELF}
             className="overflow-hidden"
           >
           {apr === undefined ? (

@@ -16,6 +16,7 @@ import {
   UserPlus,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { SPRING_SHELF } from "@/lib/motion";
 import { AVATARS, avatarSrc, type AvatarId } from "@/lib/avatars";
 import { CODE_LENGTH, isInviteCode } from "@/lib/invite-code";
 import { inviteLink } from "@/lib/referral";
@@ -115,9 +116,13 @@ export function TeaService() {
       {rank.nextName && (
         <div className="flex flex-col gap-1">
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            {/* Full-width bar slid left by the missing fraction: transform,
+                not width, so the fill glides off the layout thread. */}
             <div
-              className="h-full rounded-full bg-primary transition-[width] duration-500"
-              style={{ width: `${Math.round(rank.progress * 100)}%` }}
+              className="h-full w-full rounded-full bg-primary transition-transform duration-300 ease-lift"
+              style={{
+                transform: `translateX(-${100 - Math.round(rank.progress * 100)}%)`,
+              }}
             />
           </div>
           <span className="text-[11px] text-muted-foreground">
@@ -134,7 +139,7 @@ export function TeaService() {
             initial={{ height: 0, opacity: 0, marginTop: -12 }}
             animate={{ height: "auto", opacity: 1, marginTop: 0 }}
             exit={{ height: 0, opacity: 0, marginTop: -12 }}
-            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            transition={SPRING_SHELF}
             className="overflow-hidden"
           >
             <div className="grid grid-cols-4 gap-2 p-0.5">
@@ -155,7 +160,7 @@ export function TeaService() {
                     })
                   }
                   className={cn(
-                    "rounded-full p-0.5 transition-all",
+                    "rounded-full p-0.5 transition-[box-shadow,opacity,transform] duration-150 ease-lift",
                     avatarId === avatar.id
                       ? "ring-2 ring-primary"
                       : "opacity-80 hover:opacity-100",
@@ -543,7 +548,7 @@ function LedgerRow() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 340, damping: 34 }}
+            transition={SPRING_SHELF}
             className="overflow-hidden"
           >
             <ul className="flex flex-col gap-1 px-3 pb-2.5">
