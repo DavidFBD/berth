@@ -88,6 +88,10 @@ if (typeof window !== "undefined" && !customElements.get("silk-shader")) {
     private _ro?: ResizeObserver;
     private _io?: IntersectionObserver;
     private _reduced = false;
+    private _rmq?: MediaQueryList;
+    private _onRmChange?: () => void;
+    private _onVisibility?: () => void;
+    private _lastDraw = 0;
     private _pal: [number, number, number][] = [];
     private _quiet: number[] = [0, 0, 0, 0];
     private _speed = 1;
@@ -105,12 +109,14 @@ if (typeof window !== "undefined" && !customElements.get("silk-shader")) {
     }
 
     connectedCallback() {
+      // No preserveDrawingBuffer: nothing reads pixels back, and keeping the
+      // backbuffer costs a full-surface copy per frame on tile-based mobile
+      // GPUs (every iPhone).
       const gl = (this._gl = this._canvas.getContext("webgl", {
         antialias: false,
         depth: false,
         stencil: false,
         alpha: false,
-        preserveDrawingBuffer: true,
       }));
       this._readAttrs();
       this._paintFallback();
@@ -152,7 +158,27 @@ if (typeof window !== "undefined" && !customElements.get("silk-shader")) {
         else this._stop();
       });
       this._io.observe(this);
-      this._reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // Reduced motion is live: flipping the OS setting mid-session stops or
+      // resumes the drift without a remount.
+      this._rmq = matchMedia("(prefers-reduced-motion: reduce)");
+      this._reduced = this._rmq.matches;
+      this._onRmChange = () => {
+        this._reduced = this._rmq!.matches;
+        if (this._reduced) {
+          this._stop();
+          this._drawOnce();
+        } else {
+          this._start();
+        }
+      };
+      this._rmq.addEventListener("change", this._onRmChange);
+      // A hidden tab draws nothing; time is wall-clock, so the silk simply
+      // "kept flowing" when the tab returns.
+      this._onVisibility = () => {
+        if (document.hidden) this._stop();
+        else if (this._visible) this._start();
+      };
+      document.addEventListener("visibilitychange", this._onVisibility);
       this._resize();
       this._drawOnce();
       this._start();
@@ -162,6 +188,9 @@ if (typeof window !== "undefined" && !customElements.get("silk-shader")) {
       this._stop();
       this._ro?.disconnect();
       this._io?.disconnect();
+      this._rmq?.removeEventListener("change", this._onRmChange!);
+      if (this._onVisibility)
+        document.removeEventListener("visibilitychange", this._onVisibility);
     }
 
     attributeChangedCallback() {
@@ -228,10 +257,15 @@ if (typeof window !== "undefined" && !customElements.get("silk-shader")) {
         this._drawOnce();
         return;
       }
-      const loop = () => {
+      // The silk drifts slowly; 30fps is indistinguishable and halves the
+      // GPU bill across the up-to-five live contexts on the home screen.
+      const loop = (ts: number) => {
         this._raf = 0;
-        if (!this._visible || !this.isConnected) return;
-        this._draw(performance.now() / 1000 - this._t0);
+        if (!this._visible || !this.isConnected || document.hidden) return;
+        if (ts - this._lastDraw >= 33) {
+          this._lastDraw = ts;
+          this._draw(performance.now() / 1000 - this._t0);
+        }
         this._raf = requestAnimationFrame(loop);
       };
       this._raf = requestAnimationFrame(loop);

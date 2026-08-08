@@ -1,6 +1,6 @@
 # 002 — Make the cup swap interruptible and cheap
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 7908485
 - **Severity**: HIGH
 - **Category**: Interruptibility + Purpose & frequency + Performance
