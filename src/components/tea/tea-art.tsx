@@ -145,6 +145,13 @@ export function CupArt({
   const botY = bowl ? 61 : 63;
   const cx = bowl ? 48 : 44;
   const teaTop = botY - f * (botY - topY - 3);
+  // The tea is DRAWN at full-cup geometry and slid down by the empty
+  // fraction with a transitioned transform, so level changes glide instead
+  // of redrawing in steps (SVG user units == CSS px, and the userSpaceOnUse
+  // gradient travels with the transformed group).
+  const fullTop = topY + 3;
+  const teaOffset = teaTop - fullTop;
+  const teaGlide = "transform 700ms var(--ease-tea)";
   // Room for the tea-ring stain: only when the cup is partly drunk and the
   // stain line would sit clearly above the surface yet below the rim.
   const ringY = teaTop - 4.5;
@@ -171,7 +178,7 @@ export function CupArt({
             id={`tea${id}`}
             gradientUnits="userSpaceOnUse"
             x1={cx}
-            y1={teaTop}
+            y1={fullTop}
             x2={cx}
             y2={botY + 4}
           >
@@ -261,33 +268,40 @@ export function CupArt({
           <rect x="10" y={topY} width="76" height="50" fill={`url(#shade${id})`} />
         </g>
 
-        {/* The tea. */}
+        {/* The tea — full-cup geometry, slid down to the level. */}
         {f > 0 && (
           <g clipPath={`url(#cup${id})`}>
-            <rect
-              x="10"
-              y={teaTop}
-              width="76"
-              height="60"
-              fill={`url(#tea${id})`}
-            />
-            <ellipse cx={cx + 4} cy={teaTop} rx="38" ry="3.5" fill={accent} />
-            <ellipse
-              cx={cx + 4}
-              cy={teaTop}
-              rx="38"
-              ry="3.5"
-              fill="white"
-              opacity="0.2"
-            />
-            <ellipse
-              cx={cx - 8}
-              cy={teaTop - 0.5}
-              rx="11"
-              ry="1.4"
-              fill="white"
-              opacity="0.4"
-            />
+            <g
+              style={{
+                transform: `translateY(${teaOffset}px)`,
+                transition: teaGlide,
+              }}
+            >
+              <rect
+                x="10"
+                y={fullTop}
+                width="76"
+                height="60"
+                fill={`url(#tea${id})`}
+              />
+              <ellipse cx={cx + 4} cy={fullTop} rx="38" ry="3.5" fill={accent} />
+              <ellipse
+                cx={cx + 4}
+                cy={fullTop}
+                rx="38"
+                ry="3.5"
+                fill="white"
+                opacity="0.2"
+              />
+              <ellipse
+                cx={cx - 8}
+                cy={fullTop - 0.5}
+                rx="11"
+                ry="1.4"
+                fill="white"
+                opacity="0.4"
+              />
+            </g>
           </g>
         )}
 
@@ -315,33 +329,43 @@ export function CupArt({
             pointerEvents: "none",
           }}
         >
-          <silk-shader
-            colors={silk}
-            scale="1.7"
-            speed="1.2"
-            glow="0.55"
-            style={{
-              position: "absolute",
-              left: px(10),
-              top: px(teaTop),
-              width: px(76),
-              height: px(botY - teaTop + 6),
-              opacity: 0.92,
-            }}
-          />
-          {/* Surface highlight above the silk, as the in-svg ellipse was. */}
+          {/* Same glide as the SVG tea: laid out at full, slid to level. */}
           <div
             style={{
               position: "absolute",
-              left: px(cx + 4 - 36),
-              top: px(teaTop - 3.5),
-              width: px(72),
-              height: px(7),
-              borderRadius: "50%",
-              background: accent,
-              opacity: 0.9,
+              inset: 0,
+              transform: `translateY(${px(teaOffset)}px)`,
+              transition: teaGlide,
             }}
-          />
+          >
+            <silk-shader
+              colors={silk}
+              scale="1.7"
+              speed="1.2"
+              glow="0.55"
+              style={{
+                position: "absolute",
+                left: px(10),
+                top: px(fullTop),
+                width: px(76),
+                height: px(botY - fullTop + 6),
+                opacity: 0.92,
+              }}
+            />
+            {/* Surface highlight above the silk, as the in-svg ellipse was. */}
+            <div
+              style={{
+                position: "absolute",
+                left: px(cx + 4 - 36),
+                top: px(fullTop - 3.5),
+                width: px(72),
+                height: px(7),
+                borderRadius: "50%",
+                background: accent,
+                opacity: 0.9,
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -457,12 +481,15 @@ export function PourScene({
   done?: boolean;
   width?: number;
 }) {
+  // The tick only sets targets; CupArt's transitioned transform does the
+  // actual rising, so the level glides instead of stepping. 900ms tick
+  // against a 700ms glide leaves a breath between pours, like a real spout.
   const [creep, setCreep] = useState(0.15);
   useEffect(() => {
     if (done) return;
     const timer = setInterval(
-      () => setCreep((f) => f + (0.88 - f) * 0.05),
-      400,
+      () => setCreep((f) => f + (0.88 - f) * 0.11),
+      900,
     );
     return () => clearInterval(timer);
   }, [done]);

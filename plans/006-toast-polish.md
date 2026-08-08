@@ -1,6 +1,6 @@
 # 006 — Toast and celebration polish
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 7908485
 - **Severity**: MEDIUM
 - **Category**: Physicality + Easing + Cohesion
