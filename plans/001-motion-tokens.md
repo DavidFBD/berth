@@ -1,6 +1,6 @@
 # 001 — Wire the motion tokens into Tailwind and split the easing roles
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 7908485
 - **Severity**: HIGH
 - **Category**: Easing & duration + Cohesion & tokens

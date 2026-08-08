@@ -10,7 +10,7 @@ import { SILK_CUP } from "@/components/tea/silk";
 import { useCupView } from "@/hooks/use-cup-view";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { formatRayAsPercent } from "@/lib/format";
-import { SPRING_CUP, SPRING_SHELF } from "@/lib/motion";
+import { EASE_LIFT, SPRING_CUP, SPRING_SHELF } from "@/lib/motion";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import { cn } from "@/lib/utils";
 import { VaultCard } from "./vault-card";
@@ -52,6 +52,8 @@ export function VaultList({
   const { sodax } = useSodaxContext();
   const vaults = sodax.leverageYield.listVaults();
   const [selected, setSelected] = useState<string | null>(null);
+  // Which way the card slides on an A→B swap: toward the tapped cup.
+  const [swapDir, setSwapDir] = useState(1);
 
   // Your cups stay vivid; the rest step back. Only meaningful once at least
   // one cup holds tea — an all-empty shelf stays fully warm, since greying
@@ -90,11 +92,17 @@ export function VaultList({
               dimmed={
                 anyFilled && !filled[index] && vault.vault !== selected
               }
-              onSelect={() =>
-                setSelected((current) =>
-                  current === vault.vault ? null : vault.vault,
-                )
-              }
+              onSelect={() => {
+                if (selected === vault.vault) {
+                  setSelected(null);
+                  return;
+                }
+                const from = selected
+                  ? vaults.findIndex((v) => v.vault === selected)
+                  : -1;
+                if (from >= 0) setSwapDir(index > from ? 1 : -1);
+                setSelected(vault.vault);
+              }}
             />
           ))}
         </div>
@@ -112,11 +120,15 @@ export function VaultList({
         </p>
       </div>
 
-      {/* The picked cup steeps open below the shelf. */}
-      <AnimatePresence initial={false} mode="wait">
+      {/* The picked cup steeps open below the shelf. Two layers with
+          different jobs: the outer height spring runs only on open/close
+          (constant key), while switching cups is an interruptible
+          directional slide inside the open slot — the card never collapses
+          between two cups, and mid-flight taps retarget instead of queueing. */}
+      <AnimatePresence initial={false}>
         {active && (
           <motion.div
-            key={active.vault}
+            key="cup-slot"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -124,12 +136,34 @@ export function VaultList({
             className="overflow-hidden"
           >
             <div className="pt-4">
-              <VaultCard
-                vault={active}
-                onDeposit={onDeposit}
-                onWithdraw={onWithdraw}
-                bloom={active.vault === bloomVault}
-              />
+              <AnimatePresence initial={false} mode="popLayout" custom={swapDir}>
+                <motion.div
+                  key={active.vault}
+                  custom={swapDir}
+                  variants={{
+                    enter: (d: number) => ({
+                      opacity: 0,
+                      transform: `translateX(${d * 14}px)`,
+                    }),
+                    center: { opacity: 1, transform: "translateX(0px)" },
+                    exit: (d: number) => ({
+                      opacity: 0,
+                      transform: `translateX(${d * -14}px)`,
+                    }),
+                  }}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.22, ease: EASE_LIFT }}
+                >
+                  <VaultCard
+                    vault={active}
+                    onDeposit={onDeposit}
+                    onWithdraw={onWithdraw}
+                    bloom={active.vault === bloomVault}
+                  />
+                </motion.div>
+              </AnimatePresence>
             </div>
           </motion.div>
         )}
@@ -165,11 +199,11 @@ function ShelfCup({
       onClick={onSelect}
       aria-expanded={selected}
       aria-label={`${meta.teaName}: ${selected ? "put the cup back" : "take the cup down"}`}
-      whileTap={{ scale: 0.93 }}
+      whileTap={{ scale: 0.96 }}
       animate={{ y: selected ? -6 : 0 }}
       transition={SPRING_CUP}
       className={cn(
-        "flex flex-col items-center pb-2 transition-[opacity,filter] duration-300",
+        "flex flex-col items-center pb-2 transition-[opacity,filter] duration-200 ease-lift",
         // Muted, not invisible: a dimmed cup is still on offer, it just
         // isn't yours yet.
         dimmed && "opacity-45 saturate-[0.3]",
@@ -205,7 +239,7 @@ function ShelfCup({
       <span
         aria-hidden
         className={cn(
-          "mt-1 size-1.5 rounded-full transition-opacity duration-300",
+          "mt-1 size-1.5 rounded-full transition-opacity duration-200 ease-lift",
           selected ? "opacity-100" : "opacity-0",
         )}
         style={{ background: deep }}
