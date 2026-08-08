@@ -3,6 +3,10 @@
 import type { ReactNode } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import {
+  PRIVY_DEFAULT_CHAIN,
+  PRIVY_SUPPORTED_CHAINS,
+} from "@/lib/privy-chains";
 
 const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
@@ -25,6 +29,11 @@ export function AppPrivyProvider({ children }: { children: ReactNode }) {
       appId={appId}
       config={{
         loginMethods: ["email"],
+        // Without an explicit registry Privy resolves chain ids against its
+        // bundled list, where HyperEVM's id 999 is the dead Zora Goerli
+        // Testnet (issue #13). See lib/privy-chains.
+        supportedChains: PRIVY_SUPPORTED_CHAINS,
+        defaultChain: PRIVY_DEFAULT_CHAIN,
         embeddedWallets: {
           ethereum: { createOnLogin: "users-without-wallets" },
           solana: { createOnLogin: "users-without-wallets" },
