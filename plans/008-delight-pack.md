@@ -1,6 +1,6 @@
 # 008 — The delight pack: drawer steps, theme switch, ticking total, shelf stagger
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 7908485
 - **Severity**: MEDIUM (additive)
 - **Category**: Missed opportunities

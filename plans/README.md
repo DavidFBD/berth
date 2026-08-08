@@ -6,14 +6,14 @@ quality on mobile WebKit, no new dependencies, silk kept but throttled
 
 | # | Plan | Severity | Status |
 | --- | --- | --- | --- |
-| 001 | [Motion tokens into Tailwind, easing roles split](001-motion-tokens.md) | HIGH | TODO |
-| 002 | [Cup swap interruptible and cheap](002-cup-swap.md) | HIGH | TODO |
-| 003 | [Silk shader diet](003-silk-diet.md) | HIGH | TODO |
-| 004 | [Reduced motion completeness](004-reduced-motion.md) | HIGH | TODO |
-| 005 | [Press feedback everywhere](005-press-feedback.md) | MEDIUM | TODO |
-| 006 | [Toast and celebration polish](006-toast-polish.md) | MEDIUM | TODO |
-| 007 | [Liquid rise glides](007-liquid-rise.md) | MEDIUM | TODO |
-| 008 | [Delight pack](008-delight-pack.md) | MEDIUM | TODO |
+| 001 | [Motion tokens into Tailwind, easing roles split](001-motion-tokens.md) | HIGH | DONE |
+| 002 | [Cup swap interruptible and cheap](002-cup-swap.md) | HIGH | DONE |
+| 003 | [Silk shader diet](003-silk-diet.md) | HIGH | DONE |
+| 004 | [Reduced motion completeness](004-reduced-motion.md) | HIGH | DONE |
+| 005 | [Press feedback everywhere](005-press-feedback.md) | MEDIUM | DONE |
+| 006 | [Toast and celebration polish](006-toast-polish.md) | MEDIUM | DONE |
+| 007 | [Liquid rise glides](007-liquid-rise.md) | MEDIUM | DONE |
+| 008 | [Delight pack](008-delight-pack.md) | MEDIUM | DONE |
 
 ## Execution order and dependencies
 
