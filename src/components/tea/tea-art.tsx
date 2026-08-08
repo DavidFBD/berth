@@ -14,7 +14,9 @@ import { useMounted } from "@/hooks/use-mounted";
  * - interiors carry a rim shadow and a floor shade so empty porcelain still
  *   has depth against the page;
  * - tea is a top-to-bottom accent-to-deep gradient with a lit surface, not
- *   a translucent sticker.
+ *   a translucent sticker;
+ * - the vessel BODY centers the viewBox and the handle overhangs — centering
+ *   body+handle as one mass pushes the cup visibly left of its label.
  */
 
 /* Wavy wisp silhouettes, used as CSS masks over the steam color so the
@@ -140,10 +142,10 @@ export function CupArt({
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const interior = bowl
     ? "M14 26h68v8c0 15.2-14.9 27-34 27S14 49.2 14 34V26Z"
-    : "M18 22h52v16c0 14-11.2 25-26 25S18 52 18 38V22Z";
+    : "M22 22h52v16c0 14-11.2 25-26 25S22 52 22 38V22Z";
   const topY = bowl ? 26 : 22;
   const botY = bowl ? 61 : 63;
-  const cx = bowl ? 48 : 44;
+  const cx = 48;
   const teaTop = botY - f * (botY - topY - 3);
   // The tea is DRAWN at full-cup geometry and slid down by the empty
   // fraction with a transitioned transform, so level changes glide instead
@@ -163,7 +165,7 @@ export function CupArt({
   const px = (v: number) => Math.round(v * (size / 96) * 100) / 100;
   const interiorPx = bowl
     ? `M ${px(14)} ${px(26)} h ${px(68)} v ${px(8)} c 0 ${px(15.2)} ${px(-14.9)} ${px(27)} ${px(-34)} ${px(27)} S ${px(14)} ${px(49.2)} ${px(14)} ${px(34)} V ${px(26)} Z`
-    : `M ${px(18)} ${px(22)} h ${px(52)} v ${px(16)} c 0 ${px(14)} ${px(-11.2)} ${px(25)} ${px(-26)} ${px(25)} S ${px(18)} ${px(52)} ${px(18)} ${px(38)} V ${px(22)} Z`;
+    : `M ${px(22)} ${px(22)} h ${px(52)} v ${px(16)} c 0 ${px(14)} ${px(-11.2)} ${px(25)} ${px(-26)} ${px(25)} S ${px(22)} ${px(52)} ${px(22)} ${px(38)} V ${px(22)} Z`;
   return (
     <div
       aria-hidden="true"
@@ -201,7 +203,7 @@ export function CupArt({
         {/* Handle first, so the body wall swallows its ends. */}
         {!bowl && (
           <path
-            d="M69 26a12 12 0 0 1 0 21"
+            d="M73 26a12 12 0 0 1 0 21"
             stroke={deep}
             strokeWidth="4.5"
             strokeLinecap="round"
@@ -229,14 +231,14 @@ export function CupArt({
         ) : (
           <>
             <path
-              d="M36 64c0 3.6 3.4 5.6 8 5.6s8-2 8-5.6"
+              d="M40 64c0 3.6 3.4 5.6 8 5.6s8-2 8-5.6"
               stroke={deep}
               strokeWidth="2.5"
               fill="var(--card)"
             />
-            <path d="M12 70.5h64" stroke={deep} strokeWidth="3" strokeLinecap="round" />
+            <path d="M16 70.5h64" stroke={deep} strokeWidth="3" strokeLinecap="round" />
             <path
-              d="M24 75h40"
+              d="M28 75h40"
               stroke={deep}
               strokeWidth="2"
               strokeLinecap="round"
@@ -255,7 +257,7 @@ export function CupArt({
           />
         ) : (
           <path
-            d="M16 20h56v18c0 15.5-12.5 28-28 28S16 53.5 16 38V20Z"
+            d="M20 20h56v18c0 15.5-12.5 28-28 28S20 53.5 20 38V20Z"
             fill="var(--card)"
             stroke={deep}
             strokeWidth="3"
@@ -533,7 +535,7 @@ export function PourScene({
         }}
       >
         <path
-          d="M99 40 C 82 45, 65 65, 48 100"
+          d="M99 40 C 82 45, 66 65, 50 100"
           stroke={accent}
           strokeWidth="6"
           strokeLinecap="round"
@@ -541,7 +543,7 @@ export function PourScene({
         />
         <path
           data-pour-stream
-          d="M99 40 C 82 45, 65 65, 48 100"
+          d="M99 40 C 82 45, 66 65, 50 100"
           stroke={accent}
           strokeWidth="3.5"
           strokeLinecap="round"
