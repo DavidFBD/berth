@@ -36,7 +36,7 @@ type ChainType = ChainGroup["chainType"];
 type ConnectorLevelState = Extract<WalletModalState, { chainType: ChainType }>;
 
 const ROW_CLASS =
-  "flex h-14 w-full items-center gap-3 rounded-lg px-3 text-left transition-colors";
+  "flex h-14 w-full items-center gap-3 rounded-lg px-3 text-left transition-[transform,background-color] duration-150 ease-lift active:scale-[0.99]";
 
 /**
  * Bottom drawer for connecting/managing wallets across all enabled chain

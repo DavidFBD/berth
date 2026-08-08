@@ -65,7 +65,7 @@ export function SettingsDrawer({
                       }}
                       aria-pressed={selected}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                        "flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-[transform,background-color,border-color,box-shadow,color] duration-150 ease-lift active:scale-[0.97]",
                         selected
                           ? "border-primary ring-2 ring-primary/40"
                           : "border-border hover:border-primary/40",
@@ -107,7 +107,7 @@ export function SettingsDrawer({
                     onClick={() => setCurrency(code)}
                     aria-pressed={code === currency}
                     className={cn(
-                      "money min-h-9 rounded-full border px-3.5 text-[13px] font-bold transition-colors",
+                      "money min-h-9 rounded-full border px-3.5 text-[13px] font-bold transition-[transform,background-color,border-color,color] duration-150 ease-lift active:scale-[0.96]",
                       code === currency
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",

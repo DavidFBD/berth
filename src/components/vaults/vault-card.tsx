@@ -314,7 +314,7 @@ export function VaultCard({
           type="button"
           onClick={() => setBreakdownOpen((open) => !open)}
           aria-expanded={breakdownOpen}
-          className="flex min-h-8 items-center gap-1.5 py-1 text-[12.5px] font-bold text-muted-foreground transition-colors hover:text-foreground"
+          className="flex min-h-8 items-center gap-1.5 py-1 text-[12.5px] font-bold text-muted-foreground transition-[transform,color] duration-150 ease-lift hover:text-foreground active:scale-[0.97]"
         >
           {breakdownOpen ? (
             <CaretUp className="size-3.5" />

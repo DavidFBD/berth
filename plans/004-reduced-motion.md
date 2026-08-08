@@ -1,6 +1,6 @@
 # 004 — Reduced motion reaches the drawer, the bloom, and the stepper ring
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 7908485
 - **Severity**: HIGH
 - **Category**: Accessibility + Purpose

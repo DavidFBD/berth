@@ -74,7 +74,7 @@ export function TeaService() {
         aria-expanded={shelfOpen}
         aria-controls="avatar-shelf"
         onClick={() => setShelfToggled(!shelfOpen)}
-        className="-m-1 flex items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-muted/60"
+        className="-m-1 flex items-center gap-3 rounded-lg p-1 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted/60 active:scale-[0.99]"
       >
         {currentSrc ? (
           <Image
@@ -191,7 +191,7 @@ export function TeaService() {
         <button
           type="button"
           onClick={privy.login}
-          className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-colors hover:bg-muted"
+          className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
         >
           <EnvelopeSimple className="size-5 shrink-0 text-primary" />
           <span className="flex min-w-0 flex-1 flex-col">
@@ -326,7 +326,7 @@ function ClaimRow() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-colors hover:bg-muted"
+        className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
       >
         <Ticket className="size-5 shrink-0 text-primary" />
         <span className="flex min-w-0 flex-1 flex-col">
@@ -361,7 +361,7 @@ function ClaimRow() {
           type="button"
           disabled={!isInviteCode(value) || claim.isPending}
           onClick={submit}
-          className="h-10 shrink-0 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
+          className="h-10 shrink-0 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-[transform,opacity] duration-150 ease-lift active:translate-y-px active:scale-[0.985] disabled:opacity-40"
         >
           {copy.claimCta}
         </button>
@@ -387,7 +387,7 @@ function InviteRow({ code, taps }: { code: string; taps: number }) {
     <button
       type="button"
       onClick={() => copyText(inviteLink(code))}
-      className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-colors hover:bg-muted"
+      className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
     >
       {copied ? (
         <Check className="size-5 shrink-0 text-primary" />
@@ -452,7 +452,7 @@ function BrewingRow({
           type="button"
           onClick={() => copyText(inviteLink(code))}
           aria-label="Copy your invite link"
-          className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background/60 text-primary transition-colors hover:bg-background"
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background/60 text-primary transition-[transform,background-color] duration-150 ease-lift hover:bg-background active:scale-[0.94]"
         >
           {copied ? <Check className="size-4.5" /> : <UserPlus className="size-4.5" />}
         </button>
@@ -527,7 +527,7 @@ function LedgerRow() {
         aria-expanded={open}
         aria-controls="house-ledger"
         onClick={() => setOpen(!open)}
-        className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60"
+        className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted/60 active:scale-[0.99]"
       >
         <Receipt className="size-5 shrink-0 text-primary" />
         <span className="flex-1 text-sm font-medium text-foreground">
@@ -660,7 +660,7 @@ export function RankChip({
       ]
         .filter(Boolean)
         .join(", ")}
-      className={cn(shell, "transition-colors hover:bg-muted")}
+      className={cn(shell, "transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:scale-[0.97]")}
     >
       {inner}
     </button>

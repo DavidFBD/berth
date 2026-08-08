@@ -122,7 +122,7 @@ export function AccountButton({
                 setAccountOpen(false);
                 setSettingsOpen(true);
               }}
-              className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted"
+              className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:scale-[0.99] active:bg-muted"
             >
               <GearSix className="size-5 text-primary" />
               <div className="flex min-w-0 flex-1 flex-col">
@@ -320,7 +320,7 @@ function FundButton({ address }: { address: string }) {
             // is configured, which Privy surfaces inside its own modal.
           });
       }}
-      className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted"
+      className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:scale-[0.99] active:bg-muted"
     >
       <PlusCircle className="size-5 text-primary" />
       <div className="flex min-w-0 flex-1 flex-col">

@@ -38,7 +38,7 @@ export function ConnectButton({ className }: { className?: string }) {
           onClick={() => setOpen(true)}
           aria-label={`Manage wallets (${total} connected)`}
           className={cn(
-            "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors outline-none select-none",
+            "inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground transition-[transform,background-color] duration-150 ease-lift active:scale-[0.96] outline-none select-none",
             "hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
             className,
           )}

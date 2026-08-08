@@ -347,7 +347,7 @@ export function TokenPicker({
                         onSelect(key, token);
                         handleOpenChange(false);
                       }}
-                      className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted active:bg-muted"
+                      className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
                     >
                       <TokenLogo symbol={token.symbol} chainKey={key} />
                       <div className="flex min-w-0 flex-1 flex-col">
@@ -388,7 +388,7 @@ export function TokenPicker({
                   key={key}
                   type="button"
                   onClick={() => setChainKey(key)}
-                  className="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card p-2 transition-colors hover:bg-muted active:bg-muted"
+                  className="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-card p-2 transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.96]"
                 >
                   <ChainLogo chainKey={key} />
                   <span className="w-full truncate text-center text-[10px] leading-tight text-muted-foreground">
@@ -425,7 +425,7 @@ export function TokenPicker({
                       onSelect(chainKey, token);
                       handleOpenChange(false);
                     }}
-                    className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted active:bg-muted"
+                    className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
                   >
                     <TokenLogo symbol={token.symbol} />
                     <div className="flex min-w-0 flex-1 flex-col">

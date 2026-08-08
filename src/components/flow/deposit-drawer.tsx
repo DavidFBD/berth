@@ -358,7 +358,7 @@ export function DepositDrawer({
                 <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
-                  className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted active:bg-muted"
+                  className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
                 >
                   {token ? (
                     <>
@@ -469,7 +469,7 @@ export function DepositDrawer({
                     <button
                       type="button"
                       onClick={flipDenom}
-                      className="flex w-fit items-center gap-1 text-xs text-muted-foreground tabular-nums transition-colors hover:text-foreground"
+                      className="flex w-fit items-center gap-1 text-xs text-muted-foreground tabular-nums transition-[transform,color] duration-150 ease-lift hover:text-foreground active:scale-[0.96]"
                     >
                       <ArrowsDownUp className="size-3.5" />
                       {moneyMode
