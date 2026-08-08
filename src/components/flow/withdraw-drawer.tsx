@@ -337,6 +337,8 @@ export function WithdrawDrawer({
                 reportState={action.reportState}
                 phase={action.fillPhase}
                 fillTxHash={action.fillTxHash}
+                accent={meta ? `var(--cup-${meta.cupKey})` : undefined}
+                deep={meta ? `var(--cup-${meta.cupKey}-deep)` : undefined}
                 successTitle={copy.backInTeapotTitle}
                 successBody={
                   dstChainKey && outputToken

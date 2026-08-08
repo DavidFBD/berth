@@ -2,7 +2,8 @@
 
 import { useEffect } from "react"
 import { toast, Toaster as Sonner, type ToasterProps } from "sonner"
-import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   // Dev-only: headless smoke tests fire toasts via window.toast (no toast
@@ -35,7 +36,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           <OctagonXIcon className="size-4" />
         ),
         loading: (
-          <Loader2Icon className="size-4 animate-spin" />
+          <Spinner className="size-4" />
         ),
       }}
       style={

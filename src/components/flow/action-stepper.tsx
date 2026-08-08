@@ -4,7 +4,7 @@ import { Check } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
-import { SteamPlume, TeapotArt } from "@/components/tea/tea-art";
+import { PourScene, TeapotArt } from "@/components/tea/tea-art";
 import { CANCELLED_MESSAGE } from "@/lib/error-copy";
 import type { ReportState } from "@/lib/error-report";
 import type { FillPhase } from "@/lib/pour-lifecycle";
@@ -136,7 +136,8 @@ export function IntentTracking({
   successTitle,
   successBody,
   onDone,
-  accent = "var(--cup-breakfast-deep)",
+  accent = "var(--cup-breakfast)",
+  deep = "var(--cup-breakfast-deep)",
   className,
   reportState = "idle",
 }: {
@@ -146,6 +147,7 @@ export function IntentTracking({
   successBody: string;
   onDone: () => void;
   accent?: string;
+  deep?: string;
   className?: string;
   /** Reporting state for a failed fill, so the screen can say the team has it. */
   reportState?: ReportState;
@@ -154,10 +156,8 @@ export function IntentTracking({
   if (phase === "filled") {
     return (
       <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
-        <div className="flex flex-col items-center">
-          <SteamPlume level={4} bloom width={64} height={40} />
-          <TeapotArt size={64} />
-        </div>
+        {/* The pot rights itself, the cup is full, the bloom fires. */}
+        <PourScene accent={accent} deep={deep} done />
         <div className="flex flex-col gap-1">
           <p className="font-display text-lg text-foreground">{successTitle}</p>
           <p className="text-sm text-muted-foreground">{successBody}</p>
@@ -204,10 +204,9 @@ export function IntentTracking({
   const filling = phase === "filling";
   return (
     <div className={cn("flex flex-col items-center gap-3 px-3 py-6 text-center", className)}>
-      <div className="flex flex-col items-center">
-        <SteamPlume level={2} width={64} height={40} />
-        <TeapotArt size={64} />
-      </div>
+      {/* The wait IS the pour: the longest-held frame in the app finally
+          shows the app's central verb instead of a scanning bar. */}
+      <PourScene accent={accent} deep={deep} />
       <div className="flex flex-col gap-1">
         <p className="font-display text-lg text-foreground">
           {copy.teaSteeping}
@@ -215,15 +214,6 @@ export function IntentTracking({
         <p className="text-xs text-muted-foreground">
           {filling ? copy.goodTeaMinute : copy.carryingTray}
         </p>
-      </div>
-      <div className="mt-1 h-1 w-40 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full w-2/5 rounded-full"
-          style={{
-            background: accent,
-            animation: "steep-scan 1.8s var(--ease-tea) infinite",
-          }}
-        />
       </div>
     </div>
   );

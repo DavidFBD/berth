@@ -641,20 +641,53 @@
   }
 }
 
-/* Steam wisps — intensity scales with value in the cup */
-@keyframes steam-rise {
+/* Steam wisps — intensity scales with value in the cup. Three paths so
+   neighbours never rise in lockstep; linear rise, opacity does the easing. */
+@keyframes steam-rise-a {
   0% {
-    transform: translateY(0) translateX(0) scaleX(1);
+    transform: translateY(6px) translateX(0) scale(0.92);
     opacity: 0;
   }
-  20% {
-    opacity: var(--steam-opacity, 0.5);
+  14% {
+    opacity: var(--steam-opacity, 0.4);
   }
-  60% {
-    transform: translateY(-26px) translateX(4px) scaleX(1.15);
+  55% {
+    transform: translateY(-15px) translateX(3px) scale(1.04);
   }
   100% {
-    transform: translateY(-44px) translateX(-3px) scaleX(1.35);
+    transform: translateY(-36px) translateX(-2px) scale(1.18);
+    opacity: 0;
+  }
+}
+@keyframes steam-rise-b {
+  0% {
+    transform: translateY(6px) translateX(0) scale(0.9);
+    opacity: 0;
+  }
+  14% {
+    opacity: var(--steam-opacity, 0.4);
+  }
+  50% {
+    transform: translateY(-14px) translateX(-3px) scale(1.05);
+  }
+  100% {
+    transform: translateY(-34px) translateX(2px) scale(1.2);
+    opacity: 0;
+  }
+}
+@keyframes steam-rise-c {
+  0% {
+    transform: translateY(7px) translateX(0) scale(0.94);
+    opacity: 0;
+  }
+  16% {
+    opacity: var(--steam-opacity, 0.4);
+  }
+  60% {
+    transform: translateY(-17px) translateX(2px) scale(1.02);
+  }
+  100% {
+    transform: translateY(-38px) translateX(-3px) scale(1.15);
     opacity: 0;
   }
 }
@@ -681,12 +714,41 @@
     opacity: 0;
   }
 }
-@keyframes steep-scan {
+/* The pour — dashes flow down the stream, the landing ripples. */
+@keyframes pour-flow {
   0% {
-    transform: translateX(-160px);
+    stroke-dashoffset: 0;
   }
   100% {
-    transform: translateX(160px);
+    stroke-dashoffset: -17;
+  }
+}
+/* The teapot rocks gently while it pours. */
+@keyframes pot-rock {
+  0%,
+  100% {
+    transform: rotate(-14deg);
+  }
+  50% {
+    transform: rotate(-18deg);
+  }
+}
+/* The inline loader: three steam dots rising in turn. Staggered a third of
+   the cycle apart, so one dot is always near full strength and the loader
+   never reads as parked. */
+@keyframes steam-dot-rise {
+  0% {
+    transform: translateY(0.5px);
+    opacity: 0.35;
+  }
+  35% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+  70%,
+  100% {
+    transform: translateY(-5.5px);
+    opacity: 0;
   }
 }
 
@@ -729,9 +791,25 @@
   animation: live-breathe 2.4s var(--ease-tea, ease-in-out) infinite;
 }
 
+/* The rocking pour, wired by attribute so reduced motion can calm it. */
+[data-pour-rock] {
+  animation: pot-rock 3.4s var(--ease-tea) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .live-dot {
-    animation: none;
+  .live-dot,
+  [data-pour-rock],
+  [data-pour-stream],
+  [data-slot="spinner"] circle {
+    animation: none !important;
+  }
+  /* Frozen steam still reads as warmth, just quietly. */
+  [data-steam-wisp] {
+    animation: none !important;
+    opacity: 0.25 !important;
+  }
+  [data-slot="spinner"] circle {
+    opacity: 0.5;
   }
 }
 
