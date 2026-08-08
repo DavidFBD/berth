@@ -21,8 +21,6 @@ function view(overrides: Partial<CupViewInput> = {}) {
     aprRay: undefined,
     steamThresholds: TOKEN_BANDS,
     earned: undefined,
-    earnedExact: true,
-    earnedSince: undefined,
     ...overrides,
   });
 }

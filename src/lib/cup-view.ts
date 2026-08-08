@@ -38,10 +38,6 @@ export type CupViewInput = {
   steamThresholds: readonly [number, number, number];
   /** Earned so far in underlying token units; undefined until anchored. */
   earned: number | undefined;
-  /** True when the earned figure is a lifetime figure (see hooks/use-earned-yield). */
-  earnedExact: boolean;
-  /** When counting began; only meaningful while `earnedExact` is false. */
-  earnedSince: Date | undefined;
 };
 
 export type CupView = {
@@ -70,8 +66,6 @@ export type CupView = {
    * negative rate, stays honestly red.
    */
   sawtoothSuppressed: boolean;
-  earnedExact: boolean;
-  earnedSince: Date | undefined;
 };
 
 export function computeCupView(input: CupViewInput): CupView {
@@ -131,7 +125,5 @@ export function computeCupView(input: CupViewInput): CupView {
     earnedDisplay,
     earnedPerYear,
     sawtoothSuppressed,
-    earnedExact: input.earnedExact,
-    earnedSince: input.earnedSince,
   };
 }

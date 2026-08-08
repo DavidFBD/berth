@@ -75,8 +75,6 @@ export function useCupView(vault: LeverageYieldVault): CupViewState {
     aprRay: apr?.effectiveNetAprRay,
     steamThresholds: meta.steamThresholds,
     earned,
-    earnedExact: earnedPosition.exact,
-    earnedSince: earnedPosition.since,
   });
 
   return {

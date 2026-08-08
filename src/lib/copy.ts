@@ -116,7 +116,6 @@ export type Copy = {
   /** Follows the big money figure: "$10.17 …in the pot". */
   inThePot: string;
   earnedSoFar: string;
-  earnedSince: (date: string) => string;
   /**
    * Label over the year-projection stat. The VALUE under it is principal
    * plus a year of the current rate (the pot they'd have, not the
@@ -345,7 +344,6 @@ const ORIGINAL: Copy = {
   awaitsFirstPour: "Your cup awaits its first pour.",
   inThePot: "in the pot",
   earnedSoFar: "Earned",
-  earnedSince: (date) => `Since ${date}`,
   yearOfSteeping: "In a year",
   perYear: "per year",
   brewQuestion: "How strong is this brew?",
@@ -580,7 +578,6 @@ const GANGSTER: Partial<Copy> = {
   awaitsFirstPour: "Cup's bone dry. Handle that.",
   inThePot: "in the stash",
   earnedSoFar: "Stacked",
-  earnedSince: (date) => `Since ${date}`,
   yearOfSteeping: "A year deep",
   brewQuestion: "How hard does this brew go?",
   stakingYield: "The honest hustle",
@@ -754,7 +751,6 @@ const NAN: Partial<Copy> = {
   awaitsFirstPour: "The cup's just waiting for you, love.",
   inThePot: "in the pot, love",
   earnedSoFar: "Pin money",
-  earnedSince: (date) => `Since ${date}`,
   yearOfSteeping: "Next year, love",
   brewQuestion: "How's the brew, dear?",
   brewStrength: "Brew strength",
@@ -926,7 +922,6 @@ const TERMINAL: Partial<Copy> = {
   awaitsFirstPour: "cup empty. awaiting first pour_",
   inThePot: "staked",
   earnedSoFar: "accrued",
-  earnedSince: (date) => `since ${date}`,
   yearOfSteeping: "1Y proj.",
   perYear: "APY",
   brewQuestion: "show yield breakdown",
@@ -1107,7 +1102,6 @@ const VAPORWAVE: Partial<Copy> = {
   awaitsFirstPour: "Your cup waits in the plaza.",
   inThePot: "in the fountain",
   earnedSoFar: "Bliss",
-  earnedSince: (date) => `Since ${date}`,
   yearOfSteeping: "One sunset year",
   brewQuestion: "How deep is the aesthetic?",
   brewStrength: "The aesthetic",
@@ -1278,7 +1272,6 @@ const SUMIE: Partial<Copy> = {
   awaitsFirstPour: "The cup waits.",
   inThePot: "steeping",
   earnedSoFar: "Grown",
-  earnedSince: (date) => `Since ${date}`,
   yearOfSteeping: "One year hence",
   perYear: "a year",
   brewQuestion: "The brew, examined",
@@ -1449,7 +1442,6 @@ const AURORA: Partial<Copy> = {
   awaitsFirstPour: "Your cup waits under the northern sky.",
   inThePot: "in the pot",
   earnedSoFar: "Gathered",
-  earnedSince: (date) => `Since ${date}`,
   yearOfSteeping: "One winter from now",
   perYear: "per year",
   brewQuestion: "What warms this cup?",

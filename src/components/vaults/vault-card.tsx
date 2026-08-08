@@ -136,17 +136,10 @@ export function VaultCard({
     !sawtoothSuppressed && earnedTicking !== undefined && earnedTicking < 0
       ? "var(--destructive)"
       : deep;
-  // A position we only met after it was funded has an unknowable entry price,
-  // so the figure is growth since we started watching — say so rather than
-  // pass it off as lifetime earnings.
-  const earnedLabel = cup.earnedExact
-    ? copy.earnedSoFar
-    : copy.earnedSince(
-        cup.earnedSince?.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }) ?? "",
-      );
+  // One label for every anchor: "so far" already avoids the lifetime claim
+  // for positions met mid-life, so the since-date came off the card
+  // (David, 2026-08-08) — the ledger still knows, the card stopped saying.
+  const earnedLabel = copy.earnedSoFar;
 
   return (
     <div
