@@ -95,6 +95,7 @@ export function SteamPlume({
       })}
       {bloom && (
         <div
+          data-steam-bloom
           style={{
             position: "absolute",
             bottom: 0,

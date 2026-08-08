@@ -706,15 +706,6 @@
     opacity: 0;
   }
 }
-@keyframes steam-drift {
-  0%,
-  100% {
-    transform: translateX(0) rotate(0deg);
-  }
-  50% {
-    transform: translateX(3px) rotate(2deg);
-  }
-}
 /* The celebratory "poured" bloom — the one iridescent moment */
 @keyframes steam-bloom {
   0% {
@@ -811,12 +802,44 @@
   animation: pot-rock 3.4s var(--ease-tea) infinite;
 }
 
+/* The active brewing step breathes in place — scale and fade, never a
+   sideways wobble (a ring sliding off its dot reads as misalignment). */
+@keyframes ring-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.15;
+  }
+}
+
+/* The bloom's quiet sibling: same moment, opacity only. */
+@keyframes steam-bloom-quiet {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .live-dot,
   [data-pour-rock],
   [data-pour-stream],
+  [data-step-ring],
   [data-slot="spinner"] circle {
     animation: none !important;
+  }
+  /* The celebration still glows, it just stops traveling. */
+  [data-steam-bloom] {
+    animation-name: steam-bloom-quiet !important;
   }
   /* Frozen steam still reads as warmth, just quietly. */
   [data-steam-wisp] {

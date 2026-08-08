@@ -88,9 +88,10 @@ export function ActionStepper({
                   {done && !skipped ? <Check className="size-4" /> : index + 1}
                   {active && (
                     <span
+                      data-step-ring
                       className="absolute inset-0 rounded-full border-2 border-accent opacity-40"
                       style={{
-                        animation: "steam-drift 1.6s var(--ease-tea) infinite",
+                        animation: "ring-breathe 1.8s var(--ease-tea) infinite",
                       }}
                     />
                   )}

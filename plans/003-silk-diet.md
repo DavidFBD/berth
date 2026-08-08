@@ -1,6 +1,6 @@
 # 003 — Put the silk shader on a diet
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 7908485
 - **Severity**: HIGH
 - **Category**: Performance
