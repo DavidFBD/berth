@@ -61,6 +61,7 @@ export function useCupView(vault: LeverageYieldVault): CupViewState {
     shares: position.shares,
     pricePerShare: position.pricePerShare,
     ownerKey: position.ownerKey,
+    ready: position.sharesSettled,
   });
   const earned =
     earnedPosition.earned !== undefined

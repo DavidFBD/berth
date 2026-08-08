@@ -149,6 +149,8 @@ export type Copy = {
   potTotalLabel: string;
   /** Label for the dashboard's grand total: teapot plus every steeping cup. */
   onTheTable: string;
+  /** Header line under the grand total: yield banked plus brewing, all cups. */
+  earnedOverall: string;
 
   /* — welcome screen & footer — */
   tagline: string;
@@ -370,6 +372,7 @@ const ORIGINAL: Copy = {
   insidePotSub: "What you hold, and which shelf it sits on.",
   potTotalLabel: "In the pot",
   onTheTable: "On the table",
+  earnedOverall: "Steeped up so far",
 
   tagline:
     "A calming little game of filling up tea cups. The cups earn while they steep.",
@@ -602,6 +605,7 @@ const GANGSTER: Partial<Copy> = {
   insidePotSub: "What you're holding, and which shelf it rides on.",
   potTotalLabel: "In the stash",
   onTheTable: "The whole spread",
+  earnedOverall: "Stacked so far",
 
   tagline:
     "Fill your cups, let them steep, watch the stash grow. Real recognize tea.",
@@ -770,6 +774,7 @@ const NAN: Partial<Copy> = {
   insidePot: "Under the tea cosy",
   insidePotSub: "Everything you've got, and which shelf it's keeping warm on.",
   onTheTable: "All told, dear",
+  earnedOverall: "Made for us so far, dear",
 
   tagline:
     "Sit down, have a biscuit, and let your cups steep themselves lovely.",
@@ -946,6 +951,7 @@ const TERMINAL: Partial<Copy> = {
   insidePotSub: "positions by chain. gas warnings inline_",
   potTotalLabel: "total",
   onTheTable: "sum(everything)",
+  earnedOverall: "yield_to_date",
 
   tagline: "terminal-grade leveraged staking. numbers go up while you sleep_",
   signInEmail: "auth --email",
@@ -1120,6 +1126,7 @@ const VAPORWAVE: Partial<Copy> = {
   insidePot: "Inside the fountain",
   insidePotSub: "Your artifacts, and which arcade they sit in.",
   onTheTable: "Ｎｅｔ　ｗｏｒｔｈ",
+  earnedOverall: "Ｅａｒｎｅｄ　so far",
 
   tagline:
     "A calming little game in the eternal sunset. The cups steep forever.",
@@ -1296,6 +1303,7 @@ const SUMIE: Partial<Copy> = {
   insidePotSub: "What is held, and where.",
   potTotalLabel: "Within",
   onTheTable: "All, together",
+  earnedOverall: "Quietly earned",
 
   tagline: "Cups fill. Tea steeps. Nothing more is needed.",
   signInEmail: "Enter with email",
@@ -1468,6 +1476,7 @@ const AURORA: Partial<Copy> = {
   insidePotSub: "What you hold, and which shelf it rests on.",
   potTotalLabel: "In the pot",
   onTheTable: "The whole table",
+  earnedOverall: "Earned under the lights",
 
   tagline:
     "A calm little game of filling tea cups under the northern lights. The cups earn while they steep.",
@@ -1623,6 +1632,7 @@ const LSD: Partial<Copy> = {
   signIn: "Tune in",
   insidePotSub: "What you hold, and which shelf it melts on.",
   onTheTable: "The whole trip",
+  earnedOverall: "Earned on the spiral",
 
   tagline:
     "A kaleidoscopic little game of filling tea cups. The cups earn while they steep. The walls breathe a bit.",

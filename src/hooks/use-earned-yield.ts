@@ -7,6 +7,7 @@ import {
   earnedUnderlying,
   nextAnchor,
   readAnchor,
+  realizedUnderlying,
   sameAnchor,
   subscribeAnchors,
   writeAnchor,
@@ -16,6 +17,8 @@ import {
 export type EarnedYield = {
   /** Gain on the held shares in underlying units (18dp). Can be negative. */
   earned: bigint | undefined;
+  /** Gains already banked by pour-backs, in underlying units (18dp). */
+  realized: bigint | undefined;
   /**
    * True when this is a true lifetime figure. False when we only met the
    * position after it was funded, making it growth since `since` — the card
@@ -48,11 +51,20 @@ export function useEarnedYield({
   shares,
   pricePerShare,
   ownerKey,
+  ready,
 }: {
   vault: string | undefined;
   shares: bigint;
   pricePerShare: bigint | undefined;
   ownerKey: string;
+  /**
+   * True only when `shares` is the WHOLE truth (every balance query
+   * succeeded — position.sharesSettled). Anything less must not fold: a
+   * loading-time partial sum reads as a redemption, and the "refill" on the
+   * next render re-anchors every share at today's price — which quietly
+   * zeroed the earned figure on every page load until 2026-08-08.
+   */
+  ready: boolean;
 }): EarnedYield {
   const snapshot = useSyncExternalStore(
     subscribeAnchors,
@@ -61,9 +73,9 @@ export function useEarnedYield({
   );
 
   useEffect(() => {
-    // No wallet, or the price-per-share hasn't resolved: nothing to anchor
-    // against yet.
-    if (!vault || !ownerKey || pricePerShare === undefined) return;
+    // No wallet, an unsettled reading, or the price-per-share hasn't
+    // resolved: nothing trustworthy to anchor against yet.
+    if (!ready || !vault || !ownerKey || pricePerShare === undefined) return;
 
     const stored = readAnchor(vault);
     const next = nextAnchor(stored, {
@@ -76,7 +88,7 @@ export function useEarnedYield({
     // Writing notifies the store, which re-renders us with the new snapshot.
     // Guarded so an unchanged reading cannot loop.
     if (!stored || !sameAnchor(stored, next)) writeAnchor(vault, next);
-  }, [vault, shares, pricePerShare, ownerKey]);
+  }, [vault, shares, pricePerShare, ownerKey, ready]);
 
   const anchor = useMemo(
     () => (snapshot ? (JSON.parse(snapshot) as EarnedAnchor) : undefined),
@@ -86,11 +98,12 @@ export function useEarnedYield({
   // A stale anchor from another holder set is discarded rather than misapplied;
   // the effect above replaces it on this same tick.
   if (!anchor || anchor.owner !== ownerKey || pricePerShare === undefined) {
-    return { earned: undefined, exact: false, since: undefined };
+    return { earned: undefined, realized: undefined, exact: false, since: undefined };
   }
 
   return {
     earned: earnedUnderlying(anchor, shares, pricePerShare),
+    realized: realizedUnderlying(anchor),
     exact: anchor.exact,
     since: new Date(anchor.since),
   };

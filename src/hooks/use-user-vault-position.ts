@@ -45,6 +45,15 @@ export type UserVaultPosition = {
   ownerKey: string;
   /** True while any share-balance query is still loading. */
   isLoading: boolean;
+  /**
+   * True only when EVERY share-balance query has succeeded — the one state
+   * in which `shares` is the whole truth. While loading (or with a chain
+   * erroring) the sum is partial, and partial readings must never be folded
+   * into the earned anchor: a transient zero reads as a full redemption and
+   * the refill re-anchors every share at today's price, silently erasing
+   * the earned-so-far basis (field-found 2026-08-08).
+   */
+  sharesSettled: boolean;
   /** True once any chain reports a non-zero share balance. */
   hasPosition: boolean;
   /**
@@ -124,6 +133,9 @@ export function useUserVaultPosition(
     pricePerShare,
     ownerKey,
     isLoading: balanceQueries.some((query) => query.isLoading),
+    sharesSettled:
+      balanceQueries.length > 0 &&
+      balanceQueries.every((query) => query.isSuccess),
     hasPosition: shares > 0n,
     sharesByChain,
   };

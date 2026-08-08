@@ -42,6 +42,14 @@ export type EarnedAnchor = {
   exact: boolean;
   /** ISO timestamp the count began. */
   since: string;
+  /**
+   * Gains banked by pour-backs, in underlying units (18dp, decimal string).
+   * When shares redeem, their share of the unrealized gain would otherwise
+   * vanish from the earned figure; it folds in here instead, so "earned
+   * overall" survives a pour-back. Absent on anchors written before this
+   * field existed — read it through {@link realizedUnderlying}.
+   */
+  realized?: string;
 };
 
 type AnchorStore = Record<string, EarnedAnchor>;
@@ -116,6 +124,7 @@ export function nextAnchor(
       owner,
       exact: shares === 0n,
       since: now,
+      realized: "0",
     };
   }
 
@@ -130,8 +139,28 @@ export function nextAnchor(
     return { ...prev, shares: shares.toString(), anchorPps: anchorPps.toString() };
   }
 
-  // Redemption, or no movement: the shares that remain keep their basis.
+  if (shares < prevShares) {
+    // Redemption: the departing shares bank their gain into `realized` (at
+    // today's price, which is what the pour-back actually paid), and the
+    // shares that remain keep their basis untouched.
+    const redeemed = prevShares - shares;
+    const banked =
+      (redeemed * (pps - BigInt(prev.anchorPps))) / WAD +
+      BigInt(prev.realized ?? "0");
+    return {
+      ...prev,
+      shares: shares.toString(),
+      realized: banked.toString(),
+    };
+  }
+
+  // No movement: the reading confirms what we already knew.
   return { ...prev, shares: shares.toString() };
+}
+
+/** Gains already banked by pour-backs, in underlying units (18dp). */
+export function realizedUnderlying(anchor: EarnedAnchor): bigint {
+  return BigInt(anchor.realized ?? "0");
 }
 
 /** Gain on the held shares, in underlying units (18dp). Can be negative. */
@@ -149,6 +178,7 @@ export function sameAnchor(a: EarnedAnchor, b: EarnedAnchor): boolean {
     a.anchorPps === b.anchorPps &&
     a.owner === b.owner &&
     a.exact === b.exact &&
-    a.since === b.since
+    a.since === b.since &&
+    (a.realized ?? "0") === (b.realized ?? "0")
   );
 }
