@@ -38,7 +38,7 @@ import { useCopy, useMoney } from "@/components/settings-provider";
 import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useVaultAction } from "@/hooks/use-vault-action";
-import { useVaultWallet } from "@/hooks/use-vault-wallet";
+import { useVaultAddress, useVaultWallet } from "@/hooks/use-vault-wallet";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
@@ -98,8 +98,11 @@ export function WithdrawDrawer({
     useVaultWallet(srcChainKey);
   // Funds are delivered to the user's wallet ON the destination chain (the
   // SDK would otherwise default to `srcAddress`, the wrong format across
-  // chain families) — unless the user typed a custom cash-out address.
-  const ownRecipient = useVaultWallet(dstChainKey).address;
+  // chain families) — unless the user typed a custom cash-out address. The
+  // address only, never the full wallet: nobody signs on the destination, and
+  // building its provider would switch the embedded wallet's global chain out
+  // from under the signature (issue #15).
+  const ownRecipient = useVaultAddress(dstChainKey);
   const trimmedCustom = customRecipient?.trim() ?? "";
   const dstIsEvm = dstChainKey ? isEvmChainKeyType(dstChainKey) : false;
   const customLooksValid =

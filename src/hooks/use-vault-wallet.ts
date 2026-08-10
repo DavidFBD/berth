@@ -36,10 +36,40 @@ export type VaultWallet = {
 };
 
 /**
+ * The user's address on `chainKey` and nothing more: no signing provider, no
+ * chain switch. Use this wherever a chain is only being READ about, above all
+ * the withdraw destination.
+ *
+ * Calling useVaultWallet for a chain nobody signs on is what stranded pours
+ * on the wrong network (issue #15): building the embedded bridge switches the
+ * Privy wallet's chain as a side effect, that chain state is global to one
+ * shared provider, and a HyperEVM cash-out therefore dragged a Polygon
+ * signature onto HyperEVM, where it went out unpriced and was rejected.
+ * Reading an address never needed any of that, since the embedded wallet is
+ * one address across every EVM chain.
+ */
+export function useVaultAddress(
+  chainKey: SpokeChainKey | null | undefined,
+): string | undefined {
+  const session = useAccountSession();
+  const externalAccount = useXAccount({
+    xChainId: chainKey ?? ChainKeys.SONIC_MAINNET,
+  });
+  return resolveAccount(
+    chainKey,
+    session,
+    chainKey ? externalAccount.address : undefined,
+  ).address;
+}
+
+/**
  * The signing face of the account module: address resolution goes through
  * the one rule in lib/account, and this hook adds the matching provider and
  * chain handling. The embedded bridge switches chains silently, so email
  * mode never reports a wrong network.
+ *
+ * Only for the chain the user is about to sign on. For every other chain,
+ * reach for useVaultAddress above.
  */
 export function useVaultWallet(
   chainKey: SpokeChainKey | null | undefined,
