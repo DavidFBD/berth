@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
-import { useAddFunds } from "@privy-io/react-auth";
-import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
+import { useAddFunds, useExportWallet } from "@privy-io/react-auth";
+import {
+  useExportWallet as useExportSolanaWallet,
+  useWallets as useSolanaWallets,
+} from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Copy,
   GearSix,
+  Key,
   PlusCircle,
   QrCode,
   SignOut,
@@ -110,9 +114,14 @@ export function AccountButton({
 
             {address && <FundButton address={address} />}
 
-            {/* No external-wallet affordance here on purpose: email users
-                live entirely in the teapot. The expert path stays on the
-                welcome screen for people who skip Privy. */}
+            {/* The way out. Client-only, like SolanaReceive. */}
+            {address && mounted && <KeyExportRow evmAddress={address} />}
+
+            {/* No external-wallet CONNECT affordance here on purpose: email
+                users live entirely in the teapot, and the expert path stays
+                on the welcome screen for people who skip Privy. Getting
+                funds OUT is a different question, and the row above is the
+                answer to it. */}
 
             {/* The back room — modes and currency. Drawers don't stack, so
                 the pantry hands over: close this one, open that one. */}
@@ -183,16 +192,25 @@ function ExternalAccountEntry() {
   );
 }
 
-/** Embedded Solana address row — isolated because the hook is client-only. */
-function SolanaReceive() {
-  const { wallets: solanaWallets } = useSolanaWallets();
-  // Duck-typed: the d.ts exports PrivyStandardWallet but the runtime module
-  // doesn't (Privy build mismatch), so check the class's getter directly.
-  const solanaAddress = solanaWallets.find(
+/**
+ * The embedded Solana wallet's address, or undefined when Privy hasn't
+ * surfaced one. Duck-typed: the d.ts exports PrivyStandardWallet but the
+ * runtime module doesn't (Privy build mismatch), so check the class's getter
+ * directly. Stated once because two rows ask it now, and a row that
+ * disagreed about which wallet is ours would export the wrong key.
+ */
+function usePrivySolanaAddress(): string | undefined {
+  const { wallets } = useSolanaWallets();
+  return wallets.find(
     (wallet) =>
       (wallet.standardWallet as { isPrivyWallet?: boolean }).isPrivyWallet ===
       true,
   )?.address;
+}
+
+/** Embedded Solana address row — isolated because the hook is client-only. */
+function SolanaReceive() {
+  const solanaAddress = usePrivySolanaAddress();
 
   if (!solanaAddress) return null;
   return (
@@ -202,6 +220,71 @@ function SolanaReceive() {
       address={solanaAddress}
       copyToast="Only send Solana assets to this one."
     />
+  );
+}
+
+/**
+ * The pantry's only way OUT. The teapot has no send screen by design, which
+ * holds up while every asset can become tea and traps the ones that can't:
+ * a withdraw delivered SOL to Solana, no cup takes SOL back, and the balance
+ * sat there unreachable (field-found 2026-09-01). Export answers that without
+ * building a send flow, and Privy renders the key in an iframe on its own
+ * domain, so this app never touches it.
+ *
+ * Needs wallet export enabled for the app in the Privy dashboard; with the
+ * toggle off, Privy explains that inside its own modal.
+ *
+ * Client-only: the /solana hooks are not SSR-safe.
+ */
+function KeyExportRow({ evmAddress }: { evmAddress: string }) {
+  const copy = useCopy();
+  const { exportWallet: exportEvmWallet } = useExportWallet();
+  const { exportWallet: exportSolanaWallet } = useExportSolanaWallet();
+  const solanaAddress = usePrivySolanaAddress();
+
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
+        <Key className="size-5 shrink-0 text-primary" />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground">
+            {copy.exportKeysTitle}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {copy.exportKeysSub}
+          </span>
+        </div>
+      </div>
+      <div className="flex gap-2 px-3 pb-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
+          onClick={() => {
+            void exportEvmWallet({ address: evmAddress }).catch(() => {
+              // Rejection includes plain user exit, and a disabled export
+              // toggle is something Privy reports in its own modal.
+            });
+          }}
+        >
+          {copy.exportEvmLabel}
+        </Button>
+        {solanaAddress && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={() => {
+              void exportSolanaWallet({ address: solanaAddress }).catch(() => {
+                // See above.
+              });
+            }}
+          >
+            {copy.exportSolanaLabel}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 

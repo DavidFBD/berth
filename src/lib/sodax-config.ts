@@ -19,33 +19,46 @@ export const PARTNER_FEE: PartnerFee = {
 };
 
 /**
- * Keyless publicnode endpoints instead of the defaults baked into viem and
- * the SDK, which are best-effort and do die — polygon-rpc.com returns 401
- * "API key disabled, tenant disabled" as of 2026-07-31. Pinned in BOTH
- * configs below: the wallet SDK reads balances through its own clients, and
- * the core SDK builds separate clients for allowance checks and receipt
- * polling from ITS chain config (issue #12 was Polygon deposits dying on the
- * SDK half after only the wallet half was pinned). Chains not listed here
- * (HyperEVM, LightLink, Kaia, Redbelly) stay on their official default RPCs,
- * which publicnode doesn't cover.
+ * Keyless endpoints instead of the defaults baked into viem and the SDK,
+ * which are best-effort and do die — polygon-rpc.com returns 401 "API key
+ * disabled, tenant disabled" as of 2026-07-31. Pinned in BOTH configs below:
+ * the wallet SDK reads balances through its own clients, and the core SDK
+ * builds separate clients for allowance checks and receipt polling from ITS
+ * chain config (issue #12 was Polygon deposits dying on the SDK half after
+ * only the wallet half was pinned). Privy inherits this table too, through
+ * getPinnedRpcUrl in lib/privy-chains.
+ *
+ * RECEIPT lookups are the binding constraint here, not balance reads.
+ * publicnode refuses eth_getTransactionReceipt on Arbitrum, Base, Optimism
+ * and BSC — HTTP 403, or -32602 "Archive requests require a personal token"
+ * — at ANY block age, so even a fresh confirmation poll fails. Since -32602
+ * is the invalid-params code, Privy renders it as "Invalid parameters were
+ * provided to the RPC method" on top of a withdraw that had ALREADY
+ * SUCCEEDED, which reads to a user as money lost (field-found 2026-09-01, in
+ * Privy's own modal, so the auto-reporter never saw it and there is no issue
+ * number for it). Avalanche's publicnode fails worse in kind: it answers an
+ * old block with a NULL receipt, a silent "not mined". Those five move to
+ * official endpoints. Ethereum, Polygon and Sonic serve receipts correctly
+ * at depth and stay.
+ *
+ * Every endpoint below is verified for eth_getTransactionReceipt at both
+ * recent and 100k-block depth, and for CORS from localhost and the
+ * production origin. Chains not listed (HyperEVM, LightLink, Kaia, Redbelly)
+ * stay on their official default RPCs, which publicnode doesn't cover.
  */
 const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
   [ChainKeys.ETHEREUM_MAINNET]: {
     rpcUrl: "https://ethereum-rpc.publicnode.com",
   },
-  [ChainKeys.ARBITRUM_MAINNET]: {
-    rpcUrl: "https://arbitrum-one-rpc.publicnode.com",
-  },
-  [ChainKeys.BASE_MAINNET]: { rpcUrl: "https://base-rpc.publicnode.com" },
-  [ChainKeys.OPTIMISM_MAINNET]: {
-    rpcUrl: "https://optimism-rpc.publicnode.com",
-  },
+  [ChainKeys.ARBITRUM_MAINNET]: { rpcUrl: "https://arb1.arbitrum.io/rpc" },
+  [ChainKeys.BASE_MAINNET]: { rpcUrl: "https://mainnet.base.org" },
+  [ChainKeys.OPTIMISM_MAINNET]: { rpcUrl: "https://mainnet.optimism.io" },
   [ChainKeys.POLYGON_MAINNET]: {
     rpcUrl: "https://polygon-bor-rpc.publicnode.com",
   },
-  [ChainKeys.BSC_MAINNET]: { rpcUrl: "https://bsc-rpc.publicnode.com" },
+  [ChainKeys.BSC_MAINNET]: { rpcUrl: "https://bsc-dataseed.bnbchain.org" },
   [ChainKeys.AVALANCHE_MAINNET]: {
-    rpcUrl: "https://avalanche-c-chain-rpc.publicnode.com",
+    rpcUrl: "https://api.avax.network/ext/bc/C/rpc",
   },
   [ChainKeys.SONIC_MAINNET]: { rpcUrl: "https://sonic-rpc.publicnode.com" },
 };

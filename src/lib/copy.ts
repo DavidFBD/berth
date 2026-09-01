@@ -256,6 +256,13 @@ export type Copy = {
   lettingKitchenKnow: string;
   kitchenToldNoReport: string;
 
+  /* — pantry: key export. Agnostic on purpose, like the rewards corner:
+     a private key reads the same in every parlour. — */
+  exportKeysTitle: string;
+  exportKeysSub: string;
+  exportEvmLabel: string;
+  exportSolanaLabel: string;
+
   /* — settings — */
   settingsTitle: string;
   settingsSub: string;
@@ -480,6 +487,12 @@ const ORIGINAL: Copy = {
   lettingKitchenKnow: "Letting the kitchen know…",
   kitchenToldNoReport:
     "The kitchen has been told, so someone can look into it. No need to report it.",
+
+  exportKeysTitle: "Take your keys",
+  exportKeysSub:
+    "Export a private key and move your funds with any wallet. Privy shows it in its own window, so the app never sees it.",
+  exportEvmLabel: "EVM key",
+  exportSolanaLabel: "Solana key",
 
   settingsTitle: "The back room",
   settingsSub: "How the tea house looks, and what the money speaks.",
