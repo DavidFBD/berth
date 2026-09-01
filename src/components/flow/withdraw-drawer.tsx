@@ -94,7 +94,7 @@ export function WithdrawDrawer({
 
   // Privy embedded wallet on EVM chains when signed in via email; external
   // wallets otherwise. Email mode switches chains silently.
-  const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureChain } =
+  const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureReady } =
     useVaultWallet(srcChainKey);
   // Funds are delivered to the user's wallet ON the destination chain (the
   // SDK would otherwise default to `srcAddress`, the wrong format across
@@ -242,7 +242,7 @@ export function WithdrawDrawer({
         successDescription: copy.pouredBackBody(getChainName(dstChainKey)),
         failureDescription: copy.pourBackFailedBody,
       },
-      ensureReady: ensureChain,
+      ensureReady,
     });
   };
 

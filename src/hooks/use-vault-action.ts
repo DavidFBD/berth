@@ -27,6 +27,7 @@ import {
 import {
   CANCELLED_MESSAGE,
   FILL_FAILED_MESSAGE,
+  SESSION_EXPIRED_MESSAGE,
   extractErrorCode,
   friendlyError,
   rawErrorMessage,
@@ -41,6 +42,7 @@ import {
   type PourStep,
 } from "@/lib/pour-lifecycle";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
+import type { PourReadiness } from "@/hooks/use-privy-evm-wallet";
 import { useAwardPour } from "@/hooks/use-profile";
 
 // Re-exported so existing consumers keep one import site for error copy and
@@ -81,11 +83,12 @@ export interface RunDepositArgs {
   walletMode: "email" | "external";
   fillToasts: FillToastCopy;
   /**
-   * Re-assert the wallet is on `srcChainKey` (embedded wallets: chain state
-   * is global and can be stolen by a competing switch). Awaited before every
-   * on-chain send; false aborts the flow.
+   * The send precondition: a live Privy session, and the wallet on
+   * `srcChainKey` (embedded wallets share one provider whose chain a
+   * competing switch can steal). Awaited before every on-chain send; anything
+   * but "ready" aborts the flow.
    */
-  ensureReady?: () => Promise<boolean>;
+  ensureReady?: () => Promise<PourReadiness>;
 }
 
 export interface RunWithdrawArgs {
@@ -117,7 +120,7 @@ export interface RunWithdrawArgs {
   walletMode: "email" | "external";
   fillToasts: FillToastCopy;
   /** See RunDepositArgs.ensureReady. */
-  ensureReady?: () => Promise<boolean>;
+  ensureReady?: () => Promise<PourReadiness>;
 }
 
 export interface UseVaultActionResult {
@@ -361,8 +364,15 @@ export function useVaultAction(options?: {
       // steal between build and send.
       const onRightChain = async (): Promise<boolean> => {
         if (!args.ensureReady) return true;
-        if (await args.ensureReady()) return true;
-        fail("The kettle drifted off its burner. Please pour again.");
+        const readiness = await args.ensureReady();
+        if (readiness === "ready") return true;
+        // Two aborts, two different instructions. Retrying a stolen chain
+        // works; retrying a lapsed session just fails again the same way.
+        fail(
+          readiness === "session-expired"
+            ? SESSION_EXPIRED_MESSAGE
+            : "The kettle drifted off its burner. Please pour again.",
+        );
         return false;
       };
       try {
@@ -505,8 +515,15 @@ export function useVaultAction(options?: {
       };
       const onRightChain = async (): Promise<boolean> => {
         if (!args.ensureReady) return true;
-        if (await args.ensureReady()) return true;
-        fail("The kettle drifted off its burner. Please pour again.");
+        const readiness = await args.ensureReady();
+        if (readiness === "ready") return true;
+        // Two aborts, two different instructions. Retrying a stolen chain
+        // works; retrying a lapsed session just fails again the same way.
+        fail(
+          readiness === "session-expired"
+            ? SESSION_EXPIRED_MESSAGE
+            : "The kettle drifted off its burner. Please pour again.",
+        );
         return false;
       };
       try {

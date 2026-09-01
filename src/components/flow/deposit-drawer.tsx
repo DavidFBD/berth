@@ -94,7 +94,7 @@ export function DepositDrawer({
 
   // Privy embedded wallet on EVM chains when signed in via email; external
   // wallets otherwise. Email mode switches chains silently.
-  const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureChain } =
+  const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureReady } =
     useVaultWallet(srcChainKey);
 
   // Email mode is balance-first: land the user on what they already hold so
@@ -251,7 +251,7 @@ export function DepositDrawer({
         successDescription: copy.pourFilledBody,
         failureDescription: copy.pourFillFailedBody,
       },
-      ensureReady: ensureChain,
+      ensureReady,
     });
   };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import {
   createPublicClient,
@@ -21,7 +21,8 @@ import { getPinnedRpcUrl } from "@/lib/sodax-config";
 
 /** The user's Privy embedded EVM wallet, if signed in via email. */
 export function usePrivyEmbeddedWallet() {
-  const { ready, authenticated, user, login, logout } = usePrivy();
+  const { ready, authenticated, user, login, logout, getAccessToken } =
+    usePrivy();
   const { wallets } = useWallets();
   const embedded = wallets.find(
     (wallet) => wallet.walletClientType === "privy",
@@ -34,6 +35,11 @@ export function usePrivyEmbeddedWallet() {
     login,
     logout,
     embedded,
+    /**
+     * Resolves the current Privy access token, refreshing a stale one. The
+     * embedded wallet throws 4900 without it, so every send asks first.
+     */
+    getAccessToken,
   };
 }
 
@@ -41,18 +47,34 @@ type Eip1193 = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
 
+/**
+ * Whether a pour can be sent right now, and when it can't, which precondition
+ * failed. Two reasons, because they need different words: a stolen chain is
+ * worth retrying on the spot, a lapsed session needs a fresh sign-in first.
+ */
+export type PourReadiness = "ready" | "wrong-chain" | "session-expired";
+
 export type PrivyEvmWallet = {
   provider: EvmWalletProvider;
   /**
-   * Re-assert the chain on the SAME provider instance the walletClient
-   * signs through, verifying eth_chainId before reporting true. Privy's
+   * The send precondition, on the SAME provider instance the walletClient
+   * signs through. Two checks, in order.
+   *
+   * The Privy access token first: the embedded wallet throws EIP-1193 4900
+   * ("Disconnected") out of eth_sendTransaction when the token is missing,
+   * which viem then reports as "The Provider is disconnected from all
+   * chains" — prose about chains for a condition that has nothing to do with
+   * them (issue #21).
+   *
+   * Then the chain, verified by eth_chainId rather than assumed. Privy's
    * embedded wallet is one shared provider with global chain state, and
    * concurrent switchChain calls (drawer default chain vs the auto-selected
    * holding) resolve in arbitrary order — whichever lands last wins. Without
-   * this, the tx targets chain X while the wallet sits on chain Y and viem
-   * rejects with a chain mismatch. Call it right before every send.
+   * this the tx targets chain X while the wallet sits on chain Y.
+   *
+   * Call it right before every send.
    */
-  ensureChain: () => Promise<boolean>;
+  ensureReady: () => Promise<PourReadiness>;
 };
 
 /**
@@ -64,7 +86,15 @@ export type PrivyEvmWallet = {
 export function usePrivyEvmWalletProvider(
   chainKey: SpokeChainKey | null | undefined,
 ): PrivyEvmWallet | undefined {
-  const { embedded } = usePrivyEmbeddedWallet();
+  const { embedded, getAccessToken } = usePrivyEmbeddedWallet();
+  // Held in a ref so the closure built once per (address, chain) always calls
+  // the live function rather than the one captured at construction. Synced in
+  // an effect, not during render: the ref is only ever read from inside
+  // ensureReady, which runs on a tap, long after mount.
+  const getAccessTokenRef = useRef(getAccessToken);
+  useEffect(() => {
+    getAccessTokenRef.current = getAccessToken;
+  }, [getAccessToken]);
   // Keyed by (address, chain): a stale provider from a previous key simply
   // stops being returned — no synchronous reset needed inside the effect.
   const [built, setBuilt] = useState<{
@@ -90,7 +120,28 @@ export function usePrivyEvmWalletProvider(
       const eip1193 = (await embedded.getEthereumProvider()) as Eip1193;
       if (cancelled) return;
 
-      const ensureChain = async (): Promise<boolean> => {
+      const ensureReady = async (): Promise<PourReadiness> => {
+        // The token before the chain. This pipeline hands a token plenty of
+        // time to lapse: build, allowance retries, a wallet prompt, then the
+        // ~15s the SDK spends simulating. getAccessToken refreshes a stale
+        // one, so asking here both prevents the ordinary failure and names
+        // the rare one instead of letting viem call a live session a chain
+        // problem (issue #21, field-found 2026-09-01).
+        try {
+          if (!(await getAccessTokenRef.current())) {
+            console.error(
+              "[privy-wallet] no Privy access token at send time — the session has lapsed, and the wallet would throw 4900",
+            );
+            return "session-expired";
+          }
+        } catch (error) {
+          console.error(
+            "[privy-wallet] Privy access token refresh threw — treating the session as lapsed",
+            error,
+          );
+          return "session-expired";
+        }
+
         const hexId = `0x${chain.id.toString(16)}`;
         // Either failure path must leave a console trail: this is the one
         // abort the drawers surface with no raw error attached, so field
@@ -106,7 +157,7 @@ export function usePrivyEvmWalletProvider(
             lastSeen = (await eip1193.request({
               method: "eth_chainId",
             })) as string;
-            if (Number.parseInt(lastSeen, 16) === chain.id) return true;
+            if (Number.parseInt(lastSeen, 16) === chain.id) return "ready";
             await new Promise((resolve) => setTimeout(resolve, 300));
           }
           console.error(
@@ -118,8 +169,8 @@ export function usePrivyEvmWalletProvider(
             error,
           );
         }
-        // A false return keeps the pour from being sent onto the wrong chain.
-        return false;
+        // Anything but "ready" keeps the pour off the wrong chain.
+        return "wrong-chain";
       };
 
       const walletClient = createWalletClient({
@@ -138,7 +189,7 @@ export function usePrivyEvmWalletProvider(
         key,
         wallet: {
           provider: new EvmWalletProvider({ walletClient, publicClient }),
-          ensureChain,
+          ensureReady,
         },
       });
     })().catch((error) => {

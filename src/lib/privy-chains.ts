@@ -23,7 +23,7 @@ export const PRIVY_SUPPORTED_CHAINS: Chain[] = Object.values(ChainKeys)
 
 /**
  * Where the embedded wallet parks between pours: the hub, where the vault
- * shares live. Every send re-asserts its own chain anyway (ensureChain), so
+ * shares live. Every send re-asserts its own chain anyway (ensureReady), so
  * this only pins the idle state to something deterministic.
  */
 export const PRIVY_DEFAULT_CHAIN: Chain =

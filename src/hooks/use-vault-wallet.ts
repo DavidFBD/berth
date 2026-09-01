@@ -12,7 +12,10 @@ import {
 } from "@sodax/sdk";
 import { resolveAccount } from "@/lib/account";
 import { useAccountSession } from "@/hooks/use-account";
-import { usePrivyEvmWalletProvider } from "@/hooks/use-privy-evm-wallet";
+import {
+  usePrivyEvmWalletProvider,
+  type PourReadiness,
+} from "@/hooks/use-privy-evm-wallet";
 
 export type VaultWalletMode = "email" | "external";
 
@@ -27,12 +30,14 @@ export type VaultWallet = {
   isWrongChain: boolean;
   handleSwitchChain: () => void;
   /**
-   * Email mode only: re-assert + verify the embedded wallet's chain on the
-   * signing provider itself. MUST be awaited right before any on-chain send;
-   * the embedded wallet's chain state is global and races between chain
-   * switches otherwise strand the transaction on the wrong network.
+   * Email mode only: the send precondition. MUST be awaited right before any
+   * on-chain send. Checks the Privy session still holds a token (a lapsed one
+   * makes the embedded wallet throw 4900 mid-pour, which viem misreports as a
+   * chain problem) and then re-asserts the chain on the signing provider
+   * itself, since that chain state is global and races between switches
+   * otherwise strand the transaction on the wrong network.
    */
-  ensureChain?: () => Promise<boolean>;
+  ensureReady?: () => Promise<PourReadiness>;
 };
 
 /**
@@ -98,7 +103,7 @@ export function useVaultWallet(
       mode: "email",
       isWrongChain: false,
       handleSwitchChain: () => {},
-      ensureChain: privyProvider?.ensureChain,
+      ensureReady: privyProvider?.ensureReady,
     };
   }
 
