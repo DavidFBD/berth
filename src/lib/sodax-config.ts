@@ -64,6 +64,36 @@ const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
 };
 
 /**
+ * Our own mount for the keyed SODAX proxy (`app/api/sodax/[...path]`). The SDK
+ * hangs `/quote`, `/status` and `/execute` off the endpoint below, so the
+ * route handler receives `intent/<call>` and forwards it with the key.
+ */
+export const SODAX_PROXY_PATH = "/api/sodax";
+
+/** The endpoint the proxy stands in front of, and the server's own address. */
+const SOLVER_UPSTREAM = "https://api.sodax.com/v1/intent";
+
+/** `HttpUrl` from @sodax/types, which @sodax/sdk doesn't re-export. */
+type HttpUrl = `http://${string}` | `https://${string}`;
+
+/**
+ * Where solver calls go. In the browser: our own origin, so the request picks
+ * up the SODAX API key server-side — a key in a client bundle is a published
+ * key, and the pour's `POST /intent/execute` is a write path SODAX is turning
+ * key checks on for. On the server (SSR of the provider tree, and the Sodax
+ * instance in lib/server/pour-verify, which never calls the solver anyway):
+ * upstream directly, since there's no origin to resolve a relative URL against.
+ *
+ * The cast is the template-literal type meeting a runtime string; an origin is
+ * always http:// or https://.
+ */
+const solverApiEndpoint = (
+  typeof window === "undefined"
+    ? SOLVER_UPSTREAM
+    : `${window.location.origin}${SODAX_PROXY_PATH}/intent`
+) as HttpUrl;
+
+/**
  * SDK config. SodaxOptions is a DeepPartial over the SDK's baked-in mainnet
  * defaults (chains, solver + relayer endpoints), so we only override what we
  * must. Both configs are module constants on purpose: SodaxProvider tracks
@@ -71,6 +101,7 @@ const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
  */
 export const sodaxConfig: SodaxOptions = {
   fee: PARTNER_FEE,
+  solver: { solverApiEndpoint },
   chains: {
     ...PINNED_EVM_RPCS,
     [ChainKeys.BITCOIN_MAINNET]: {

@@ -63,6 +63,14 @@ Mobile-first Next.js 16 App Router app (React 19, TS, Tailwind v4, shadcn/ui bas
 
 Withdraw (mirror, NO approval step): `useLeverageYieldWithdraw().mutateAsyncSafe({ vault, srcChainKey, srcAddress, dstChainKey, outputToken, inputAmount: shares18dp, minOutputAmount })` → `vaultSwap({ ...built.value, walletProvider })` (payload carries `hubWalletSwap: true`). Quote with `token_src = vault.vault`, `token_dst = outputToken`. Max = user's share balance for that chainKey row. BTC output: minOutputAmount ≥ 546 sats.
 
+## SODAX API key (added 2026-09-15)
+
+- SODAX mints partner API keys (portal.sodax.com; docs.sodax.com/developers/how-to/api-keys). They travel as an `x-api-key` header. Reads on `api.sodax.com` stay public; the WRITE routes are wired for the check and enforcement comes back on route by route.
+- The key is server-side only, `SODAX_API_KEY`, never `NEXT_PUBLIC_`. A key in a browser bundle is a published key.
+- This app's whole browser-side SODAX HTTP surface is three POSTs that the SDK hangs off `solver.solverApiEndpoint`: `/quote` (useQuote), `/status` (useStatus) and `/execute` (the notify inside `vaultSwap` — a write, and the one that makes a pour fill). Everything else the app calls is on-chain or the relayer at `xcall-relay.nw.iconblockchain.xyz`, which is not SODAX API and takes no key.
+- So `sodaxConfig.solver.solverApiEndpoint` points at `${window.location.origin}/api/sodax/intent` in the browser and at `https://api.sodax.com/v1/intent` on the server. `app/api/sodax/[...path]` attaches the key and forwards; `lib/server/sodax-proxy` holds the allowlist (exactly those three routes — a pass-through proxy would lend the key to the whole API) and the header builder.
+- The installed 2.0.0 SDK has no `apiKey` option; `new Sodax({ apiKey })` landed in 2.2.0-rc (2.1.0 is stable latest and does NOT have it). Irrelevant to the browser either way, which needs the proxy at any version. When 2.2.0 goes stable, server-side callers can pass `apiKey` instead of building headers.
+
 ## Server-side SDK use (verified 2026-08-07)
 
 - `new Sodax(sodaxConfig)` works in Node/route handlers (module singleton in `lib/server/pour-verify.ts`); `sodaxConfig` is a plain constant, safe to import server-side.
