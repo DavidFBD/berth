@@ -112,6 +112,9 @@
   --cup-sencha: oklch(0.58 0.085 150);
   --cup-sencha-soft: oklch(0.93 0.025 150);
   --cup-sencha-deep: oklch(0.42 0.09 150);
+  --cup-chamomile: oklch(0.72 0.1 85);
+  --cup-chamomile-soft: oklch(0.95 0.025 85);
+  --cup-chamomile-deep: oklch(0.52 0.1 80);
 
   /* The one psychedelic allowance: iridescence — steam at full heat + celebrations */
   --iridescent: linear-gradient(
@@ -177,6 +180,9 @@
   --cup-sencha: oklch(0.72 0.085 150);
   --cup-sencha-soft: oklch(0.32 0.035 150);
   --cup-sencha-deep: oklch(0.82 0.07 150);
+  --cup-chamomile: oklch(0.83 0.1 88);
+  --cup-chamomile-soft: oklch(0.33 0.035 88);
+  --cup-chamomile-deep: oklch(0.9 0.08 90);
 
   --iridescent: linear-gradient(
     115deg,
@@ -241,6 +247,9 @@
   --cup-sencha: oklch(0.62 0.13 150);
   --cup-sencha-soft: oklch(0.27 0.045 150);
   --cup-sencha-deep: oklch(0.78 0.11 150);
+  --cup-chamomile: oklch(0.86 0.1 92);
+  --cup-chamomile-soft: oklch(0.31 0.045 92);
+  --cup-chamomile-deep: oklch(0.94 0.08 95);
 
   /* Bling, not rainbow: the celebration gradient is gold chrome. */
   --iridescent: linear-gradient(
@@ -297,6 +306,9 @@
   --cup-sencha: oklch(0.68 0.08 140); /* sage */
   --cup-sencha-soft: oklch(0.94 0.024 140);
   --cup-sencha-deep: oklch(0.47 0.09 140);
+  --cup-chamomile: oklch(0.79 0.09 88);
+  --cup-chamomile-soft: oklch(0.95 0.025 88);
+  --cup-chamomile-deep: oklch(0.56 0.095 85);
 
   --iridescent: linear-gradient(
     115deg,
@@ -351,6 +363,9 @@
   --cup-sencha: oklch(0.76 0.16 145); /* phosphor */
   --cup-sencha-soft: oklch(0.24 0.06 145);
   --cup-sencha-deep: oklch(0.86 0.16 145);
+  --cup-chamomile: oklch(0.91 0.06 90);
+  --cup-chamomile-soft: oklch(0.25 0.035 90);
+  --cup-chamomile-deep: oklch(0.96 0.05 92);
 
   /* Celebration = a burst of brighter phosphor, not a rainbow. */
   --iridescent: linear-gradient(
@@ -406,6 +421,9 @@
   --cup-sencha: oklch(0.72 0.15 40); /* sunset orange */
   --cup-sencha-soft: oklch(0.34 0.07 40);
   --cup-sencha-deep: oklch(0.84 0.13 45);
+  --cup-chamomile: oklch(0.89 0.15 95);
+  --cup-chamomile-soft: oklch(0.34 0.06 95);
+  --cup-chamomile-deep: oklch(0.95 0.12 98);
 
   /* The one place the whole sunset is allowed at once. */
   --iridescent: linear-gradient(
@@ -462,6 +480,9 @@
   --cup-sencha: oklch(0.55 0.04 150);
   --cup-sencha-soft: oklch(0.93 0.006 150);
   --cup-sencha-deep: oklch(0.36 0.035 150);
+  --cup-chamomile: oklch(0.56 0.04 225);
+  --cup-chamomile-soft: oklch(0.93 0.007 225);
+  --cup-chamomile-deep: oklch(0.37 0.035 230);
 
   /* Even celebration stays in ink — a wash, with one breath of vermillion. */
   --iridescent: linear-gradient(
@@ -517,6 +538,9 @@
   --cup-sencha: oklch(0.78 0.1 220); /* lake ice */
   --cup-sencha-soft: oklch(0.31 0.05 230);
   --cup-sencha-deep: oklch(0.87 0.08 215);
+  --cup-chamomile: oklch(0.86 0.11 95);
+  --cup-chamomile-soft: oklch(0.31 0.05 95);
+  --cup-chamomile-deep: oklch(0.93 0.09 98);
 
   /* The full sweep of the fox's tail: green through teal to violet and rose. */
   --iridescent: linear-gradient(
@@ -619,6 +643,9 @@
   --cup-sencha: oklch(0.8 0.13 195); /* electric cyan */
   --cup-sencha-soft: oklch(0.33 0.06 210);
   --cup-sencha-deep: oklch(0.88 0.11 195);
+  --cup-chamomile: oklch(0.89 0.17 98);
+  --cup-chamomile-soft: oklch(0.35 0.07 98);
+  --cup-chamomile-deep: oklch(0.95 0.13 100);
 
   /* The whole spectrum at once; nothing here is reserved. */
   --iridescent: linear-gradient(

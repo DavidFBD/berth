@@ -9,7 +9,7 @@ import { LorePage } from "@/components/lore-page";
 
 const TITLE = "The Legend of LSTeaTime";
 const DESCRIPTION =
-  "How a tea house came to pour across twenty networks: the founding, the three blends, the kitchen that carries every tray, and the house rules by the door.";
+  "How a tea house came to pour across twenty networks: the founding, the blends, the kitchen that carries every tray, and the house rules by the door.";
 
 export const metadata: Metadata = {
   title: TITLE,

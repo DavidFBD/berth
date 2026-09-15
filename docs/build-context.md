@@ -63,6 +63,15 @@ Mobile-first Next.js 16 App Router app (React 19, TS, Tailwind v4, shadcn/ui bas
 
 Withdraw (mirror, NO approval step): `useLeverageYieldWithdraw().mutateAsyncSafe({ vault, srcChainKey, srcAddress, dstChainKey, outputToken, inputAmount: shares18dp, minOutputAmount })` → `vaultSwap({ ...built.value, walletProvider })` (payload carries `hubWalletSwap: true`). Quote with `token_src = vault.vault`, `token_dst = outputToken`. Max = user's share balance for that chainKey row. BTC output: minOutputAmount ≥ 546 sats.
 
+## Vault registry (four blends as of 2026-09-15)
+
+- `sodax.leverageYield.listVaults()` reads the SDK's STATIC registry, never the backend. `GET /v1/leverage-yield/vaults` serves four; @sodax/sdk 2.0.0 and stable 2.1.0 compile in three (the fourth is in 2.2.0-rc.5), so `lib/sodax-config` appends `lsodaSUSDS` to the SDK's exported `leverageYieldVaults`. The append is name-guarded, so it no-ops on the release that carries it — upgrading needs no edit, just an eventual deletion. `sodax-config.test.ts` pins both halves.
+- A vault needs a tea identity in `lib/vaults-meta` (title, teaName, cupKey, bowl, flavour, assetLine, strategy, gradient, steamThresholds) AND a `--cup-<key>` colour triple in all NINE theme blocks of `app/globals.css` (`:root`, `.dark`, and seven `.mode-*`), plus a `SILK_CUP` weave. Gold hues need HIGH lightness in oklch (L 0.72+); at mid lightness a yellow reads olive, and in near-monochrome sumie separate by hue instead, since every cup there shares one chroma.
+- Cup SHAPE is `meta.bowl`, not a `cupKey === "sencha"` test — that test was in four files and a fourth blend would have broken it silently.
+- The shelf grid sizes itself from `vaults.length` and tightens past three cups; the tea-name label reserves two lines so a wrapping name can't lift its cup off the shared baseline. `useFilledCups` has six fixed hook slots, so the shelf holds six before that needs touching.
+- Copy never counts the cups. `loreBlendsTitle`/`loreBlendsBody` in all eight voices and `shelfHint` are deliberately count-free after a fourth blend made eight lines untrue at once.
+- `/dev/tea` renders the real shelf (dev-only, 404 in prod), so a new blend can be reviewed without signing in.
+
 ## SODAX API key (added 2026-09-15)
 
 - SODAX mints partner API keys (portal.sodax.com; docs.sodax.com/developers/how-to/api-keys). They travel as an `x-api-key` header. Reads on `api.sodax.com` stay public; the WRITE routes are wired for the check and enforcement comes back on route by route.

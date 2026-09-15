@@ -17,6 +17,7 @@ export const SILK_CUP: Record<string, string> = {
   earlgrey: "#cdc2e8,#a494d4,#8a77c7,#6d59b3",
   breakfast: "#e3c896,#cfa963,#b98a41,#9c6e2c",
   sencha: "#c4dcc0,#9cc79e,#79ad82,#5c9468",
+  chamomile: "#f8efc9,#eeda97,#dcbe63,#c2a044",
 };
 
 /**

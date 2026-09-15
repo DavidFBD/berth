@@ -1,6 +1,8 @@
 import {
   ChainKeys,
+  leverageYieldVaults,
   type EvmChainKey,
+  type LeverageYieldVault,
   type PartnerFee,
   type SodaxOptions,
 } from "@sodax/sdk";
@@ -64,6 +66,38 @@ const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
 };
 
 /**
+ * The fourth cup, carried by hand until an SDK release brings it.
+ *
+ * `listVaults()` reads the SDK's STATIC registry, never the backend, and
+ * @sodax/sdk 2.0.0 (and stable 2.1.0) only know three vaults. lsodaSUSDS is
+ * deployed on the hub and the API already serves it from
+ * `GET /v1/leverage-yield/vaults` alongside the other three, verified
+ * 2026-09-15: the proxy answers `symbol() = lsodaSUSDS`, its `asset()` matches
+ * the entry below, and the solver quotes both directions. The values here are
+ * that response verbatim.
+ *
+ * Self-retiring: the append no-ops the moment the SDK's own registry carries
+ * the name, so an upgrade needs no edit here, only a deletion when convenient.
+ */
+const LSODA_SUSDS: LeverageYieldVault = {
+  name: "lsodaSUSDS",
+  vault: "0x758532F160D9D338bf662A4a59BA31a5B918A7cb",
+  asset: "0x243b0c26c8b38793908d7C64e8510f21B19B4613",
+  borrowToken: "0xb780e09576C2667ba9F5B80FbAb2e6b8A0a21e37",
+  lsdSource: {
+    poolId: "d8c4eff5-c8a9-46fc-a888-057c4c668e72",
+    fallbackAprPct: 3.5,
+    label: "Sky (sUSDS)",
+  },
+};
+
+const VAULTS: readonly LeverageYieldVault[] = leverageYieldVaults.some(
+  (vault) => vault.name === LSODA_SUSDS.name,
+)
+  ? leverageYieldVaults
+  : [...leverageYieldVaults, LSODA_SUSDS];
+
+/**
  * Our own mount for the keyed SODAX proxy (`app/api/sodax/[...path]`). The SDK
  * hangs `/quote`, `/status` and `/execute` off the endpoint below, so the
  * route handler receives `intent/<call>` and forwards it with the key.
@@ -102,6 +136,7 @@ const solverApiEndpoint = (
 export const sodaxConfig: SodaxOptions = {
   fee: PARTNER_FEE,
   solver: { solverApiEndpoint },
+  leverageYield: { vaults: VAULTS },
   chains: {
     ...PINNED_EVM_RPCS,
     [ChainKeys.BITCOIN_MAINNET]: {

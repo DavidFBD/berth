@@ -109,6 +109,9 @@ export const DEFAULT_MODE: ModeId = "original";
 /** Every line of personality the UI speaks, keyed once. */
 export type Copy = {
   /* — cup card — */
+  /** Under the shelf when no cup is taken down. Never counts the cups: the
+   *  registry decides how many there are, and it has grown once already. */
+  shelfHint: string;
   pour: string;
   pourFirst: string;
   pourBack: string;
@@ -391,6 +394,8 @@ const ORIGINAL: Copy = {
   mottoDisplay: "LSTeaTime is the best time.",
   poweredBy: "Powered by SODAX · real funds, real tea",
 
+  shelfHint: "Blends warmed and waiting. Pick a cup.",
+
   pourIntoTitle: (teaName) => `Pour into ${teaName}`,
   pourTitleFallback: "Pour a cup",
   pourSub: "Any asset, any network. It all becomes tea.",
@@ -523,9 +528,9 @@ const ORIGINAL: Copy = {
   loreFoundingTitle: "The founding",
   loreFoundingBody:
     "One afternoon, an empty folder was warmed until it became a tea house. A parliament of AI agents measured, brewed, and argued about steam until the porcelain rang true. No crypto jargon survived the tasting; only tea remained.",
-  loreBlendsTitle: "The three blends",
+  loreBlendsTitle: "The blends",
   loreBlendsBody:
-    "Three cups sit on the shelf, and each is a quiet machine: staked yield, folded and refolded until the leaves earn more than they would alone. Pick by flavour. The cups do the arithmetic.",
+    "Every cup on the shelf is a quiet machine: staked yield, folded and refolded until the leaves earn more than they would alone. Some are strong, one is calm as a dollar. Pick by flavour. The cups do the arithmetic.",
   loreKitchenTitle: "The teapot and the kitchen",
   loreKitchenBody:
     "Send anything from ~200 assets across 20 networks and it waits in your teapot. When you pour, the kitchen (a network of solvers) carries the tray: one signature, any asset in, steeping tea out. The porcelain underneath is SODAX.",
@@ -743,9 +748,9 @@ const GANGSTER: Partial<Copy> = {
   loreFoundingTitle: "The come-up",
   loreFoundingBody:
     "One afternoon, an empty folder got put on. A crew of agents measured, brewed, and beefed about steam until the porcelain rang. No jargon made it out alive.",
-  loreBlendsTitle: "The three blends",
+  loreBlendsTitle: "The blends",
   loreBlendsBody:
-    "Three cups on the shelf, every one a quiet hustle: staked yield folded until the leaves work double shifts. Pick your flavour. The cups run the numbers.",
+    "Every cup on the shelf is a quiet hustle: staked yield folded until the leaves work double shifts. Some run hot, one keeps its head. Pick your flavour. The cups run the numbers.",
   loreKitchenTitle: "The stash and the kitchen",
   loreKitchenBody:
     "Send anything from any block and it waits in your stash. Pour, and the kitchen walks the tray over: one signature, tea on the other side. The porcelain underneath is SODAX.",
@@ -914,9 +919,9 @@ const NAN: Partial<Copy> = {
   loreFoundingTitle: "How it began",
   loreFoundingBody:
     "One afternoon, love, an empty folder was warmed through until it became a tea house. A gaggle of helpful agents measured and brewed and had words about the steam. Only tea survived, which is as it should be.",
-  loreBlendsTitle: "The three blends",
+  loreBlendsTitle: "The blends",
   loreBlendsBody:
-    "Three cups on the shelf, each one clever as anything: staked yield folded over and over so the leaves earn their keep. Pick whichever takes your fancy. The cups do the sums.",
+    "Every cup on the shelf is clever as anything: staked yield folded over and over so the leaves earn their keep. There's a calm one now, too, for when you fancy something gentle. Pick whichever takes your fancy. The cups do the sums.",
   loreKitchenTitle: "The teapot and the kitchen",
   loreKitchenBody:
     "Send along whatever you've got and it waits in the pot. When you pour, the kitchen carries the tray over: one signature and it's steeping. The porcelain underneath is SODAX. Lovely stuff.",
@@ -1096,7 +1101,7 @@ const TERMINAL: Partial<Copy> = {
     "one afternoon: mkdir, then a tea house. n agents measured, brewed, argued about steam. jargon: zero survivors.",
   loreBlendsTitle: "the blends",
   loreBlendsBody:
-    "3 cups. each = staked yield, looped. leaves earn more than leaves idle. pick flavour; cups do math.",
+    "n cups, n = len(shelf). each = staked yield, looped. leaves earn more than leaves idle. one runs flat by design. pick flavour; cups do math.",
   loreKitchenTitle: "pot + kitchen",
   loreKitchenBody:
     "send anything from 20 chains. it waits in the pot. pour = 1 signature; solver network carries the tray. base layer: SODAX.",
@@ -1264,9 +1269,9 @@ const VAPORWAVE: Partial<Copy> = {
   loreFoundingTitle: "Genesis",
   loreFoundingBody:
     "One eternal afternoon, an empty folder dissolved into a tea house. A choir of agents measured, brewed, and argued about steam until the marble hummed. Only aesthetics survived.",
-  loreBlendsTitle: "The three artifacts",
+  loreBlendsTitle: "The artifacts",
   loreBlendsBody:
-    "Three cups on the shelf, each a quiet machine: staked yield folded like light in pool water. Choose your artifact. The cups compute.",
+    "Every cup on the shelf is a quiet machine: staked yield folded like light in pool water. One of them holds perfectly still. Choose your artifact. The cups compute.",
   loreKitchenTitle: "The fountain and the kitchen",
   loreKitchenBody:
     "Send anything across twenty networks; it shimmers in the fountain. Pour once, sign once, and the kitchen glides the tray through the arcade. Beneath the marble: SODAX.",
@@ -1429,9 +1434,9 @@ const SUMIE: Partial<Copy> = {
   loreFoundingTitle: "Origin",
   loreFoundingBody:
     "An afternoon. An empty folder, warmed. Many hands measured; some doubted. Tea remained.",
-  loreBlendsTitle: "Three blends",
+  loreBlendsTitle: "The blends",
   loreBlendsBody:
-    "Three cups. Each folds yield upon yield, quietly. Choose. The cups count.",
+    "Cups on a shelf. Each folds yield upon yield, quietly. One is quieter still. Choose. The cups count.",
   loreKitchenTitle: "Pot and kitchen",
   loreKitchenBody:
     "Send anything. It waits. One signature; the tray is carried. Beneath: SODAX.",
@@ -1600,9 +1605,9 @@ const AURORA: Partial<Copy> = {
   loreFoundingTitle: "The first fire",
   loreFoundingBody:
     "One long night, an empty folder was fed to the stove until a tea house stood in the snow. Agents split firewood, tended the steam, argued gently. Only warmth survived.",
-  loreBlendsTitle: "The three blends",
+  loreBlendsTitle: "The blends",
   loreBlendsBody:
-    "Three cups glow on the shelf, each a small aurora: staked yield folded like light over a frozen lake. Pick your colour. The cups keep count.",
+    "The cups glow on the shelf, each a small aurora: staked yield folded like light over a frozen lake. One burns steady, the way a stove does. Pick your colour. The cups keep count.",
   loreKitchenTitle: "The pot and the kitchen",
   loreKitchenBody:
     "Send anything across twenty shores; it keeps well in the cold. Pour, sign once, and the kitchen carries the tray across the ice. Under the snow: SODAX.",
@@ -1700,9 +1705,9 @@ const LSD: Partial<Copy> = {
   loreFoundingTitle: "The awakening",
   loreFoundingBody:
     "One afternoon that may still be happening, an empty folder blinked and became a tea house. Agents measured, brewed, and stared at the steam until it made sense. The jargon dissolved first.",
-  loreBlendsTitle: "The three blends",
+  loreBlendsTitle: "The blends",
   loreBlendsBody:
-    "Three cups breathe on the shelf, each a small perpetual pattern: staked yield folded into itself like a fractal. Pick a colour. The cups do the math so you can watch the walls.",
+    "The cups breathe on the shelf, each a small perpetual pattern: staked yield folded into itself like a fractal. One of them refuses to shimmer at all. Pick a colour. The cups do the math so you can watch the walls.",
   loreKitchenTitle: "The pot and the kitchen",
   loreKitchenBody:
     "Send anything from any dimension; it hums in the pot. Pour, sign once, and the kitchen floats the tray across. Underneath the pattern: SODAX.",

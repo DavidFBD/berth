@@ -49,6 +49,7 @@ const CUPS = [
   { cup: "earlgrey", fill: 0.65, level: 2, bowl: false },
   { cup: "breakfast", fill: 0.82, level: 3, bowl: false },
   { cup: "sencha", fill: 0.4, level: 2, bowl: true },
+  { cup: "chamomile", fill: 0.55, level: 1, bowl: false },
 ] as const;
 
 function WelcomeScreen() {
@@ -78,17 +79,17 @@ function WelcomeScreen() {
         </div>
       )}
 
-      {/* The three blends, warmed and waiting */}
-      <div className="flex items-end gap-4">
+      {/* The blends, warmed and waiting */}
+      <div className="flex items-end gap-2.5">
         {CUPS.map(({ cup, fill, level, bowl }) => (
           <div key={cup} className="flex flex-col items-center">
-            <SteamPlume level={level} width={56} height={36} />
+            <SteamPlume level={level} width={48} height={34} />
             <CupArt
               accent={`var(--cup-${cup})`}
               deep={`var(--cup-${cup}-deep)`}
               fill={fill}
               bowl={bowl}
-              size={64}
+              size={58}
             />
           </div>
         ))}

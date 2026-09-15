@@ -22,7 +22,13 @@ export type VaultMeta = {
   /** LSTeaTime tea name for the cup (design-system canon). */
   teaName: string;
   /** Cup accent key — matches the --cup-<key> CSS variable family. */
-  cupKey: "earlgrey" | "breakfast" | "sencha";
+  cupKey: "earlgrey" | "breakfast" | "sencha" | "chamomile";
+  /**
+   * Handleless bowl instead of a handled cup. A field rather than a
+   * `cupKey === "sencha"` test at every call site, which is what a fourth
+   * blend would have silently broken.
+   */
+  bowl: boolean;
   /** Blend badge label. */
   flavour: string;
   /** Descriptive asset line under the tea name. */
@@ -53,6 +59,7 @@ export const VAULTS_META: Record<string, VaultMeta> = {
     glyph: "Ξ",
     teaName: "Earl Grey",
     cupKey: "earlgrey",
+    bowl: false,
     flavour: "ETH flavour",
     assetLine: "EtherFi weETH",
     steamThresholds: [0.02, 0.2, 2],
@@ -68,6 +75,7 @@ export const VAULTS_META: Record<string, VaultMeta> = {
     glyph: "Ξ",
     teaName: "English Breakfast",
     cupKey: "breakfast",
+    bowl: false,
     flavour: "ETH flavour",
     assetLine: "Lido wstETH",
     steamThresholds: [0.015, 0.15, 1.5],
@@ -83,9 +91,28 @@ export const VAULTS_META: Record<string, VaultMeta> = {
     glyph: "◎",
     teaName: "Sencha",
     cupKey: "sencha",
+    bowl: true,
     flavour: "SOL flavour",
     assetLine: "Jito JitoSOL",
     steamThresholds: [0.3, 3, 30],
+  },
+  lsodaSUSDS: {
+    title: "Leveraged sUSDS",
+    underlyingSymbol: "sUSDS",
+    borrowSymbol: "USDS",
+    strategy:
+      "Loops Sky savings USDS against borrowed USDS to multiply the savings rate.",
+    ecosystem: "Ethereum",
+    gradient: "from-amber-400/20 to-yellow-500/5",
+    glyph: "$",
+    teaName: "Chamomile",
+    cupKey: "chamomile",
+    bowl: false,
+    flavour: "USD flavour",
+    assetLine: "Sky sUSDS",
+    // The only vault whose underlying is a dollar, so its fallback bands are
+    // the USD bands unconverted.
+    steamThresholds: USD_STEAM_BANDS,
   },
 };
 
@@ -99,6 +126,7 @@ export const FALLBACK_VAULT_META: VaultMeta = {
   glyph: "◈",
   teaName: "House Blend",
   cupKey: "breakfast",
+  bowl: false,
   flavour: "mystery flavour",
   assetLine: "Sonic hub vault",
   steamThresholds: [0.02, 0.2, 2],

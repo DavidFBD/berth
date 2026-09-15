@@ -70,7 +70,7 @@ export function LorePage() {
                 accent={`var(--cup-${blend.cupKey})`}
                 deep={`var(--cup-${blend.cupKey}-deep)`}
                 fill={0.7}
-                bowl={blend.cupKey === "sencha"}
+                bowl={blend.bowl}
                 size={52}
                 silk={SILK_CUP[blend.cupKey]}
               />

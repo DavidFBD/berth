@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useSodaxContext, type LeverageYieldVault } from "@sodax/dapp-kit";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCopy } from "@/components/settings-provider";
 import { CupArt, SteamPlume } from "@/components/tea/tea-art";
 import { SILK_CUP } from "@/components/tea/silk";
 import { useCupView } from "@/hooks/use-cup-view";
@@ -50,6 +51,7 @@ export function VaultList({
   bloomVault?: string | null;
 }) {
   const { sodax } = useSodaxContext();
+  const copy = useCopy();
   const vaults = sodax.leverageYield.listVaults();
   const [selected, setSelected] = useState<string | null>(null);
   // Which way the card slides on an A→B swap: toward the tapped cup.
@@ -83,7 +85,16 @@ export function VaultList({
     <div>
       {/* The shelf: cups sit on the board; the board is a warm wooden line. */}
       <div className="rounded-2xl border border-border bg-card px-3 pt-3 pb-4 shadow-sm">
-        <div className="grid grid-cols-3 items-end">
+        {/* One column per cup, however many the registry carries — a fixed
+            grid-cols-3 is what a fourth blend would have wrapped onto its own
+            lonely row. Cups shrink a little past three so four still stand on
+            a 390px shelf without their names wrapping. */}
+        <div
+          className="grid items-end"
+          style={{
+            gridTemplateColumns: `repeat(${vaults.length}, minmax(0, 1fr))`,
+          }}
+        >
           {vaults.map((vault, index) => (
             // First-mount ripple, left to right — decorative, so it never
             // gates taps (pointer events stay live from frame one).
@@ -95,6 +106,7 @@ export function VaultList({
             >
               <ShelfCup
                 vault={vault}
+                crowded={vaults.length > 3}
                 selected={vault.vault === selected}
                 dimmed={
                   anyFilled && !filled[index] && vault.vault !== selected
@@ -124,7 +136,7 @@ export function VaultList({
           }}
         />
         <p className="mt-2.5 text-center text-[11.5px] text-muted-foreground">
-          {active ? " " : "Three blends, warmed and waiting. Pick a cup."}
+          {active ? " " : copy.shelfHint}
         </p>
       </div>
 
@@ -183,11 +195,14 @@ export function VaultList({
 /** One cup on the shelf: live steam, live APY, lifts when picked. */
 function ShelfCup({
   vault,
+  crowded,
   selected,
   dimmed,
   onSelect,
 }: {
   vault: LeverageYieldVault;
+  /** More than three cups on the shelf: everything tightens a notch. */
+  crowded: boolean;
   selected: boolean;
   /** True when another cup holds tea and this one doesn't: step back. */
   dimmed: boolean;
@@ -217,18 +232,22 @@ function ShelfCup({
         dimmed && "opacity-45 saturate-[0.3]",
       )}
     >
-      <SteamPlume level={steamLevel} width={54} height={26} />
+      <SteamPlume level={steamLevel} width={crowded ? 44 : 54} height={26} />
       <CupArt
         accent={accent}
         deep={deep}
         fill={fill}
-        bowl={meta.cupKey === "sencha"}
-        size={62}
+        bowl={meta.bowl}
+        size={crowded ? 54 : 62}
         silk={SILK_CUP[meta.cupKey]}
       />
+      {/* Two lines of room whether or not this name needs them: the grid is
+          items-end, so a cup whose label wraps would otherwise ride higher
+          than its neighbours and break the shelf's baseline. */}
       <span
         className={cn(
-          "mt-1.5 font-display text-[13px] leading-tight transition-colors",
+          "mt-1.5 flex items-start justify-center font-display leading-tight transition-colors",
+          crowded ? "h-[2.4em] text-[11px]" : "text-[13px]",
           selected ? "text-foreground" : "text-muted-foreground",
         )}
       >

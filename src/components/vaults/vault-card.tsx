@@ -163,7 +163,7 @@ export function VaultCard({
             accent={accent}
             deep={deep}
             fill={cup.fill}
-            bowl={meta.cupKey === "sencha"}
+            bowl={meta.bowl}
             size={78}
             silk={SILK_CUP[meta.cupKey]}
           />

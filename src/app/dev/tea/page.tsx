@@ -2,9 +2,10 @@
 
 import { notFound } from "next/navigation";
 import { CupArt, PourScene, SteamPlume, TeapotArt } from "@/components/tea/tea-art";
+import { VaultList } from "@/components/vaults";
 import { Spinner } from "@/components/ui/spinner";
 
-const CUPS = ["earlgrey", "breakfast", "sencha"] as const;
+const CUPS = ["earlgrey", "breakfast", "sencha", "chamomile"] as const;
 const FILLS = [0, 0.25, 0.5, 0.75, 1];
 
 /**
@@ -15,6 +16,14 @@ export default function TeaGalleryPage() {
   if (process.env.NODE_ENV === "production") notFound();
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-10 px-6 py-10">
+      {/* The real shelf, unsigned-in: how many cups the registry actually
+          carries and whether they still stand on a phone-width board. */}
+      <Section title="The shelf">
+        <div className="w-full max-w-md">
+          <VaultList onDeposit={() => {}} onWithdraw={() => {}} />
+        </div>
+      </Section>
+
       <Section title="Cups by fill">
         {CUPS.map((cup) => (
           <div key={cup} className="flex items-end gap-3">
