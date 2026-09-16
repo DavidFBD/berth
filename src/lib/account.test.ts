@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys } from "@sodax/sdk";
-import { resolveAccount, type AccountSession } from "./account";
+import {
+  HOME_CHAIN,
+  homeSpokeAddress,
+  resolveAccount,
+  type AccountSession,
+} from "./account";
 
 const EMBEDDED = "0xE0000000000000000000000000000000000000dd";
 const STORE = "0x5000000000000000000000000000000000000005";
@@ -69,5 +74,20 @@ describe("resolveAccount", () => {
     expect(
       resolveAccount(ChainKeys.SOLANA_MAINNET, emailSession, undefined),
     ).toEqual({ address: undefined, mode: "external" });
+  });
+});
+
+describe("the home account", () => {
+  it("derives from Base, the one canonical spoke", () => {
+    expect(HOME_CHAIN).toBe(ChainKeys.BASE_MAINNET);
+  });
+
+  it("is the embedded address in an email session", () => {
+    expect(homeSpokeAddress(emailSession)).toBe(EMBEDDED);
+  });
+
+  it("does not exist for external-only or still-warming browsers", () => {
+    expect(homeSpokeAddress(externalSession)).toBeUndefined();
+    expect(homeSpokeAddress(warmingSession)).toBeUndefined();
   });
 });

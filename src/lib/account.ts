@@ -1,4 +1,4 @@
-import { isEvmChainKeyType, type SpokeChainKey } from "@sodax/sdk";
+import { ChainKeys, isEvmChainKeyType, type SpokeChainKey } from "@sodax/sdk";
 
 /**
  * THE rule for whose address the user is on a given chain. It used to be
@@ -46,4 +46,23 @@ export function resolveAccount(
     return { address: session.embeddedEvmAddress, mode: "email" };
   }
   return { address: storeAddress, mode: "external" };
+}
+
+/**
+ * The home chain: the one spoke every account's shelf derives from. A hub
+ * wallet is a function of (chainKey, address), so the same Privy address
+ * would own a different shelf per chain; picking one chain once is what makes
+ * "one account, one place to sell" true. Base, because it is the cheapest
+ * EVM spoke the embedded wallet signs on, and every sell is one signature
+ * there (decided 2026-09-16).
+ */
+export const HOME_CHAIN: SpokeChainKey = ChainKeys.BASE_MAINNET;
+
+/**
+ * The spoke address the account derives from: the Privy embedded EVM address,
+ * and nothing else. External wallets fund a buy; they never own the shelf,
+ * so a browser without an email session has no account, only a teapot.
+ */
+export function homeSpokeAddress(session: AccountSession): string | undefined {
+  return session.emailSession ? session.embeddedEvmAddress : undefined;
 }
