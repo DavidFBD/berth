@@ -102,7 +102,7 @@ Build, in this order, and stop when the demo is clean:
 4. Ownership disclosure screen from the wrapper facts above, shown before first buy, and a flat portfolio list that never sums different wrappers of the same stock.
 5. KYC-linked gating via a vendor sandbox plus the Phantom exclusion list; terms and risk disclosures.
 6. Natural-language orders: Claude tool-use that calls the existing quote endpoint through the server proxy and returns a signed-by-user intent. Propose, never sign.
-7. Rebrand: name, mark, colors, base voice only. Keep the copy engine and the XP ledger mechanics; delete the parlours, lore, tea art and tea rank names or leave them dormant behind a flag.
+7. Rebrand: rename, don't remove. Name, mark, colors, one base voice. The consumer layer carries over unchanged: avatar picker, referral program (verified first-trade payout), rank ladder with new names, theme switcher mechanics, multi-currency display, email login and the error pipeline. Only the tea personalities, lore and tea art go dormant behind a flag. (David, 2026-09-16: these features are no-brainers in any consumer app and must not be shed.)
 8. Submission assets: three-minute pitch, sub-three-minute demo (native BTC to SPY, cash to SGOV, a natural-language order), GTM section naming a first corridor, disclosure of pre-Sep-14 code, GitHub access for hackathon@colosseum.com.
 
 Cut: cross-wrapper best execution, recurring DCA (needs delegated signing), xStocks (phase two), any money-market supply, leaderboard, agent-as-wallet.
