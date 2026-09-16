@@ -189,6 +189,9 @@ export type Copy = {
   ctaTooMuch: string;
   ctaSwitchNetwork: string;
   ctaNoRoute: string;
+  /** `amount` arrives pre-formatted in the user's currency: "€1.00". */
+  ctaPourAtLeast: (amount: string) => string;
+  smallestPour: (amount: string) => string;
   ctaReadingLeaves: string;
   pourFilledTitle: string;
   pourFilledBody: string;
@@ -418,6 +421,8 @@ const ORIGINAL: Copy = {
   ctaTooMuch: "A touch more than your teapot holds",
   ctaSwitchNetwork: "Switch network",
   ctaNoRoute: "No blend path for this pair",
+  ctaPourAtLeast: (amount) => `Pour at least ${amount}`,
+  smallestPour: (amount) => `The smallest pour the kettle takes is ${amount}`,
   ctaReadingLeaves: "Reading the leaves…",
   pourFilledTitle: "Your cup is poured.",
   pourFilledBody: "The steam does the rest.",
@@ -821,6 +826,9 @@ const NAN: Partial<Copy> = {
   ctaTooMuch: "A touch more than the pot holds, love",
   ctaSwitchNetwork: "Switch over, dear",
   ctaNoRoute: "No blend path for that pair, I'm afraid",
+  ctaPourAtLeast: (amount) => `A touch more, dear, at least ${amount}`,
+  smallestPour: (amount) =>
+    `The kettle won't stir for less than ${amount}, love`,
   ctaReadingLeaves: "Reading the leaves…",
   pourFilledTitle: "There we are, poured.",
   pourFilledBody: "The steam does the rest, love.",
@@ -997,6 +1005,8 @@ const TERMINAL: Partial<Copy> = {
   ctaTooMuch: "err: amount > balance",
   ctaSwitchNetwork: "switch network",
   ctaNoRoute: "err: no route",
+  ctaPourAtLeast: (amount) => `err: min pour ${amount}`,
+  smallestPour: (amount) => `min_pour=${amount}`,
   ctaReadingLeaves: "quoting…",
   pourFilledTitle: "pour filled.",
   pourFilledBody: "position live. steam handles the rest_",

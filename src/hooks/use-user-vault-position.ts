@@ -18,6 +18,18 @@ import { useAccountSession } from "@/hooks/use-account";
 /** One vault share (18 decimals) — reads the price-per-share via previewRedeem. */
 const ONE_SHARE = 10n ** 18n;
 
+/**
+ * Every holder row is one `balanceOf` on the Sonic hub, per cup, per tick: an
+ * EVM account fans out to twelve source chains, so four cups make 48 reads a
+ * tick, and the SDK's hub client neither batches nor multicalls (each read is
+ * its own POST to rpc.soniclabs.com). At the hook's 15s default that looked,
+ * from outside, like the same call ten times over every few seconds (Paul,
+ * 2026-09-16). A minute is plenty: the pour machine invalidates
+ * `['leverageYield']` the moment a fill lands, so freshness after a pour never
+ * waited on this interval anyway.
+ */
+const SHARE_BALANCE_REFETCH_MS = 60_000;
+
 /** Non-zero share balance held under one source chain's derived hub wallet. */
 export type UserVaultChainShares = {
   chainKey: SpokeChainKey;
@@ -101,6 +113,7 @@ export function useUserVaultPosition(
 
   const balanceQueries = useLeverageYieldShareBalances({
     params: { vault, holders },
+    queryOptions: { refetchInterval: SHARE_BALANCE_REFETCH_MS },
   });
 
   const { data: pricePerShare } = useLeverageYieldPreviewRedeem({

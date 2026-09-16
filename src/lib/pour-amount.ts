@@ -17,6 +17,39 @@ export const SHARE_DECIMALS = 18;
 /** Bitcoin dust limit — the solver can't deliver less than this. */
 export const BTC_DUST_SATS = 546n;
 
+/**
+ * The smallest pour the solver will price, in USD. Under about half a dollar
+ * the quote comes back "No path was found" for pairs that route perfectly
+ * well (measured 2026-09-16 with USDC from Base: lsodaWEETH priced from
+ * $0.20, lsodaJITOSOL from $0.50 to $0.60, and the floor moved between runs),
+ * and the app would have to word that as "no route". One dollar clears every
+ * floor we saw with room for the fee and a price move, and it is the number
+ * SODAX themselves give for it.
+ */
+export const MIN_POUR_USD = 1;
+
+/**
+ * The floor in USD, rounded up to a whole unit of the user's display currency
+ * (`rate` = display units per USD) so the label can say "€1" and mean it. A
+ * rate that hasn't settled (0, NaN) counts as USD.
+ */
+export function minPourUsd(rate = 1): number {
+  const fx = rate > 0 && Number.isFinite(rate) ? rate : 1;
+  return Math.ceil(MIN_POUR_USD * fx) / fx;
+}
+
+/**
+ * Whether a priced pour sits under the floor. An unpriced pour passes: with
+ * no oracle price there is nothing to compare, and the solver keeps the last
+ * word as before.
+ */
+export function belowMinimum(
+  worthUsd: number | undefined,
+  rate = 1,
+): boolean {
+  return worthUsd !== undefined && worthUsd < minPourUsd(rate);
+}
+
 export type PourAmounts = {
   /** Whether the field is being read as money (priced tokens only). */
   moneyMode: boolean;
@@ -158,6 +191,7 @@ export type PourGate =
   | { kind: "enterAmount" }
   | { kind: "balanceLoading" }
   | { kind: "insufficient" }
+  | { kind: "belowMinimum" }
   | { kind: "wrongChain" }
   | { kind: "noRoute" }
   | { kind: "belowDust" }
@@ -168,6 +202,7 @@ export function depositGate(state: {
   address: string | undefined;
   buildAmount: bigint | undefined;
   balance: bigint | undefined;
+  belowMinimum: boolean;
   isWrongChain: boolean;
   noRoute: boolean;
   quoted: bigint | undefined;
@@ -182,6 +217,9 @@ export function depositGate(state: {
   if (!state.buildAmount) return { kind: "enterAmount" };
   if (state.balance === undefined) return { kind: "balanceLoading" };
   if (state.buildAmount > state.balance) return { kind: "insufficient" };
+  // After the balance (you can't be asked for a dollar you don't hold) and
+  // before the network: a too-small pour is fixed in the field, not the wallet.
+  if (state.belowMinimum) return { kind: "belowMinimum" };
   if (state.isWrongChain) return { kind: "wrongChain" };
   if (state.noRoute) return { kind: "noRoute" };
   if (
@@ -201,6 +239,7 @@ export function withdrawGate(state: {
   usingCustomRecipient: boolean;
   buildAmount: bigint | undefined;
   availableShares: bigint;
+  belowMinimum: boolean;
   isWrongChain: boolean;
   noRoute: boolean;
   belowDust: boolean;
@@ -217,6 +256,7 @@ export function withdrawGate(state: {
   }
   if (!state.buildAmount) return { kind: "enterAmount" };
   if (state.buildAmount > state.availableShares) return { kind: "insufficient" };
+  if (state.belowMinimum) return { kind: "belowMinimum" };
   if (state.isWrongChain) return { kind: "wrongChain" };
   if (state.noRoute) return { kind: "noRoute" };
   if (state.belowDust) return { kind: "belowDust" };

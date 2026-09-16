@@ -5,8 +5,10 @@ import {
   amountText,
   applySlippage,
   belowBtcDust,
+  belowMinimum,
   depositGate,
   depositMax,
+  minPourUsd,
   minReceivedFor,
   pourAmounts,
   quoteInputFor,
@@ -130,12 +132,39 @@ describe("belowBtcDust", () => {
   });
 });
 
+describe("the pour floor", () => {
+  it("is one dollar in USD", () => {
+    expect(minPourUsd(1)).toBe(1);
+    expect(belowMinimum(0.99)).toBe(true);
+    expect(belowMinimum(1)).toBe(false);
+  });
+
+  it("rounds up to a whole unit of the display currency", () => {
+    // €0.86 per dollar: the floor becomes €1, which is $1.163.
+    expect(minPourUsd(0.86)).toBeCloseTo(1 / 0.86);
+    expect(belowMinimum(1.1, 0.86)).toBe(true);
+    expect(belowMinimum(1.2, 0.86)).toBe(false);
+    // ¥150 per dollar: ¥150 is exactly a dollar.
+    expect(minPourUsd(150)).toBe(1);
+  });
+
+  it("treats an unsettled rate as USD", () => {
+    expect(minPourUsd(0)).toBe(1);
+    expect(minPourUsd(Number.NaN)).toBe(1);
+  });
+
+  it("lets unpriced pours through to the solver", () => {
+    expect(belowMinimum(undefined)).toBe(false);
+  });
+});
+
 describe("depositGate", () => {
   const ready = {
     hasToken: true,
     address: "0xabc",
     buildAmount: 100n,
     balance: 200n,
+    belowMinimum: false,
     isWrongChain: false,
     noRoute: false,
     quoted: 90n,
@@ -153,6 +182,7 @@ describe("depositGate", () => {
     expect(depositGate({ ...ready, buildAmount: undefined }).kind).toBe("enterAmount");
     expect(depositGate({ ...ready, balance: undefined }).kind).toBe("balanceLoading");
     expect(depositGate({ ...ready, buildAmount: 300n }).kind).toBe("insufficient");
+    expect(depositGate({ ...ready, belowMinimum: true }).kind).toBe("belowMinimum");
     expect(depositGate({ ...ready, isWrongChain: true }).kind).toBe("wrongChain");
     expect(depositGate({ ...ready, noRoute: true }).kind).toBe("noRoute");
     expect(depositGate({ ...ready, quoted: undefined }).kind).toBe("quotePending");
@@ -170,6 +200,15 @@ describe("depositGate", () => {
       depositGate({ ...ready, buildAmount: 300n, isWrongChain: true }).kind,
     ).toBe("insufficient");
   });
+
+  it("asks for a bigger pour before a network switch, and after the balance", () => {
+    expect(
+      depositGate({ ...ready, belowMinimum: true, isWrongChain: true }).kind,
+    ).toBe("belowMinimum");
+    expect(
+      depositGate({ ...ready, belowMinimum: true, buildAmount: 300n }).kind,
+    ).toBe("insufficient");
+  });
 });
 
 describe("withdrawGate", () => {
@@ -180,6 +219,7 @@ describe("withdrawGate", () => {
     usingCustomRecipient: false,
     buildAmount: 100n,
     availableShares: 200n,
+    belowMinimum: false,
     isWrongChain: false,
     noRoute: false,
     belowDust: false,
@@ -190,6 +230,16 @@ describe("withdrawGate", () => {
 
   it("passes a complete pour-back", () => {
     expect(withdrawGate(ready)).toEqual({ kind: "ready" });
+  });
+
+  it("asks for a bigger pour-back after the cup's balance, before the network", () => {
+    expect(withdrawGate({ ...ready, belowMinimum: true }).kind).toBe("belowMinimum");
+    expect(
+      withdrawGate({ ...ready, belowMinimum: true, buildAmount: 300n }).kind,
+    ).toBe("insufficient");
+    expect(
+      withdrawGate({ ...ready, belowMinimum: true, isWrongChain: true }).kind,
+    ).toBe("belowMinimum");
   });
 
   it("distinguishes a bad custom address from a missing destination wallet", () => {

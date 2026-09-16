@@ -31,6 +31,8 @@ import {
   SHARE_DECIMALS,
   amountText,
   belowBtcDust,
+  belowMinimum,
+  minPourUsd,
   pourAmounts,
   withdrawGate,
 } from "@/lib/pour-amount";
@@ -145,8 +147,15 @@ export function WithdrawDrawer({
     SHARE_DECIMALS,
     entryPrice,
   );
+  // Under the floor the solver answers "no path" for a pair that routes
+  // fine, so it isn't asked: the field gets the real reason instead.
+  const tooSmall = belowMinimum(
+    buildAmount ? sharesWorthUsd(buildAmount) : undefined,
+    money.rate,
+  );
+  const smallestPourLabel = money.format(minPourUsd(money.rate));
   const quote = usePourQuote({
-    enabled: open && !!vault && !!dstChainKey && !!outputToken,
+    enabled: open && !!vault && !!dstChainKey && !!outputToken && !tooSmall,
     src: vault
       ? { address: vault.vault, chainKey: ChainKeys.SONIC_MAINNET }
       : null,
@@ -261,6 +270,7 @@ export function WithdrawDrawer({
     usingCustomRecipient: usingCustom,
     buildAmount,
     availableShares,
+    belowMinimum: tooSmall,
     isWrongChain,
     noRoute: quote.noRoute,
     belowDust: dustBlocked,
@@ -296,6 +306,11 @@ export function WithdrawDrawer({
         return { label: copy.ctaPourBackHowMuch, disabled: true };
       case "insufficient":
         return { label: copy.ctaCupNotThatFull, disabled: true };
+      case "belowMinimum":
+        return {
+          label: copy.ctaPourAtLeast(smallestPourLabel),
+          disabled: true,
+        };
       case "wrongChain":
         return {
           label: copy.ctaSwitchNetwork,
@@ -555,7 +570,11 @@ export function WithdrawDrawer({
                 {/* Live quote */}
                 {dstChainKey && outputToken && buildAmount ? (
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
-                    {quote.noRoute ? (
+                    {tooSmall ? (
+                      <span className="text-destructive">
+                        {copy.smallestPour(smallestPourLabel)}
+                      </span>
+                    ) : quote.noRoute ? (
                       <span className="text-destructive">
                         {copy.noRouteForPair}
                       </span>

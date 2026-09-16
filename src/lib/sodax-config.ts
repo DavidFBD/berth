@@ -1,10 +1,12 @@
 import {
   ChainKeys,
   leverageYieldVaults,
+  sonicSupportedTokens,
   type EvmChainKey,
   type LeverageYieldVault,
   type PartnerFee,
   type SodaxOptions,
+  type XToken,
 } from "@sodax/sdk";
 import type { SodaxWalletConfig } from "@sodax/wallet-sdk-react";
 
@@ -98,6 +100,34 @@ const VAULTS: readonly LeverageYieldVault[] = leverageYieldVaults.some(
   : [...leverageYieldVaults, LSODA_SUSDS];
 
 /**
+ * The same cup, as the SDK's ConfigService needs to see it. `listVaults()` is
+ * only the shelf: every quote and every deposit build first asks
+ * `isValidOriginalAssetAddress(sonic, vault)`, which reads
+ * `chains[sonic].supportedTokens`, and 2.0.0's Sonic table stops at three
+ * lsoda tokens. Without this entry the fourth cup renders, prices and counts
+ * its shares, and then the solver is never asked: `getQuote` throws
+ * "unsupported token_dst" before the request leaves, so the drawer reads the
+ * leaves forever (field-found 2026-09-16, a one-euro pour that never quoted;
+ * verified the entry makes both directions quote). Same self-retiring guard
+ * as the vault append above: the release that knows the symbol turns this
+ * into an empty override.
+ */
+const LSODA_SUSDS_TOKEN: XToken = {
+  symbol: "lsodaSUSDS",
+  name: "Leveraged Soda sUSDS",
+  decimals: 18,
+  address: LSODA_SUSDS.vault,
+  chainKey: ChainKeys.SONIC_MAINNET,
+  hubAsset: LSODA_SUSDS.vault,
+  vault: LSODA_SUSDS.vault,
+};
+
+const SONIC_TOKEN_OVERRIDES: Record<string, XToken> =
+  LSODA_SUSDS_TOKEN.symbol in sonicSupportedTokens
+    ? {}
+    : { [LSODA_SUSDS_TOKEN.symbol]: LSODA_SUSDS_TOKEN };
+
+/**
  * Our own mount for the keyed SODAX proxy (`app/api/sodax/[...path]`). The SDK
  * hangs `/quote`, `/status` and `/execute` off the endpoint below, so the
  * route handler receives `intent/<call>` and forwards it with the key.
@@ -139,6 +169,10 @@ export const sodaxConfig: SodaxOptions = {
   leverageYield: { vaults: VAULTS },
   chains: {
     ...PINNED_EVM_RPCS,
+    [ChainKeys.SONIC_MAINNET]: {
+      ...PINNED_EVM_RPCS[ChainKeys.SONIC_MAINNET],
+      supportedTokens: SONIC_TOKEN_OVERRIDES,
+    },
     [ChainKeys.BITCOIN_MAINNET]: {
       radfi: {
         // USER mode: deposits build a PSBT straight from the personal
