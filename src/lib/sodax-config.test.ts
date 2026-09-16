@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, Sodax, sonicSupportedTokens } from "@sodax/sdk";
-import { getDepositTokens } from "./chains";
+import { DEPOSIT_SOURCE_CHAINS, getDepositTokens } from "./chains";
+import { TOKEN_LISTINGS } from "./listings";
 import { sodaxConfig } from "./sodax-config";
 
 /**
@@ -77,5 +78,66 @@ describe("sodaxConfig fourth-cup token registration", () => {
         (token) => token.symbol === "lsodaSUSDS",
       ),
     ).toBe(false);
+  });
+});
+
+/**
+ * The listings are in the same position the fourth cup was: the backend
+ * trades them, the chain holds them, and the installed SDK has never heard
+ * of them. Same registration, same failure if it slips: a quote for NVDA
+ * would throw `unsupported token_dst` before the request left. These pin
+ * every listing through the instance's ConfigService, both the validation
+ * and the address it resolves to, so an SDK release that learns a ticker
+ * under a different wrapper's contract fails here instead of in a pour.
+ */
+describe("sodaxConfig listing registration", () => {
+  const sodax = new Sodax(sodaxConfig);
+
+  it("lets the ConfigService validate every listing as a Sonic token", () => {
+    for (const listing of TOKEN_LISTINGS) {
+      expect(
+        sodax.config.isValidOriginalAssetAddress(
+          ChainKeys.SONIC_MAINNET,
+          listing.address,
+        ),
+        `${listing.symbol} should validate on Sonic`,
+      ).toBe(true);
+    }
+  });
+
+  it("resolves each listing to its own address, as a Sonic-native hub asset", () => {
+    for (const listing of TOKEN_LISTINGS) {
+      const token = sodax.config.getSpokeTokenFromOriginalAssetAddress(
+        ChainKeys.SONIC_MAINNET,
+        listing.address,
+      );
+      expect(token, `${listing.symbol} should resolve`).toBeDefined();
+      expect(token?.symbol).toBe(listing.symbol);
+      expect(token?.decimals).toBe(18);
+      expect(token?.hubAsset.toLowerCase()).toBe(listing.address.toLowerCase());
+      expect(token?.chainKey).toBe(ChainKeys.SONIC_MAINNET);
+    }
+  });
+
+  it("never offers a listing as something to pour in, on any chain", () => {
+    const listed = new Set(
+      TOKEN_LISTINGS.map((listing) => listing.address.toLowerCase()),
+    );
+    for (const chainKey of DEPOSIT_SOURCE_CHAINS) {
+      for (const token of getDepositTokens(chainKey)) {
+        expect(listed.has(token.address.toLowerCase())).toBe(false);
+      }
+    }
+  });
+
+  it("still knows the vault share tokens after the listings joined", () => {
+    for (const vault of sodax.leverageYield.listVaults()) {
+      expect(
+        sodax.config.isValidOriginalAssetAddress(
+          ChainKeys.SONIC_MAINNET,
+          vault.vault,
+        ),
+      ).toBe(true);
+    }
   });
 });

@@ -68,6 +68,14 @@ has a home module, it is named.
 - **Rewards request core** — `useRewardsCall` (`hooks/use-profile`): the one
   identity+auth+POST ritual; `useRewardsQuery` and `useProfileMutation` are
   its two flavours, and every public rewards hook is configuration on top.
+- **Listing** — one asset the house offers on the Sonic hub: a vault (a
+  cup), a stock (a Robinhood Stock Token, an ERC-20 on Sonic) or cash (the
+  SGOV Treasury ETF token). The registry is `lib/listings`: vaults come from
+  the SDK registry, the token listings are pinned by address, and
+  `lib/sodax-config` teaches the installed SDK the ones it doesn't know.
+  `pnpm listings:verify` checks the pins against the backend's live list and
+  the chain. A listing is a destination; the deposit picker never offers one
+  as an input.
 - **Hub wallet** — the Sonic-side wallet derived from a (chainKey, address)
   pair. The same EOA maps to a DIFFERENT hub wallet per source chain, which
   is why share rows are never interchangeable across chains.

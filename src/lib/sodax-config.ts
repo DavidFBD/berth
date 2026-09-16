@@ -9,6 +9,7 @@ import {
   type XToken,
 } from "@sodax/sdk";
 import type { SodaxWalletConfig } from "@sodax/wallet-sdk-react";
+import { TOKEN_LISTINGS, toXToken } from "@/lib/listings";
 
 /**
  * Partner fee on every vault swap (deposit + withdraw intents). Percentage is
@@ -122,10 +123,27 @@ const LSODA_SUSDS_TOKEN: XToken = {
   vault: LSODA_SUSDS.vault,
 };
 
-const SONIC_TOKEN_OVERRIDES: Record<string, XToken> =
-  LSODA_SUSDS_TOKEN.symbol in sonicSupportedTokens
-    ? {}
-    : { [LSODA_SUSDS_TOKEN.symbol]: LSODA_SUSDS_TOKEN };
+/**
+ * Every Sonic token the app trades that 2.0.0's table doesn't carry: the
+ * fourth cup and the thirteen Robinhood listings (lib/listings), which the
+ * backend serves and the chain confirms but no installed SDK release knows.
+ * Keyed by symbol like the SDK's own table, and filtered by the same
+ * self-retiring rule: a symbol the SDK has learned drops out here, so an
+ * upgrade needs no edit. `sodax-config.test.ts` pins that every listing
+ * still resolves to ITS address afterwards, which is the one way this guard
+ * could go wrong: an SDK release carrying the same ticker under a different
+ * wrapper's contract.
+ */
+const HAND_CARRIED_SONIC_TOKENS: readonly XToken[] = [
+  LSODA_SUSDS_TOKEN,
+  ...TOKEN_LISTINGS.map(toXToken),
+];
+
+const SONIC_TOKEN_OVERRIDES: Record<string, XToken> = Object.fromEntries(
+  HAND_CARRIED_SONIC_TOKENS.filter(
+    (token) => !(token.symbol in sonicSupportedTokens),
+  ).map((token) => [token.symbol, token]),
+);
 
 /**
  * Our own mount for the keyed SODAX proxy (`app/api/sodax/[...path]`). The SDK

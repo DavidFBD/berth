@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "shot": "node scripts/screenshot.mjs",
-    "db:push": "node scripts/db-push.mjs"
+    "db:push": "node scripts/db-push.mjs",
+    "listings:verify": "node --no-warnings --experimental-strip-types scripts/verify-listings.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

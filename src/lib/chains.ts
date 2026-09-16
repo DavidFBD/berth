@@ -6,6 +6,7 @@ import {
   type XToken,
 } from "@sodax/sdk";
 import { getAddress, isAddress } from "viem";
+import { isTokenListingAddress } from "@/lib/listings";
 
 /**
  * Chains a deposit can originate from, in picker display order. Hedera is
@@ -46,12 +47,17 @@ export function getChainLogo(chainKey: SpokeChainKey): string | undefined {
 /**
  * Tokens offered in the deposit source picker for a chain: the production
  * solver set (anything else validates locally but can never be filled),
- * minus the lsoda* vault share tokens themselves, which the registry lists
- * as solver-tradeable on Sonic but make no sense as deposit inputs.
+ * minus everything the house itself offers as a destination: the lsoda*
+ * vault share tokens, and the stock and cash listings. The SDK lists the
+ * shares as solver-tradeable on Sonic, and a future release will list the
+ * stocks too; neither makes sense as something to pour IN, since selling a
+ * listing is the sell path's job, not the deposit picker's.
  */
 export function getDepositTokens(chainKey: SpokeChainKey): readonly XToken[] {
   return getSupportedSolverTokens(chainKey).filter(
-    (token) => !token.symbol.startsWith("lsoda"),
+    (token) =>
+      !token.symbol.startsWith("lsoda") &&
+      !isTokenListingAddress(token.address),
   );
 }
 
