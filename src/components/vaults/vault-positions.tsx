@@ -11,6 +11,7 @@ import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { formatTokenAmount } from "@/lib/format";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import { SectionHeading } from "@/components/ui/panel";
+import { isDust } from "@/lib/dust";
 import { cn } from "@/lib/utils";
 
 /**
@@ -74,16 +75,25 @@ function VaultRow({
   const copy = useCopy();
   const money = useMoney();
 
-  useEffect(() => {
-    onPresence(vault.vault, position.hasPosition);
-  }, [vault.vault, position.hasPosition, onPresence]);
-
-  if (!position.hasPosition) return null;
-
   const price = prices.priceOfHubAsset(vault.asset);
-  const value =
+  const usdValue =
     price !== undefined && position.underlyingValue !== undefined
-      ? money.format(Number(formatUnits(position.underlyingValue, 18)) * price)
+      ? Number(formatUnits(position.underlyingValue, 18)) * price
+      : undefined;
+  // A leftover worth less than a tenth of a cent is not worth a titled
+  // section and a Withdraw button that costs more in fees than it returns.
+  // Presence, not just the row, so the whole section disappears with it.
+  const worthShowing = position.hasPosition && !isDust(usdValue);
+
+  useEffect(() => {
+    onPresence(vault.vault, worthShowing);
+  }, [vault.vault, worthShowing, onPresence]);
+
+  if (!worthShowing) return null;
+
+  const value =
+    usdValue !== undefined
+      ? money.format(usdValue)
       : `${formatTokenAmount(position.shares, 18)} shares`;
 
   return (

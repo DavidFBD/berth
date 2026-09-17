@@ -26,6 +26,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
 import { SettingsDrawer } from "@/components/settings-drawer";
@@ -93,8 +94,15 @@ export function AccountButton({
             </DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex flex-col gap-2 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          <div className="flex flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <RewardsPanel />
+            {/*
+              One panel with ruled rows, not five cards stacked inside a
+              drawer that is already a card. Every row here is the same kind
+              of thing, somewhere to go or something to copy, and giving each
+              its own border made a drawer that read as a list of boxes.
+            */}
+            <Panel className="divide-y divide-border">
             {address ? (
               <>
                 <ReceiveRow
@@ -107,7 +115,7 @@ export function AccountButton({
                 {mounted && <SolanaReceive />}
               </>
             ) : (
-              <p className="rounded-xl bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
+              <p className="px-3 py-3 text-sm text-muted-foreground">
                 {copy.ctaOpeningAccount}
               </p>
             )}
@@ -132,7 +140,7 @@ export function AccountButton({
                 setAccountOpen(false);
                 setSettingsOpen(true);
               }}
-              className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:scale-[0.99] active:bg-muted"
+              className="flex min-h-14 w-full items-center gap-3 px-3 py-3 text-left transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
             >
               <GearSix className="size-5 text-primary" />
               <div className="flex min-w-0 flex-1 flex-col">
@@ -144,6 +152,7 @@ export function AccountButton({
                 </span>
               </div>
             </button>
+            </Panel>
 
             <Button
               variant="ghost"
@@ -244,7 +253,7 @@ function KeyExportRow({ evmAddress }: { evmAddress: string }) {
   const solanaAddress = usePrivySolanaAddress();
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div>
       <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
         <Key className="size-5 shrink-0 text-primary" />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -310,7 +319,7 @@ function ReceiveRow({
   const [qrOpen, setQrOpen] = useState(false);
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div>
       <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
         <Wallet className="size-5 shrink-0 text-primary" />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -406,7 +415,7 @@ function FundButton({ address }: { address: string }) {
             // is configured, which Privy surfaces inside its own modal.
           });
       }}
-      className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:scale-[0.99] active:bg-muted"
+      className="flex min-h-14 w-full items-center gap-3 px-3 py-3 text-left transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
     >
       <PlusCircle className="size-5 text-primary" />
       <div className="flex min-w-0 flex-1 flex-col">

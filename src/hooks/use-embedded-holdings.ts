@@ -22,6 +22,7 @@ import {
 import { resolveAccount } from "@/lib/account";
 import { useAccountSession } from "@/hooks/use-account";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
+import { isDust } from "@/lib/dust";
 
 export type EmbeddedHolding = {
   chainKey: SpokeChainKey;
@@ -57,9 +58,7 @@ export const EMBEDDED_CHAINS: readonly SpokeChainKey[] =
  */
 const SWEEP_INTERVAL_MS = 60_000;
 
-/** Below this, a priced holding is unusable residue and is neither shown nor
- * counted anywhere (list, teapot worth, table total). */
-const DUST_USD = 0.1;
+
 
 export type EmbeddedHoldingsResult = {
   /** True when the user is signed in via email with an embedded wallet. */
@@ -170,8 +169,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
       usdValue: prices.usdValue(holding.token, holding.balance),
     }))
     .filter(
-      (holding) =>
-        holding.usdValue === undefined || holding.usdValue >= DUST_USD,
+      (holding) => !isDust(holding.usdValue),
     )
     .sort((a, b) => (b.usdValue ?? -1) - (a.usdValue ?? -1));
 

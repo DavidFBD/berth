@@ -16,6 +16,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { FEE_PCT_LABEL as FEE_PCT } from "@/lib/sodax-config";
 
@@ -80,12 +81,14 @@ export function InfoDrawer() {
               </span>
             </div>
 
-            <div className="flex flex-col gap-2">
+            {/* Two ruled rows in one panel: the same link, twice, in two
+                bordered boxes read as two unrelated things. */}
+            <Panel className="divide-y divide-border">
               <a
                 href="https://builders.sodax.com"
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                className="flex items-center justify-between px-3 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/60"
               >
                 {copy.infoBuildersCta}
                 <ArrowSquareOut className="size-4 text-muted-foreground" />
@@ -94,12 +97,12 @@ export function InfoDrawer() {
                 href="https://docs.sodax.com"
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                className="flex items-center justify-between px-3 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/60"
               >
                 {copy.infoDocsCta}
                 <ArrowSquareOut className="size-4 text-muted-foreground" />
               </a>
-            </div>
+            </Panel>
           </div>
         </DrawerContent>
       </Drawer>

@@ -88,6 +88,9 @@ export type Copy = {
   walletFailedBody: string;
   /** Shown on the welcome screen when an invite code is waiting in the pocket. */
   inviteWaiting: string;
+  /** The live board beside the sign-in: what is on offer, priced now. */
+  welcomePreviewTitle: string;
+  welcomePreviewHint: string;
   /** Footer line under "powered by": the one honest sentence about risk. */
   footerNote: string;
 
@@ -427,6 +430,8 @@ export const COPY: Copy = {
   walletFailedTitle: "Connection failed",
   walletFailedBody: "Something went wrong while connecting.",
   inviteWaiting: "A friend invited you. Sign in and the invite is yours.",
+  welcomePreviewTitle: "On the board today",
+  welcomePreviewHint: "Live prices, and the last months of each. Sign in to buy any of them.",
   footerNote:
     "Stock tokens track a share; they are not the share. Read what you own before you buy.",
 

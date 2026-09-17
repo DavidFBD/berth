@@ -11,6 +11,7 @@ import {
 } from "@sodax/wallet-sdk-react";
 import { Button } from "@/components/ui/button";
 import { BerthMark } from "@/components/berth-mark";
+import { MarketPreview } from "@/components/board";
 import { WalletDrawer } from "@/components/wallet";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -60,14 +61,24 @@ function WelcomeScreen() {
   const mounted = useMounted();
   const invited = mounted && pendingReferralCode() !== null;
 
+  // A door, and a window. The promise used to be argued in a paragraph on a
+  // centred column with most of a desktop left empty either side; now the
+  // argument stands on the left and the actual board stands on the right,
+  // priced and moving, because the most persuasive thing a brokerage can
+  // show a visitor is the market it is offering. Both routes behind that
+  // panel are public, so it is the real thing and not a mock. On a phone the
+  // two stack, and the way in stays above the board.
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-6 px-6 py-10 text-center sm:max-w-lg">
-      <div className="flex flex-col items-center gap-3">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-8 px-6 py-10 sm:max-w-lg lg:max-w-5xl lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:items-center lg:gap-12">
+      <div className="flex flex-col items-center gap-6 text-center lg:items-start lg:text-left">
+      <div className="flex flex-col items-center gap-3 lg:items-start">
         <BerthMark className="size-16" title="Berth" />
-        <h1 className="font-display text-3xl font-semibold text-foreground">
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.02em] text-foreground lg:text-5xl">
           {copy.brand}
         </h1>
-        <p className="text-[15px] text-muted-foreground">{copy.tagline}</p>
+        <p className="font-display text-[15px] text-muted-foreground lg:text-lg">
+          {copy.tagline}
+        </p>
         <p className="max-w-80 text-sm leading-relaxed text-muted-foreground">
           {copy.welcomeLede}
         </p>
@@ -82,7 +93,7 @@ function WelcomeScreen() {
         </div>
       )}
 
-      <div className="flex w-full max-w-80 flex-col items-center gap-3">
+      <div className="flex w-full max-w-80 flex-col items-center gap-3 lg:items-start">
         {PRIVY_ENABLED ? (
           <Button
             className="h-13 w-full rounded-full text-base font-bold"
@@ -107,11 +118,14 @@ function WelcomeScreen() {
           the app is built on is a fair question and it is answered in full
           under "How Berth works", not on the door. The risk line stays: it
           is about what a visitor would be buying, not about a rail. */}
-      <div className="flex flex-col items-center gap-1">
+      <div className="flex flex-col items-center gap-1 lg:items-start">
         <p className="max-w-80 text-[11px] leading-relaxed text-muted-foreground">
           {copy.footerNote}
         </p>
       </div>
+      </div>
+
+      <MarketPreview />
 
       <WalletDrawer open={walletsOpen} onOpenChange={setWalletsOpen} />
     </div>
