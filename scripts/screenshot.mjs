@@ -6,6 +6,7 @@
  *   pnpm shot --browser chromium --out x.png
  *   pnpm shot --url http://localhost:3000/foo --viewport 1280x800
  *   pnpm shot --scheme dark                    # emulates prefers-color-scheme
+ *   pnpm shot --hover "li:has-text('NVIDIA')"  # a hover-revealed control
  *
  * Appearance is light, dark or system (next-themes), so --scheme only flips
  * the app for a visitor left on system, which is the default. A check of the
@@ -32,6 +33,8 @@ const [width, height] = arg("viewport", "390x844").split("x").map(Number);
 const settleMs = Number(arg("settle", "3000"));
 const dpr = Number(arg("dpr", "2"));
 const colorScheme = arg("scheme", "light");
+// A control that only exists under the cursor cannot be reviewed without one.
+const hover = arg("hover", null);
 
 const engine = browserName === "chromium" ? chromium : webkit;
 
@@ -62,6 +65,11 @@ const page = await ctx.newPage();
 await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });
 // Font swaps and first queries need a beat after network idle.
 await page.waitForTimeout(settleMs);
+if (hover) {
+  await page.locator(hover).first().hover();
+  // Let the reveal finish before the shutter.
+  await page.waitForTimeout(400);
+}
 await page.screenshot({ path: out });
 console.log(
   `${out} (${browserName} ${width}x${height} ${colorScheme})`,

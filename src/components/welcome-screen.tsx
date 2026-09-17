@@ -103,8 +103,11 @@ function WelcomeScreen() {
         <InstalledWalletButtons />
       </div>
 
+      {/* The first screen carries the Berth name and nothing else's. What
+          the app is built on is a fair question and it is answered in full
+          under "How Berth works", not on the door. The risk line stays: it
+          is about what a visitor would be buying, not about a rail. */}
       <div className="flex flex-col items-center gap-1">
-        <p className="text-xs text-muted-foreground">{copy.poweredBy}</p>
         <p className="max-w-80 text-[11px] leading-relaxed text-muted-foreground">
           {copy.footerNote}
         </p>

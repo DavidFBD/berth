@@ -25,6 +25,9 @@ import {
  *   /dev/board?open=NVDA                the buy drawer open on NVDA
  *   /dev/board?sell=QQQ&hub=0x…         the sell drawer open on QQQ, with
  *                                       what that hub wallet holds of it
+ *   /dev/board?news=NVDA                the news column already filtered, so
+ *                                       the filtered state can be reviewed
+ *                                       without a cursor
  */
 export default function BoardGalleryPage() {
   if (process.env.NODE_ENV === "production") notFound();
@@ -57,6 +60,12 @@ function Gallery() {
     initialSell,
   );
   const [sellOpen, setSellOpen] = useState(initialSell !== null);
+  const [newsFilter, setNewsFilter] = useState<TokenListing | null>(
+    () =>
+      TOKEN_LISTINGS.find(
+        (listing) => listing.symbol === params.get("news")?.toUpperCase(),
+      ) ?? null,
+  );
 
   // The drawers read the wallet store, which only exists in the browser;
   // rendering them on the server threw and fell back to client rendering.
@@ -96,10 +105,19 @@ function Gallery() {
               setSellListing(picked);
               setSellOpen(true);
             }}
+            onFilterNews={(picked) =>
+              setNewsFilter((current) =>
+                current?.symbol === picked.symbol ? null : picked,
+              )
+            }
+            newsFilterSymbol={newsFilter?.symbol}
           />
         </div>
         <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
-          <NewsFeed />
+          <NewsFeed
+            filter={newsFilter}
+            onClearFilter={() => setNewsFilter(null)}
+          />
         </div>
       </div>
       {mounted && (

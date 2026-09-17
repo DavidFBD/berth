@@ -45,6 +45,9 @@ export function Home() {
   const [withdrawVault, setWithdrawVault] =
     useState<LeverageYieldVault | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  // Which listing the news column is pointed at, if any. Lives here because
+  // the board sets it and the news reads it; neither owns the other.
+  const [newsFilter, setNewsFilter] = useState<TokenListing | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const privy = usePrivyEmbeddedWallet();
@@ -117,11 +120,23 @@ export function Home() {
 
           {/* The board keeps the widest track: it is what people come to do. */}
           <div className="lg:col-start-2 lg:row-start-1">
-            <ListingBoard onBuy={openBuy} onSell={openSell} />
+            <ListingBoard
+              onBuy={openBuy}
+              onSell={openSell}
+              onFilterNews={(listing) =>
+                setNewsFilter((current) =>
+                  current?.symbol === listing.symbol ? null : listing,
+                )
+              }
+              newsFilterSymbol={newsFilter?.symbol}
+            />
           </div>
 
           <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
-            <NewsFeed />
+            <NewsFeed
+              filter={newsFilter}
+              onClearFilter={() => setNewsFilter(null)}
+            />
           </div>
         </div>
 
@@ -151,7 +166,6 @@ export function Home() {
         <WalletDrawer open={walletOpen} onOpenChange={setWalletOpen} />
 
         <footer className="mt-9 flex flex-col gap-1 text-center text-xs text-muted-foreground">
-          <span>{copy.poweredBy}</span>
           <span className="text-[11px] text-muted-foreground">
             {copy.footerNote}
           </span>

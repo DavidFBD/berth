@@ -1,6 +1,8 @@
 "use client";
 
-import { CaretRight } from "@phosphor-icons/react";
+import { useState } from "react";
+import { motion } from "motion/react";
+import { CaretRight, Funnel } from "@phosphor-icons/react";
 import { Sparkline } from "@/components/board/sparkline";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +17,7 @@ import {
   type StockCategory,
   type TokenListing,
 } from "@/lib/listings";
+import { EASE_LIFT, SPRING_POP } from "@/lib/motion";
 import {
   changeDirection,
   formatPercentChange,
@@ -29,7 +32,7 @@ const CATEGORY_LABEL: Record<StockCategory, string> = {
   treasury: "Treasury",
 };
 
-/** Text colour per direction, for the change figure. */
+/** Text colour per direction, for the change figures. */
 const CHANGE_TONE: Record<ChangeDirection, string> = {
   up: "text-good",
   down: "text-bad",
@@ -37,19 +40,28 @@ const CHANGE_TONE: Record<ChangeDirection, string> = {
 };
 
 /**
- * The board: every stock and fund listing, priced by the solver oracle,
- * with the shape of its last months, how it has moved over a day, and what
- * the account already holds of each. Tapping a row opens the buy drawer for
- * it; a held row also offers a sell. Cash (SGOV) is not on the board; it has
- * its own line, and a Treasury fund's price barely moves, so the yield is
- * the number that says something there, not a change badge.
+ * The board: every stock and fund listing, priced by the solver oracle, with
+ * the shape of its last months, what it did over that window and over the
+ * day, and what the account already holds of each. Tapping a row opens the
+ * buy drawer; a held row also offers a sell; on a desktop, where the news
+ * sits in its own column beside this one, a row also offers to point that
+ * column at itself.
+ *
+ * Cash (SGOV) is not here; it has its own line, and a Treasury fund's price
+ * barely moves, so the yield is the number that says something there.
  */
 export function ListingBoard({
   onBuy,
   onSell,
+  onFilterNews,
+  newsFilterSymbol,
 }: {
   onBuy: (listing: TokenListing) => void;
   onSell?: (listing: TokenListing) => void;
+  /** Point the news column at this listing, or clear it if it is already there. */
+  onFilterNews?: (listing: TokenListing) => void;
+  /** Which listing the news column is showing, if any. */
+  newsFilterSymbol?: string;
 }) {
   const copy = useCopy();
   const money = useMoney();
@@ -57,6 +69,10 @@ export function ListingBoard({
   const holdings = useHubHoldings(account.hubWallet);
   const prices = useListingPrices();
   const performance = useListingPerformance();
+  // One row at a time, so twelve rows do not each carry their own state. A
+  // focus counts as a hover: the filter must be reachable from the keyboard,
+  // and a control that is invisible when focused is a trap.
+  const [activeRow, setActiveRow] = useState<string | null>(null);
 
   const heldOf = (listing: TokenListing): bigint | undefined => {
     if (!holdings.settled) return undefined;
@@ -98,10 +114,22 @@ export function ListingBoard({
             ? percentChange(series[0], series[series.length - 1])
             : undefined;
           const lineDirection = changeDirection(windowChange);
+          const isFiltered = newsFilterSymbol === listing.symbol;
+          const showFilter = activeRow === listing.symbol || isFiltered;
+          const filterLabel = isFiltered
+            ? copy.boardShowAllNews
+            : copy.boardFilterNews(listing.name);
           return (
-            // Two siblings, never nested buttons: the row buys, the small
-            // button sells. Only a held row offers the second.
-            <li key={listing.address} className="flex items-stretch">
+            // Siblings, never nested buttons: the row buys, the small buttons
+            // filter and sell.
+            <li
+              key={listing.address}
+              className={`flex items-stretch transition-colors duration-150 ${isFiltered ? "bg-muted/50" : ""}`}
+              onMouseEnter={() => setActiveRow(listing.symbol)}
+              onMouseLeave={() => setActiveRow(null)}
+              onFocusCapture={() => setActiveRow(listing.symbol)}
+              onBlurCapture={() => setActiveRow(null)}
+            >
               <button
                 type="button"
                 onClick={() => onBuy(listing)}
@@ -167,15 +195,53 @@ export function ListingBoard({
                   <CaretRight className="size-4 shrink-0 text-muted-foreground" />
                 )}
               </button>
+
+              {/*
+                Desktop only, because only there does the news have a column
+                of its own to point at. The slot is always in the layout and
+                only its contents fade, so a row does not resize under the
+                cursor that is about to click it.
+              */}
+              {onFilterNews && (
+                <div className="hidden shrink-0 items-center pr-2 lg:flex">
+                  <motion.button
+                    type="button"
+                    onClick={() => onFilterNews(listing)}
+                    aria-label={filterLabel}
+                    title={filterLabel}
+                    aria-pressed={isFiltered}
+                    initial={false}
+                    animate={{ opacity: showFilter ? 1 : 0, x: showFilter ? 0 : 6 }}
+                    transition={{ duration: 0.15, ease: EASE_LIFT }}
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={{ pointerEvents: showFilter ? "auto" : "none" }}
+                    className={`flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium ${
+                      isFiltered
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Funnel
+                      className="size-3"
+                      weight={isFiltered ? "fill" : "regular"}
+                    />
+                    {copy.boardFilterNewsShort}
+                  </motion.button>
+                </div>
+              )}
+
               {hasPosition && onSell && (
                 <div className="flex shrink-0 items-center pr-3">
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={() => onSell(listing)}
-                  >
-                    {copy.sell}
-                  </Button>
+                  <motion.div whileTap={{ scale: 0.96 }} transition={SPRING_POP}>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => onSell(listing)}
+                    >
+                      {copy.sell}
+                    </Button>
+                  </motion.div>
                 </div>
               )}
             </li>

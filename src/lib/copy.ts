@@ -29,7 +29,6 @@ export type Copy = {
   walletConnectFailed: string;
   /** Shown on the welcome screen when an invite code is waiting in the pocket. */
   inviteWaiting: string;
-  poweredBy: string;
   /** Footer line under "powered by": the one honest sentence about risk. */
   footerNote: string;
 
@@ -63,6 +62,16 @@ export type Copy = {
    * market they track does not, and only the market's own days are counted.
    */
   boardPerformanceNote: (days: number) => string;
+  /**
+   * The row's news filter, revealed on hover on a desktop. The full sentence
+   * is the button's accessible name and its tooltip; the pill itself shows
+   * `boardFilterNewsShort`, because a board row has about seventy pixels to
+   * spare and "Filter news to S&P 500 ETF" would eat the listing's own name.
+   */
+  boardFilterNews: (name: string) => string;
+  boardFilterNewsShort: string;
+  /** The same button once that listing is the filter: pressing it clears. */
+  boardShowAllNews: string;
 
   /* — holdings: what the account owns — */
   holdingsTitle: string;
@@ -74,6 +83,12 @@ export type Copy = {
   newsHint: string;
   /** Shown when every feed is quiet or unreachable. Never says "error". */
   newsEmpty: string;
+  /** The chip above a filtered river: "NVIDIA only". */
+  newsFilteredTo: (name: string) => string;
+  /** Clears it. Short, because it sits beside the chip. */
+  newsShowAll: string;
+  /** When one listing has been quiet. Names it, so the silence is placed. */
+  newsEmptyFor: (name: string) => string;
   /** Follows the listing's name: "NVIDIA The Motley Fool, 2 hours ago". */
   newsByline: (source: string, when: string) => string;
 
@@ -308,7 +323,6 @@ export const COPY: Copy = {
   walletConnecting: (name) => `Waiting for ${name}…`,
   walletConnectFailed: "Could not connect. Try again, or continue with email.",
   inviteWaiting: "A friend invited you. Sign in and the invite is yours.",
-  poweredBy: "Built on the SODAX System.",
   footerNote:
     "Stock tokens track a share; they are not the share. Read what you own before you buy.",
 
@@ -338,6 +352,9 @@ export const COPY: Copy = {
   boardYouHold: (amount) => `You hold ${amount}`,
   boardPerformanceNote: (days) =>
     `The figure under the line is the last ${days} days. The figure by the price is the day. Only days the market was open are counted.`,
+  boardFilterNews: (name) => `Filter news to ${name}`,
+  boardFilterNewsShort: "News",
+  boardShowAllNews: "Show all news",
 
   holdingsTitle: "What you own",
   holdingsHint: "Held in your account. Sell any of it with one signature.",
@@ -347,6 +364,9 @@ export const COPY: Copy = {
   newsHint:
     "Headlines about the stocks and funds on the board. Tapping one opens the publisher's own page.",
   newsEmpty: "Nothing new about these right now.",
+  newsFilteredTo: (name) => `${name} only`,
+  newsShowAll: "Show all",
+  newsEmptyFor: (name) => `Nothing new about ${name} right now.`,
   newsByline: (source, when) => `${source}, ${when}`,
 
   cashTitle: "Cash",
