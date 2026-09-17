@@ -317,17 +317,25 @@ p {
   box-shadow: var(--shadow-raised);
 }
 
-/* ————— Grain and glass, on trial —————
-   Both are banned by the brand sheet ("No glow, blur, glass, 3D, or
-   photographs"), so neither is on by default. They exist behind
-   components/texture-flag so the two can be judged against the live app
-   before the sheet is amended: ?texture=grain, ?texture=glass, ?texture=on,
-   ?texture=off. If the sheet changes, this block graduates into the base
-   styles; if it does not, this block and the flag come out together. */
+/* ————— Grain and glass —————
+   Both were banned by the brand sheet until 2026-09-17, tried behind a flag,
+   and then adopted; the sheet records the rule they now live under. They are
+   unconditional from here, so the trial flag and its query parameter are
+   gone.
+
+   Glass is PLACED, not applied, and the placement is the whole rule: it goes
+   on the bar the page scrolls under and on the scrim a drawer sits on, and
+   nowhere else. It is deliberately NOT on the drawer itself. That was built,
+   screenshotted and reverted the same hour, because the board showed through
+   the sheet: "Buy NVIDIA" sat on top of GameStop's price and the confirm
+   button had two rows of someone else's numbers running through it. A
+   surface a person reads money on is opaque. */
 :root {
   /* Above the drawer (z-50) so one tooth covers the whole screen rather
      than stopping at the edge of an open sheet. */
   --z-grain: 100;
+  /* Fine noise at low opacity averages back to flat colour on a retina
+     screen; these are the values that actually read at arm's length. */
   --grain-opacity: 0.11;
   --glass-tint: 72%;
 }
@@ -337,11 +345,10 @@ p {
   --glass-tint: 64%;
 }
 
-/* Grain: one fixed layer of monochrome turbulence over everything, never
-   in the way of a pointer. Fixed rather than repeated per surface, so it
-   does not travel with scroll and reads as the screen's own tooth. */
-[data-texture="grain"] body::after,
-[data-texture="on"] body::after {
+/* One fixed layer of monochrome turbulence over everything, never in the way
+   of a pointer. Fixed rather than repeated per surface, so it does not travel
+   with scroll and reads as the screen's own tooth. */
+body::after {
   content: "";
   position: fixed;
   inset: 0;
@@ -352,30 +359,19 @@ p {
   background-size: 160px 160px;
 }
 
-/* Glass, only where two things actually overlap: the header the page
-   scrolls under, the scrim a drawer sits on, and the drawer itself. A
-   frosted panel that floats over nothing is decoration; these three are
-   the places depth is real. The inner hairline is the edge refraction that
-   separates glass from a blurred rectangle. */
-[data-texture="glass"] [data-glass="bar"],
-[data-texture="on"] [data-glass="bar"] {
+/* The bar the page scrolls under. The inner hairline is the edge refraction
+   that separates glass from a blurred rectangle. `data-glass` names the
+   surface so the rule cannot be carried off by an edit to a utility class. */
+[data-glass="bar"] {
   background: color-mix(in oklab, var(--background) var(--glass-tint), transparent);
   backdrop-filter: blur(16px) saturate(1.6);
   -webkit-backdrop-filter: blur(16px) saturate(1.6);
   box-shadow: inset 0 1px 0 0 color-mix(in oklab, var(--foreground) 7%, transparent);
 }
 
-[data-texture="glass"] [data-slot="drawer-overlay"],
-[data-texture="on"] [data-slot="drawer-overlay"] {
+/* The scrim under an open drawer: the one surface whose whole job is
+   separating a sheet from the page behind it. */
+[data-slot="drawer-overlay"] {
   backdrop-filter: blur(14px) saturate(1.25);
   -webkit-backdrop-filter: blur(14px) saturate(1.25);
 }
-
-/* The sheet itself stays opaque, and this is the whole argument for why
-   glass has to be placed rather than applied. Frosting the drawer was tried
-   and reverted the same hour: the board showed straight through a sheet
-   holding an amount field, so "Buy NVIDIA" sat on top of GameStop's price
-   and the confirm button had two rows of someone else's numbers running
-   through it. A surface a person reads money on is opaque. The scrim under
-   it and the bar it slides over are the places depth is real, and those are
-   the two rules above. */

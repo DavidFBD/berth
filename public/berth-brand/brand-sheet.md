@@ -9,7 +9,13 @@ Minimum size: 16 px for the mark, 80 px wide for the wordmark.
 ## Colour rules
 The mark is ink (#151B1A) on bg (#F4F5F2), or bg on ink, or ink on accent (#1F4ED8). Never accent on bg for the mark alone.
 The accent is for one thing per composition: a link, a primary action, or one word of a headline. Never two.
-No gradients, except a faint surface to surface-2 wash on the OG background. No glow, blur, glass, 3D, or photographs.
+No gradients, except a faint surface to surface-2 wash on the OG background. No glow, 3D, or photographs.
+
+Grain and glass are allowed, added 2026-09-17, and each has one rule.
+
+Grain is one fixed layer of monochrome noise over the whole screen, 11% on light and 16% on dark, above everything and never in the way of a pointer. It is the screen's own tooth, so it does not scroll and it is never applied to a single component.
+
+Glass is placed, not applied. It goes on the bar the page scrolls under and on the scrim a drawer sits on, and nowhere else. It never goes on a surface carrying a form or a figure: frosting the order sheet was tried and reverted the same hour, because the board read straight through it and the confirm button had someone else's prices running through the middle of it. A surface a person reads money on is opaque.
 
 Light: bg #F4F5F2, surface #FFFFFF, surface-2 #ECEEEA, ink #151B1A, ink-2 #4A5553, muted #7F8986, line #D6DBD8, accent #1F4ED8, accent-soft #E3E9FB, good #1E7A4C, warn #8F5E00, bad #B3261E.
 Dark: bg #0F1413, surface #171D1C, surface-2 #1F2624, ink #E8ECEA, ink-2 #B0BAB6, muted #7D8884, line #2A3230, accent #86A3FF, accent-soft #1B2540, good #7BD3A0, warn #E5B85B, bad #F09189.
