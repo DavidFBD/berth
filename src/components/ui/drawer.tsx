@@ -138,8 +138,10 @@ function DrawerContent({
             // Reduced motion: fade in place instead of sliding — comprehension
             // stays (something opened), the travel goes.
             "motion-reduce:duration-200 motion-reduce:data-starting-style:transform-none motion-reduce:data-ending-style:transform-none motion-reduce:data-starting-style:opacity-0 motion-reduce:data-ending-style:opacity-0",
-            // Axis: y.
-            "data-[swipe-axis=y]:inset-x-0 data-[swipe-axis=y]:data-nested-drawer-open:h-(--stack-height)",
+            // Axis: y. Bottom sheets take the content column's width and
+            // centre, the same on a phone (full width) and a desktop (the
+            // column), so no drawer spans a wide window edge to edge.
+            "data-[swipe-axis=y]:inset-x-0 data-[swipe-axis=y]:mx-auto data-[swipe-axis=y]:w-full data-[swipe-axis=y]:sm:max-w-lg data-[swipe-axis=y]:data-nested-drawer-open:h-(--stack-height)",
             // Axis: x.
             "data-[swipe-axis=x]:inset-y-0 data-[swipe-axis=x]:flex-row",
             // Direction: down.

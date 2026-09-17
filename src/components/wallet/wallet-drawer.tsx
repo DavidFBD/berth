@@ -97,7 +97,7 @@ export function WalletDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="mx-auto w-full sm:max-w-lg">
+      <DrawerContent>
         <DrawerHeader>
           <div className="relative flex items-center justify-center">
             {!atFamilyLevel && (

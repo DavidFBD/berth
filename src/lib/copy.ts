@@ -164,6 +164,8 @@ export type Copy = {
   /** The picker's "pay from what you hold" screen: title and empty state. */
   pickerHoldingsTitle: string;
   pickerHoldingsEmpty: string;
+  /** Under the holdings list for wallet users: reach a network the sweep does not cover. */
+  pickerBrowseAll: string;
   pickerSearchPlaceholder: string;
   pickerNoMatches: (query: string) => string;
 
@@ -420,6 +422,7 @@ export const COPY: Copy = {
   addFunds: "Add funds",
   pickerHoldingsTitle: "What you hold",
   pickerHoldingsEmpty: "Nothing to pay with yet.",
+  pickerBrowseAll: "Pay from another network",
   pickerSearchPlaceholder: "Search by name or symbol",
   pickerNoMatches: (query) => `No assets match "${query}"`,
 

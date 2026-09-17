@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CaretLeft, MagnifyingGlass } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, MagnifyingGlass } from "@phosphor-icons/react";
 import { useXBalances } from "@sodax/dapp-kit";
 import { getXChainType, useXService } from "@sodax/wallet-sdk-react";
 import {
@@ -178,11 +178,16 @@ export function TokenPicker({
 }) {
   const [chainKey, setChainKey] = useState<SpokeChainKey | null>(null);
   const [search, setSearch] = useState("");
+  // Wallet users can step past their swept holdings to a network the sweep
+  // does not cover (Bitcoin, Stellar, Sui). Email accounts have nothing
+  // there to reach, so they never see the door.
+  const [browseAll, setBrowseAll] = useState(false);
 
   const copy = useCopy();
   const money = useMoney();
   const {
     emailMode,
+    connected,
     isLoading: holdingsLoading,
     holdings,
     erroredChains,
@@ -193,6 +198,7 @@ export function TokenPicker({
     if (!next) {
       setChainKey(null);
       setSearch("");
+      setBrowseAll(false);
     }
     onOpenChange(next);
   };
@@ -250,11 +256,13 @@ export function TokenPicker({
       });
   }, [tokens, search, balances]);
 
-  // Email-mode first screens: holdings when paying in, a trimmed grid of
-  // chains the embedded wallets can receive on when withdrawing out. External
-  // wallets are the expert path (welcome screen, non-Privy users), so email
-  // mode gets no browse-all escape hatch in either direction.
-  const showHoldings = emailMode && mode === "source" && chainKey === null;
+  // First screen when paying in: what the swept wallets hold, for email
+  // accounts and connected wallets alike, so nobody picks a network before
+  // an asset. Withdrawing out, email accounts get the trimmed grid of chains
+  // the embedded wallets can receive on. Email mode has no browse-all door
+  // in either direction; wallet users get one under the holdings.
+  const showHoldings =
+    connected && !browseAll && mode === "source" && chainKey === null;
   const gridChains =
     emailMode && mode === "destination"
       ? EMBEDDED_CHAINS
@@ -266,12 +274,13 @@ export function TokenPicker({
       <DrawerContent>
         <DrawerHeader>
           <div className="flex items-center gap-2">
-            {showBack && (
+            {(showBack || browseAll) && (
               <Button
                 variant="ghost"
                 size="icon-sm"
                 aria-label={copy.backToNetworks}
                 onClick={() => {
+                  if (chainKey === null) setBrowseAll(false);
                   setChainKey(null);
                   setSearch("");
                 }}
@@ -380,6 +389,17 @@ export function TokenPicker({
                   </p>
                 )}
               </div>
+              {!emailMode && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-center text-muted-foreground"
+                  onClick={() => setBrowseAll(true)}
+                >
+                  {copy.pickerBrowseAll}
+                  <CaretRight className="size-3.5" />
+                </Button>
+              )}
             </>
           ) : chainKey === null ? (
             <div className="grid grid-cols-4 gap-2 overflow-y-auto pb-2">

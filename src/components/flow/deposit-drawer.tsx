@@ -122,12 +122,12 @@ export function DepositDrawer({
   // not first in chain order. Render-time state adjustment (not an effect),
   // per house pattern.
   const {
-    emailMode,
+    connected,
     holdings,
     gasShortChains,
     isLoading: holdingsLoading,
   } = useEmbeddedHoldings();
-  if (open && emailMode && !token && !holdingsLoading && holdings.length > 0) {
+  if (open && connected && !token && !holdingsLoading && holdings.length > 0) {
     setSrcChainKey(holdings[0].chainKey);
     setToken(holdings[0].token);
   }
@@ -467,7 +467,7 @@ export function DepositDrawer({
                 {/* Funds without gas: the embedded wallet holds this token
                     but zero native balance on its chain, so the order would
                     die at the network fee. Say so before the quote does. */}
-                {emailMode &&
+                {connected &&
                   token &&
                   gasShortChains.includes(srcChainKey) &&
                   (() => {
