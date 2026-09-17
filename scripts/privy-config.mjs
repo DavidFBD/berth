@@ -1,9 +1,12 @@
-// Privy app settings from the terminal, through Privy's own API, so a domain
-// or a rename never depends on remembering where the dashboard hides it.
-// Auth is the app id + app secret in .env.local (Node doesn't auto-load it;
-// read by hand like db-push.mjs). Every write sends the WHOLE new value and
-// prints the setting before and after, because Privy replaces arrays rather
-// than merging them: a partial list would silently drop a domain.
+// Privy app settings from the terminal, as far as Privy allows: the API
+// READS them with the app id + app secret (.env.local, read by hand like
+// db-push.mjs) but refuses every write (`PATCH /api/v1/apps/{id}` answers
+// 405 Method not allowed, verified 2026-09-17), so allowed domains, the
+// name and the logo can only be changed in the dashboard. The write
+// subcommands therefore do the next best thing: compute the exact new
+// value from the live one, print it beside the dashboard path where it
+// goes, and leave `show` to confirm afterwards. That still beats editing a
+// list from memory, since Privy replaces arrays rather than merging them.
 //
 // Usage:
 //   pnpm privy:config show
@@ -12,9 +15,8 @@
 //   pnpm privy:config set name "Berth"
 //   pnpm privy:config set logo_url https://www.berthmarkets.com/berth-brand/mark/berth-logo.png
 //
-// Settable scalar fields (the rest of the app object is read-only here on
-// purpose; the login methods and wallet settings stay in the dashboard):
-//   name, logo_url, icon_url, terms_and_conditions_url, privacy_policy_url
+// Dashboard: dashboard.privy.io > the app > Settings > Basics. Allowed URLs
+// live on the "Domains and clients" tab; name and logo on "Privy Home".
 import { readFileSync } from "node:fs";
 
 for (const line of readFileSync(".env.local", "utf8").split("\n")) {
@@ -59,15 +61,13 @@ async function getApp() {
   return response.json();
 }
 
-async function patchApp(body) {
-  const response = await fetch(URL, {
-    method: "PATCH",
-    headers: HEADERS,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`PATCH answered ${response.status}: ${text.slice(0, 300)}`);
+/**
+ * Where a setting is changed by hand. Privy's API has no write for app
+ * settings (405 on PATCH, 2026-09-17); if that ever changes, this is the
+ * one place to swap a fetch back in.
+ */
+function dashboardPath(tab) {
+  return `dashboard.privy.io > app ${APP_ID} > Settings > Basics > ${tab}`;
 }
 
 function show(app) {
@@ -119,14 +119,15 @@ if (command === "domains" && (sub === "add" || sub === "remove")) {
     console.error("Refusing to remove the last allowed domain; that locks everyone out.");
     process.exit(1);
   }
-  console.log("allowed_domains before:", current.join("  ") || "(none)");
+  console.log("allowed_domains now:", current.join("  ") || "(none)");
   if (next.length === current.length && next.every((value, index) => value === current[index])) {
     console.log("Nothing to change.");
     process.exit(0);
   }
-  await patchApp({ allowed_domains: next });
-  const after = await getApp();
-  console.log("allowed_domains after: ", (after.allowed_domains ?? []).join("  ") || "(none)");
+  console.log(`\nPrivy's API is read-only for this. In ${dashboardPath("Domains and clients")}`);
+  console.log(`make the list exactly:\n`);
+  for (const value of next) console.log(`  ${value}`);
+  console.log(`\nThen run \`pnpm privy:config show\` to confirm.`);
   process.exit(0);
 }
 
@@ -136,10 +137,10 @@ if (command === "set" && SCALAR_FIELDS.has(sub)) {
     console.error(`Give a value for ${sub}.`);
     process.exit(1);
   }
-  console.log(`${sub} before:`, before[sub] ?? "(unset)");
-  await patchApp({ [sub]: value });
-  const after = await getApp();
-  console.log(`${sub} after: `, after[sub] ?? "(unset)");
+  console.log(`${sub} now:`, before[sub] ?? "(unset)");
+  console.log(`\nPrivy's API is read-only for this. In ${dashboardPath("Privy Home")} set`);
+  console.log(`  ${sub} = ${value}\n`);
+  console.log(`Then run \`pnpm privy:config show\` to confirm.`);
   process.exit(0);
 }
 
