@@ -8,7 +8,18 @@ import { AccountButton } from "@/components/account-button";
 import { InfoDrawer } from "@/components/info-drawer";
 import { useCopy } from "@/components/settings-provider";
 import { VaultList } from "@/components/vaults";
+import { CashShelf, ListingBoard } from "@/components/board";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
+import { useBoardPreview } from "@/hooks/use-board-preview";
+import { useHubAccount } from "@/hooks/use-hub-account";
+import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { HOME_CHAIN } from "@/lib/account";
+import {
+  CASH_LISTING,
+  vaultListing,
+  type Listing,
+  type TokenListing,
+} from "@/lib/listings";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { TeapotModule } from "@/components/tea/teapot-module";
@@ -16,11 +27,13 @@ import { TableTotal } from "@/components/tea/table-total";
 import { AuthGate } from "@/components/welcome-screen";
 
 export function Home() {
-  const [depositVault, setDepositVault] = useState<LeverageYieldVault | null>(
-    null,
-  );
+  // What the deposit drawer pours into: a cup wrapped as a listing, or a
+  // stock or cash listing from the board.
+  const [depositListing, setDepositListing] = useState<Listing | null>(null);
   const [withdrawVault, setWithdrawVault] =
     useState<LeverageYieldVault | null>(null);
+  const [sellListing, setSellListing] = useState<TokenListing | null>(null);
+  const [sellOpen, setSellOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -29,6 +42,7 @@ export function Home() {
   const [bloomVault, setBloomVault] = useState<string | null>(null);
   const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
+  const boardPreview = useBoardPreview();
 
   // Email login is the primary path; the external wallet drawer is the
   // fallback for signed-in users reaching for a non-EVM source chain.
@@ -65,7 +79,7 @@ export function Home() {
         <VaultList
           bloomVault={bloomVault}
           onDeposit={(vault) => {
-            setDepositVault(vault);
+            setDepositListing(vaultListing(vault));
             setDepositOpen(true);
           }}
           onWithdraw={(vault) => {
@@ -75,17 +89,43 @@ export function Home() {
         />
       </div>
 
+      {boardPreview && (
+        <div className="mt-4 flex flex-col gap-4">
+          <CashShelf
+            onPark={() => {
+              setDepositListing(CASH_LISTING);
+              setDepositOpen(true);
+            }}
+            onTakeOut={() => {
+              setSellListing(CASH_LISTING);
+              setSellOpen(true);
+            }}
+          />
+          <ListingBoard
+            onBuy={(listing) => {
+              setDepositListing(listing);
+              setDepositOpen(true);
+            }}
+            onSell={(listing) => {
+              setSellListing(listing);
+              setSellOpen(true);
+            }}
+          />
+        </div>
+      )}
+
       <DepositDrawer
-        vault={depositVault}
+        listing={depositListing}
         open={depositOpen}
         onOpenChange={setDepositOpen}
         onConnectWallet={openWallet}
+        onSignIn={privy.enabled ? privy.login : undefined}
         onTopUp={() => {
           setDepositOpen(false);
           setAccountOpen(true);
         }}
         onPoured={() => {
-          const poured = depositVault?.vault ?? null;
+          const poured = depositListing?.address ?? null;
           setBloomVault(poured);
           // The bloom is a 900ms one-shot; clear so the next pour replays it.
           setTimeout(() => {
@@ -97,6 +137,12 @@ export function Home() {
         vault={withdrawVault}
         open={withdrawOpen}
         onOpenChange={setWithdrawOpen}
+        onConnectWallet={openWallet}
+      />
+      <SellHost
+        listing={sellListing}
+        open={sellOpen}
+        onOpenChange={setSellOpen}
         onConnectWallet={openWallet}
       />
       <WalletDrawer open={walletOpen} onOpenChange={setWalletOpen} />
@@ -173,12 +219,59 @@ function WithdrawHost({
 
   return (
     <WithdrawDrawer
-      vault={vault}
+      listing={vaultListing(vault)}
       open={open}
       onOpenChange={onOpenChange}
       availableShares={snapshot.shares}
       srcChainKey={snapshot.chainKey}
       totalShares={snapshot.total}
+      onConnectWallet={onConnectWallet}
+    />
+  );
+}
+
+/**
+ * The sell twin of WithdrawHost for a listing: everything on the shelf lives
+ * in THE account, so the row is always (home chain, what the hub wallet
+ * holds). Snapshotted at open for the same reason: the holdings refetch when
+ * the fill lands, and a live zero would unmount the drawer mid-tracking.
+ */
+function SellHost({
+  listing,
+  open,
+  onOpenChange,
+  onConnectWallet,
+}: {
+  listing: TokenListing | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConnectWallet?: () => void;
+}) {
+  const account = useHubAccount();
+  const holdings = useHubHoldings(account.hubWallet);
+  const [snapshot, setSnapshot] = useState<bigint | null>(null);
+
+  const held = listing
+    ? holdings.holdings.find(
+        (holding) => holding.listing.address === listing.address,
+      )?.balance
+    : undefined;
+
+  if (!open && snapshot !== null) {
+    setSnapshot(null);
+  } else if (open && snapshot === null && holdings.settled && held !== undefined) {
+    setSnapshot(held);
+  }
+
+  if (!listing || snapshot === null) return null;
+
+  return (
+    <WithdrawDrawer
+      listing={listing}
+      open={open}
+      onOpenChange={onOpenChange}
+      availableShares={snapshot}
+      srcChainKey={HOME_CHAIN}
       onConnectWallet={onConnectWallet}
     />
   );

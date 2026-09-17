@@ -198,6 +198,41 @@ export type Copy = {
   pourFillFailedBody: string;
   steepingBody: (teaName: string | null) => string;
 
+  /* — the board: listings that are not cups (stocks, funds, cash) — */
+  boardTitle: string;
+  boardHint: string;
+  /** `amount` arrives pre-formatted: "0.0089 NVDA ≈ €1.80". */
+  boardYouHold: (amount: string) => string;
+  /** Drawer title for a listing buy; `name` is the plain name, "NVIDIA". */
+  buyTitle: (name: string) => string;
+  buySub: string;
+  /** Quote label for a listing buy, where a cup says "You'll steep". */
+  youllHold: string;
+  ctaSignInToBuy: string;
+  ctaOpeningShelf: string;
+  /** Fill-complete body for a listing buy; `name` is the plain name. */
+  settledBody: (name: string) => string;
+  /** Drawer title for a listing sell; `name` is the plain name. */
+  sellTitle: (name: string) => string;
+  sellSub: string;
+  /** `amount` arrives pre-formatted: "≈ €1.93" or "0.0089 NVDA". */
+  shelfHolds: (amount: string) => string;
+  sellSignOnce: (chainName: string) => string;
+  sell: string;
+  ctaSellHowMuch: string;
+  ctaNotThatMuchHeld: string;
+  soldTitle: string;
+
+  /* — the cash shelf: idle dollars in the Treasury ETF token — */
+  cashTitle: string;
+  /** Shown under the figure when no rate is available. */
+  cashHint: string;
+  /** `rate` arrives pre-formatted: "3.97%". */
+  cashYieldLine: (rate: string) => string;
+  cashEmpty: string;
+  cashPark: string;
+  cashTakeOut: string;
+
   /* — pour flow: withdraw drawer — */
   pourBackTitle: (teaName: string) => string;
   pourBackTitleFallback: string;
@@ -431,6 +466,33 @@ const ORIGINAL: Copy = {
     teaName
       ? `${teaName} is steeping. The steam does the rest.`
       : "Your tea is steeping.",
+
+  boardTitle: "The board",
+  boardHint: "Stocks and funds, kept on your shelf. Tap one to buy.",
+  boardYouHold: (amount) => `You hold ${amount}`,
+  buyTitle: (name) => `Buy ${name}`,
+  buySub: "Pay from any wallet, on any network. It lands on your shelf.",
+  youllHold: "You'll hold",
+  ctaSignInToBuy: "Sign in with email to buy",
+  ctaOpeningShelf: "Finding your shelf…",
+  settledBody: (name) => `${name} is on your shelf.`,
+  sellTitle: (name) => `Sell ${name}`,
+  sellSub: "To any asset, on any network. One signature, and it is on its way.",
+  shelfHolds: (amount) => `You hold ${amount}`,
+  sellSignOnce: (chainName) =>
+    `You'll sign once on ${chainName}. Your shelf does the rest.`,
+  sell: "Sell",
+  ctaSellHowMuch: "Sell how much?",
+  ctaNotThatMuchHeld: "You don't hold quite that much",
+  soldTitle: "Sold.",
+
+  cashTitle: "Cash",
+  cashHint: "Idle dollars wait in short Treasury bills, not in a pool.",
+  cashYieldLine: (rate) =>
+    `About ${rate} a year, the 3 month Treasury bill rate before fund costs.`,
+  cashEmpty: "Nothing parked yet",
+  cashPark: "Park cash",
+  cashTakeOut: "Take out",
 
   pourBackTitle: (teaName) => `Pour back from ${teaName}`,
   pourBackTitleFallback: "Pour back",

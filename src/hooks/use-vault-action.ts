@@ -42,6 +42,7 @@ import {
   type PourStep,
 } from "@/lib/pour-lifecycle";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
+import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 import type { PourReadiness } from "@/hooks/use-privy-evm-wallet";
 import { useAwardPour } from "@/hooks/use-profile";
 
@@ -89,6 +90,16 @@ export interface RunDepositArgs {
    * but "ready" aborts the flow.
    */
   ensureReady?: () => Promise<PourReadiness>;
+  /**
+   * Where the output lands on the hub. The SDK's builder delivers to the hub
+   * wallet derived from the SIGNING wallet, which is right for a cup (shares
+   * are read per source chain) and wrong for a listing: every buy, from any
+   * wallet on any chain, must land on THE account (lib/account). Set for
+   * listing buys, left unset for cups. Applied at execution, after the last
+   * build: `deposit()` keeps the recipient as a plain field (`data` stays
+   * "0x"), so nothing else in the payload depends on it.
+   */
+  deliverTo?: string;
 }
 
 export interface RunWithdrawArgs {
@@ -467,8 +478,14 @@ export function useVaultAction(options?: {
         // 4. Execute: one signature on the spoke chain, then verify → relay → notify solver.
         advance("signing");
         if (!(await onRightChain())) return false;
+        const payload = args.deliverTo
+          ? {
+              ...built.value,
+              params: { ...built.value.params, dstAddress: args.deliverTo },
+            }
+          : built.value;
         const swapped = await vaultSwap.mutateAsyncSafe({
-          ...built.value,
+          ...payload,
           walletProvider: args.walletProvider,
         });
         if (!swapped.ok) {
@@ -482,6 +499,7 @@ export function useVaultAction(options?: {
         setResponse(swapped.value);
         advance("tracking");
         void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
+        void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
         return true;
       } finally {
         runningRef.current = false;
@@ -571,6 +589,7 @@ export function useVaultAction(options?: {
         setResponse(swapped.value);
         advance("tracking");
         void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
+        void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
         return true;
       } finally {
         runningRef.current = false;

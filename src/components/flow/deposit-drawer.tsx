@@ -4,12 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowsDownUp, CaretDown, Flame } from "@phosphor-icons/react";
-import {
-  ChainKeys,
-  type LeverageYieldVault,
-  type SpokeChainKey,
-  type XToken,
-} from "@sodax/sdk";
+import { ChainKeys, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import { useXBalances } from "@sodax/dapp-kit";
 import {
   getXChainType,
@@ -35,10 +30,10 @@ import {
   toBalanceReadToken,
 } from "@/lib/chains";
 import { getVaultMeta } from "@/lib/vaults-meta";
+import type { Listing } from "@/lib/listings";
 import { formatTokenAmount } from "@/lib/format";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import {
-  SHARE_DECIMALS,
   amountText,
   belowMinimum,
   depositGate,
@@ -49,6 +44,7 @@ import {
 import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
+import { useHubAccount } from "@/hooks/use-hub-account";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
@@ -59,20 +55,28 @@ import { TokenLogo, TokenPicker } from "./token-picker";
  * Full mobile deposit flow in one bottom drawer: pick source chain + token,
  * enter an amount against a live quote, then drive the build → approve → sign
  * pipeline and track the solver fill.
+ *
+ * The destination is a listing (lib/listings). A cup keeps every habit it
+ * had: tea name, cup colours, delivery to the signing wallet's own hub
+ * wallet. A stock or cash listing is a buy: plain name, and delivery to THE
+ * account, the Base-derived hub wallet, whatever wallet pays.
  */
 export function DepositDrawer({
-  vault,
+  listing,
   open,
   onOpenChange,
   onConnectWallet,
+  onSignIn,
   onTopUp,
   onPoured,
 }: {
-  vault: LeverageYieldVault | null;
+  listing: Listing | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Optional: lets the CTA open the app's wallet drawer when disconnected. */
   onConnectWallet?: () => void;
+  /** Optional: lets a buy's CTA start the email sign-in when there is no account. */
+  onSignIn?: () => void;
   /** Optional: routes an empty email-mode teapot to the funding flow. */
   onTopUp?: () => void;
   /** Optional: fired once when the pour fills — the cup's bloom moment. */
@@ -88,8 +92,21 @@ export function DepositDrawer({
   const [denom, setDenom] = useState<"money" | "token">("money");
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const meta = vault ? getVaultMeta(vault.name) : null;
+  const isBuy = !!listing && listing.kind !== "vault";
+  const meta =
+    listing?.kind === "vault" ? getVaultMeta(listing.vault.name) : null;
   const copy = useCopy();
+
+  // Where a buy lands: the account. Cups ignore this (see RunDepositArgs).
+  const account = useHubAccount();
+  const deliverTo = isBuy ? account.hubWallet : undefined;
+  const accountState = !isBuy
+    ? "ready"
+    : account.hubWallet
+      ? "ready"
+      : account.spokeAddress
+        ? "deriving"
+        : "none";
   // The pour machine owns everything past the first tap: pipeline, solver
   // fill, toasts, XP, failure reporting. The drawer renders its states.
   const action = useVaultAction({ onPoured });
@@ -172,10 +189,10 @@ export function DepositDrawer({
   const tooSmall = belowMinimum(worthUsd, money.rate);
   const smallestPourLabel = money.format(minPourUsd(money.rate));
   const quote = usePourQuote({
-    enabled: open && !!vault && !!token && !tooSmall,
+    enabled: open && !!listing && !!token && !tooSmall,
     src: token ? { address: token.address, chainKey: srcChainKey } : null,
-    dst: vault
-      ? { address: vault.vault, chainKey: ChainKeys.SONIC_MAINNET }
+    dst: listing
+      ? { address: listing.address, chainKey: ChainKeys.SONIC_MAINNET }
       : null,
     buildAmount,
   });
@@ -233,18 +250,20 @@ export function DepositDrawer({
 
   const handleDeposit = async () => {
     if (
-      !vault ||
+      !listing ||
       !token ||
       !buildAmount ||
       quote.minOut === undefined ||
       !address ||
-      !walletProvider
+      !walletProvider ||
+      (isBuy && !deliverTo)
     ) {
       return;
     }
     await action.runDeposit({
-      vault: vault.vault,
-      vaultName: vault.name,
+      vault: listing.address,
+      vaultName: listing.symbol,
+      deliverTo,
       srcChainKey,
       srcAddress: address,
       token,
@@ -280,9 +299,18 @@ export function DepositDrawer({
     quoted: quote.quoted,
     minOut: quote.minOut,
     hasWalletProvider: !!walletProvider,
+    account: accountState,
   });
   const cta: Cta = (() => {
     switch (gate.kind) {
+      case "noAccount":
+        return {
+          label: copy.ctaSignInToBuy,
+          disabled: !onSignIn,
+          onClick: onSignIn,
+        };
+      case "accountPending":
+        return { label: copy.ctaOpeningShelf, disabled: true, busy: true };
       case "pickToken":
         return {
           label: copy.whatPouring,
@@ -335,10 +363,14 @@ export function DepositDrawer({
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>
-              {meta ? copy.pourIntoTitle(meta.teaName) : copy.pourTitleFallback}
+              {listing
+                ? isBuy
+                  ? copy.buyTitle(listing.name)
+                  : copy.pourIntoTitle(meta?.teaName ?? listing.name)
+                : copy.pourTitleFallback}
             </DrawerTitle>
             <DrawerDescription>
-              {vault ? copy.pourSub : copy.pickCupToPour}
+              {listing ? (isBuy ? copy.buySub : copy.pourSub) : copy.pickCupToPour}
             </DrawerDescription>
           </DrawerHeader>
 
@@ -368,7 +400,7 @@ export function DepositDrawer({
             }}
             transition={{ duration: 0.22, ease: EASE_LIFT }}
           >
-          {vault && action.fillPhase ? (
+          {listing && action.fillPhase ? (
             <div className="p-4">
               <IntentTracking
                 reportState={action.reportState}
@@ -377,21 +409,25 @@ export function DepositDrawer({
                 accent={meta ? `var(--cup-${meta.cupKey})` : undefined}
                 deep={meta ? `var(--cup-${meta.cupKey}-deep)` : undefined}
                 successTitle={copy.pourFilledTitle}
-                successBody={copy.steepingBody(meta?.teaName ?? null)}
+                successBody={
+                  isBuy
+                    ? copy.settledBody(listing.name)
+                    : copy.steepingBody(meta?.teaName ?? null)
+                }
                 onDone={() => {
                   onOpenChange(false);
                   finish();
                 }}
               />
             </div>
-          ) : vault && action.pending ? (
+          ) : listing && action.pending ? (
             <div className="p-4">
               <ActionStepper
                 step={action.step}
                 approveNeeded={action.approveRequired ?? true}
               />
             </div>
-          ) : vault ? (
+          ) : listing ? (
             <>
               <div className="flex flex-col gap-4 overflow-y-auto p-4">
                 {/* Source chain + token */}
@@ -552,16 +588,16 @@ export function DepositDrawer({
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">
-                            {copy.youllSteep}
+                            {isBuy ? copy.youllHold : copy.youllSteep}
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
-                            ≈ {formatTokenAmount(quote.quoted, SHARE_DECIMALS)} {vault.name}
+                            ≈ {formatTokenAmount(quote.quoted, listing.decimals, 6)} {listing.symbol}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>{copy.atLeastOncePoured}</span>
                           <span className="tabular-nums">
-                            {formatTokenAmount(quote.minOut, SHARE_DECIMALS)}
+                            {formatTokenAmount(quote.minOut, listing.decimals, 6)}
                           </span>
                         </div>
                       </>

@@ -7,7 +7,6 @@ import { ArrowsDownUp, CaretDown } from "@phosphor-icons/react";
 import {
   ChainKeys,
   isEvmChainKeyType,
-  type LeverageYieldVault,
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
@@ -26,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { EASE_LIFT } from "@/lib/motion";
 import { getChainName } from "@/lib/chains";
 import { getVaultMeta } from "@/lib/vaults-meta";
+import type { Listing } from "@/lib/listings";
 import { formatTokenAmount } from "@/lib/format";
 import {
   SHARE_DECIMALS,
@@ -39,6 +39,7 @@ import {
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
+import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultAddress, useVaultWallet } from "@/hooks/use-vault-wallet";
 import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
@@ -48,12 +49,19 @@ import { TokenLogo, TokenPicker } from "./token-picker";
 const ONE_SHARE = 10n ** 18n;
 
 /**
- * Mirror of the deposit flow: swap lsoda* shares (held in the hub wallet
- * derived from `srcChainKey`) back into any solver token on any chain. One
- * signature on `srcChainKey`, no approval step.
+ * Mirror of the deposit flow: swap what the hub wallet derived from
+ * `srcChainKey` holds of a listing back into any solver token on any chain.
+ * One signature on `srcChainKey`, no approval step: the payload carries
+ * `hubWalletSwap`, so the hub wallet is authorised by a `sendMessage` the
+ * user signs on the spoke, never a Sonic transaction.
+ *
+ * A cup keeps every habit it had (tea name, cup colours, shares priced by
+ * `previewRedeem`, the chain it was deposited from). A stock or cash listing
+ * is a sell: plain name, oracle price, and `srcChainKey` is the home chain,
+ * since every listing lives on THE account (lib/account).
  */
 export function WithdrawDrawer({
-  vault,
+  listing,
   open,
   onOpenChange,
   availableShares,
@@ -61,12 +69,15 @@ export function WithdrawDrawer({
   totalShares,
   onConnectWallet,
 }: {
-  vault: LeverageYieldVault | null;
+  listing: Listing | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Shares held via `srcChainKey`'s hub wallet (18 decimals). */
+  /** Units held via `srcChainKey`'s hub wallet (18 decimals for every listing). */
   availableShares: bigint;
-  /** Chain the user deposited FROM — they sign the withdraw message there. */
+  /**
+   * Chain the user signs the message on: for a cup, the chain they deposited
+   * FROM; for a listing sell, the home chain.
+   */
   srcChainKey: SpokeChainKey;
   /**
    * The user's share total across ALL source chains (18 decimals). When it
@@ -88,7 +99,9 @@ export function WithdrawDrawer({
   // address — the no-bank-rails cash-out path). null = own wallet.
   const [customRecipient, setCustomRecipient] = useState<string | null>(null);
 
-  const meta = vault ? getVaultMeta(vault.name) : null;
+  const isSell = !!listing && listing.kind !== "vault";
+  const meta =
+    listing?.kind === "vault" ? getVaultMeta(listing.vault.name) : null;
   const copy = useCopy();
   // The pour machine owns everything past the first tap: pipeline, solver
   // fill, toasts, XP, failure reporting. The drawer renders its states.
@@ -123,12 +136,20 @@ export function WithdrawDrawer({
   // The ticker never leads; this crowd thinks in euros, not lsoda*.
   const money = useMoney();
   const prices = useUsdPrices();
+  const listingPrices = useListingPrices();
+  // Cups are valued through previewRedeem times the hub asset's oracle price;
+  // a listing sell is priced straight by the solver oracle. Query disabled
+  // for listings (undefined vault).
+  const vaultListing = listing?.kind === "vault" ? listing : null;
   const { data: pricePerShare } = useLeverageYieldPreviewRedeem({
-    params: { vault: vault?.vault, shares: ONE_SHARE },
+    params: { vault: vaultListing?.address, shares: ONE_SHARE },
   });
-  const assetPriceUsd = vault ? prices.priceOfHubAsset(vault.asset) : undefined;
-  const sharePriceUsd =
-    pricePerShare !== undefined && assetPriceUsd !== undefined
+  const assetPriceUsd = vaultListing
+    ? prices.priceOfHubAsset(vaultListing.vault.asset)
+    : undefined;
+  const sharePriceUsd = isSell
+    ? listingPrices.priceOf(listing)
+    : pricePerShare !== undefined && assetPriceUsd !== undefined
       ? Number(formatUnits(pricePerShare, SHARE_DECIMALS)) * assetPriceUsd
       : undefined;
   const entryPrice =
@@ -155,9 +176,9 @@ export function WithdrawDrawer({
   );
   const smallestPourLabel = money.format(minPourUsd(money.rate));
   const quote = usePourQuote({
-    enabled: open && !!vault && !!dstChainKey && !!outputToken && !tooSmall,
-    src: vault
-      ? { address: vault.vault, chainKey: ChainKeys.SONIC_MAINNET }
+    enabled: open && !!listing && !!dstChainKey && !!outputToken && !tooSmall,
+    src: listing
+      ? { address: listing.address, chainKey: ChainKeys.SONIC_MAINNET }
       : null,
     dst:
       dstChainKey && outputToken
@@ -222,7 +243,7 @@ export function WithdrawDrawer({
 
   const handleWithdraw = async () => {
     if (
-      !vault ||
+      !listing ||
       !dstChainKey ||
       !outputToken ||
       !buildAmount ||
@@ -234,8 +255,8 @@ export function WithdrawDrawer({
       return;
     }
     await action.runWithdraw({
-      vault: vault.vault,
-      vaultName: vault.name,
+      vault: listing.address,
+      vaultName: listing.symbol,
       srcChainKey,
       srcAddress: address,
       dstChainKey,
@@ -247,7 +268,7 @@ export function WithdrawDrawer({
       walletProvider,
       walletMode: mode,
       fillToasts: {
-        successTitle: copy.pouredBackTitle,
+        successTitle: isSell ? copy.soldTitle : copy.pouredBackTitle,
         successDescription: copy.pouredBackBody(getChainName(dstChainKey)),
         failureDescription: copy.pourBackFailedBody,
       },
@@ -303,9 +324,15 @@ export function WithdrawDrawer({
           onClick: onConnectWallet,
         };
       case "enterAmount":
-        return { label: copy.ctaPourBackHowMuch, disabled: true };
+        return {
+          label: isSell ? copy.ctaSellHowMuch : copy.ctaPourBackHowMuch,
+          disabled: true,
+        };
       case "insufficient":
-        return { label: copy.ctaCupNotThatFull, disabled: true };
+        return {
+          label: isSell ? copy.ctaNotThatMuchHeld : copy.ctaCupNotThatFull,
+          disabled: true,
+        };
       case "belowMinimum":
         return {
           label: copy.ctaPourAtLeast(smallestPourLabel),
@@ -325,7 +352,7 @@ export function WithdrawDrawer({
         return { label: copy.ctaReadingLeaves, disabled: true, busy: true };
       default:
         return {
-          label: copy.pourBack,
+          label: isSell ? copy.sell : copy.pourBack,
           disabled: false,
           onClick: () => void handleWithdraw(),
         };
@@ -342,11 +369,17 @@ export function WithdrawDrawer({
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>
-              {meta ? copy.pourBackTitle(meta.teaName) : copy.pourBackTitleFallback}
+              {listing
+                ? isSell
+                  ? copy.sellTitle(listing.name)
+                  : copy.pourBackTitle(meta?.teaName ?? listing.name)
+                : copy.pourBackTitleFallback}
             </DrawerTitle>
             <DrawerDescription>
-              {vault
-                ? copy.pourBackSub
+              {listing
+                ? isSell
+                  ? copy.sellSub
+                  : copy.pourBackSub
                 : copy.pickCupPourBack}
             </DrawerDescription>
           </DrawerHeader>
@@ -375,7 +408,7 @@ export function WithdrawDrawer({
             }}
             transition={{ duration: 0.22, ease: EASE_LIFT }}
           >
-          {vault && action.fillPhase ? (
+          {listing && action.fillPhase ? (
             <div className="p-4">
               <IntentTracking
                 reportState={action.reportState}
@@ -398,11 +431,11 @@ export function WithdrawDrawer({
                 }}
               />
             </div>
-          ) : vault && action.pending ? (
+          ) : listing && action.pending ? (
             <div className="p-4">
               <ActionStepper step={action.step} approveNeeded={false} />
             </div>
-          ) : vault ? (
+          ) : listing ? (
             <>
               <div className="flex flex-col gap-4 overflow-y-auto p-4">
                 {/* Amount: money leads, shares live behind the flip */}
@@ -448,19 +481,17 @@ export function WithdrawDrawer({
                     >
                       <ArrowsDownUp className="size-3.5" />
                       {moneyMode
-                        ? `≈ ${buildAmount ? formatTokenAmount(buildAmount, SHARE_DECIMALS) : "0"} ${vault.name}`
+                        ? `≈ ${buildAmount ? formatTokenAmount(buildAmount, SHARE_DECIMALS, 6) : "0"} ${listing.symbol}`
                         : `≈ ${money.format(sharesWorthUsd(buildAmount ?? 0n) ?? 0)}`}
                     </button>
                   )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
-                      {sharePriceUsd !== undefined
-                        ? copy.cupHolds(
-                            `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)}`,
-                          )
-                        : copy.cupHolds(
-                            `${formatTokenAmount(availableShares, SHARE_DECIMALS)} ${vault.name}`,
-                          )}
+                      {(isSell ? copy.shelfHolds : copy.cupHolds)(
+                        sharePriceUsd !== undefined
+                          ? `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)} (${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol})`
+                          : `${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol}`,
+                      )}
                     </span>
                     {availableShares > 0n && (
                       <Button variant="ghost" size="xs" onClick={handleMax}>
@@ -469,7 +500,9 @@ export function WithdrawDrawer({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {copy.signOnceOn(getChainName(srcChainKey))}
+                    {isSell
+                      ? copy.sellSignOnce(getChainName(srcChainKey))
+                      : copy.signOnceOn(getChainName(srcChainKey))}
                   </p>
                   {totalShares !== undefined &&
                     totalShares > availableShares && (

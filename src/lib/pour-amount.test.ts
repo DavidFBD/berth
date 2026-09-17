@@ -176,6 +176,32 @@ describe("depositGate", () => {
     expect(depositGate(ready)).toEqual({ kind: "ready" });
   });
 
+  it("cups never wait on the account: an omitted account is ready", () => {
+    expect(depositGate({ ...ready, account: "ready" })).toEqual({ kind: "ready" });
+  });
+
+  it("a buy with no shelf to land on is refused before anything else", () => {
+    // Even with no token picked, sign-in is the first door: every other
+    // reason is fixable inside the drawer, this one is not.
+    expect(depositGate({ ...ready, hasToken: false, account: "none" }).kind).toBe(
+      "noAccount",
+    );
+    expect(depositGate({ ...ready, account: "none" }).kind).toBe("noAccount");
+  });
+
+  it("a shelf still deriving only holds the door at the very end", () => {
+    expect(depositGate({ ...ready, account: "deriving" }).kind).toBe(
+      "accountPending",
+    );
+    // Every field-level reason still wins over the wait.
+    expect(depositGate({ ...ready, account: "deriving", buildAmount: undefined }).kind).toBe(
+      "enterAmount",
+    );
+    expect(depositGate({ ...ready, account: "deriving", noRoute: true }).kind).toBe(
+      "noRoute",
+    );
+  });
+
   it("walks the ladder in actionable order", () => {
     expect(depositGate({ ...ready, hasToken: false }).kind).toBe("pickToken");
     expect(depositGate({ ...ready, address: undefined }).kind).toBe("connectSource");

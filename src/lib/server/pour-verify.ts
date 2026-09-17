@@ -1,5 +1,6 @@
 import { Sodax, type Intent } from "@sodax/sdk";
 import { sodaxConfig } from "@/lib/sodax-config";
+import { listListings } from "@/lib/listings";
 
 /**
  * Pour verification, hardened (replaces the old hub-tx.ts status check).
@@ -135,8 +136,12 @@ export async function verifyPourTx({
     return { ok: false, reason: "not confirmed" };
   }
 
+  // Every listing counts, not only the cups: a stock or SGOV bought through
+  // the house is a pour for the ledger too (lib/listings).
   const vaultAddresses = new Set(
-    sodax.leverageYield.listVaults().map((vault) => vault.vault.toLowerCase()),
+    listListings(sodax.leverageYield.listVaults()).map((listing) =>
+      listing.address.toLowerCase(),
+    ),
   );
   return judgePour({ direction, intent, vaultAddresses, accountWallet });
 }

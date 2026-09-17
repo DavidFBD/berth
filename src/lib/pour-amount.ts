@@ -195,7 +195,18 @@ export type PourGate =
   | { kind: "wrongChain" }
   | { kind: "noRoute" }
   | { kind: "belowDust" }
-  | { kind: "quotePending" };
+  | { kind: "quotePending" }
+  /** A buy needs a shelf to land on, and this browser has no email session. */
+  | { kind: "noAccount" }
+  /** The shelf is still being derived; a moment, not a refusal. */
+  | { kind: "accountPending" };
+
+/**
+ * Whether the destination's account is ready. Cups deliver to the signing
+ * wallet's own hub wallet and never wait on this; a listing buy delivers to
+ * THE account (lib/account: the Base-derived hub wallet), so it needs one.
+ */
+export type AccountReadiness = "ready" | "deriving" | "none";
 
 export function depositGate(state: {
   hasToken: boolean;
@@ -208,7 +219,12 @@ export function depositGate(state: {
   quoted: bigint | undefined;
   minOut: bigint | undefined;
   hasWalletProvider: boolean;
+  /** Defaults to ready: cups never wait on the account. */
+  account?: AccountReadiness;
 }): PourGate {
+  // Before anything else: a buy with nowhere to land is not a pour yet, and
+  // the fix (sign in) is a different door from every other reason below.
+  if (state.account === "none") return { kind: "noAccount" };
   // Token-first: a user whose only wallet is on another family (e.g.
   // Phantom) must be routed to the picker, not told to "connect" while
   // already connected — the source chain defaults to Ethereum until they pick.
@@ -229,6 +245,9 @@ export function depositGate(state: {
   ) {
     return { kind: "quotePending" };
   }
+  // Last, beside the quote: the shelf is deterministic and cached, so this
+  // is a first-paint wait at most, never a reason to send the user away.
+  if (state.account === "deriving") return { kind: "accountPending" };
   return { kind: "ready" };
 }
 
