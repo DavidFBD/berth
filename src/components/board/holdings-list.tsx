@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
@@ -36,13 +37,8 @@ export function HoldingsList({
   const loading = !holdings.settled && (account.isLoading || holdings.isLoading);
 
   return (
-    <section className="rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex flex-col gap-0.5 px-4 pt-3.5 pb-2.5">
-        <span className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
-          {copy.holdingsTitle}
-        </span>
-        <span className="text-xs text-muted-foreground">{copy.holdingsHint}</span>
-      </div>
+    <section>
+      <SectionHeading title={copy.holdingsTitle} hint={copy.holdingsHint} />
       {loading ? (
         <div className="flex flex-col gap-2 border-t border-border px-4 py-3">
           <Skeleton className="h-5 w-40" />

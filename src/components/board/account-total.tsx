@@ -38,14 +38,20 @@ export function AccountTotal() {
   const total = ready ? (funds.totalUsd ?? 0) + (holdingsUsd ?? 0) : undefined;
 
   return (
-    <section className="mb-4 flex flex-col gap-1 px-1">
-      <span className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
+    // The one figure the page is about, so it is the one thing set large.
+    // It was a letter-spaced capital label over a 36px number, at the same
+    // pitch as the seven section labels under it; nothing said this was the
+    // page's subject. Now the label is quiet, the figure is the anchor, and
+    // the tracking tightens as the size grows, the way a number set this
+    // large needs.
+    <section className="mb-5 flex flex-col gap-1.5 px-1">
+      <span className="text-xs text-muted-foreground">
         {copy.accountTotalLabel}
       </span>
       {total === undefined ? (
-        <Skeleton className="h-10 w-40" />
+        <Skeleton className="h-11 w-44" />
       ) : (
-        <span className="money text-4xl font-semibold tabular-nums text-foreground">
+        <span className="money text-[2.625rem] leading-none font-semibold tracking-[-0.035em] tabular-nums text-foreground sm:text-[3rem]">
           {money.format(total)}
         </span>
       )}

@@ -15,6 +15,7 @@ import {
   NewsFeed,
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
+import { Panel } from "@/components/ui/panel";
 import { VaultPositions } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useHubAccount } from "@/hooks/use-hub-account";
@@ -102,8 +103,14 @@ export function Home() {
         <AccountTotal />
 
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">
-          {/* What you hold and what can pay for the next order. */}
-          <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
+          {/*
+            One object, not four. What can pay, what is owned, what is
+            parked and what is left over are all the same subject, the
+            account, and giving each its own bordered box made four equal
+            voices where there is one topic. Ruled sections inside a single
+            panel say the same thing and leave the page with a first read.
+          */}
+          <Panel className="divide-y divide-border lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
             <FundsModule onTopUp={() => setAccountOpen(true)} />
             <HoldingsList onSell={openSell} />
             <CashShelf
@@ -116,7 +123,7 @@ export function Home() {
                 setWithdrawOpen(true);
               }}
             />
-          </div>
+          </Panel>
 
           {/* The board keeps the widest track: it is what people come to do. */}
           <div className="lg:col-start-2 lg:row-start-1">

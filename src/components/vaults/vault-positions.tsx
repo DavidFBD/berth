@@ -10,6 +10,7 @@ import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { formatTokenAmount } from "@/lib/format";
 import { getVaultMeta } from "@/lib/vaults-meta";
+import { SectionHeading } from "@/components/ui/panel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,18 +43,8 @@ export function VaultPositions({
     // Rows stay mounted at all times, `hidden` or not, so their position
     // queries keep running and can flip the section open the moment one
     // resolves true — an `anyPresent &&` guard here would never see it.
-    <div
-      className={cn(
-        "rounded-2xl border border-border bg-card shadow-sm",
-        !anyPresent && "hidden",
-      )}
-    >
-      <div className="flex flex-col gap-1 px-4 pt-3.5">
-        <h2 className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
-          {copy.vaultsTitle}
-        </h2>
-        <p className="text-xs text-muted-foreground">{copy.vaultsHint}</p>
-      </div>
+    <div className={cn(!anyPresent && "hidden")}>
+      <SectionHeading title={copy.vaultsTitle} hint={copy.vaultsHint} />
       <div className="flex flex-col gap-1 p-3">
         {vaults.map((vault) => (
           <VaultRow

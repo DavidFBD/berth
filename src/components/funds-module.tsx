@@ -44,14 +44,14 @@ export function FundsModule({ onTopUp }: { onTopUp: () => void }) {
     connected && !isLoading && (holdings.length > 0 || erroredChains.length > 0);
 
   return (
-    <div className="flex items-center gap-3.5 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
-      <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-muted">
-        <Wallet className="size-7 text-primary" />
+    <div className="flex items-center gap-3.5 px-4 py-3.5">
+      <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted">
+        <Wallet className="size-6 text-primary" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
+        <h2 className="font-display text-[15px] leading-tight font-semibold tracking-[-0.012em] text-foreground">
           {copy.fundsTitle}
-        </div>
+        </h2>
         {connected && isLoading ? (
           // Mirrors the loaded shape: worth sentence + peek hint, so the
           // module doesn't grow when the sweep lands.

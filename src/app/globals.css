@@ -239,3 +239,80 @@ input:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+
+/* ————— Browser surfaces —————
+   The parts we did not draw still carry the design. Selection, the caret,
+   the scrollbar and the underline offset all ship with defaults that belong
+   to no design system, and leaving them is the clearest tell that a page was
+   assembled rather than built. Each one is drawn from the palette. */
+
+::selection {
+  /* accent-soft, so a selected figure stays legible rather than inverting. */
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+html {
+  caret-color: var(--primary);
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  /* A border in the page colour insets the thumb instead of padding it. */
+  border: 3px solid var(--background);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* Underlines sit off the baseline and take the font's own weight, rather
+   than the browser's 1px rule cutting through descenders. */
+a,
+.underline {
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: from-font;
+}
+
+/* Headings break where a person would break them; prose refuses orphans. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
+/* ————— Elevation —————
+   Two depths, not one, and tinted with the ink hue rather than pure black:
+   a shadow on this bg that is neutral grey reads as dirt. A sheet is a
+   surface holding a list; raised is a thing that sits above the page. */
+:root {
+  --shadow-sheet:
+    0 1px 2px -1px rgb(21 27 26 / 0.07), 0 3px 10px -4px rgb(21 27 26 / 0.07);
+  --shadow-raised:
+    0 2px 4px -2px rgb(21 27 26 / 0.09), 0 12px 28px -10px rgb(21 27 26 / 0.14);
+}
+.dark {
+  --shadow-sheet:
+    0 1px 2px -1px rgb(0 0 0 / 0.5), 0 3px 10px -4px rgb(0 0 0 / 0.45);
+  --shadow-raised:
+    0 2px 4px -2px rgb(0 0 0 / 0.55), 0 14px 32px -10px rgb(0 0 0 / 0.5);
+}
+
+.shadow-sheet {
+  box-shadow: var(--shadow-sheet);
+}
+.shadow-raised {
+  box-shadow: var(--shadow-raised);
+}

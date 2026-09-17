@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { CaretRight, Funnel } from "@phosphor-icons/react";
 import { Sparkline } from "@/components/board/sparkline";
 import { Button } from "@/components/ui/button";
+import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
@@ -12,11 +13,7 @@ import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { formatTokenAmount } from "@/lib/format";
-import {
-  STOCK_LISTINGS,
-  type StockCategory,
-  type TokenListing,
-} from "@/lib/listings";
+import { STOCK_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT, SPRING_POP } from "@/lib/motion";
 import {
   changeDirection,
@@ -24,13 +21,6 @@ import {
   percentChange,
   type ChangeDirection,
 } from "@/lib/performance";
-
-/** Category, in plain words. Data, not voice. */
-const CATEGORY_LABEL: Record<StockCategory, string> = {
-  equity: "Stock",
-  etf: "Fund",
-  treasury: "Treasury",
-};
 
 /** Text colour per direction, for the change figures. */
 const CHANGE_TONE: Record<ChangeDirection, string> = {
@@ -82,18 +72,16 @@ export function ListingBoard({
   };
 
   return (
-    <section className="rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex flex-col gap-0.5 px-4 pt-3.5 pb-2.5">
-        <span className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
-          {copy.boardTitle}
-        </span>
-        <span className="text-xs text-muted-foreground">{copy.boardHint}</span>
-        {performance.seriesDays > 0 && (
-          <span className="text-[11.5px] text-muted-foreground">
-            {copy.boardPerformanceNote(performance.seriesDays)}
-          </span>
-        )}
-      </div>
+    <Panel surface="sheet">
+      <SectionHeading
+        title={copy.boardTitle}
+        hint={copy.boardHint}
+        note={
+          performance.seriesDays > 0
+            ? copy.boardPerformanceNote(performance.seriesDays)
+            : undefined
+        }
+      />
       <ul className="divide-y divide-border border-t border-border">
         {STOCK_LISTINGS.map((listing) => {
           const price = prices.priceOf(listing);
@@ -130,12 +118,24 @@ export function ListingBoard({
               onFocusCapture={() => setActiveRow(listing.symbol)}
               onBlurCapture={() => setActiveRow(null)}
             >
+              {/*
+                A grid, not a flex row. Every line and every price now starts
+                at the same x down the whole board, which is the difference
+                between a quote board and a list of cards: with flex, each
+                row's line floated wherever its own company name ended.
+              */}
               <button
                 type="button"
                 onClick={() => onBuy(listing)}
-                className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-[background-color,transform] duration-150 ease-lift hover:bg-muted/60 active:scale-[0.995] active:bg-muted"
+                className="grid min-h-14 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_3rem_auto_0.75rem] items-center gap-3 px-4 py-2.5 text-left transition-[background-color,transform] duration-150 ease-lift hover:bg-muted/60 active:scale-[0.995] active:bg-muted lg:grid-cols-[minmax(0,1fr)_7rem_5.5rem_0.75rem]"
               >
-                <div className="min-w-0 flex-1">
+                {/*
+                  The name takes what it needs and the line takes the rest.
+                  With the name on flex-1 a desktop row was a short name, two
+                  hundred pixels of nothing, then a 48px line: the eye had to
+                  cross the gap to connect a company to its own price.
+                */}
+                <div className="min-w-0">
                   <div className="flex items-baseline gap-2">
                     <span className="truncate text-sm font-semibold text-foreground">
                       {listing.name}
@@ -144,36 +144,38 @@ export function ListingBoard({
                       {listing.symbol}
                     </span>
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{CATEGORY_LABEL[listing.category]}</span>
-                    {hasPosition && (
-                      <span className="money truncate text-foreground/80">
-                        {copy.boardYouHold(
-                          heldUsd !== undefined
-                            ? `${formatTokenAmount(held, listing.decimals, 6)} ${listing.symbol} ≈ ${money.format(heldUsd)}`
-                            : `${formatTokenAmount(held, listing.decimals, 6)} ${listing.symbol}`,
-                        )}
-                      </span>
-                    )}
-                  </div>
+                  {/* Only when there is something to say. Twelve rows reading
+                      "Stock" under twelve company names is a column of noise,
+                      and the section is already called Stocks and funds. */}
+                  {hasPosition && (
+                    <div className="money mt-0.5 truncate text-xs text-foreground/80">
+                      {copy.boardYouHold(
+                        heldUsd !== undefined
+                          ? `${formatTokenAmount(held, listing.decimals, 6)} ${listing.symbol} ≈ ${money.format(heldUsd)}`
+                          : `${formatTokenAmount(held, listing.decimals, 6)} ${listing.symbol}`,
+                      )}
+                    </div>
+                  )}
                 </div>
-                {series && lineDirection && (
-                  <div className="flex shrink-0 flex-col items-center gap-0.5">
-                    <Sparkline
-                      values={series}
-                      direction={lineDirection}
-                      className="h-[18px] w-12 lg:w-24 xl:w-28"
-                    />
-                    {windowChange !== undefined && (
-                      <span
-                        className={`money text-[10px] tabular-nums ${CHANGE_TONE[lineDirection]}`}
-                      >
-                        {formatPercentChange(windowChange, 1)}
-                      </span>
-                    )}
-                  </div>
-                )}
-                <div className="shrink-0 text-right">
+                <div className="flex flex-col items-center gap-0.5">
+                  {series && lineDirection && (
+                    <>
+                      <Sparkline
+                        values={series}
+                        direction={lineDirection}
+                        className="h-[18px] w-full max-w-28"
+                      />
+                      {windowChange !== undefined && (
+                        <span
+                          className={`money text-[10px] tabular-nums ${CHANGE_TONE[lineDirection]}`}
+                        >
+                          {formatPercentChange(windowChange, 1)}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="text-right">
                   <div className="money text-sm tabular-nums text-foreground">
                     {price !== undefined ? (
                       money.format(price)
@@ -191,8 +193,11 @@ export function ListingBoard({
                     </div>
                   )}
                 </div>
+                {/* The grid keeps this track whether or not a caret sits in
+                    it, so a held row's price never shifts left of an unheld
+                    row's. */}
                 {!(hasPosition && onSell) && (
-                  <CaretRight className="size-4 shrink-0 text-muted-foreground" />
+                  <CaretRight className="size-3 text-muted-foreground" />
                 )}
               </button>
 
@@ -248,6 +253,6 @@ export function ListingBoard({
           );
         })}
       </ul>
-    </section>
+    </Panel>
   );
 }

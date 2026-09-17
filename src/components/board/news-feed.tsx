@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUpRight, X } from "@phosphor-icons/react";
+import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
 import { useListingNews } from "@/hooks/use-listing-news";
@@ -74,13 +75,9 @@ export function NewsFeed({
   const performance = useListingPerformance();
 
   return (
-    <section className="rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex flex-col gap-0.5 px-4 pt-3.5 pb-2.5">
-        <span className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
-          {copy.newsTitle}
-        </span>
-        <span className="text-xs text-muted-foreground">{copy.newsHint}</span>
-
+    <Panel surface="sheet">
+      <SectionHeading title={copy.newsTitle} hint={copy.newsHint} />
+      <div className="empty:hidden">
         <AnimatePresence initial={false}>
           {filter && (
             <motion.div
@@ -89,7 +86,7 @@ export function NewsFeed({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18, ease: EASE_LIFT }}
-              className="mt-1.5 flex items-center gap-2"
+              className="flex items-center gap-2 px-4 pb-2.5"
             >
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
                 {copy.newsFilteredTo(filter.name)}
@@ -193,6 +190,6 @@ export function NewsFeed({
           </motion.ul>
         </AnimatePresence>
       )}
-    </section>
+    </Panel>
   );
 }

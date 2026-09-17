@@ -3,8 +3,15 @@
 import { Suspense, useState } from "react";
 import { notFound, useSearchParams } from "next/navigation";
 import { isAddress, type Address } from "viem";
-import { CashShelf, ListingBoard, NewsFeed } from "@/components/board";
+import {
+  CashShelf,
+  HoldingsList,
+  ListingBoard,
+  NewsFeed,
+} from "@/components/board";
+import { FundsModule } from "@/components/funds-module";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useMounted } from "@/hooks/use-mounted";
@@ -83,7 +90,13 @@ function Gallery() {
       {/* The same three tracks Home composes, so the desktop layout can be
           reviewed here without a session. */}
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">
-        <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
+        {/* The account rail as Home composes it, so the panel's internal
+            rules and every signed-out empty state can be reviewed here. */}
+        <Panel className="divide-y divide-border lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
+          {/* Same guard the drawers need: this reads the wallet store, which
+              only exists in the browser, and server-rendering it throws. */}
+          {mounted && <FundsModule onTopUp={() => {}} />}
+          <HoldingsList onSell={(picked) => { setSellListing(picked); setSellOpen(true); }} />
           <CashShelf
             onPark={() => {
               setBuyListing(CASH_LISTING);
@@ -94,7 +107,7 @@ function Gallery() {
               setSellOpen(true);
             }}
           />
-        </div>
+        </Panel>
         <div className="lg:col-start-2 lg:row-start-1">
           <ListingBoard
             onBuy={(picked) => {
