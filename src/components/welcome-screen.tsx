@@ -1,8 +1,14 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Envelope, HandHeart } from "@phosphor-icons/react";
-import { useConnectedChains } from "@sodax/wallet-sdk-react";
+import { Envelope, HandHeart, Wallet } from "@phosphor-icons/react";
+import { toast } from "sonner";
+import { isUserRejectedError } from "@sodax/dapp-kit";
+import {
+  useConnectedChains,
+  useXConnect,
+  type IXConnector,
+} from "@sodax/wallet-sdk-react";
 import { Button } from "@/components/ui/button";
 import { BerthMark } from "@/components/berth-mark";
 import { WalletDrawer } from "@/components/wallet";
@@ -11,6 +17,8 @@ import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useCopy } from "@/components/settings-provider";
 import { COPY } from "@/lib/copy";
 import { useMounted } from "@/hooks/use-mounted";
+import { useInstalledWallets } from "@/hooks/use-installed-wallets";
+import type { InstalledWallet } from "@/lib/installed-wallets";
 import { pendingReferralCode } from "@/lib/referral";
 
 
@@ -92,15 +100,7 @@ function WelcomeScreen() {
           </Button>
         )}
         <p className="text-xs text-muted-foreground">{copy.noSeedPhrases}</p>
-        {PRIVY_ENABLED && (
-          <button
-            type="button"
-            onClick={() => setWalletsOpen(true)}
-            className="hidden py-1 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground lg:block"
-          >
-            {copy.preferOwnWallet}
-          </button>
-        )}
+        <InstalledWalletButtons />
       </div>
 
       <div className="flex flex-col items-center gap-1">
@@ -111,6 +111,61 @@ function WelcomeScreen() {
       </div>
 
       <WalletDrawer open={walletsOpen} onOpenChange={setWalletsOpen} />
+    </div>
+  );
+}
+
+/**
+ * One button per wallet this browser actually has, connecting its best
+ * family in one tap. Nothing is offered when nothing is installed: a phone
+ * without a wallet sees email alone, a wallet's in-app browser sees itself.
+ * A connected wallet passes the gate above, so success needs no handling
+ * here; the SDK's store flips and the account renders.
+ */
+function InstalledWalletButtons() {
+  const copy = useCopy();
+  const { wallets } = useInstalledWallets();
+  const connect = useXConnect();
+  const [pending, setPending] = useState<string | null>(null);
+
+  if (wallets.length === 0) return null;
+
+  const pick = async (wallet: InstalledWallet<IXConnector>) => {
+    setPending(wallet.name);
+    try {
+      await connect.mutateAsync(wallet.primary);
+    } catch (error) {
+      // A dismissed prompt is a decision, not a failure.
+      if (!isUserRejectedError(error)) toast.error(copy.walletConnectFailed);
+    } finally {
+      setPending(null);
+    }
+  };
+
+  return (
+    <div className="mt-1 flex w-full flex-col items-center gap-2">
+      <p className="text-xs text-muted-foreground">{copy.walletDetectedLead}</p>
+      {wallets.map((wallet) => (
+        <Button
+          key={wallet.name}
+          variant="outline"
+          className="h-12 w-full rounded-full text-[15px] font-semibold"
+          disabled={pending !== null}
+          onClick={() => void pick(wallet)}
+        >
+          {wallet.icon ? (
+            // Wallet icons are wallet-provided URLs, often data: URIs, which
+            // next/image does not take.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={wallet.icon} alt="" className="size-5 rounded-sm" />
+          ) : (
+            <Wallet className="size-5" />
+          )}
+          {pending === wallet.name
+            ? copy.walletConnecting(wallet.name)
+            : copy.continueWithWallet(wallet.name)}
+        </Button>
+      ))}
     </div>
   );
 }

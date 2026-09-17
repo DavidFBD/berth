@@ -21,7 +21,12 @@ export type Copy = {
   signInEmail: string;
   connectWallet: string;
   noSeedPhrases: string;
-  preferOwnWallet: string;
+  /** Above the detected-wallet buttons; shown only when a wallet is installed. */
+  walletDetectedLead: string;
+  /** `name` is the wallet's own name: "Continue with Phantom". */
+  continueWithWallet: (name: string) => string;
+  walletConnecting: (name: string) => string;
+  walletConnectFailed: string;
   /** Shown on the welcome screen when an invite code is waiting in the pocket. */
   inviteWaiting: string;
   poweredBy: string;
@@ -282,7 +287,10 @@ export const COPY: Copy = {
   signInEmail: "Continue with email",
   connectWallet: "Connect a wallet",
   noSeedPhrases: "An email is enough. The keys are yours, held in your account, and you can export them at any time.",
-  preferOwnWallet: "Have a wallet already? Connect it instead.",
+  walletDetectedLead: "Or continue with a wallet you already have",
+  continueWithWallet: (name) => `Continue with ${name}`,
+  walletConnecting: (name) => `Waiting for ${name}…`,
+  walletConnectFailed: "Could not connect. Try again, or continue with email.",
   inviteWaiting: "A friend invited you. Sign in and the invite is yours.",
   poweredBy: "Built on the SODAX System.",
   footerNote:

@@ -27,7 +27,9 @@ pnpm shot --browser chromium --viewport 1280x800
 Webkit is the default because every iOS browser is WebKit; a change verified
 only in Chromium is not verified. If the browser build is missing:
 `pnpm exec playwright-core install webkit`. Dev-only galleries (404 in prod):
-`/dev/board`, `/dev/account`.
+`/dev/board`, `/dev/account`, `/dev/wallets` (what the wallet SDK reports as
+installed in this browser, family by family, beside what the welcome screen
+would offer).
 
 ## Copy rules
 
