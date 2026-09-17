@@ -1,10 +1,10 @@
-# Build context — SODAX leverage-yield vault app
+# Build context — Berth, on the SODAX rails
 
-Shared contract for all builders. Read fully before writing code. Everything here was verified against the installed `@sodax/*` 2.0.0 dists and SDK source.
+Shared contract for all builders. Read fully before writing code. Everything here was verified against the installed `@sodax/*` 2.0.0 dists and SDK source. Sections written before 2026-09-17 describe the LSTeaTime vault product this repo used to be; the vault machinery they document is still what buys and sells run on, with a listing in place of a vault.
 
 ## App
 
-Mobile-first Next.js 16 App Router app (React 19, TS, Tailwind v4, shadcn/ui base-nova, pnpm). User connects wallet(s), picks any solver-supported asset on any SODAX spoke chain, picks a leverage-yield vault (ERC-4626 on Sonic hub), deposits. Deposits are intent-based cross-chain swaps: input token → lsoda* share token, delivered to the user's **derived hub wallet** on Sonic (never the EOA).
+Mobile-first Next.js 16 App Router app (React 19, TS, Tailwind v4, shadcn/ui base-nova, pnpm). Berth (2026-09-17): a self custodial brokerage. A signed-in user (Privy email) buys a Robinhood Stock Token or SGOV on Sonic with any solver-supported asset from any spoke chain; the order is an intent-based cross-chain swap delivered to the user's **account** (the hub wallet derived from Base and the Privy address); a sell is one `sendMessage` on Base with `hubWalletSwap`. Earlier leverage-yield vault positions remain withdrawable and are shown only to holders. Brand: `public/berth-brand/brand-sheet.md`; one voice in `src/lib/copy.ts`; appearance light/dark/system.
 
 ## Existing foundation (import these, don't recreate)
 

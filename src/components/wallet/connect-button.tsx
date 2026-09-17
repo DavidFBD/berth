@@ -43,7 +43,7 @@ export function ConnectButton({ className }: { className?: string }) {
             className,
           )}
         >
-          <span aria-hidden className="size-1.5 rounded-full bg-emerald-500" />
+          <span aria-hidden className="size-1.5 rounded-full bg-good" />
           <span className="font-mono tabular-nums">
             {singleAddress
               ? shortenAddress(singleAddress)

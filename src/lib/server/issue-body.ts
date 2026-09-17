@@ -81,7 +81,7 @@ export function buildIssueBody(
     ),
     "",
     "---",
-    `Filed automatically from the app. Grouped by \`${fingerprintMarker(payload.fingerprint)}\` — do not edit that marker, it is how repeat occurrences find this issue.`,
+    `Filed automatically from the app. Grouped by \`${fingerprintMarker(payload.fingerprint)}\`, do not edit that marker, it is how repeat occurrences find this issue.`,
   ]
     .filter(Boolean)
     .join("\n");

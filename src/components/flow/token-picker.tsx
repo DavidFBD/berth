@@ -250,8 +250,8 @@ export function TokenPicker({
       });
   }, [tokens, search, balances]);
 
-  // Email-mode first screens: holdings when pouring in, a trimmed grid of
-  // chains the embedded wallets can receive on when pouring out. External
+  // Email-mode first screens: holdings when paying in, a trimmed grid of
+  // chains the embedded wallets can receive on when withdrawing out. External
   // wallets are the expert path (welcome screen, non-Privy users), so email
   // mode gets no browse-all escape hatch in either direction.
   const showHoldings = emailMode && mode === "source" && chainKey === null;
@@ -270,7 +270,7 @@ export function TokenPicker({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Back to chains"
+                aria-label={copy.backToNetworks}
                 onClick={() => {
                   setChainKey(null);
                   setSearch("");
@@ -283,7 +283,7 @@ export function TokenPicker({
               {chainKey
                 ? copy.pickerSelectTokenOn(getChainName(chainKey))
                 : showHoldings
-                  ? copy.teapotTitle
+                  ? copy.pickerHoldingsTitle
                   : copy.pickerSelectChain}
             </DrawerTitle>
           </div>
@@ -296,7 +296,7 @@ export function TokenPicker({
                   : copy.pickerSourceGridSub
               : chainKey
                 ? copy.pickerDestTokenSub
-                : copy.whereShouldWePour}
+                : copy.whereToDeliver}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -322,10 +322,10 @@ export function TokenPicker({
                   <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
                     <p className="text-sm text-muted-foreground">
                       {erroredChains.length > 0
-                        ? copy.pickerShelvesEmptyUnreachable(
+                        ? copy.pickerNothingReachable(
                             erroredChains.map(getChainName).join(", "),
                           )
-                        : copy.potEmpty}
+                        : copy.pickerHoldingsEmpty}
                     </p>
                     {onTopUp && (
                       <Button
@@ -334,7 +334,7 @@ export function TokenPicker({
                           onTopUp();
                         }}
                       >
-                        {copy.fillTeapot}
+                        {copy.addFunds}
                       </Button>
                     )}
                   </div>
@@ -373,7 +373,7 @@ export function TokenPicker({
                 )}
                 {holdings.length > 0 && erroredChains.length > 0 && (
                   <p className="px-2 py-2 text-xs text-muted-foreground">
-                    {copy.pickerShelvesUnreachableNote(
+                    {copy.pickerUnreachableNote(
                       erroredChains.map(getChainName).join(", "),
                       erroredChains.length > 1,
                     )}

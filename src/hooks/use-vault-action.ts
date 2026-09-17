@@ -32,6 +32,7 @@ import {
   friendlyError,
   rawErrorMessage,
 } from "@/lib/error-copy";
+import { COPY } from "@/lib/copy";
 import {
   TRACKING_RELEASE_MS,
   fillPhase,
@@ -92,10 +93,11 @@ export interface RunDepositArgs {
   ensureReady?: () => Promise<PourReadiness>;
   /**
    * Where the output lands on the hub. The SDK's builder delivers to the hub
-   * wallet derived from the SIGNING wallet, which is right for a cup (shares
-   * are read per source chain) and wrong for a listing: every buy, from any
-   * wallet on any chain, must land on THE account (lib/account). Set for
-   * listing buys, left unset for cups. Applied at execution, after the last
+   * wallet derived from the SIGNING wallet, which is right for a vault
+   * deposit (shares are read per source chain) and wrong for a listing:
+   * every buy, from any wallet on any chain, must land on THE account
+   * (lib/account). Set for listing buys, left unset for vault deposits.
+   * Applied at execution, after the last
    * build: `deposit()` keeps the recipient as a plain field (`data` stays
    * "0x"), so nothing else in the payload depends on it.
    */
@@ -141,7 +143,7 @@ export interface UseVaultActionResult {
    * Whether the current error reached the issue tracker. `unsent` covers both
    * "not worth reporting" (user cancelled) and "reporting failed", because the
    * user-facing distinction is only ever "the team has this" or not. One state
-   * for the whole pour: a pipeline failure and a fill failure never coexist.
+   * for the whole order: a pipeline failure and a fill failure never coexist.
    */
   reportState: ReportState;
   /**
@@ -150,7 +152,7 @@ export interface UseVaultActionResult {
    * skipped approval isn't rendered as a completed one.
    */
   approveRequired: boolean | null;
-  /** Solver fill progress for the steeping screen; null before handoff. */
+  /** Solver fill progress for the settling screen; null before handoff. */
   fillPhase: FillPhase | null;
   /** The fill's spoke-side tx hash, once the solver reports one. */
   fillTxHash: string | undefined;
@@ -170,7 +172,7 @@ type ActivePour = {
 };
 
 /**
- * The whole pour, one machine: build → allowance → approve → sign, then the
+ * The whole order, one machine: build → allowance → approve → sign, then the
  * solver fill (tracking → filled | fillFailed). All mutations go through
  * `mutateAsyncSafe`, so nothing here ever throws — failures land in `error`
  * with friendly copy and the run methods resolve `false`. Post-signature, the
@@ -179,7 +181,7 @@ type ActivePour = {
  * Callers never see the raw response or the solver's status codes.
  */
 export function useVaultAction(options?: {
-  /** Fired once when a deposit fills — the cup's bloom moment. */
+  /** Fired once when a deposit fills. */
   onPoured?: () => void;
 }): UseVaultActionResult {
   const { sodax } = useSodaxContext();
@@ -199,9 +201,9 @@ export function useVaultAction(options?: {
   const runningRef = useRef(false);
   const { reportState, report, resetReport } = useErrorReporter();
   /**
-   * The pour being run, so a failure anywhere — pipeline or solver fill — can
-   * be reported with the pour that caused it. A ref because `fail` is called
-   * from deep in the pipeline and must see the latest value without
+   * The order being run, so a failure anywhere — pipeline or solver fill —
+   * can be reported with the order that caused it. A ref because `fail` is
+   * called from deep in the pipeline and must see the latest value without
    * re-creating every callback. Set at run start with every field the report
    * needs, so no failure path assembles context of its own.
    */
@@ -227,10 +229,10 @@ export function useVaultAction(options?: {
       setError(message);
       setStep("error");
 
-      // A cancelled pour isn't a bug; everything else goes to the team so the
-      // user never has to describe what happened. `fail` is only reachable
-      // inside a run, after pourRef is set — a missing context would be a
-      // reporting bug, not a pour, so don't guess an attribution.
+      // A cancelled order isn't a bug; everything else goes to the team so
+      // the user never has to describe what happened. `fail` is only
+      // reachable inside a run, after pourRef is set — a missing context
+      // would be a reporting bug, not an order, so don't guess an attribution.
       const pour = pourRef.current;
       if (!pour) return;
       report({
@@ -382,7 +384,7 @@ export function useVaultAction(options?: {
         fail(
           readiness === "session-expired"
             ? SESSION_EXPIRED_MESSAGE
-            : "The kettle drifted off its burner. Please pour again.",
+            : COPY.errWalletDrifted,
         );
         return false;
       };
@@ -402,7 +404,7 @@ export function useVaultAction(options?: {
           fail(
             friendlyError(
               built.error,
-              "Couldn't ready the pour. Please try again.",
+              COPY.errCouldNotPrepare,
             ),
             built.error,
           );
@@ -412,7 +414,7 @@ export function useVaultAction(options?: {
         // 2. Allowance check (native tokens and non-EVM chains report true).
         // A read-only call against a public RPC, so a transient endpoint
         // failure (mobile networks, shared-IP rate limits) shouldn't kill the
-        // pour — back off and retry before giving up.
+        // order — back off and retry before giving up.
         let allowance = await sodax.swaps.isAllowanceValid<SpokeChainKey>({
           params: built.value.params,
           walletProvider: args.walletProvider,
@@ -425,7 +427,7 @@ export function useVaultAction(options?: {
           });
         }
         if (!allowance.ok) {
-          fail("Couldn't check the pot. Please try again.", allowance.error);
+          fail(COPY.errCouldNotCheckAllowance, allowance.error);
           return false;
         }
         setApproveRequired(!allowance.value);
@@ -442,7 +444,7 @@ export function useVaultAction(options?: {
             fail(
               friendlyError(
                 approved.error,
-                "Token approval failed. Please try again.",
+                COPY.errApprovalFailed,
               ),
               approved.error,
             );
@@ -454,7 +456,7 @@ export function useVaultAction(options?: {
           );
           if (!confirmed) {
             fail(
-              "The pot is still warming. Wait a few seconds and try again.",
+              COPY.errAllowanceStillPending,
             );
             return false;
           }
@@ -467,7 +469,7 @@ export function useVaultAction(options?: {
             fail(
               friendlyError(
                 built.error,
-                "Couldn't ready the pour. Please try again.",
+                COPY.errCouldNotPrepare,
               ),
               built.error,
             );
@@ -490,7 +492,7 @@ export function useVaultAction(options?: {
         });
         if (!swapped.ok) {
           fail(
-            friendlyError(swapped.error, "The kettle's acting up. Try again."),
+            friendlyError(swapped.error, COPY.errOrderFailed),
             swapped.error,
           );
           return false;
@@ -540,7 +542,7 @@ export function useVaultAction(options?: {
         fail(
           readiness === "session-expired"
             ? SESSION_EXPIRED_MESSAGE
-            : "The kettle drifted off its burner. Please pour again.",
+            : COPY.errWalletDrifted,
         );
         return false;
       };
@@ -560,7 +562,7 @@ export function useVaultAction(options?: {
           fail(
             friendlyError(
               built.error,
-              "Couldn't ready the pour-back. Please try again.",
+              COPY.errCouldNotPrepare,
             ),
             built.error,
           );
@@ -579,7 +581,7 @@ export function useVaultAction(options?: {
           fail(
             friendlyError(
               swapped.error,
-              "The kettle's acting up. Try again.",
+              COPY.errOrderFailed,
             ),
             swapped.error,
           );

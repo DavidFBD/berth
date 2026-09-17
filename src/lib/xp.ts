@@ -61,13 +61,13 @@ export function isXpKind(value: string): value is XpKind {
  * Deliberately theme-agnostic, like everything rewards (see ADR-0001).
  */
 export const REWARD_REASONS: Record<XpKind, string> = {
-  pour_in: "for pouring a cup",
-  pour_out: "for pouring back",
-  account_created: "for taking your seat",
-  email_linked: "for saving your seat",
-  avatar_set: "for picking a face",
-  theme_tried: "for tasting a new parlour",
-  friend_poured: "a friend poured their first cup",
+  pour_in: "for a buy",
+  pour_out: "for a sell",
+  account_created: "for opening your account",
+  email_linked: "for adding an email",
+  avatar_set: "for picking an avatar",
+  theme_tried: "for trying another appearance",
+  friend_poured: "a friend made their first trade",
   invite_accepted: "for joining on a friend's invite",
 };
 
@@ -76,16 +76,16 @@ export const REWARD_REASONS: Record<XpKind, string> = {
  * the app's voice, but your rank is your rank in every parlour.
  */
 export const RANKS = [
-  { level: 1, xp: 0, name: "New Leaf" },
-  { level: 2, xp: 100, name: "First Steep" },
-  { level: 3, xp: 250, name: "Warm Cup" },
-  { level: 4, xp: 500, name: "Second Pour" },
-  { level: 5, xp: 900, name: "Full Pot" },
-  { level: 6, xp: 1500, name: "House Blend" },
-  { level: 7, xp: 2400, name: "Silver Kettle" },
-  { level: 8, xp: 3600, name: "Golden Kettle" },
-  { level: 9, xp: 5200, name: "Master Blender" },
-  { level: 10, xp: 7500, name: "Tea Sage" },
+  { level: 1, xp: 0, name: "First Line" },
+  { level: 2, xp: 100, name: "Slip" },
+  { level: 3, xp: 250, name: "Berth Holder" },
+  { level: 4, xp: 500, name: "Cleat" },
+  { level: 5, xp: 900, name: "Mooring Ring" },
+  { level: 6, xp: 1500, name: "Double Berth" },
+  { level: 7, xp: 2400, name: "Pier" },
+  { level: 8, xp: 3600, name: "Quay" },
+  { level: 9, xp: 5200, name: "Harbour Warden" },
+  { level: 10, xp: 7500, name: "Harbour Master" },
 ] as const;
 
 export type RankInfo = {

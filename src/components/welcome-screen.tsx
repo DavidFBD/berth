@@ -1,24 +1,23 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
 import { Envelope, HandHeart } from "@phosphor-icons/react";
 import { useConnectedChains } from "@sodax/wallet-sdk-react";
 import { Button } from "@/components/ui/button";
+import { BerthMark } from "@/components/berth-mark";
 import { WalletDrawer } from "@/components/wallet";
-import { CupArt, SteamPlume } from "@/components/tea/tea-art";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useCopy } from "@/components/settings-provider";
+import { COPY } from "@/lib/copy";
 import { useMounted } from "@/hooks/use-mounted";
 import { pendingReferralCode } from "@/lib/referral";
 
-/* eslint-disable @next/next/no-img-element -- tiny local brand mark */
 
 /**
  * Web2-style front door: one universal login screen for anyone who is
  * neither signed in via email nor connected with an external wallet. The
- * tea table renders only once the user is in, so "Sign in" and "Connect"
+ * account renders only once the user is in, so "Sign in" and "Connect"
  * never compete for the first action.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -39,18 +38,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
 function Splash() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-2">
-      <SteamPlume level={1} width={54} height={30} />
-      <img src="/lsteatime-mark.svg" alt="" aria-hidden width={56} height={56} />
+      <BerthMark className="size-14" />
+      <span className="sr-only">{COPY.loadingLabel}</span>
     </div>
   );
 }
-
-const CUPS = [
-  { cup: "earlgrey", fill: 0.65, level: 2, bowl: false },
-  { cup: "breakfast", fill: 0.82, level: 3, bowl: false },
-  { cup: "sencha", fill: 0.4, level: 2, bowl: true },
-  { cup: "chamomile", fill: 0.55, level: 1, bowl: false },
-] as const;
 
 function WelcomeScreen() {
   const privy = usePrivyEmbeddedWallet();
@@ -63,10 +55,13 @@ function WelcomeScreen() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-6 px-6 py-10 text-center sm:max-w-lg">
       <div className="flex flex-col items-center gap-3">
-        <img src="/lsteatime-mark.svg" alt="LSTeaTime" width={64} height={64} />
-        <h1 className="font-display text-3xl text-foreground">LSTeaTime</h1>
-        <p className="max-w-70 text-[15px] leading-relaxed text-muted-foreground">
-          {copy.tagline}
+        <BerthMark className="size-16" title="Berth" />
+        <h1 className="font-display text-3xl font-semibold text-foreground">
+          {copy.brand}
+        </h1>
+        <p className="text-[15px] text-muted-foreground">{copy.tagline}</p>
+        <p className="max-w-80 text-sm leading-relaxed text-muted-foreground">
+          {copy.welcomeLede}
         </p>
       </div>
 
@@ -78,22 +73,6 @@ function WelcomeScreen() {
           <span className="text-sm text-foreground">{copy.inviteWaiting}</span>
         </div>
       )}
-
-      {/* The blends, warmed and waiting */}
-      <div className="flex items-end gap-2.5">
-        {CUPS.map(({ cup, fill, level, bowl }) => (
-          <div key={cup} className="flex flex-col items-center">
-            <SteamPlume level={level} width={48} height={34} />
-            <CupArt
-              accent={`var(--cup-${cup})`}
-              deep={`var(--cup-${cup}-deep)`}
-              fill={fill}
-              bowl={bowl}
-              size={58}
-            />
-          </div>
-        ))}
-      </div>
 
       <div className="flex w-full max-w-80 flex-col items-center gap-3">
         {PRIVY_ENABLED ? (
@@ -124,19 +103,12 @@ function WelcomeScreen() {
         )}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        {copy.mottoLead}{" "}
-        <span className="font-display text-foreground/70">
-          {copy.mottoDisplay}
-        </span>
-      </p>
-
-      <Link
-        href="/lore"
-        className="text-[11px] text-muted-foreground underline decoration-border underline-offset-2 transition-colors hover:text-foreground"
-      >
-        {copy.loreLink}
-      </Link>
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-xs text-muted-foreground">{copy.poweredBy}</p>
+        <p className="max-w-80 text-[11px] leading-relaxed text-muted-foreground">
+          {copy.footerNote}
+        </p>
+      </div>
 
       <WalletDrawer open={walletsOpen} onOpenChange={setWalletsOpen} />
     </div>

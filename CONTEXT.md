@@ -2,92 +2,93 @@
 
 The glossary architecture reviews and code speak. A term listed here is the
 name to use — in modules, in suggestions, in commit messages. Where a term
-has a home module, it is named.
+has a home module, it is named. Identifiers from the LSTeaTime era (pour,
+cup, teapot) still appear inside the order machine and its tests; they mean
+what this glossary says and are renamed only in mechanical passes, never in
+a round that changes behaviour.
 
-## The game
+## The product
 
-- **Pour** — a deposit ("pour in") or withdrawal ("pour back"): one
-  intent-based cross-chain swap between a spoke-chain asset and lsoda*
-  vault shares on the Sonic hub. Never "transaction" or "swap" in copy.
-- **Cup** — one vault position as the user sees it. Cups sit minimized on
-  the **shelf** and spring open into the full card.
-- **Teapot** — the user's spendable holdings (embedded wallets in email
-  mode; the connected wallet otherwise).
-- **Steeping** — the pot: what a cup holds, valued in the underlying asset
-  (or USD when the oracle prices it).
-- **Steam / fill** — a cup's rendered heat and fullness. Derived once, in
-  `lib/cup-view` (via `hooks/use-cup-view`); a cup steams by what it is
-  worth.
-- **Sawtooth** — the microscopic negative drift of a leveraged vault's
-  price-per-share between LSD oracle ticks. Suppressed inside a 0.1% noise
-  band by `lib/cup-view`; a real loss stays red.
-- **Mode / voice** — one of eight visual+copy personalities. The seam is
-  `useCopy()` (`lib/copy`); mode ids live in `lib/modes` so the server never
-  imports the voices.
-- **Base voice** — Original, the one voice that defines every `Copy` key;
-  the other seven parlours are `Partial<Copy>` overrides layered on top, so
-  a new line costs one edit. Rewards prose lives in the base only (agnostic
-  by design; see CLAUDE.md).
+- **Berth** — a self custodial brokerage for people whose savings already
+  live onchain: buy Robinhood Stock Tokens on Sonic with stablecoins or
+  Bitcoin from any supported network, in one signature, sell the same way,
+  park idle dollars in the SGOV Treasury ETF token. Home: berthmarkets.com.
+- **Listing** — one asset the house offers on the Sonic hub: a stock or fund
+  (a Robinhood Stock Token, an ERC-20 on Sonic), cash (SGOV), or a vault
+  (an earlier leveraged position, withdraw only). Registry `lib/listings`;
+  the SDK learns the hand-carried ones through `lib/sodax-config`;
+  `pnpm listings:verify` checks the pins against the backend and the chain.
+- **The board** — the listings on offer, priced by the solver oracle
+  (`components/board/listing-board`, prices via `/api/listing-prices`).
+- **Holdings** — what the account owns, read as plain ERC-20 balances of
+  every listing at the account in one multicall (`hooks/use-hub-holdings`,
+  query key root `LISTINGS_QUERY_KEY`, invalidated after every fill).
+- **Cash** — idle dollars in SGOV, a plain swap in and out, never a money
+  market supply. The yield line is the 3 month Treasury bill rate from FRED
+  (`/api/treasury-rate`), labelled before fund costs.
+
+## Money and accounts
+
+- **Account** — the user's one place on the hub: the SODAX hub wallet derived
+  from `(HOME_CHAIN = Base, Privy embedded EVM address)`. Every buy delivers
+  there (`deliverTo` on the order machine), every sell spends from there with
+  one `sendMessage` signature on Base (`hubWalletSwap`). Rule in
+  `lib/account` (`HOME_CHAIN`, `homeSpokeAddress`), derived by
+  `hooks/use-hub-account` through the same SDK call the deposit builder uses.
+  Only an email session owns an account; external wallets fund.
+- **Funds** — the user's own wallets, what can pay for an order: the Privy
+  embedded wallets in email mode, the connected wallet otherwise. Swept and
+  valued by `hooks/use-embedded-holdings`, shown by `components/funds-module`.
+- **Address rule** — whose address the user is on a given chain:
+  `lib/account` `resolveAccount`: an email session wins on EVM, the SODAX
+  store wins everywhere else. `hooks/use-vault-wallet` is its signing face;
+  `useVaultAddress` reads without constructing a provider (a chain nobody
+  signs on must never move the embedded wallet's global chain).
+- **Hub wallet** — the Sonic side wallet derived from a (chainKey, address)
+  pair. The same EOA maps to a DIFFERENT hub wallet per source chain, which
+  is why vault positions are read per source chain while listings live on
+  the one account.
 
 ## The machinery
 
-- **Pour lifecycle** — every step a pour passes through, from first tap to
-  solver fill: `idle → building → approving → signing → tracking → filled |
-  fillFailed | error`. Owned end to end by `hooks/use-vault-action`
-  (the pour machine); the pure transitions live in `lib/pour-lifecycle`.
-  Solver status codes and the raw swap response never leave the machine.
-- **Amount pipeline** — how typed text becomes a pour: parse (USD or
-  token), the pre-fee/post-fee pairing (build on pre-fee, quote on
-  post-fee — `quoteInputFor` is its only implementation), slippage floor,
-  gas-buffered Max, dust floor, and the CTA **gate** (the single reason a
-  pour can't go yet). All in `lib/pour-amount`; quotes via
+- **Order** — a buy or a sell: one intent-based cross-chain swap between a
+  spoke chain asset and a listing on Sonic. Lifecycle `idle → building →
+  approving → signing → tracking → filled | fillFailed | error`, owned end
+  to end by `hooks/use-vault-action` (the order machine; transitions in
+  `lib/pour-lifecycle`). Solver status codes and the raw swap response never
+  leave the machine. A buy is a deposit build with a listing as the
+  destination; a sell or a vault withdraw is a withdraw build.
+- **Amount pipeline** — how typed text becomes an order: parse (money or
+  token), the pre-fee/post-fee pairing (`quoteInputFor` is its only
+  implementation), slippage floor, gas-buffered Max, dust floor, and the CTA
+  **gate** (the single reason an order cannot go yet, including
+  `noAccount` and `accountPending`). All in `lib/pour-amount`; quotes via
   `hooks/use-pour-quote`.
-- **Account** — whose address the user is on a given chain. THE rule lives
-  in `lib/account` (`resolveAccount`): an email session wins on EVM (the
-  Privy embedded wallet), the SODAX store wins everywhere else (email-mode
-  Solana is bridged into the store). `hooks/use-vault-wallet` is its
-  signing face. The address that is read is the address that signs.
 - **Rewards identity** — which ledger row a browser is. A session question,
   not a chain question (`useIdentity` in `hooks/use-profile`); it never
-  volunteers an external wallet while an email session is live, because
-  account linking is an explicit act.
-- **Rewards till** — the server side of XP: `lib/server/rewards-route`
-  owns auth → identity → award → envelope for every XP route; `awardXp`
-  (`lib/server/accounts`) is the idempotent ledger write;
-  `lib/server/pour-verify` proves a pour before it earns anything. The
-  till's database seam is `SqlClient` (`lib/server/db`), two adapters: Neon
-  in prod, PGlite in tests (`pglite-test-db`).
-- **Announcer** — the XP ceremony module (`components/xp-toast`): queues
-  payouts while an overlay owns the stage, derives rank crossings itself
-  from `(rewards, newXp)`, and names what each award was for.
-- **Invite code rulebook** — `lib/invite-code`, the ONE statement of what a
-  referral code is (alphabet, length, normalizer); pocket, OG gates, claim
-  input, and the server mint all ask it. Its server-side sibling is
-  `CLAIMABLE_SQL` (`lib/server/accounts`): the late-claim rule stated once,
-  asked by both the claim write and the panel's `canClaim`.
-- **Rewards request core** — `useRewardsCall` (`hooks/use-profile`): the one
-  identity+auth+POST ritual; `useRewardsQuery` and `useProfileMutation` are
-  its two flavours, and every public rewards hook is configuration on top.
-- **Listing** — one asset the house offers on the Sonic hub: a vault (a
-  cup), a stock (a Robinhood Stock Token, an ERC-20 on Sonic) or cash (the
-  SGOV Treasury ETF token). The registry is `lib/listings`: vaults come from
-  the SDK registry, the token listings are pinned by address, and
-  `lib/sodax-config` teaches the installed SDK the ones it doesn't know.
-  `pnpm listings:verify` checks the pins against the backend's live list and
-  the chain. A listing is a destination; the deposit picker never offers one
-  as an input.
-- **Hub wallet** — the Sonic-side wallet derived from a (chainKey, address)
-  pair. The same EOA maps to a DIFFERENT hub wallet per source chain, which
-  is why share rows are never interchangeable across chains.
+  volunteers an external wallet while an email session is live.
+- **Rewards till** — the server side of XP: `lib/server/rewards-route` owns
+  auth → identity → award → envelope; `awardXp` (`lib/server/accounts`) is
+  the idempotent ledger write; `lib/server/pour-verify` proves an order
+  touched a listing before it earns anything. Database seam `SqlClient`
+  (`lib/server/db`), Neon in prod, PGlite in tests.
+- **Announcer** — the XP ceremony (`components/xp-toast`): queues payouts
+  while an overlay owns the stage and derives rank crossings itself.
+- **Invite code rulebook** — `lib/invite-code`, the one statement of what a
+  referral code is; its server sibling is `CLAIMABLE_SQL`.
+- **Rewards request core** — `useRewardsCall` (`hooks/use-profile`) and its
+  two flavours; every public rewards hook is configuration on top.
+- **Appearance** — light, dark or system (`lib/appearance`), stamped by
+  next-themes before hydration. The `useCopy()` seam returns the one voice.
 
 ## Settled decisions (do not re-propose)
 
-Load-bearing decisions live in `docs/adr/` — read them before proposing
-changes in their territory: base-voice rewards copy (0001), the level-3
-invite gate (0002), no leaderboard (0003), referral pays at first verified
-pour (0004). Smaller settled points, recorded in `thoughts.md`: the
-account-linking edge is accepted; SIWE and pour-ownership proof are DONE
-(2026-08-07), no longer deferred. The `useVaultAction` pipeline body, the
-Privy EVM provider bridge, the gas buffer model, and the earned-yield
-pure/impure split were reviewed (2026-08-07) and confirmed deep — leave
-them whole.
+Load-bearing decisions live in `docs/adr/` (base-voice rewards copy, the
+level-3 invite gate, no leaderboard, referral pays at first verified order)
+and in `docs/research/2026-09-16-colosseum-pivot-deep-dive.md` (the pivot,
+the account model, the name). Recorded in `thoughts.md`: the account-linking
+edge is accepted; SIWE and order-ownership proof are done. The
+`useVaultAction` pipeline body, the Privy EVM provider bridge and the gas
+buffer model were reviewed (2026-08-07) and confirmed deep — leave them whole.
+Cut, do not build: cross-wrapper best execution, recurring DCA, any money
+market supply, leaderboard, agent as wallet.

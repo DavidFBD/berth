@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils"
 
 /**
- * The house loader: three steam dots rising in turn, in currentColor.
- * Same slot and sizing contract as the old arc spinner, so call sites
+ * The house loader: three dots pulsing in opacity, one after another, in
+ * currentColor. Same slot and sizing contract as before, so call sites
  * only ever say <Spinner className="size-4" />.
  */
 function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
@@ -20,10 +20,10 @@ function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
         <circle
           key={x}
           cx={x}
-          cy="12"
+          cy="8"
           r="1.8"
           style={{
-            animation: `steam-dot-rise 1.2s var(--ease-tea, ease-in-out) ${i * 0.4}s infinite`,
+            animation: `loader-dot 1.2s var(--ease-tea, ease-in-out) ${i * 0.16}s infinite`,
           }}
         />
       ))}

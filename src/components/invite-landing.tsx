@@ -1,19 +1,20 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { BerthMark } from "@/components/berth-mark";
 import { useRouter } from "next/navigation";
 import { pocketReferralCode } from "@/lib/referral";
-import { SteamPlume } from "@/components/tea/tea-art";
+import { useCopy } from "@/components/settings-provider";
 
-/* eslint-disable @next/next/no-img-element -- tiny local brand mark */
 
 /**
  * The human half of an /r/CODE landing: pocket the code, beacon the tap for
  * the referrer's funnel numbers, and step through to the front door. Shows
- * the same quiet steam as the auth splash — no flash of a bare page.
+ * the invite it was handed, so a friend's link never lands on a bare page.
  */
 export function InviteLanding({ code }: { code: string }) {
   const router = useRouter();
+  const copy = useCopy();
   // Strict mode replays effects in dev; one landing must count once.
   const landed = useRef(false);
 
@@ -33,9 +34,14 @@ export function InviteLanding({ code }: { code: string }) {
   }, [code, router]);
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-2">
-      <SteamPlume level={1} width={54} height={30} />
-      <img src="/lsteatime-mark.svg" alt="" aria-hidden width={56} height={56} />
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
+      <BerthMark className="size-14" title="Berth" />
+      <p className="text-lg font-semibold text-foreground">
+        {copy.friendInvitedYou}
+      </p>
+      <p className="max-w-80 text-sm leading-relaxed text-muted-foreground">
+        {copy.welcomeLede}
+      </p>
     </div>
   );
 }

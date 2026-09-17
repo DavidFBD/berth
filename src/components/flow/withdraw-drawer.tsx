@@ -55,10 +55,10 @@ const ONE_SHARE = 10n ** 18n;
  * `hubWalletSwap`, so the hub wallet is authorised by a `sendMessage` the
  * user signs on the spoke, never a Sonic transaction.
  *
- * A cup keeps every habit it had (tea name, cup colours, shares priced by
- * `previewRedeem`, the chain it was deposited from). A stock or cash listing
- * is a sell: plain name, oracle price, and `srcChainKey` is the home chain,
- * since every listing lives on THE account (lib/account).
+ * A vault withdrawal keeps its old habits (shares priced by `previewRedeem`,
+ * the chain it was deposited from). A stock or cash listing is a sell: plain
+ * name, oracle price, and `srcChainKey` is the home chain, since every
+ * listing lives on THE account (lib/account).
  */
 export function WithdrawDrawer({
   listing,
@@ -75,7 +75,7 @@ export function WithdrawDrawer({
   /** Units held via `srcChainKey`'s hub wallet (18 decimals for every listing). */
   availableShares: bigint;
   /**
-   * Chain the user signs the message on: for a cup, the chain they deposited
+   * Chain the user signs the message on: for a vault, the chain they deposited
    * FROM; for a listing sell, the home chain.
    */
   srcChainKey: SpokeChainKey;
@@ -95,7 +95,7 @@ export function WithdrawDrawer({
   // the share price is known) or raw shares for the exact-amount crowd.
   const [denom, setDenom] = useState<"money" | "token">("money");
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Optional: pour to somebody else's address (e.g. an exchange deposit
+  // Optional: send to somebody else's address (e.g. an exchange deposit
   // address — the no-bank-rails cash-out path). null = own wallet.
   const [customRecipient, setCustomRecipient] = useState<string | null>(null);
 
@@ -103,7 +103,7 @@ export function WithdrawDrawer({
   const meta =
     listing?.kind === "vault" ? getVaultMeta(listing.vault.name) : null;
   const copy = useCopy();
-  // The pour machine owns everything past the first tap: pipeline, solver
+  // The order machine owns everything past the first tap: pipeline, solver
   // fill, toasts, XP, failure reporting. The drawer renders its states.
   const action = useVaultAction();
 
@@ -130,16 +130,16 @@ export function WithdrawDrawer({
       : undefined
     : ownRecipient;
 
-  // A pour-back is money, not shares: the field takes the user's display
+  // A withdrawal is money, not shares: the field takes the user's display
   // currency whenever the share price is known (vault price-per-share ×
   // hub-asset oracle price × FX), with a tap-to-flip line for exact shares.
   // The ticker never leads; this crowd thinks in euros, not lsoda*.
   const money = useMoney();
   const prices = useUsdPrices();
   const listingPrices = useListingPrices();
-  // Cups are valued through previewRedeem times the hub asset's oracle price;
-  // a listing sell is priced straight by the solver oracle. Query disabled
-  // for listings (undefined vault).
+  // Vault positions are valued through previewRedeem times the hub asset's
+  // oracle price; a listing sell is priced straight by the solver oracle.
+  // Query disabled for listings (undefined vault).
   const vaultListing = listing?.kind === "vault" ? listing : null;
   const { data: pricePerShare } = useLeverageYieldPreviewRedeem({
     params: { vault: vaultListing?.address, shares: ONE_SHARE },
@@ -174,7 +174,7 @@ export function WithdrawDrawer({
     buildAmount ? sharesWorthUsd(buildAmount) : undefined,
     money.rate,
   );
-  const smallestPourLabel = money.format(minPourUsd(money.rate));
+  const smallestOrderLabel = money.format(minPourUsd(money.rate));
   const quote = usePourQuote({
     enabled: open && !!listing && !!dstChainKey && !!outputToken && !tooSmall,
     src: listing
@@ -224,7 +224,7 @@ export function WithdrawDrawer({
   };
 
   // Flip the entry denomination, carrying the current value across so the
-  // number in the field keeps meaning the same pour-back.
+  // number in the field keeps meaning the same withdrawal.
   const flipDenom = () => {
     if (entryPrice === undefined) return;
     setDenom(moneyMode ? "token" : "money");
@@ -268,9 +268,9 @@ export function WithdrawDrawer({
       walletProvider,
       walletMode: mode,
       fillToasts: {
-        successTitle: isSell ? copy.soldTitle : copy.pouredBackTitle,
-        successDescription: copy.pouredBackBody(getChainName(dstChainKey)),
-        failureDescription: copy.pourBackFailedBody,
+        successTitle: isSell ? copy.soldTitle : copy.withdrawnTitle,
+        successDescription: copy.deliveredBody(getChainName(dstChainKey)),
+        failureDescription: copy.sellFailedBody,
       },
       ensureReady,
     });
@@ -282,8 +282,8 @@ export function WithdrawDrawer({
     busy?: boolean;
     onClick?: () => void;
   };
-  // The gate (pour-amount module) decides why the pour-back can't go yet;
-  // this map only speaks it in the tea voice.
+  // The gate (pour-amount module) decides why the withdrawal can't go yet;
+  // this map only speaks it plainly.
   const gate = withdrawGate({
     address,
     hasDestination: !!dstChainKey && !!outputToken,
@@ -325,17 +325,17 @@ export function WithdrawDrawer({
         };
       case "enterAmount":
         return {
-          label: isSell ? copy.ctaSellHowMuch : copy.ctaPourBackHowMuch,
+          label: isSell ? copy.ctaSellHowMuch : copy.ctaWithdrawHowMuch,
           disabled: true,
         };
       case "insufficient":
         return {
-          label: isSell ? copy.ctaNotThatMuchHeld : copy.ctaCupNotThatFull,
+          label: isSell ? copy.ctaNotThatMuchHeld : copy.ctaVaultNotThatMuch,
           disabled: true,
         };
       case "belowMinimum":
         return {
-          label: copy.ctaPourAtLeast(smallestPourLabel),
+          label: copy.ctaAtLeast(smallestOrderLabel),
           disabled: true,
         };
       case "wrongChain":
@@ -349,10 +349,10 @@ export function WithdrawDrawer({
       case "belowDust":
         return { label: copy.ctaTooSmallForBtc, disabled: true };
       case "quotePending":
-        return { label: copy.ctaReadingLeaves, disabled: true, busy: true };
+        return { label: copy.ctaGettingQuote, disabled: true, busy: true };
       default:
         return {
-          label: isSell ? copy.sell : copy.pourBack,
+          label: isSell ? copy.sell : copy.vaultWithdraw,
           disabled: false,
           onClick: () => void handleWithdraw(),
         };
@@ -372,15 +372,11 @@ export function WithdrawDrawer({
               {listing
                 ? isSell
                   ? copy.sellTitle(listing.name)
-                  : copy.pourBackTitle(meta?.teaName ?? listing.name)
-                : copy.pourBackTitleFallback}
+                  : copy.withdrawTitle(meta?.title ?? listing.name)
+                : copy.orderTitleFallback}
             </DrawerTitle>
             <DrawerDescription>
-              {listing
-                ? isSell
-                  ? copy.sellSub
-                  : copy.pourBackSub
-                : copy.pickCupPourBack}
+              {isSell ? copy.sellSub : copy.withdrawSub}
             </DrawerDescription>
           </DrawerHeader>
 
@@ -388,7 +384,7 @@ export function WithdrawDrawer({
           <AnimatePresence initial={false} mode="popLayout">
           <motion.div
             key={
-              action.fillPhase ? "steeping" : action.pending ? "stepper" : "form"
+              action.fillPhase ? "settling" : action.pending ? "stepper" : "form"
             }
             className="flex min-h-0 flex-1 flex-col"
             initial={{
@@ -414,16 +410,14 @@ export function WithdrawDrawer({
                 reportState={action.reportState}
                 phase={action.fillPhase}
                 fillTxHash={action.fillTxHash}
-                accent={meta ? `var(--cup-${meta.cupKey})` : undefined}
-                deep={meta ? `var(--cup-${meta.cupKey}-deep)` : undefined}
-                successTitle={copy.backInTeapotTitle}
+                successTitle={copy.onItsWayTitle}
                 successBody={
                   dstChainKey && outputToken
-                    ? copy.backInTeapotBody(
+                    ? copy.onItsWayBody(
                         outputToken.symbol,
                         getChainName(dstChainKey),
                       )
-                    : copy.backInTeapotBodyFallback
+                    : copy.onItsWayBodyFallback
                 }
                 onDone={() => {
                   onOpenChange(false);
@@ -464,8 +458,10 @@ export function WithdrawDrawer({
                       placeholder="0"
                       aria-label={
                         moneyMode
-                          ? `Amount to pour back in ${money.currency}`
-                          : "Shares to withdraw"
+                          ? copy.ariaAmountIn(money.currency)
+                          : isSell
+                            ? copy.ariaAmount
+                            : copy.ariaSharesToWithdraw
                       }
                       className={cn(
                         "w-full bg-transparent text-4xl font-semibold text-foreground tabular-nums outline-none",
@@ -487,7 +483,7 @@ export function WithdrawDrawer({
                   )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
-                      {(isSell ? copy.shelfHolds : copy.cupHolds)(
+                      {(isSell ? copy.youHold : copy.vaultHolds)(
                         sharePriceUsd !== undefined
                           ? `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)} (${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol})`
                           : `${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol}`,
@@ -502,18 +498,18 @@ export function WithdrawDrawer({
                   <p className="text-xs text-muted-foreground">
                     {isSell
                       ? copy.sellSignOnce(getChainName(srcChainKey))
-                      : copy.signOnceOn(getChainName(srcChainKey))}
+                      : copy.vaultSignOnce(getChainName(srcChainKey))}
                   </p>
                   {totalShares !== undefined &&
                     totalShares > availableShares && (
                       <p className="text-xs text-muted-foreground">
                         {sharePriceUsd !== undefined
-                          ? copy.splitSharesNote(
+                          ? copy.vaultSplitNote(
                               `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)}`,
                               `≈ ${money.format(sharesWorthUsd(totalShares) ?? 0)}`,
                               getChainName(srcChainKey),
                             )
-                          : copy.splitSharesNote(
+                          : copy.vaultSplitNote(
                               formatTokenAmount(availableShares, SHARE_DECIMALS),
                               `${formatTokenAmount(totalShares, SHARE_DECIMALS)} shares`,
                               getChainName(srcChainKey),
@@ -545,13 +541,13 @@ export function WithdrawDrawer({
                     </>
                   ) : (
                     <span className="flex-1 text-sm text-muted-foreground">
-                      {copy.whereShouldWePour}
+                      {copy.whereToDeliver}
                     </span>
                   )}
                   <CaretDown className="size-4 text-muted-foreground" />
                 </button>
 
-                {/* Cash-out path: pour to a different address (e.g. an
+                {/* Cash-out path: send to a different address (e.g. an
                     exchange deposit address) instead of your own wallet. */}
                 {dstChainKey && outputToken && (
                   <div className="flex flex-col gap-1.5">
@@ -559,7 +555,7 @@ export function WithdrawDrawer({
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-muted-foreground">
-                            {copy.pourToDifferentAddress}
+                            {copy.sendElsewhere}
                           </span>
                           <Button
                             variant="ghost"
@@ -605,7 +601,7 @@ export function WithdrawDrawer({
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
                     {tooSmall ? (
                       <span className="text-destructive">
-                        {copy.smallestPour(smallestPourLabel)}
+                        {copy.smallestOrder(smallestOrderLabel)}
                       </span>
                     ) : quote.noRoute ? (
                       <span className="text-destructive">
@@ -633,7 +629,7 @@ export function WithdrawDrawer({
                           </div>
                         )}
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{copy.atLeastOncePoured}</span>
+                          <span>{copy.atLeastLabel}</span>
                           <span className="tabular-nums">
                             {minOutWorthUsd !== undefined
                               ? `≈ ${money.format(minOutWorthUsd)}`

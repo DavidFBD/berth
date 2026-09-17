@@ -52,8 +52,7 @@ export function Providers({ children }: { children: ReactNode }) {
                   <WalletDiagnostics />
                 )}
                 {children}
-                {/* Toaster lives in DesktopStage's screen div so toasts stay
-                    inside the phone on lg+, like the drawers. */}
+                {/* The Toaster is mounted by the root layout, after Providers. */}
               </MotionConfig>
             </IconContext.Provider>
             </SettingsProvider>

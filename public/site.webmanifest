@@ -1,0 +1,27 @@
+{
+  "name": "Berth",
+  "short_name": "Berth",
+  "description": "A brokerage for the money that already lives onchain.",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#F4F5F2",
+  "background_color": "#F4F5F2",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

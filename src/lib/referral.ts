@@ -94,7 +94,7 @@ export function clearPendingReferral(): void {
 export function inviteLink(code: string): string {
   const origin =
     typeof window === "undefined"
-      ? "https://lsteatime.com"
+      ? "https://www.berthmarkets.com"
       : window.location.origin;
   return `${origin}/r/${code}`;
 }

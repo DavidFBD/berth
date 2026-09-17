@@ -32,6 +32,12 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
@@ -50,9 +56,11 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 
   /* Motion easings — in @theme so ease-* utilities exist. Roles:
-     tea = loops and on-screen morphs (flat start, wrong for entrances);
+     tea = loops and on-screen morphs (flat start, wrong for entrances) —
+     the name predates the rebrand and other components still reference it
+     by var name, so it stays;
      lift = entrances, exits, state flips (strong ease-out);
-     settle = long landings (drawer panel, the pot righting itself);
+     settle = long landings (a panel settling into place);
      drawer = the iOS overlay curve. */
   --ease-tea: cubic-bezier(0.33, 0, 0.15, 1);
   --ease-lift: cubic-bezier(0.23, 1, 0.32, 1);
@@ -60,777 +68,124 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* ————— LSTeaTime tokens (design system: Morning Tea / Evening Tea) ————— */
+/* ————— Berth tokens ————— plain brokerage palette, light and dark. */
 :root {
-  /* Font slots: modes remap these to their own next/font variables. The
-     indirection exists because a mode class re-declaring --font-display
-     would race next/font's generated class on the same element. */
-  --font-display: var(--font-display-original);
-  --font-body: var(--font-body-original);
-  --font-money: var(--font-money-original);
+  /* Font slots: bind straight to the next/font variables declared in
+     layout.tsx. */
+  --font-display: var(--font-archivo);
+  --font-body: var(--font-public-sans);
+  --font-money: var(--font-plex-mono);
 
-  --background: oklch(0.965 0.012 85); /* warm cream */
-  --foreground: oklch(0.3 0.028 55); /* steeped-leaf brown */
-  --card: oklch(0.985 0.008 90); /* porcelain white */
-  --card-foreground: oklch(0.3 0.028 55);
-  --popover: oklch(0.985 0.008 90);
-  --popover-foreground: oklch(0.3 0.028 55);
-  --primary: oklch(0.42 0.055 55); /* strong brew brown */
-  --primary-foreground: oklch(0.97 0.01 85);
-  --secondary: oklch(0.905 0.018 80); /* shortbread */
-  --secondary-foreground: oklch(0.36 0.03 55);
-  --muted: oklch(0.928 0.014 85); /* milk-in-first */
-  --muted-foreground: oklch(0.52 0.028 60);
-  --accent: oklch(0.62 0.07 300); /* earl-grey lavender */
-  --accent-foreground: oklch(0.985 0.008 90);
-  --destructive: oklch(0.55 0.13 30); /* burnt toast — used gently */
-  --border: oklch(0.885 0.016 80);
-  --input: oklch(0.885 0.016 80);
-  --ring: oklch(0.62 0.07 300);
-  --chart-1: oklch(0.58 0.085 290);
-  --chart-2: oklch(0.58 0.085 60);
-  --chart-3: oklch(0.58 0.085 150);
-  --chart-4: oklch(0.62 0.07 300);
-  --chart-5: oklch(0.42 0.055 55);
-  --radius: 1rem; /* porcelain, not pill-happy */
-  --sidebar: oklch(0.985 0.008 90);
-  --sidebar-foreground: oklch(0.3 0.028 55);
-  --sidebar-primary: oklch(0.42 0.055 55);
-  --sidebar-primary-foreground: oklch(0.97 0.01 85);
-  --sidebar-accent: oklch(0.928 0.014 85);
-  --sidebar-accent-foreground: oklch(0.36 0.03 55);
-  --sidebar-border: oklch(0.885 0.016 80);
-  --sidebar-ring: oklch(0.62 0.07 300);
+  --background: #f4f5f2; /* bg */
+  --foreground: #151b1a; /* ink */
+  --card: #ffffff; /* surface */
+  --card-foreground: #151b1a;
+  --popover: #ffffff;
+  --popover-foreground: #151b1a;
+  --primary: #1f4ed8; /* accent */
+  --primary-foreground: #ffffff; /* accent-ink */
+  --secondary: #eceeea; /* surface-2 */
+  --secondary-foreground: #4a5553; /* ink-2 */
+  --muted: #eceeea; /* surface-2 */
+  --muted-foreground: #5f6a67; /* muted, darkened from the sheet's #7F8986 for 4.6:1 on bg */
+  --accent: #e3e9fb; /* accent-soft */
+  --accent-foreground: #151b1a; /* ink */
+  --destructive: #b3261e; /* bad */
+  --border: #d6dbd8; /* line */
+  --input: #d6dbd8; /* line */
+  --ring: #1f4ed8; /* accent */
+  --radius: 0.75rem;
 
-  /* Cup accent sub-palettes (matched chroma & lightness; hue varies) */
-  --cup-earlgrey: oklch(0.58 0.085 290);
-  --cup-earlgrey-soft: oklch(0.93 0.025 290);
-  --cup-earlgrey-deep: oklch(0.42 0.09 290);
-  --cup-breakfast: oklch(0.58 0.085 60);
-  --cup-breakfast-soft: oklch(0.93 0.025 70);
-  --cup-breakfast-deep: oklch(0.42 0.09 55);
-  --cup-sencha: oklch(0.58 0.085 150);
-  --cup-sencha-soft: oklch(0.93 0.025 150);
-  --cup-sencha-deep: oklch(0.42 0.09 150);
-  --cup-chamomile: oklch(0.72 0.1 85);
-  --cup-chamomile-soft: oklch(0.95 0.025 85);
-  --cup-chamomile-deep: oklch(0.52 0.1 80);
+  /* Status colors, plus a soft (background-tint) variant of each. */
+  --good: #1e7a4c;
+  --good-soft: #e3f3ea;
+  --warn: #8f5e00;
+  --warn-soft: #fbf0dc;
+  --bad: #b3261e;
+  --bad-soft: #fbe5e3;
 
-  /* The one psychedelic allowance: iridescence — steam at full heat + celebrations */
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.82 0.06 300) 0%,
-    oklch(0.85 0.06 55) 35%,
-    oklch(0.84 0.06 150) 70%,
-    oklch(0.82 0.06 250) 100%
-  );
-  --steam: oklch(0.75 0.015 85 / 0.55);
-  --tea-ring: oklch(0.8 0.03 70 / 0.28);
-  --shadow-cup: 0 10px 30px -12px oklch(0.42 0.05 55 / 0.25);
+  /* Chart palette: accent plus the status colors, then ink-2. */
+  --chart-1: #1f4ed8;
+  --chart-2: #1e7a4c;
+  --chart-3: #8f5e00;
+  --chart-4: #b3261e;
+  --chart-5: #4a5553;
 
-  /* Motion durations — tea, not espresso. Style-prop consumers use these
-     vars; class-side durations stick to the same scale (150/200/300/450/900).
-     The easing tokens live in @theme so ease-* utilities exist. */
-  --duration-sip: 200ms;
-  --duration-pour: 450ms;
-  --duration-steep: 900ms;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #151b1a;
+  --sidebar-primary: #1f4ed8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eceeea;
+  --sidebar-accent-foreground: #151b1a;
+  --sidebar-border: #d6dbd8;
+  --sidebar-ring: #1f4ed8;
+
+  /* Motion durations. Class-side durations stick to the same scale
+     (150/200/300/450/900). The easing tokens live in @theme so ease-*
+     utilities exist. */
+  --duration-fast: 200ms;
+  --duration-base: 450ms;
+  --duration-slow: 900ms;
   --tracking-caps: 0.08em;
 }
 
 .dark {
-  --background: oklch(0.225 0.018 55); /* candlelit tearoom */
-  --foreground: oklch(0.93 0.014 85);
-  --card: oklch(0.268 0.02 55);
-  --card-foreground: oklch(0.93 0.014 85);
-  --popover: oklch(0.268 0.02 55);
-  --popover-foreground: oklch(0.93 0.014 85);
-  --primary: oklch(0.87 0.035 80); /* warm milk */
-  --primary-foreground: oklch(0.25 0.02 55);
-  --secondary: oklch(0.33 0.022 60);
-  --secondary-foreground: oklch(0.9 0.015 85);
-  --muted: oklch(0.31 0.02 55);
-  --muted-foreground: oklch(0.72 0.02 70);
-  --accent: oklch(0.72 0.07 300);
-  --accent-foreground: oklch(0.22 0.02 55);
-  --destructive: oklch(0.68 0.13 30);
-  --destructive-foreground: oklch(0.22 0.02 55);
-  --border: oklch(0.345 0.02 55);
-  --input: oklch(0.345 0.02 55);
-  --ring: oklch(0.72 0.07 300);
-  --chart-1: oklch(0.72 0.085 290);
-  --chart-2: oklch(0.72 0.085 60);
-  --chart-3: oklch(0.72 0.085 150);
-  --chart-4: oklch(0.72 0.07 300);
-  --chart-5: oklch(0.87 0.035 80);
-  --sidebar: oklch(0.268 0.02 55);
-  --sidebar-foreground: oklch(0.93 0.014 85);
-  --sidebar-primary: oklch(0.87 0.035 80);
-  --sidebar-primary-foreground: oklch(0.25 0.02 55);
-  --sidebar-accent: oklch(0.31 0.02 55);
-  --sidebar-accent-foreground: oklch(0.9 0.015 85);
-  --sidebar-border: oklch(0.345 0.02 55);
-  --sidebar-ring: oklch(0.72 0.07 300);
+  --background: #0f1413; /* bg */
+  --foreground: #e8ecea; /* ink */
+  --card: #171d1c; /* surface */
+  --card-foreground: #e8ecea;
+  --popover: #171d1c;
+  --popover-foreground: #e8ecea;
+  --primary: #86a3ff; /* accent */
+  --primary-foreground: #0b1220; /* accent-ink */
+  --secondary: #1f2624; /* surface-2 */
+  --secondary-foreground: #b0bab6; /* ink-2 */
+  --muted: #1f2624; /* surface-2 */
+  --muted-foreground: #7d8884; /* muted */
+  --accent: #1b2540; /* accent-soft */
+  --accent-foreground: #e8ecea; /* ink */
+  --destructive: #f09189; /* bad */
+  --border: #2a3230; /* line */
+  --input: #2a3230; /* line */
+  --ring: #86a3ff; /* accent */
 
-  --cup-earlgrey: oklch(0.72 0.085 290);
-  --cup-earlgrey-soft: oklch(0.32 0.035 290);
-  --cup-earlgrey-deep: oklch(0.82 0.07 290);
-  --cup-breakfast: oklch(0.72 0.085 60);
-  --cup-breakfast-soft: oklch(0.32 0.035 60);
-  --cup-breakfast-deep: oklch(0.82 0.07 60);
-  --cup-sencha: oklch(0.72 0.085 150);
-  --cup-sencha-soft: oklch(0.32 0.035 150);
-  --cup-sencha-deep: oklch(0.82 0.07 150);
-  --cup-chamomile: oklch(0.83 0.1 88);
-  --cup-chamomile-soft: oklch(0.33 0.035 88);
-  --cup-chamomile-deep: oklch(0.9 0.08 90);
+  --good: #7bd3a0;
+  --good-soft: #16281f;
+  --warn: #e5b85b;
+  --warn-soft: #2e2510;
+  --bad: #f09189;
+  --bad-soft: #301c1a;
 
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.72 0.08 300) 0%,
-    oklch(0.76 0.08 55) 35%,
-    oklch(0.74 0.08 150) 70%,
-    oklch(0.72 0.08 250) 100%
-  );
-  --steam: oklch(0.85 0.015 85 / 0.4);
-  --tea-ring: oklch(0.45 0.03 70 / 0.35);
-  --shadow-cup: 0 10px 30px -12px oklch(0 0 0 / 0.5);
+  --chart-1: #86a3ff;
+  --chart-2: #7bd3a0;
+  --chart-3: #e5b85b;
+  --chart-4: #f09189;
+  --chart-5: #b0bab6;
+
+  --sidebar: #171d1c;
+  --sidebar-foreground: #e8ecea;
+  --sidebar-primary: #86a3ff;
+  --sidebar-primary-foreground: #0b1220;
+  --sidebar-accent: #1f2624;
+  --sidebar-accent-foreground: #e8ecea;
+  --sidebar-border: #2a3230;
+  --sidebar-ring: #86a3ff;
 }
 
-/* ————— Mode: Gangster ————— 90s hip-hop by way of a velvet tea lounge:
-   near-black plum walls, gold rims, Crown-Royal purple, money green. Deep
-   cup colours run LIGHT here (they're text/strong colours on dark ground),
-   mirroring how .dark flips them. */
-.mode-gangster {
-  --font-display: var(--font-display-gangster);
-
-  --background: oklch(0.17 0.02 310);
-  --foreground: oklch(0.92 0.02 90);
-  --card: oklch(0.22 0.025 310);
-  --card-foreground: oklch(0.92 0.02 90);
-  --popover: oklch(0.22 0.025 310);
-  --popover-foreground: oklch(0.92 0.02 90);
-  --primary: oklch(0.78 0.13 85); /* gold rope chain */
-  --primary-foreground: oklch(0.18 0.03 85);
-  --secondary: oklch(0.3 0.035 310); /* velvet */
-  --secondary-foreground: oklch(0.9 0.02 90);
-  --muted: oklch(0.26 0.025 310);
-  --muted-foreground: oklch(0.68 0.04 85); /* champagne */
-  --accent: oklch(0.55 0.19 25); /* brake-light red */
-  --accent-foreground: oklch(0.95 0.01 90);
-  --destructive: oklch(0.62 0.2 25);
-  --destructive-foreground: oklch(0.95 0.01 90);
-  --border: oklch(0.33 0.04 85); /* thin gold trim */
-  --input: oklch(0.32 0.03 310);
-  --ring: oklch(0.78 0.13 85);
-  --chart-1: oklch(0.68 0.14 300);
-  --chart-2: oklch(0.78 0.13 85);
-  --chart-3: oklch(0.68 0.13 150);
-  --chart-4: oklch(0.62 0.19 25);
-  --chart-5: oklch(0.92 0.02 90);
-  --radius: 0.625rem; /* sharper corners, less porcelain */
-  --sidebar: oklch(0.22 0.025 310);
-  --sidebar-foreground: oklch(0.92 0.02 90);
-  --sidebar-primary: oklch(0.78 0.13 85);
-  --sidebar-primary-foreground: oklch(0.18 0.03 85);
-  --sidebar-accent: oklch(0.26 0.025 310);
-  --sidebar-accent-foreground: oklch(0.9 0.02 90);
-  --sidebar-border: oklch(0.33 0.04 85);
-  --sidebar-ring: oklch(0.78 0.13 85);
-
-  /* Cups: royal purple, gold, money green */
-  --cup-earlgrey: oklch(0.62 0.14 300);
-  --cup-earlgrey-soft: oklch(0.29 0.05 300);
-  --cup-earlgrey-deep: oklch(0.8 0.1 300);
-  --cup-breakfast: oklch(0.72 0.13 85);
-  --cup-breakfast-soft: oklch(0.3 0.05 85);
-  --cup-breakfast-deep: oklch(0.85 0.11 88);
-  --cup-sencha: oklch(0.62 0.13 150);
-  --cup-sencha-soft: oklch(0.27 0.045 150);
-  --cup-sencha-deep: oklch(0.78 0.11 150);
-  --cup-chamomile: oklch(0.86 0.1 92);
-  --cup-chamomile-soft: oklch(0.31 0.045 92);
-  --cup-chamomile-deep: oklch(0.94 0.08 95);
-
-  /* Bling, not rainbow: the celebration gradient is gold chrome. */
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.68 0.12 80) 0%,
-    oklch(0.92 0.1 90) 30%,
-    oklch(0.7 0.13 85) 55%,
-    oklch(0.95 0.08 95) 80%,
-    oklch(0.72 0.12 82) 100%
-  );
-  --steam: oklch(0.85 0.02 85 / 0.4);
-  --tea-ring: oklch(0.5 0.06 85 / 0.35);
-  --shadow-cup:
-    0 12px 32px -12px oklch(0 0 0 / 0.6),
-    0 0 0 1px oklch(0.78 0.13 85 / 0.12);
-}
-
-/* ————— Mode: Nan's Parlour ————— Chintz, doilies and rose pastels. Extra
-   round, extra soft, everything is lovely. */
-.mode-nan {
-  --font-display: var(--font-display-nan);
-
-  --background: oklch(0.96 0.018 20);
-  --foreground: oklch(0.36 0.035 30);
-  --card: oklch(0.99 0.006 20);
-  --card-foreground: oklch(0.36 0.035 30);
-  --popover: oklch(0.99 0.006 20);
-  --popover-foreground: oklch(0.36 0.035 30);
-  --primary: oklch(0.55 0.12 15); /* dusty rose */
-  --primary-foreground: oklch(0.98 0.008 20);
-  --secondary: oklch(0.92 0.03 160); /* mint icing */
-  --secondary-foreground: oklch(0.38 0.05 160);
-  --muted: oklch(0.93 0.02 20);
-  --muted-foreground: oklch(0.51 0.04 25);
-  --accent: oklch(0.6 0.09 250); /* hydrangea */
-  --accent-foreground: oklch(0.98 0.008 20);
-  --destructive: oklch(0.55 0.14 25);
-  --border: oklch(0.88 0.03 15);
-  --input: oklch(0.88 0.03 15);
-  --ring: oklch(0.55 0.12 15);
-  --chart-1: oklch(0.65 0.09 310);
-  --chart-2: oklch(0.7 0.1 45);
-  --chart-3: oklch(0.68 0.08 140);
-  --chart-4: oklch(0.6 0.09 250);
-  --chart-5: oklch(0.55 0.12 15);
-  --radius: 1.4rem; /* doily-round */
-
-  --cup-earlgrey: oklch(0.65 0.09 310); /* lilac */
-  --cup-earlgrey-soft: oklch(0.94 0.025 310);
-  --cup-earlgrey-deep: oklch(0.46 0.1 310);
-  --cup-breakfast: oklch(0.7 0.1 45); /* peach */
-  --cup-breakfast-soft: oklch(0.94 0.028 45);
-  --cup-breakfast-deep: oklch(0.5 0.1 45);
-  --cup-sencha: oklch(0.68 0.08 140); /* sage */
-  --cup-sencha-soft: oklch(0.94 0.024 140);
-  --cup-sencha-deep: oklch(0.47 0.09 140);
-  --cup-chamomile: oklch(0.79 0.09 88);
-  --cup-chamomile-soft: oklch(0.95 0.025 88);
-  --cup-chamomile-deep: oklch(0.56 0.095 85);
-
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.88 0.05 15) 0%,
-    oklch(0.9 0.05 45) 35%,
-    oklch(0.89 0.05 160) 70%,
-    oklch(0.87 0.05 250) 100%
-  );
-  --steam: oklch(0.78 0.02 20 / 0.5);
-  --tea-ring: oklch(0.82 0.04 20 / 0.3);
-  --shadow-cup: 0 10px 30px -12px oklch(0.55 0.08 15 / 0.28);
-}
-
-/* ————— Mode: Degen Terminal ————— Green phosphor on black glass. The
-   Bloomberg of tea. Body text goes mono too — Plex Mono is already loaded
-   as the money font, so the remap costs nothing. */
-.mode-terminal {
-  --font-display: var(--font-display-terminal);
-  --font-body: var(--font-money-original);
-
-  --background: oklch(0.15 0.02 150);
-  --foreground: oklch(0.83 0.17 145); /* phosphor */
-  --card: oklch(0.18 0.025 150);
-  --card-foreground: oklch(0.83 0.17 145);
-  --popover: oklch(0.18 0.025 150);
-  --popover-foreground: oklch(0.83 0.17 145);
-  --primary: oklch(0.8 0.19 145);
-  --primary-foreground: oklch(0.13 0.02 150);
-  --secondary: oklch(0.24 0.035 150);
-  --secondary-foreground: oklch(0.8 0.15 145);
-  --muted: oklch(0.21 0.03 150);
-  --muted-foreground: oklch(0.6 0.1 145);
-  --accent: oklch(0.75 0.15 80); /* amber warning */
-  --accent-foreground: oklch(0.15 0.02 80);
-  --destructive: oklch(0.62 0.21 25);
-  --border: oklch(0.34 0.06 145);
-  --input: oklch(0.3 0.05 145);
-  --ring: oklch(0.8 0.19 145);
-  --chart-1: oklch(0.75 0.12 200);
-  --chart-2: oklch(0.75 0.15 80);
-  --chart-3: oklch(0.78 0.16 145);
-  --chart-4: oklch(0.62 0.21 25);
-  --chart-5: oklch(0.83 0.17 145);
-  --radius: 0.25rem; /* terminals don't do curves */
-
-  --cup-earlgrey: oklch(0.72 0.12 200); /* cyan */
-  --cup-earlgrey-soft: oklch(0.24 0.05 200);
-  --cup-earlgrey-deep: oklch(0.82 0.11 200);
-  --cup-breakfast: oklch(0.74 0.13 80); /* amber */
-  --cup-breakfast-soft: oklch(0.25 0.05 80);
-  --cup-breakfast-deep: oklch(0.84 0.13 82);
-  --cup-sencha: oklch(0.76 0.16 145); /* phosphor */
-  --cup-sencha-soft: oklch(0.24 0.06 145);
-  --cup-sencha-deep: oklch(0.86 0.16 145);
-  --cup-chamomile: oklch(0.91 0.06 90);
-  --cup-chamomile-soft: oklch(0.25 0.035 90);
-  --cup-chamomile-deep: oklch(0.96 0.05 92);
-
-  /* Celebration = a burst of brighter phosphor, not a rainbow. */
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.7 0.16 145) 0%,
-    oklch(0.9 0.18 145) 40%,
-    oklch(0.75 0.13 200) 75%,
-    oklch(0.85 0.17 145) 100%
-  );
-  --steam: oklch(0.75 0.1 145 / 0.4);
-  --tea-ring: oklch(0.4 0.08 145 / 0.4);
-  --shadow-cup:
-    0 10px 28px -12px oklch(0 0 0 / 0.65),
-    0 0 18px -6px oklch(0.8 0.19 145 / 0.35);
-}
-
-/* ————— Mode: Vaporwave ————— Magenta and cyan over indigo, chrome type,
-   the eternal mall sunset. */
-.mode-vaporwave {
-  --font-display: var(--font-display-vaporwave);
-
-  --background: oklch(0.25 0.08 290);
-  --foreground: oklch(0.93 0.03 330);
-  --card: oklch(0.3 0.09 285);
-  --card-foreground: oklch(0.93 0.03 330);
-  --popover: oklch(0.3 0.09 285);
-  --popover-foreground: oklch(0.93 0.03 330);
-  --primary: oklch(0.66 0.24 340); /* hot magenta */
-  --primary-foreground: oklch(0.97 0.02 330);
-  --secondary: oklch(0.38 0.1 280);
-  --secondary-foreground: oklch(0.92 0.04 320);
-  --muted: oklch(0.33 0.08 285);
-  --muted-foreground: oklch(0.76 0.07 300);
-  --accent: oklch(0.8 0.12 195); /* pool-water cyan */
-  --accent-foreground: oklch(0.2 0.06 220);
-  --destructive: oklch(0.64 0.22 20);
-  --border: oklch(0.45 0.12 310);
-  --input: oklch(0.42 0.1 300);
-  --ring: oklch(0.8 0.12 195);
-  --chart-1: oklch(0.68 0.2 340);
-  --chart-2: oklch(0.78 0.13 195);
-  --chart-3: oklch(0.72 0.15 40);
-  --chart-4: oklch(0.7 0.14 300);
-  --chart-5: oklch(0.93 0.03 330);
-  --radius: 1rem;
-
-  --cup-earlgrey: oklch(0.68 0.2 340); /* magenta */
-  --cup-earlgrey-soft: oklch(0.34 0.08 340);
-  --cup-earlgrey-deep: oklch(0.82 0.15 340);
-  --cup-breakfast: oklch(0.76 0.13 195); /* cyan */
-  --cup-breakfast-soft: oklch(0.32 0.06 210);
-  --cup-breakfast-deep: oklch(0.86 0.11 195);
-  --cup-sencha: oklch(0.72 0.15 40); /* sunset orange */
-  --cup-sencha-soft: oklch(0.34 0.07 40);
-  --cup-sencha-deep: oklch(0.84 0.13 45);
-  --cup-chamomile: oklch(0.89 0.15 95);
-  --cup-chamomile-soft: oklch(0.34 0.06 95);
-  --cup-chamomile-deep: oklch(0.95 0.12 98);
-
-  /* The one place the whole sunset is allowed at once. */
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.7 0.2 340) 0%,
-    oklch(0.78 0.14 40) 35%,
-    oklch(0.8 0.12 195) 70%,
-    oklch(0.72 0.16 300) 100%
-  );
-  --steam: oklch(0.85 0.06 320 / 0.4);
-  --tea-ring: oklch(0.5 0.1 320 / 0.35);
-  --shadow-cup:
-    0 12px 32px -12px oklch(0.1 0.05 290 / 0.7),
-    0 0 20px -8px oklch(0.66 0.24 340 / 0.4);
-}
-
-/* ————— Mode: Sumi-e ————— Ink wash on washi paper. Near-monochrome; the
-   vermillion seal is the single allowed colour. The restraint is the point. */
-.mode-sumie {
-  --font-display: var(--font-display-sumie);
-
-  --background: oklch(0.97 0.005 90);
-  --foreground: oklch(0.26 0.006 270);
-  --card: oklch(0.985 0.003 90);
-  --card-foreground: oklch(0.26 0.006 270);
-  --popover: oklch(0.985 0.003 90);
-  --popover-foreground: oklch(0.26 0.006 270);
-  --primary: oklch(0.3 0.01 270); /* sumi ink */
-  --primary-foreground: oklch(0.97 0.005 90);
-  --secondary: oklch(0.93 0.005 270);
-  --secondary-foreground: oklch(0.3 0.01 270);
-  --muted: oklch(0.94 0.004 270);
-  --muted-foreground: oklch(0.54 0.008 270);
-  --accent: oklch(0.55 0.19 30); /* the hanko seal */
-  --accent-foreground: oklch(0.97 0.005 90);
-  --destructive: oklch(0.55 0.19 30);
-  --border: oklch(0.89 0.005 270);
-  --input: oklch(0.89 0.005 270);
-  --ring: oklch(0.3 0.01 270);
-  --chart-1: oklch(0.55 0.03 270);
-  --chart-2: oklch(0.55 0.03 60);
-  --chart-3: oklch(0.55 0.04 150);
-  --chart-4: oklch(0.55 0.19 30);
-  --chart-5: oklch(0.3 0.01 270);
-  --radius: 0.375rem;
-
-  /* Cups in ink gradations — hue whispers, never shouts. */
-  --cup-earlgrey: oklch(0.55 0.035 280);
-  --cup-earlgrey-soft: oklch(0.93 0.006 280);
-  --cup-earlgrey-deep: oklch(0.36 0.03 280);
-  --cup-breakfast: oklch(0.55 0.035 60);
-  --cup-breakfast-soft: oklch(0.93 0.006 60);
-  --cup-breakfast-deep: oklch(0.36 0.03 60);
-  --cup-sencha: oklch(0.55 0.04 150);
-  --cup-sencha-soft: oklch(0.93 0.006 150);
-  --cup-sencha-deep: oklch(0.36 0.035 150);
-  --cup-chamomile: oklch(0.56 0.04 225);
-  --cup-chamomile-soft: oklch(0.93 0.007 225);
-  --cup-chamomile-deep: oklch(0.37 0.035 230);
-
-  /* Even celebration stays in ink — a wash, with one breath of vermillion. */
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.75 0.008 270) 0%,
-    oklch(0.85 0.004 90) 40%,
-    oklch(0.7 0.06 30) 70%,
-    oklch(0.78 0.008 270) 100%
-  );
-  --steam: oklch(0.7 0.005 270 / 0.45);
-  --tea-ring: oklch(0.75 0.01 270 / 0.3);
-  --shadow-cup: 0 8px 24px -14px oklch(0.26 0.006 270 / 0.35);
-}
-
-/* ————— Mode: Aurora ————— A Finnish winter night: deep arctic blue, snow-pale
-   type, and the revontulet in green and violet. The sauna stove keeps one
-   ember of warmth in an otherwise cold palette. */
-.mode-aurora {
-  --font-display: var(--font-display-aurora);
-
-  --background: oklch(0.19 0.045 265);
-  --foreground: oklch(0.94 0.02 190);
-  --card: oklch(0.23 0.05 262);
-  --card-foreground: oklch(0.94 0.02 190);
-  --popover: oklch(0.23 0.05 262);
-  --popover-foreground: oklch(0.94 0.02 190);
-  --primary: oklch(0.78 0.17 165); /* aurora green */
-  --primary-foreground: oklch(0.17 0.05 200);
-  --secondary: oklch(0.3 0.06 270);
-  --secondary-foreground: oklch(0.92 0.03 200);
-  --muted: oklch(0.27 0.045 265);
-  --muted-foreground: oklch(0.73 0.04 230);
-  --accent: oklch(0.7 0.15 310); /* violet fringe of the lights */
-  --accent-foreground: oklch(0.96 0.02 310);
-  --destructive: oklch(0.64 0.2 20);
-  --border: oklch(0.35 0.06 275);
-  --input: oklch(0.33 0.055 272);
-  --ring: oklch(0.78 0.17 165);
-  --chart-1: oklch(0.78 0.17 165);
-  --chart-2: oklch(0.7 0.15 310);
-  --chart-3: oklch(0.78 0.1 220);
-  --chart-4: oklch(0.72 0.14 55);
-  --chart-5: oklch(0.94 0.02 190);
-  --radius: 1rem;
-
-  /* Cups: the lights in green and ice, plus one kiuas ember for warmth. */
-  --cup-earlgrey: oklch(0.75 0.15 170); /* aurora green */
-  --cup-earlgrey-soft: oklch(0.31 0.06 190);
-  --cup-earlgrey-deep: oklch(0.85 0.13 165);
-  --cup-breakfast: oklch(0.72 0.14 55); /* sauna-stove ember */
-  --cup-breakfast-soft: oklch(0.32 0.06 55);
-  --cup-breakfast-deep: oklch(0.82 0.12 60);
-  --cup-sencha: oklch(0.78 0.1 220); /* lake ice */
-  --cup-sencha-soft: oklch(0.31 0.05 230);
-  --cup-sencha-deep: oklch(0.87 0.08 215);
-  --cup-chamomile: oklch(0.86 0.11 95);
-  --cup-chamomile-soft: oklch(0.31 0.05 95);
-  --cup-chamomile-deep: oklch(0.93 0.09 98);
-
-  /* The full sweep of the fox's tail: green through teal to violet and rose. */
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.78 0.17 165) 0%,
-    oklch(0.78 0.1 220) 35%,
-    oklch(0.7 0.15 310) 70%,
-    oklch(0.78 0.13 350) 100%
-  );
-  --steam: oklch(0.92 0.02 190 / 0.4); /* löyly off the stones */
-  --tea-ring: oklch(0.55 0.08 250 / 0.35);
-  --shadow-cup:
-    0 12px 32px -12px oklch(0.08 0.03 265 / 0.7),
-    0 0 24px -8px oklch(0.78 0.17 165 / 0.35);
-}
-
-/* Aurora's shooting star: one quiet streak roughly every half minute, alive
-   for about a second of it. Fixed overlay under the app's chrome; the
-   drawers and header simply pass over it. */
-@media (prefers-reduced-motion: no-preference) {
-  .mode-aurora body::after {
-    content: "";
-    position: fixed;
-    top: 14%;
-    left: 68%;
-    width: 90px;
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      oklch(0.95 0.02 190 / 0.9),
-      transparent
-    );
-    border-radius: 999px;
-    transform: rotate(-28deg) translateX(0);
-    opacity: 0;
-    pointer-events: none;
-    z-index: 1;
-    animation: aurora-shooting-star 31s linear infinite;
-    animation-delay: 7s;
-  }
-
-  @keyframes aurora-shooting-star {
-    0%,
-    95.5% {
-      opacity: 0;
-      transform: rotate(-28deg) translateX(0);
-    }
-    96.5% {
-      opacity: 0.85;
-    }
-    99.4% {
-      opacity: 0;
-    }
-    100% {
-      opacity: 0;
-      transform: rotate(-28deg) translateX(-46vw);
-    }
-  }
-}
-
-/* ————— Mode: LSD ————— The eighties acid trip: neon on deep purple, a lava
-   lamp for a burner, and a silk field whose hues never stop wandering.
-   (LSD as in liquid staking derivatives, obviously.) */
-.mode-lsd {
-  --font-display: var(--font-display-lsd);
-
-  --background: oklch(0.24 0.09 315);
-  --foreground: oklch(0.95 0.03 100);
-  --card: oklch(0.29 0.1 310);
-  --card-foreground: oklch(0.95 0.03 100);
-  --popover: oklch(0.29 0.1 310);
-  --popover-foreground: oklch(0.95 0.03 100);
-  --primary: oklch(0.85 0.26 135); /* acid green */
-  --primary-foreground: oklch(0.2 0.08 315);
-  --secondary: oklch(0.4 0.13 300);
-  --secondary-foreground: oklch(0.94 0.04 330);
-  --muted: oklch(0.33 0.09 310);
-  --muted-foreground: oklch(0.78 0.08 330);
-  --accent: oklch(0.68 0.26 345); /* hot magenta */
-  --accent-foreground: oklch(0.97 0.02 345);
-  --destructive: oklch(0.66 0.24 25);
-  --border: oklch(0.45 0.14 320);
-  --input: oklch(0.42 0.12 315);
-  --ring: oklch(0.85 0.26 135);
-  --chart-1: oklch(0.85 0.26 135);
-  --chart-2: oklch(0.68 0.26 345);
-  --chart-3: oklch(0.8 0.13 195);
-  --chart-4: oklch(0.75 0.18 60);
-  --chart-5: oklch(0.9 0.18 100);
-  --radius: 1.25rem;
-
-  /* Cups straight off the blotter sheet. */
-  --cup-earlgrey: oklch(0.68 0.26 345); /* magenta */
-  --cup-earlgrey-soft: oklch(0.34 0.1 345);
-  --cup-earlgrey-deep: oklch(0.8 0.2 345);
-  --cup-breakfast: oklch(0.75 0.18 60); /* acid orange */
-  --cup-breakfast-soft: oklch(0.35 0.08 60);
-  --cup-breakfast-deep: oklch(0.84 0.15 65);
-  --cup-sencha: oklch(0.8 0.13 195); /* electric cyan */
-  --cup-sencha-soft: oklch(0.33 0.06 210);
-  --cup-sencha-deep: oklch(0.88 0.11 195);
-  --cup-chamomile: oklch(0.89 0.17 98);
-  --cup-chamomile-soft: oklch(0.35 0.07 98);
-  --cup-chamomile-deep: oklch(0.95 0.13 100);
-
-  /* The whole spectrum at once; nothing here is reserved. */
-  --iridescent: linear-gradient(
-    115deg,
-    oklch(0.85 0.26 135) 0%,
-    oklch(0.8 0.13 195) 25%,
-    oklch(0.68 0.26 345) 50%,
-    oklch(0.75 0.18 60) 75%,
-    oklch(0.9 0.18 100) 100%
-  );
-  --steam: oklch(0.9 0.1 330 / 0.45);
-  --tea-ring: oklch(0.6 0.15 330 / 0.4);
-  --shadow-cup:
-    0 12px 32px -12px oklch(0.1 0.06 315 / 0.75),
-    0 0 24px -6px oklch(0.68 0.26 345 / 0.45);
-}
-
-/* The trip itself: the silk field's hues wander a full circle every 36s.
-   Scoped to the backdrop wrapper (never body) so filter's containing-block
-   quirk can't break the fixed-position drawers. */
-@media (prefers-reduced-motion: no-preference) {
-  .mode-lsd .builders-strength {
-    animation: lsd-hue-drift 36s linear infinite;
-  }
-
-  /* Both ends spell the full filter list: mismatched lists interpolate
-     discretely per spec, so a bare hue-rotate() target would snap, not drift. */
-  @keyframes lsd-hue-drift {
-    from {
-      filter: saturate(1.4) contrast(1.04) hue-rotate(0deg);
-    }
-    to {
-      filter: saturate(1.4) contrast(1.04) hue-rotate(360deg);
-    }
-  }
-}
-
-/* Steam wisps — intensity scales with value in the cup. Three paths so
-   neighbours never rise in lockstep; linear rise, opacity does the easing. */
-@keyframes steam-rise-a {
-  0% {
-    transform: translateY(6px) translateX(0) scale(0.92);
-    opacity: 0;
-  }
-  14% {
-    opacity: var(--steam-opacity, 0.4);
-  }
-  55% {
-    transform: translateY(-15px) translateX(3px) scale(1.04);
-  }
-  100% {
-    transform: translateY(-36px) translateX(-2px) scale(1.18);
-    opacity: 0;
-  }
-}
-@keyframes steam-rise-b {
-  0% {
-    transform: translateY(6px) translateX(0) scale(0.9);
-    opacity: 0;
-  }
-  14% {
-    opacity: var(--steam-opacity, 0.4);
-  }
-  50% {
-    transform: translateY(-14px) translateX(-3px) scale(1.05);
-  }
-  100% {
-    transform: translateY(-34px) translateX(2px) scale(1.2);
-    opacity: 0;
-  }
-}
-@keyframes steam-rise-c {
-  0% {
-    transform: translateY(7px) translateX(0) scale(0.94);
-    opacity: 0;
-  }
-  16% {
-    opacity: var(--steam-opacity, 0.4);
-  }
-  60% {
-    transform: translateY(-17px) translateX(2px) scale(1.02);
-  }
-  100% {
-    transform: translateY(-38px) translateX(-3px) scale(1.15);
-    opacity: 0;
-  }
-}
-/* The celebratory "poured" bloom — the one iridescent moment */
-@keyframes steam-bloom {
-  0% {
-    transform: scale(0.6) translateY(6px);
-    opacity: 0;
-  }
-  30% {
-    opacity: 0.9;
-  }
-  100% {
-    transform: scale(1.6) translateY(-30px);
-    opacity: 0;
-  }
-}
-/* The pour — dashes flow down the stream, the landing ripples. */
-@keyframes pour-flow {
-  0% {
-    stroke-dashoffset: 0;
-  }
-  100% {
-    stroke-dashoffset: -17;
-  }
-}
-/* The teapot rocks gently while it pours. */
-@keyframes pot-rock {
+/* The house loader's three dots, pulsing in opacity one after another. */
+@keyframes loader-dot {
   0%,
+  80%,
   100% {
-    transform: rotate(-14deg);
+    opacity: 0.25;
   }
-  50% {
-    transform: rotate(-18deg);
-  }
-}
-/* The inline loader: three steam dots rising in turn. Staggered a third of
-   the cycle apart, so one dot is always near full strength and the loader
-   never reads as parked. */
-@keyframes steam-dot-rise {
-  0% {
-    transform: translateY(0.5px);
-    opacity: 0.35;
-  }
-  35% {
-    transform: translateY(-3px);
+  40% {
     opacity: 1;
   }
-  70%,
-  100% {
-    transform: translateY(-5.5px);
-    opacity: 0;
-  }
 }
 
-/* "Builder's" brew strength — the design default: colors steeped a touch
-   stronger. Applied to page content and the silk field, not to drawers
-   (the drawer primitive animates filter itself). */
-.builders-strength {
-  filter: saturate(1.4) contrast(1.04);
-}
-
-/* Money is always tabular — the playfulness lives around the numbers. */
-.money,
-[data-money] {
-  font-family: var(--font-money);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-
-/* The "still earning" cue beside the earned figure. Motion lives NEXT TO the
-   money, never inside it — an earlier gradient sheen across the digits read
-   as a rendering glitch. The digits still tick (they're real); this dot just
-   breathes so the row reads as live between flips. */
-@keyframes live-breathe {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.35;
-    transform: scale(0.72);
-  }
-}
-
-.live-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  animation: live-breathe 2.4s var(--ease-tea, ease-in-out) infinite;
-}
-
-/* The rocking pour, wired by attribute so reduced motion can calm it. */
-[data-pour-rock] {
-  animation: pot-rock 3.4s var(--ease-tea) infinite;
-}
-
-/* The active brewing step breathes in place — scale and fade, never a
-   sideways wobble (a ring sliding off its dot reads as misalignment). */
+/* The active step breathes in place — scale and fade, never a sideways
+   wobble (a ring sliding off its dot reads as misalignment). */
 @keyframes ring-breathe {
   0%,
   100% {
@@ -843,35 +198,10 @@
   }
 }
 
-/* The bloom's quiet sibling: same moment, opacity only. */
-@keyframes steam-bloom-quiet {
-  0% {
-    opacity: 0;
-  }
-  30% {
-    opacity: 0.9;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .live-dot,
-  [data-pour-rock],
-  [data-pour-stream],
   [data-step-ring],
   [data-slot="spinner"] circle {
     animation: none !important;
-  }
-  /* The celebration still glows, it just stops traveling. */
-  [data-steam-bloom] {
-    animation-name: steam-bloom-quiet !important;
-  }
-  /* Frozen steam still reads as warmth, just quietly. */
-  [data-steam-wisp] {
-    animation: none !important;
-    opacity: 0.25 !important;
   }
   [data-slot="spinner"] circle {
     opacity: 0.5;
@@ -888,4 +218,24 @@
   html {
     @apply font-sans;
   }
+}
+
+/* Money is always tabular — the playfulness lives around the numbers. */
+.money,
+[data-money] {
+  font-family: var(--font-money);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Keyboard focus on every control, including the raw <button>s that skip
+   buttonVariants. The ring token is the accent; two pixels, offset, visible
+   in both appearances. */
+button:focus-visible,
+[role="button"]:focus-visible,
+[role="radio"]:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }

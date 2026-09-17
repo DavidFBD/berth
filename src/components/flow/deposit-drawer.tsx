@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowsDownUp, CaretDown, Flame } from "@phosphor-icons/react";
+import { ArrowsDownUp, CaretDown, GasPump } from "@phosphor-icons/react";
 import { ChainKeys, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import { useXBalances } from "@sodax/dapp-kit";
 import {
@@ -56,10 +56,10 @@ import { TokenLogo, TokenPicker } from "./token-picker";
  * enter an amount against a live quote, then drive the build → approve → sign
  * pipeline and track the solver fill.
  *
- * The destination is a listing (lib/listings). A cup keeps every habit it
- * had: tea name, cup colours, delivery to the signing wallet's own hub
- * wallet. A stock or cash listing is a buy: plain name, and delivery to THE
- * account, the Base-derived hub wallet, whatever wallet pays.
+ * The destination is a listing (lib/listings). A vault deposit keeps its old
+ * habit: delivery to the signing wallet's own hub wallet. A stock or cash
+ * listing is a buy: plain name, and delivery to THE account, the
+ * Base-derived hub wallet, whatever wallet pays.
  */
 export function DepositDrawer({
   listing,
@@ -77,9 +77,9 @@ export function DepositDrawer({
   onConnectWallet?: () => void;
   /** Optional: lets a buy's CTA start the email sign-in when there is no account. */
   onSignIn?: () => void;
-  /** Optional: routes an empty email-mode teapot to the funding flow. */
+  /** Optional: routes an empty email-mode balance to the funding flow. */
   onTopUp?: () => void;
-  /** Optional: fired once when the pour fills — the cup's bloom moment. */
+  /** Optional: fired once when the order fills. */
   onPoured?: () => void;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
@@ -97,7 +97,7 @@ export function DepositDrawer({
     listing?.kind === "vault" ? getVaultMeta(listing.vault.name) : null;
   const copy = useCopy();
 
-  // Where a buy lands: the account. Cups ignore this (see RunDepositArgs).
+  // Where a buy lands: the account. Vault deposits ignore this (see RunDepositArgs).
   const account = useHubAccount();
   const deliverTo = isBuy ? account.hubWallet : undefined;
   const accountState = !isBuy
@@ -107,7 +107,7 @@ export function DepositDrawer({
       : account.spokeAddress
         ? "deriving"
         : "none";
-  // The pour machine owns everything past the first tap: pipeline, solver
+  // The order machine owns everything past the first tap: pipeline, solver
   // fill, toasts, XP, failure reporting. The drawer renders its states.
   const action = useVaultAction({ onPoured });
 
@@ -152,7 +152,7 @@ export function DepositDrawer({
       : undefined
     : undefined;
 
-  // Money is how people think about a pour, so the amount field takes the
+  // Money is how people think about an order, so the amount field takes the
   // user's display currency whenever the oracle prices the token, with a
   // tap-to-flip line for exact token amounts. Unpriced tokens fall back to
   // token entry. The oracle speaks USD; entry converts at the FX rate.
@@ -161,7 +161,7 @@ export function DepositDrawer({
   const entryPrice =
     priceUsd !== undefined ? priceUsd * money.rate : undefined;
 
-  // What Max must hold back so the pour can pay its own network fee.
+  // What Max must hold back so the order can pay its own network fee.
   const { buffer: gasBuffer } = useNativeGasBuffer({
     chainKey: srcChainKey,
     token,
@@ -187,7 +187,7 @@ export function DepositDrawer({
   // Under the floor the solver answers "no path" for a pair that routes
   // fine, so it isn't asked: the field gets the real reason instead.
   const tooSmall = belowMinimum(worthUsd, money.rate);
-  const smallestPourLabel = money.format(minPourUsd(money.rate));
+  const smallestOrderLabel = money.format(minPourUsd(money.rate));
   const quote = usePourQuote({
     enabled: open && !!listing && !!token && !tooSmall,
     src: token ? { address: token.address, chainKey: srcChainKey } : null,
@@ -212,11 +212,11 @@ export function DepositDrawer({
     if (!token || balance === undefined) return;
     const max = depositMax(balance, gasBuffer);
     if (max.kind === "bufferLoading") {
-      toast.info(copy.burnerCostChecking);
+      toast.info(copy.gasCostChecking);
       return;
     }
     if (max.kind === "nothingSpendable") {
-      toast.info(copy.nothingForKettle);
+      toast.info(copy.nothingLeftForGas);
       return;
     }
     setAmount(
@@ -231,7 +231,7 @@ export function DepositDrawer({
   };
 
   // Flip the entry denomination, carrying the current value across so the
-  // number in the field keeps meaning the same pour.
+  // number in the field keeps meaning the same order.
   const flipDenom = () => {
     if (!token || entryPrice === undefined) return;
     setDenom(moneyMode ? "token" : "money");
@@ -272,9 +272,9 @@ export function DepositDrawer({
       walletProvider,
       walletMode: mode,
       fillToasts: {
-        successTitle: copy.pourFilledTitle,
-        successDescription: copy.pourFilledBody,
-        failureDescription: copy.pourFillFailedBody,
+        successTitle: copy.buyFilledTitle,
+        successDescription: copy.buyFilledBody,
+        failureDescription: copy.buyFailedBody,
       },
       ensureReady,
     });
@@ -286,8 +286,8 @@ export function DepositDrawer({
     busy?: boolean;
     onClick?: () => void;
   };
-  // The gate (pour-amount module) decides why the pour can't go yet; this
-  // map only speaks it in the tea voice.
+  // The gate (pour-amount module) decides why the order can't go yet; this
+  // map only speaks it plainly.
   const gate = depositGate({
     hasToken: !!token,
     address,
@@ -310,10 +310,10 @@ export function DepositDrawer({
           onClick: onSignIn,
         };
       case "accountPending":
-        return { label: copy.ctaOpeningShelf, disabled: true, busy: true };
+        return { label: copy.ctaOpeningAccount, disabled: true, busy: true };
       case "pickToken":
         return {
-          label: copy.whatPouring,
+          label: copy.whatPayingWith,
           disabled: false,
           onClick: () => setPickerOpen(true),
         };
@@ -324,14 +324,14 @@ export function DepositDrawer({
           onClick: onConnectWallet,
         };
       case "enterAmount":
-        return { label: copy.ctaPourHowMuch, disabled: true };
+        return { label: copy.ctaEnterAmount, disabled: true };
       case "balanceLoading":
-        return { label: copy.peekingTeapot, disabled: true, busy: true };
+        return { label: copy.checkingBalance, disabled: true, busy: true };
       case "insufficient":
         return { label: copy.ctaTooMuch, disabled: true };
       case "belowMinimum":
         return {
-          label: copy.ctaPourAtLeast(smallestPourLabel),
+          label: copy.ctaAtLeast(smallestOrderLabel),
           disabled: true,
         };
       case "wrongChain":
@@ -343,10 +343,10 @@ export function DepositDrawer({
       case "noRoute":
         return { label: copy.ctaNoRoute, disabled: true };
       case "quotePending":
-        return { label: copy.ctaReadingLeaves, disabled: true, busy: true };
+        return { label: copy.ctaGettingQuote, disabled: true, busy: true };
       default:
         return {
-          label: copy.pour,
+          label: copy.buy,
           disabled: false,
           onClick: () => void handleDeposit(),
         };
@@ -364,23 +364,19 @@ export function DepositDrawer({
           <DrawerHeader>
             <DrawerTitle>
               {listing
-                ? isBuy
-                  ? copy.buyTitle(listing.name)
-                  : copy.pourIntoTitle(meta?.teaName ?? listing.name)
-                : copy.pourTitleFallback}
+                ? copy.buyTitle(isBuy ? listing.name : (meta?.title ?? listing.name))
+                : copy.orderTitleFallback}
             </DrawerTitle>
-            <DrawerDescription>
-              {listing ? (isBuy ? copy.buySub : copy.pourSub) : copy.pickCupToPour}
-            </DrawerDescription>
+            <DrawerDescription>{copy.buySub}</DrawerDescription>
           </DrawerHeader>
 
-          {/* The three acts (form → brewing → steeping) hand off with a soft
+          {/* The three acts (form → working → settling) hand off with a soft
               directional wash instead of a hard cut; the 2px blur masks the
               crossfade so two states never read double-exposed. */}
           <AnimatePresence initial={false} mode="popLayout">
           <motion.div
             key={
-              action.fillPhase ? "steeping" : action.pending ? "stepper" : "form"
+              action.fillPhase ? "settling" : action.pending ? "stepper" : "form"
             }
             className="flex min-h-0 flex-1 flex-col"
             initial={{
@@ -406,14 +402,10 @@ export function DepositDrawer({
                 reportState={action.reportState}
                 phase={action.fillPhase}
                 fillTxHash={action.fillTxHash}
-                accent={meta ? `var(--cup-${meta.cupKey})` : undefined}
-                deep={meta ? `var(--cup-${meta.cupKey}-deep)` : undefined}
-                successTitle={copy.pourFilledTitle}
-                successBody={
-                  isBuy
-                    ? copy.settledBody(listing.name)
-                    : copy.steepingBody(meta?.teaName ?? null)
-                }
+                successTitle={copy.buyFilledTitle}
+                successBody={copy.settledBody(
+                  isBuy ? listing.name : (meta?.title ?? listing.name),
+                )}
                 onDone={() => {
                   onOpenChange(false);
                   finish();
@@ -448,7 +440,7 @@ export function DepositDrawer({
                         </span>
                       </div>
                       {/* What you hold of it, right on the pill — the picker
-                          shouldn't be the only place that prices the shelf. */}
+                          shouldn't be the only place that prices the account. */}
                       {address && balance !== undefined && balance > 0n && (
                         <div className="flex shrink-0 flex-col items-end">
                           <span className="money text-sm text-foreground">
@@ -466,14 +458,14 @@ export function DepositDrawer({
                     </>
                   ) : (
                     <span className="flex-1 text-sm text-muted-foreground">
-                      {copy.whatPouring}
+                      {copy.whatPayingWith}
                     </span>
                   )}
                   <CaretDown className="size-4 text-muted-foreground" />
                 </button>
 
-                {/* Tea without a flame: the embedded wallet holds this token
-                    but zero native balance on its chain, so the pour would
+                {/* Funds without gas: the embedded wallet holds this token
+                    but zero native balance on its chain, so the order would
                     die at the network fee. Say so before the quote does. */}
                 {emailMode &&
                   token &&
@@ -482,8 +474,8 @@ export function DepositDrawer({
                     const native = getNativeGasToken(srcChainKey);
                     const symbol = native?.symbol ?? "the native token";
                     return (
-                      <div className="flex gap-3 rounded-xl border border-amber-600/30 bg-amber-500/10 px-3 py-2.5">
-                        <Flame className="mt-0.5 size-5 shrink-0 text-amber-700" />
+                      <div className="flex gap-3 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5">
+                        <GasPump className="mt-0.5 size-5 shrink-0 text-warn" />
                         <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
                           <p className="text-foreground">
                             {copy.gasShortWarning(
@@ -495,7 +487,7 @@ export function DepositDrawer({
                             <button
                               type="button"
                               onClick={onTopUp}
-                              className="self-start text-left font-medium text-amber-800 underline underline-offset-2"
+                              className="self-start text-left font-medium text-warn underline underline-offset-2"
                             >
                               {copy.gasShortCta(symbol)}
                             </button>
@@ -531,8 +523,8 @@ export function DepositDrawer({
                       placeholder="0"
                       aria-label={
                         moneyMode
-                          ? `Deposit amount in ${money.currency}`
-                          : "Deposit amount"
+                          ? copy.ariaAmountIn(money.currency)
+                          : copy.ariaAmount
                       }
                       disabled={!token}
                       className={cn(
@@ -557,12 +549,12 @@ export function DepositDrawer({
                     <span className="tabular-nums">
                       {token && address
                         ? balance !== undefined
-                          ? copy.teapotHolds(
+                          ? copy.walletHolds(
                               balanceWorthUsd !== undefined
                                 ? `≈ ${money.format(balanceWorthUsd)} (${formatTokenAmount(balance, token.decimals)} ${token.symbol})`
                                 : `${formatTokenAmount(balance, token.decimals)} ${token.symbol}`,
                             )
-                          : copy.peekingTeapot
+                          : copy.checkingBalance
                         : " "}
                     </span>
                     {token && balance !== undefined && balance > 0n && (
@@ -578,7 +570,7 @@ export function DepositDrawer({
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
                     {tooSmall ? (
                       <span className="text-destructive">
-                        {copy.smallestPour(smallestPourLabel)}
+                        {copy.smallestOrder(smallestOrderLabel)}
                       </span>
                     ) : quote.noRoute ? (
                       <span className="text-destructive">
@@ -588,14 +580,14 @@ export function DepositDrawer({
                       <>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">
-                            {isBuy ? copy.youllHold : copy.youllSteep}
+                            {copy.youllHold}
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
                             ≈ {formatTokenAmount(quote.quoted, listing.decimals, 6)} {listing.symbol}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{copy.atLeastOncePoured}</span>
+                          <span>{copy.atLeastLabel}</span>
                           <span className="tabular-nums">
                             {formatTokenAmount(quote.minOut, listing.decimals, 6)}
                           </span>

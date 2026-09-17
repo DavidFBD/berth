@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCopy } from "@/components/settings-provider";
 import {
   sortConnectors,
   useChainGroups,
@@ -162,16 +163,17 @@ function FamilyList({
   onSelect: (chainType: ChainType) => void;
   onDisconnect: (chainType: ChainType) => void;
 }) {
+  const copy = useCopy();
   return (
     <ScrollArea className="max-h-[55cqh]">
       <div className="flex flex-col gap-0.5 px-2">
         {groups.map((group) => {
           // The Privy-bridged embedded wallet surfaces here like any
-          // wallet-standard connector, but it's the user's teapot, not an
+          // wallet-standard connector, but it's the user's embedded account wallet, not an
           // external wallet: label it as such and hide the unplug (a manual
           // disconnect wouldn't auto-reconnect until the next sign-in, and
-          // it would silently blank Solana from the teapot sweep).
-          const isTeapot =
+          // it would silently blank Solana from the funds sweep).
+          const isEmbedded =
             group.connectorId?.toLowerCase().includes("privy") ?? false;
           return group.isConnected ? (
             <div key={group.chainType} className={ROW_CLASS}>
@@ -187,19 +189,19 @@ function FamilyList({
                   >
                     <span
                       aria-hidden
-                      className="size-1.5 rounded-full bg-emerald-500"
+                      className="size-1.5 rounded-full bg-good"
                     />
-                    {isTeapot ? "Your teapot" : "Connected"}
+                    {isEmbedded ? copy.walletEmbeddedLabel : copy.walletConnectedLabel}
                   </Badge>
                 </span>
                 {group.account?.address && (
                   <span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
                     {shortenAddress(group.account.address)}
-                    {isTeapot ? " · from your email sign-in" : ""}
+                    {isEmbedded ? copy.walletEmbeddedNote : ""}
                   </span>
                 )}
               </div>
-              {!isTeapot && (
+              {!isEmbedded && (
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -322,7 +324,7 @@ function ConnectorLevel({
     return (
       <StatusPanel
         icon={
-          <span className="flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          <span className="flex size-12 items-center justify-center rounded-full bg-good-soft text-good">
             <Check className="size-5" />
           </span>
         }

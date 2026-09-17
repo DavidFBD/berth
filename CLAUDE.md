@@ -1,4 +1,4 @@
-# LSTeaTime — session conventions
+# Berth — session conventions
 
 Architecture and vocabulary live in CONTEXT.md. This file is operational.
 
@@ -8,6 +8,10 @@ Architecture and vocabulary live in CONTEXT.md. This file is operational.
 - `pnpm test` — vitest
 - `pnpm lint` / `pnpm exec tsc --noEmit` — before every commit
 - `pnpm db:push` — apply db/schema.sql to Neon (idempotent, reads .env.local)
+- `pnpm listings:verify` — diff the listing registry against the live token
+  list and the chain; run before a release and after any SDK bump
+- `pnpm privy:config show` — read the Privy app settings; writes are
+  dashboard-only (Privy's API answers 405), the script prints what to enter
 
 ## Visual verification
 
@@ -15,29 +19,45 @@ Use the repo harness, never an ad-hoc playwright/puppeteer script:
 
 ```
 pnpm dev &
-pnpm shot --mode aurora                 # webkit, iPhone viewport, waits for server
+pnpm shot                               # webkit, iPhone viewport, waits for server
+pnpm shot --url http://localhost:3000/dev/board?open=NVDA --settle 12000
 pnpm shot --browser chromium --viewport 1280x800
 ```
 
 Webkit is the default because every iOS browser is WebKit; a change verified
 only in Chromium is not verified. If the browser build is missing:
-`pnpm exec playwright-core install webkit`.
+`pnpm exec playwright-core install webkit`. Dev-only galleries (404 in prod):
+`/dev/board`, `/dev/account`.
 
 ## Copy rules
 
+- Plain, exact, calm, adult, unhurried, never clever about money. Names, not
+  tickers, wherever a person is reading.
 - No dashes as punctuation in user-facing copy (reads as AI). Commas, periods.
 - No raw emoji in UI; glyphs are Phosphor duotone or nothing.
-- Every user-facing string lives in `src/lib/copy.ts`; never hardcode copy
-  in components. Original is the BASE voice and defines every key; the other
-  parlours are `Partial<Copy>` overrides, so a new line costs one edit in the
-  base plus overrides only where a voice has something to say.
-- Rewards copy (tea-service.tsx) lives in the base voice ONLY, on purpose:
-  ranks and rewards read the same in every parlour. The seam is open if a
-  voice ever earns a flavored rewards corner, but agnostic is the default.
+- Every user-facing string lives in `src/lib/copy.ts` as a key on the one
+  `Copy` object; never hardcode copy in components. Components read it via
+  `useCopy()`; modules without React import `COPY` directly. There is one
+  voice; the seam stays so a second could return as a `Partial<Copy>`.
+- Rank names come from the brand kit (`public/berth-brand/rank-names.md`);
+  XP kinds (`pour_in`, `friend_poured`, …) are database values and keep
+  their ids whatever the words say.
+
+## Brand
+
+- Colours, type and the mark are in `public/berth-brand/brand-sheet.md`; the
+  tokens live in `src/app/globals.css` (`:root` light, `.dark` dark), the
+  fonts in `src/app/layout.tsx` (Archivo display, Public Sans body, IBM Plex
+  Mono for numbers). Appearance is light, dark or system via next-themes.
+- The accent is for one thing per composition. No gradients, glow or glass.
+- Before 2026-09-14 this repo was LSTeaTime, a leveraged staking app in a
+  tea-house voice. The tea is gone from the code; git history keeps it.
 
 ## Ritual
 
 - thoughts.md is the backlog: strike through what's done with a short status
   note; finished rounds get compressed to one-liners.
-- One commit per round of work, message written in the tea voice
-  (see `git log --oneline` for the register).
+- One commit per round of work. Since 2026-09-17 the message is written in
+  the Berth register: one plain sentence saying what changed and why, harbour
+  imagery allowed, no tea. Push to master after every green round; master
+  deploys production at www.berthmarkets.com.

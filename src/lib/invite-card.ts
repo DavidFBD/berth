@@ -7,14 +7,14 @@ import type { Metadata } from "next";
  * on 2026-08-07; a path segment survives the retelling).
  */
 
-const INVITE_TITLE = "A seat's been saved for you · LSTeaTime";
+const INVITE_TITLE = "A friend invited you to Berth";
 const INVITE_DESCRIPTION =
-  "A friend set a place for you at the tea table. Cups that earn while they steep, and your first pour pays you both a little extra.";
+  "Buy US stocks and funds with the stablecoins you already hold, from any network, in your own custody. Your first trade earns you both a little extra.";
 const INVITE_IMAGE = {
   url: "/og-invite.png",
   width: 1200,
   height: 630,
-  alt: "Two tea cups on a table, one steaming and one waiting, beside the words: a seat's been saved for you.",
+  alt: "The Berth mark beside the words: a seat has been kept for you.",
 };
 
 export function inviteCardMetadata(): Metadata {

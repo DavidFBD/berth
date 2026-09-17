@@ -14,7 +14,7 @@ import {
   type TokenListing,
 } from "@/lib/listings";
 
-/** Category, in plain words. Data, not voice: the same in every parlour. */
+/** Category, in plain words. Data, not voice. */
 const CATEGORY_LABEL: Record<StockCategory, string> = {
   equity: "Stock",
   private: "Private",
@@ -75,11 +75,11 @@ export function ListingBoard({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
-                    <span className="money text-sm font-semibold text-foreground">
-                      {listing.symbol}
-                    </span>
-                    <span className="truncate text-sm text-foreground/80">
+                    <span className="truncate text-sm font-semibold text-foreground">
                       {listing.name}
+                    </span>
+                    <span className="money text-xs text-muted-foreground">
+                      {listing.symbol}
                     </span>
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">

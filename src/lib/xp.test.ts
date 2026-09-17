@@ -5,7 +5,7 @@ describe("levelUpRank", () => {
   it("returns the rank arrived at when a boundary is crossed", () => {
     const reached = levelUpRank(90, 110);
     expect(reached?.level).toBe(2);
-    expect(reached?.name).toBe("First Steep");
+    expect(reached?.name).toBe("Slip");
   });
 
   it("counts landing exactly on a boundary as arrival", () => {

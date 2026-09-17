@@ -2,8 +2,7 @@
  * Repo-standard screenshot harness. Every visual check goes through this —
  * no ad-hoc puppeteer/playwright scripts per session.
  *
- *   pnpm shot                                  # webkit, original mode, 390x844
- *   pnpm shot --mode aurora                    # any mode id from lib/modes
+ *   pnpm shot                                  # webkit, iPhone viewport, 390x844
  *   pnpm shot --browser chromium --out x.png
  *   pnpm shot --url http://localhost:3000/foo --viewport 1280x800
  *
@@ -22,8 +21,7 @@ const arg = (name, fallback) => {
 };
 
 const url = arg("url", "http://localhost:3000");
-const mode = arg("mode", null);
-const out = arg("out", `shot${mode ? `-${mode}` : ""}.png`);
+const out = arg("out", "shot.png");
 const browserName = arg("browser", "webkit");
 const [width, height] = arg("viewport", "390x844").split("x").map(Number);
 const settleMs = Number(arg("settle", "3000"));
@@ -54,18 +52,11 @@ const ctx = await browser.newContext({
   deviceScaleFactor: dpr,
 });
 const page = await ctx.newPage();
-if (mode) {
-  await page.addInitScript((m) => {
-    try {
-      localStorage.setItem("lsteatime.mode", m);
-    } catch {}
-  }, mode);
-}
 await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });
-// The silk shader and font swaps need a beat after network idle.
+// Font swaps and first queries need a beat after network idle.
 await page.waitForTimeout(settleMs);
 await page.screenshot({ path: out });
 console.log(
-  `${out} (${browserName} ${width}x${height}${mode ? `, mode=${mode}` : ""})`,
+  `${out} (${browserName} ${width}x${height})`,
 );
 await browser.close();

@@ -2,10 +2,14 @@
 
 import { useEffect } from "react"
 import { toast, Toaster as Sonner, type ToasterProps } from "sonner"
+import { useTheme } from "next-themes"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon } from "lucide-react"
 import { Spinner } from "@/components/ui/spinner"
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  // Follows the appearance: the description colour is pinned to the app's
+  // tokens below, so only sonner's own contrast rules need to know.
+  const { resolvedTheme } = useTheme()
   // Dev-only: headless smoke tests fire toasts via window.toast (no toast
   // is reachable pre-auth). Compiled out of production builds.
   useEffect(() => {
@@ -16,11 +20,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
   return (
     <Sonner
-      // Always the morning palette: the app never applies `.dark` (the
-      // evening theme is dormant), so following the OS scheme here painted
-      // sonner's dark-theme description gray onto the cream --popover
-      // background — unreadable. Revisit if the evening theme ever ships.
-      theme="light"
+      theme={resolvedTheme === "dark" ? "dark" : "light"}
       className="toaster group"
       icons={{
         success: (

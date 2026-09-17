@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
 import { SettingsDrawer } from "@/components/settings-drawer";
-import { RankChip, TeaService } from "@/components/tea-service";
+import { RankChip, RewardsPanel } from "@/components/rewards-panel";
 import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
@@ -47,7 +47,7 @@ export function AccountButton({
   open: openProp,
   onOpenChange,
 }: {
-  /** Optional controlled open state so the page (teapot Top up) can open the pantry. */
+  /** Optional controlled open state so the page (the funds module's top-up button) can open the account drawer. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 } = {}) {
@@ -65,7 +65,7 @@ export function AccountButton({
 
   // Not signed in via email but past the AuthGate means an external wallet
   // is connected. The welcome screen owns sign-in, so the header shows the
-  // wallet pill plus the rewards chip; the chip opens the tea service.
+  // wallet pill plus the rewards chip; the chip opens the rewards panel.
   if (!privy.authenticated) return <ExternalAccountEntry />;
 
   const email = privy.user?.email?.address;
@@ -74,27 +74,27 @@ export function AccountButton({
   return (
     <>
       {/* The one header pill for email users: the shared rank chip wearing
-          the signed-in dot. The address book belongs inside the pantry,
-          where the email already reads in full. */}
+          the signed-in dot. The address book belongs inside the account
+          drawer, where the email already reads in full. */}
       <RankChip
         onClick={() => setAccountOpen(true)}
         presence
-        placeholder="Pantry"
-        ariaPrefix="Your pantry"
+        placeholder={copy.accountTotalLabel}
+        ariaPrefix={copy.accountTotalLabel}
         ariaSuffix={email ? `signed in as ${email}` : "signed in"}
       />
 
       <Drawer open={accountOpen} onOpenChange={setAccountOpen}>
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>Your pantry</DrawerTitle>
+            <DrawerTitle>{copy.accountTotalLabel}</DrawerTitle>
             <DrawerDescription>
               {email ? `Signed in as ${email}` : "Signed in via email"}
             </DrawerDescription>
           </DrawerHeader>
 
           <div className="flex flex-col gap-2 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
-            <TeaService />
+            <RewardsPanel />
             {address ? (
               <>
                 <ReceiveRow
@@ -108,7 +108,7 @@ export function AccountButton({
               </>
             ) : (
               <p className="rounded-xl bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
-                Warming the pot…
+                {copy.ctaOpeningAccount}
               </p>
             )}
 
@@ -118,13 +118,14 @@ export function AccountButton({
             {address && mounted && <KeyExportRow evmAddress={address} />}
 
             {/* No external-wallet CONNECT affordance here on purpose: email
-                users live entirely in the teapot, and the expert path stays
-                on the welcome screen for people who skip Privy. Getting
-                funds OUT is a different question, and the row above is the
+                users live entirely in Funds, and the expert path stays on
+                the welcome screen for people who skip Privy. Getting funds
+                OUT is a different question, and the row above is the
                 answer to it. */}
 
-            {/* The back room — modes and currency. Drawers don't stack, so
-                the pantry hands over: close this one, open that one. */}
+            {/* The back room — appearance and currency. Drawers don't stack,
+                so the account drawer hands over: close this one, open that
+                one. */}
             <button
               type="button"
               onClick={() => {
@@ -166,11 +167,12 @@ export function AccountButton({
 
 /**
  * Header entry for external-wallet visitors: the familiar connect pill plus
- * the rewards chip, which opens a small drawer holding the tea service
- * (rank, avatar shelf, and the email invitation with its reward).
+ * the rewards chip, which opens a small drawer holding the rewards panel
+ * (rank, avatar grid, and the email invitation with its reward).
  */
 function ExternalAccountEntry() {
   const [serviceOpen, setServiceOpen] = useState(false);
+  const copy = useCopy();
   return (
     <div className="flex min-w-0 items-center gap-1.5">
       <RankChip onClick={() => setServiceOpen(true)} />
@@ -178,13 +180,11 @@ function ExternalAccountEntry() {
       <Drawer open={serviceOpen} onOpenChange={setServiceOpen}>
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>Your tea service</DrawerTitle>
-            <DrawerDescription>
-              Rewards for playing, and a face for your table.
-            </DrawerDescription>
+            <DrawerTitle>{copy.rewardsTitle}</DrawerTitle>
+            <DrawerDescription>{copy.rewardsDrawerSub}</DrawerDescription>
           </DrawerHeader>
           <div className="p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
-            <TeaService />
+            <RewardsPanel />
           </div>
         </DrawerContent>
       </Drawer>
@@ -224,12 +224,12 @@ function SolanaReceive() {
 }
 
 /**
- * The pantry's only way OUT. The teapot has no send screen by design, which
- * holds up while every asset can become tea and traps the ones that can't:
- * a withdraw delivered SOL to Solana, no cup takes SOL back, and the balance
- * sat there unreachable (field-found 2026-09-01). Export answers that without
- * building a send flow, and Privy renders the key in an iframe on its own
- * domain, so this app never touches it.
+ * The account drawer's only way out. Funds has no send screen by design,
+ * which holds up while every asset can be traded and traps the ones that
+ * can't: a withdraw delivered SOL to Solana had nowhere to land, and the
+ * balance sat there unreachable (field-found 2026-09-01). Export answers
+ * that without building a send flow, and Privy renders the key in an iframe
+ * on its own domain, so this app never touches it.
  *
  * Needs wallet export enabled for the app in the Privy dashboard; with the
  * toggle off, Privy explains that inside its own modal.
@@ -289,7 +289,7 @@ function KeyExportRow({ evmAddress }: { evmAddress: string }) {
 }
 
 /**
- * Friendly-labeled receive row: no raw hex in the UI (that's teapot
+ * Friendly-labeled receive row: no raw hex in the UI (that's funds-module
  * plumbing). Two actions per address — a QR that unfolds inline under the
  * row (no drawer-on-drawer), and a copy whose toast confirms the shortened
  * form so you can double-check what landed in the clipboard.
@@ -379,6 +379,7 @@ const FUND_DESTINATION_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
  */
 function FundButton({ address }: { address: string }) {
   const { addFunds } = useAddFunds();
+  const copy = useCopy();
 
   return (
     <button
@@ -394,8 +395,8 @@ function FundButton({ address }: { address: string }) {
           crypto: {},
         })
           .then(() => {
-            toast.success("Teapot topped up", {
-              description: "USDC is on its way to your pantry.",
+            toast.success(copy.fundsAddedTitle, {
+              description: copy.fundsAddedBody,
             });
           })
           .catch(() => {
@@ -407,7 +408,7 @@ function FundButton({ address }: { address: string }) {
     >
       <PlusCircle className="size-5 text-primary" />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium text-foreground">Fill the teapot</span>
+        <span className="text-sm font-medium text-foreground">{copy.topUp}</span>
         <span className="text-xs text-muted-foreground">
           Card, bank, or crypto from any chain
         </span>

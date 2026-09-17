@@ -12,14 +12,12 @@ import { flushSync } from "react-dom";
 import { ThemeProvider, useTheme } from "next-themes";
 
 import { useTokenPrices } from "@/hooks/use-token-prices";
+import { COPY, type Copy } from "@/lib/copy";
 import {
-  COPY,
-  DEFAULT_MODE,
-  MODES,
-  isModeId,
-  type Copy,
-  type ModeId,
-} from "@/lib/copy";
+  DEFAULT_APPEARANCE,
+  isAppearanceId,
+  type AppearanceId,
+} from "@/lib/appearance";
 import {
   DEFAULT_CURRENCY,
   isCurrency,
@@ -34,7 +32,9 @@ import {
   splitAccruingMoney,
 } from "@/lib/format";
 
-const CURRENCY_STORAGE_KEY = "lsteatime.currency";
+const CURRENCY_STORAGE_KEY = "berth.currency";
+/** Read once, on first load, so a prior visitor's choice isn't dropped. */
+const LEGACY_CURRENCY_STORAGE_KEY = "lsteatime.currency";
 
 type CurrencyContextValue = {
   currency: Currency;
@@ -65,6 +65,13 @@ function readStoredCurrency(): Currency {
   try {
     const stored = window.localStorage.getItem(CURRENCY_STORAGE_KEY);
     if (isCurrency(stored)) return stored;
+    // Nothing under the new key yet: fall back to what a visitor chose
+    // before the rebrand, then carry it forward under the new key.
+    const legacy = window.localStorage.getItem(LEGACY_CURRENCY_STORAGE_KEY);
+    if (isCurrency(legacy)) {
+      window.localStorage.setItem(CURRENCY_STORAGE_KEY, legacy);
+      return legacy;
+    }
   } catch {
     // Fall through to the in-memory choice.
   }
@@ -72,10 +79,9 @@ function readStoredCurrency(): Currency {
 }
 
 /**
- * Modes + currency. Modes ride next-themes — not for light/dark (the app
- * deliberately has neither), but because it already solves the hard parts of
- * a class-switched theme: localStorage persistence and a pre-hydration
- * script so the page never flashes the wrong skin.
+ * Appearance + currency. Appearance rides next-themes: system, light, or
+ * dark, persisted per browser with a pre-hydration script so the page never
+ * flashes the wrong one.
  */
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const currency = useSyncExternalStore(
@@ -102,11 +108,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider
       attribute="class"
-      themes={MODES.map((mode) => mode.id)}
-      value={Object.fromEntries(MODES.map((m) => [m.id, m.className]))}
-      defaultTheme={DEFAULT_MODE}
-      enableSystem={false}
-      storageKey="lsteatime.mode"
+      themes={["light", "dark"]}
+      enableSystem
+      defaultTheme="system"
+      storageKey="berth.appearance"
       disableTransitionOnChange
     >
       <CurrencyContext.Provider value={currencyValue}>
@@ -116,15 +121,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** The active mode. Original during SSR and the first client frame. */
-export function useMode(): { mode: ModeId; setMode: (mode: ModeId) => void } {
+/** The active appearance. "system" during SSR and the first client frame. */
+export function useAppearance(): {
+  appearance: AppearanceId;
+  setAppearance: (id: AppearanceId) => void;
+} {
   const { theme, setTheme } = useTheme();
   return {
-    mode: isModeId(theme) ? theme : DEFAULT_MODE,
-    // Eight modes swap ~50 custom properties in one frame — a hard cut.
+    appearance: isAppearanceId(theme) ? theme : DEFAULT_APPEARANCE,
     // Where the View Transitions API exists (Safari 18+, Chrome), wash the
-    // whole repaint in its default crossfade; reduced motion keeps the cut.
-    setMode: (mode: ModeId) => {
+    // repaint in its default crossfade; reduced motion keeps the cut.
+    setAppearance: (id: AppearanceId) => {
       if (
         typeof document !== "undefined" &&
         "startViewTransition" in document &&
@@ -132,17 +139,17 @@ export function useMode(): { mode: ModeId; setMode: (mode: ModeId) => void } {
       ) {
         // flushSync so the class swap lands inside the transition's capture
         // window; next-themes updates via React state otherwise too late.
-        document.startViewTransition(() => flushSync(() => setTheme(mode)));
+        document.startViewTransition(() => flushSync(() => setTheme(id)));
       } else {
-        setTheme(mode);
+        setTheme(id);
       }
     },
   };
 }
 
-/** The active mode's voice. Components read lines, never literals. */
+/** The app's one voice. Components read lines, never literals. */
 export function useCopy(): Copy {
-  return COPY[useMode().mode];
+  return COPY;
 }
 
 export function useCurrency(): CurrencyContextValue {

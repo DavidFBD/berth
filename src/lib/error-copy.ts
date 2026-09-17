@@ -1,18 +1,19 @@
 import { isUserRejectedError } from "@sodax/dapp-kit";
 
 /**
- * Turning SDK failures into tea. Lives in `lib` rather than beside the vault
- * hook so the reporting layer can share it without importing React state.
+ * Turning SDK failures into plain sentences. Lives in `lib` rather than
+ * beside the vault hook so the reporting layer can share it without
+ * importing React state.
  */
 
 /** Cancel copy is compared by identity to style it gently and skip reporting. */
-export const CANCELLED_MESSAGE = "No worries, the tea's still warm.";
+export const CANCELLED_MESSAGE = "Cancelled. Nothing was sent.";
 
-/** A pour that was signed and submitted, then failed at the solver. */
-export const FILL_FAILED_MESSAGE = "The kettle's acting up.";
+/** An order that was signed and submitted, then failed at the solver. */
+export const FILL_FAILED_MESSAGE = "The order could not be filled.";
 
 /**
- * A pour that never left because the Privy session had gone stale. Privy
+ * An order that never left because the Privy session had gone stale. Privy
  * throws EIP-1193 code 4900 ("Disconnected") out of eth_sendTransaction when
  * its access token is missing, and viem renders 4900 as "The Provider is
  * disconnected from all chains" — which sent issue #21's triage chasing a
@@ -20,7 +21,7 @@ export const FILL_FAILED_MESSAGE = "The kettle's acting up.";
  * chain.
  */
 export const SESSION_EXPIRED_MESSAGE =
-  "Your session went cold. Sign in again, then pour.";
+  "Your session expired. Sign in again and retry.";
 
 /**
  * True for the 4900 "Disconnected" shape however deeply the SDK has wrapped
@@ -77,7 +78,7 @@ export function rawErrorMessage(error: unknown): string | undefined {
 export function friendlyError(error: unknown, fallback: string): string {
   if (isUserRejectedError(error)) return CANCELLED_MESSAGE;
   // Ahead of the code switch: the SDK wraps this as INTENT_CREATION_FAILED,
-  // so the generic fallback would otherwise blame the kettle for a lapsed
+  // so the generic fallback would otherwise blame the network for a lapsed
   // session and send the user round the same loop.
   if (isSessionExpiredError(error)) return SESSION_EXPIRED_MESSAGE;
   switch (extractErrorCode(error)) {
@@ -87,10 +88,10 @@ export function friendlyError(error: unknown, fallback: string): string {
     case "RELAY_FAILED":
     case "TX_SUBMIT_FAILED":
     case "TX_VERIFICATION_FAILED":
-      return "Your pour was sent but the tray is taking a while. Funds are safe, this usually resolves itself.";
+      return "Your transaction was sent and cross network delivery is taking longer than usual. Your funds are safe; this usually resolves itself.";
     case "EXECUTION_FAILED":
     case "EXTERNAL_API_ERROR":
-      return "Your pour is on the counter but the solver hasn't confirmed. It's safe to retry.";
+      return "Your order is registered but the network has not confirmed the fill yet. It is safe to try again.";
     default:
       return fallback;
   }

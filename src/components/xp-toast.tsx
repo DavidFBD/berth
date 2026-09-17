@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Coffee, Sparkle } from "@phosphor-icons/react";
+import { Medal, Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { Reward, RewardList } from "@/lib/profile-types";
 import { levelUpRank, REWARD_REASONS, type RankInfo } from "@/lib/xp";
@@ -11,10 +11,9 @@ import { SPRING_POP } from "@/lib/motion";
  * The achievement announcer. Every XP payout gets a small ceremony instead
  * of a plain toast: a spring-popped pill per reward (each naming what it was
  * FOR — field feedback 2026-08-07: an unexplained balance reads as a bug;
- * the reasons live beside the ladder in lib/xp), and a steam-wreathed card
- * when a rank boundary is crossed. Ceremonies queue while Privy's overlay
- * owns the screen and flush once it's gone, so nothing celebrates behind a
- * blur.
+ * the reasons live beside the ladder in lib/xp), and a bordered card when a
+ * rank boundary is crossed. Ceremonies queue while Privy's overlay owns the
+ * screen and flush once it's gone, so nothing celebrates behind a blur.
  */
 
 type Announcement = { rewards: RewardList; newXp: number };
@@ -98,7 +97,7 @@ function present({ rewards, newXp }: Announcement) {
 }
 
 
-/** "+100 XP for pouring a cup", popped in with a spring and a late sparkle. */
+/** "+100 XP for placing your first order", popped in with a spring and a late sparkle. */
 function XpPill({ reward }: { reward: Reward }) {
   return (
     <motion.div
@@ -126,9 +125,9 @@ function XpPill({ reward }: { reward: Reward }) {
 }
 
 /**
- * Crossing a rank boundary earns steam: three wisps rise off the card while
- * the new rank's name settles in. Deliberately quiet for what it is — the
- * app celebrates like a tea house, not a casino.
+ * Crossing a rank boundary earns a small flourish: three wisps rise off the
+ * card while the new rank's name settles in. Deliberately quiet for what it
+ * is: the app celebrates like a brokerage, not a casino.
  */
 function LevelUpCard({
   rank,
@@ -170,7 +169,7 @@ function LevelUpCard({
         transition={{ type: "spring", stiffness: 320, damping: 16, delay: 0.1 }}
         className="leading-none"
       >
-        <Coffee className="size-6 text-primary" />
+        <Medal className="size-6 text-primary" />
       </motion.span>
       <div className="flex flex-col">
         <motion.span
@@ -179,7 +178,7 @@ function LevelUpCard({
           transition={{ type: "spring", stiffness: 300, damping: 24, delay: 0.18 }}
           className="text-sm font-semibold text-foreground"
         >
-          You brewed up to {rank.name}
+          You reached {rank.name}
         </motion.span>
         <motion.span
           initial={{ opacity: 0 }}

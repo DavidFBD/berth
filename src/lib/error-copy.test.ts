@@ -45,15 +45,15 @@ describe("isSessionExpiredError", () => {
 });
 
 describe("friendlyError", () => {
-  it("names a lapsed session instead of blaming the kettle", () => {
+  it("names a lapsed session instead of blaming the network", () => {
     const wrapped = { code: "INTENT_CREATION_FAILED", cause: { code: 4900 } };
-    expect(friendlyError(wrapped, "The kettle's acting up. Try again.")).toBe(
+    expect(friendlyError(wrapped, "The order did not go through. Try again.")).toBe(
       SESSION_EXPIRED_MESSAGE,
     );
   });
 
   it("still falls back for anything it cannot place", () => {
-    const fallback = "Couldn't ready the pour. Please try again.";
+    const fallback = "Could not prepare the order. Please try again.";
     expect(friendlyError({ code: "SOMETHING_NEW" }, fallback)).toBe(fallback);
   });
 

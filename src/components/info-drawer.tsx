@@ -1,14 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   ArrowSquareOut,
-  CaretRight,
+  ArrowsLeftRight,
   Info,
-  Robot,
-  Sparkle,
-  Wrench,
+  Receipt,
+  Scroll,
 } from "@phosphor-icons/react";
 import {
   Drawer,
@@ -22,18 +20,16 @@ import { useCopy } from "@/components/settings-provider";
 import { FEE_PCT_LABEL as FEE_PCT } from "@/lib/sodax-config";
 
 /**
- * Header info button + drawer: the story of how this app was vibed together,
- * retold in whichever voice the active mode speaks. Same facts in every
- * telling — switching modes and rereading it is the easter egg.
+ * Header info button + drawer: what Berth is, what an order actually gets
+ * you, and what it costs, plus a short note on how the app was built.
  */
 export function InfoDrawer() {
   const [open, setOpen] = useState(false);
   const copy = useCopy();
 
-  const stats = [
-    { icon: Robot, stat: copy.infoAgentsStat, detail: copy.infoAgentsDetail },
-    { icon: Wrench, stat: copy.infoMcpStat, detail: copy.infoMcpDetail },
-    { icon: Sparkle, stat: copy.infoTimeStat, detail: copy.infoTimeDetail },
+  const sections = [
+    { icon: ArrowsLeftRight, title: copy.infoHowTitle, body: copy.infoHowBody },
+    { icon: Scroll, title: copy.infoOwnTitle, body: copy.infoOwnBody },
   ];
 
   return (
@@ -56,37 +52,35 @@ export function InfoDrawer() {
           </DrawerHeader>
 
           <div className="flex flex-col gap-4 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
-            {stats.map(({ icon: StatIcon, stat, detail }) => (
-              <div key={stat} className="flex gap-3">
-                <StatIcon className="mt-0.5 size-6 shrink-0 text-primary" />
+            {sections.map(({ icon: SectionIcon, title, body }) => (
+              <div key={title} className="flex gap-3">
+                <SectionIcon className="mt-0.5 size-6 shrink-0 text-primary" />
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-semibold text-foreground">
-                    {stat}
+                    {title}
                   </span>
-                  <span className="text-sm text-muted-foreground">
-                    {detail}
-                  </span>
+                  <span className="text-sm text-muted-foreground">{body}</span>
                 </div>
               </div>
             ))}
 
-            <p className="text-sm text-muted-foreground">
-              <span className="text-foreground">@sodax/dapp-kit</span>{" "}
-              {copy.infoPorcelain}
-            </p>
+            <div className="flex gap-3">
+              <Receipt className="mt-0.5 size-6 shrink-0 text-primary" />
+              <p className="text-sm text-muted-foreground">
+                {copy.infoFees(FEE_PCT)}
+              </p>
+            </div>
 
-            <p className="text-xs text-muted-foreground">
-              {copy.infoHouseRules(FEE_PCT)}
-            </p>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold text-foreground">
+                {copy.infoBuiltTitle}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {copy.infoBuiltBody}
+              </span>
+            </div>
 
             <div className="flex flex-col gap-2">
-              <Link
-                href="/lore"
-                className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                {copy.loreLink}
-                <CaretRight className="size-4 text-muted-foreground" />
-              </Link>
               <a
                 href="https://builders.sodax.com"
                 target="_blank"

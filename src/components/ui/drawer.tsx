@@ -4,7 +4,6 @@ import * as React from "react"
 import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer"
 
 import { cn } from "@/lib/utils"
-import { useStageScreen } from "@/components/stage-screen-context"
 
 type DrawerContextProps = {
   hasSnapPoints: boolean
@@ -106,14 +105,9 @@ function DrawerContent({
   const { hasSnapPoints, modal, showSwipeHandle, swipeDirection } = useDrawer()
   const swipeAxis =
     swipeDirection === "down" || swipeDirection === "up" ? "y" : "x"
-  // Portal into the desktop stage's phone screen (a containing block at
-  // lg+), so drawers slide up inside the phone instead of across the
-  // browser. On mobile the same element is not a containing block and
-  // fixed positioning stays viewport-relative.
-  const stageScreen = useStageScreen()
 
   return (
-    <DrawerPortal data-slot="drawer-portal" container={stageScreen ?? undefined}>
+    <DrawerPortal data-slot="drawer-portal">
       {modal === true && (
         <DrawerOverlay data-snap-points={hasSnapPoints ? "" : undefined} />
       )}

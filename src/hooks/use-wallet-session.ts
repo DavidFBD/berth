@@ -17,7 +17,7 @@ import { useXSignMessage } from "@sodax/wallet-sdk-react";
 
 const STORAGE_KEY = "lsteatime.wallet-session";
 const SIWE_STATEMENT =
-  "Prove this teapot is yours to LSTeaTime. Signing is free and moves nothing.";
+  "Prove this wallet is yours to Berth. Signing is free and moves nothing.";
 
 type StoredSession = { token: string; address: string; expiresAt: number };
 

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isModeId } from "@/lib/modes";
+import { isAppearanceId } from "@/lib/appearance";
 import {
   awardAndRespond,
   readRewardsCaller,
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   if (!read.ok) return read.response;
 
   const mode = read.caller.body.mode;
-  if (!isModeId(mode)) {
+  if (!isAppearanceId(mode)) {
     return NextResponse.json({ error: "unknown mode" }, { status: 400 });
   }
 
