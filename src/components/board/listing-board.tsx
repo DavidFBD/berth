@@ -1,11 +1,13 @@
 "use client";
 
 import { CaretRight } from "@phosphor-icons/react";
+import { Sparkline } from "@/components/board/sparkline";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { formatTokenAmount } from "@/lib/format";
 import {
@@ -13,20 +15,34 @@ import {
   type StockCategory,
   type TokenListing,
 } from "@/lib/listings";
+import {
+  changeDirection,
+  formatPercentChange,
+  percentChange,
+  type ChangeDirection,
+} from "@/lib/performance";
 
 /** Category, in plain words. Data, not voice. */
 const CATEGORY_LABEL: Record<StockCategory, string> = {
   equity: "Stock",
-  private: "Private",
   etf: "Fund",
   treasury: "Treasury",
 };
 
+/** Text colour per direction, for the change figure. */
+const CHANGE_TONE: Record<ChangeDirection, string> = {
+  up: "text-good",
+  down: "text-bad",
+  flat: "text-muted-foreground",
+};
+
 /**
  * The board: every stock and fund listing, priced by the solver oracle,
- * with what the account already holds of each. Tapping a row opens the buy
- * drawer for it; a held row also offers a sell. Cash (SGOV) is not on the
- * board; it has its own line.
+ * with the shape of its last months, how it has moved over a day, and what
+ * the account already holds of each. Tapping a row opens the buy drawer for
+ * it; a held row also offers a sell. Cash (SGOV) is not on the board; it has
+ * its own line, and a Treasury fund's price barely moves, so the yield is
+ * the number that says something there, not a change badge.
  */
 export function ListingBoard({
   onBuy,
@@ -40,6 +56,7 @@ export function ListingBoard({
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallet);
   const prices = useListingPrices();
+  const performance = useListingPerformance();
 
   const heldOf = (listing: TokenListing): bigint | undefined => {
     if (!holdings.settled) return undefined;
@@ -55,6 +72,11 @@ export function ListingBoard({
           {copy.boardTitle}
         </span>
         <span className="text-xs text-muted-foreground">{copy.boardHint}</span>
+        {performance.seriesDays > 0 && (
+          <span className="text-[11.5px] text-muted-foreground">
+            {copy.boardPerformanceNote(performance.seriesDays)}
+          </span>
+        )}
       </div>
       <ul className="divide-y divide-border border-t border-border">
         {STOCK_LISTINGS.map((listing) => {
@@ -64,6 +86,15 @@ export function ListingBoard({
           const heldUsd = hasPosition
             ? prices.usdValue(listing, held)
             : undefined;
+          const moved = performance.performanceOf(listing);
+          const direction = changeDirection(moved?.changePct);
+          const series = moved?.series;
+          // The line is coloured by its OWN window, not by the day: an
+          // eighty day climb drawn red because this morning dipped would
+          // contradict the shape a person is looking at.
+          const lineDirection = changeDirection(
+            series && percentChange(series[0], series[series.length - 1]),
+          );
           return (
             // Two siblings, never nested buttons: the row buys, the small
             // button sells. Only a held row offers the second.
@@ -95,13 +126,29 @@ export function ListingBoard({
                     )}
                   </div>
                 </div>
-                <div className="money shrink-0 text-right text-sm tabular-nums text-foreground">
-                  {price !== undefined ? (
-                    money.format(price)
-                  ) : prices.isLoading ? (
-                    <Skeleton className="h-4 w-14" />
-                  ) : (
-                    <span className="text-muted-foreground">·</span>
+                {series && lineDirection && (
+                  <Sparkline
+                    values={series}
+                    direction={lineDirection}
+                    className="shrink-0"
+                  />
+                )}
+                <div className="shrink-0 text-right">
+                  <div className="money text-sm tabular-nums text-foreground">
+                    {price !== undefined ? (
+                      money.format(price)
+                    ) : prices.isLoading ? (
+                      <Skeleton className="h-4 w-14" />
+                    ) : (
+                      <span className="text-muted-foreground">·</span>
+                    )}
+                  </div>
+                  {moved?.changePct !== undefined && direction && (
+                    <div
+                      className={`money text-[11px] tabular-nums ${CHANGE_TONE[direction]}`}
+                    >
+                      {formatPercentChange(moved.changePct)}
+                    </div>
                   )}
                 </div>
                 {!(hasPosition && onSell) && (

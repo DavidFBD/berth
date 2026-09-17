@@ -36,8 +36,6 @@ import {
 export type StockCategory =
   /** A listed company's common stock. */
   | "equity"
-  /** Exposure to a private company (SpaceX); a different legal animal. */
-  | "private"
   /** An exchange-traded fund on an index or a commodity. */
   | "etf"
   /** A short-dated US Treasury ETF: the cash shelf. */
@@ -98,12 +96,16 @@ const robinhood = (
  * cash. Addresses are EIP-55 as the backend serves them.
  */
 export const TOKEN_LISTINGS: readonly TokenListing[] = [
+  // SpaceX was private when this registry was written on 2026-09-16. It
+  // listed on Nasdaq under SPCX on 2026-07-01 (SEC CIK 1181412, filing 8-Ks
+  // and Form 4s since), so it is ordinary listed equity and the token's own
+  // name said so all along: Class A Common Stock.
   robinhood(
     "stock",
     "SPCX",
     "SpaceX",
     "Space Exploration Technologies Corp. Class A Common Stock • Robinhood Token",
-    "private",
+    "equity",
     "0xB585e2EEa070eB4E4D877A707aEC3B718edb2373",
   ),
   robinhood(

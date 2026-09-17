@@ -57,6 +57,12 @@ export type Copy = {
   boardHint: string;
   /** `amount` arrives pre-formatted: "0.0089 NVDA ≈ €1.80". */
   boardYouHold: (amount: string) => string;
+  /**
+   * Under the board's hint: what the line and the change actually measure.
+   * Said plainly because these tokens trade around the clock while the
+   * market they track does not, and only the market's own days are counted.
+   */
+  boardPerformanceNote: (days: number) => string;
 
   /* — holdings: what the account owns — */
   holdingsTitle: string;
@@ -322,6 +328,8 @@ export const COPY: Copy = {
   boardTitle: "Stocks and funds",
   boardHint: "Robinhood Stock Tokens. Choose one to buy.",
   boardYouHold: (amount) => `You hold ${amount}`,
+  boardPerformanceNote: (days) =>
+    `The line is the last ${days} days. The change is day over day, counting only days the market was open.`,
 
   holdingsTitle: "What you own",
   holdingsHint: "Held in your account. Sell any of it with one signature.",

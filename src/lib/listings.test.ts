@@ -105,9 +105,9 @@ describe("token listings", () => {
     );
   });
 
-  it("marks SpaceX as private exposure, not listed equity", () => {
+  it("marks SpaceX as listed equity, since its Nasdaq listing on 2026-07-01", () => {
     const spcx = TOKEN_LISTINGS.find((listing) => listing.symbol === "SPCX");
-    expect(spcx?.category).toBe("private");
+    expect(spcx?.category).toBe("equity");
   });
 
   it("never shares an address with a vault the SDK knows", () => {
