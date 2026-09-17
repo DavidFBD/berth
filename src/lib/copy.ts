@@ -69,6 +69,14 @@ export type Copy = {
   holdingsHint: string;
   holdingsEmpty: string;
 
+  /* — the newsfeed: what is being written about the listings — */
+  newsTitle: string;
+  newsHint: string;
+  /** Shown when every feed is quiet or unreachable. Never says "error". */
+  newsEmpty: string;
+  /** Follows the listing's name: "NVIDIA The Motley Fool, 2 hours ago". */
+  newsByline: (source: string, when: string) => string;
+
   /* — cash: idle dollars in the Treasury ETF token — */
   cashTitle: string;
   /** Shown under the figure when no rate is available. */
@@ -334,6 +342,12 @@ export const COPY: Copy = {
   holdingsTitle: "What you own",
   holdingsHint: "Held in your account. Sell any of it with one signature.",
   holdingsEmpty: "Nothing yet. Your first buy lands here.",
+
+  newsTitle: "In the news",
+  newsHint:
+    "Headlines about the stocks and funds on the board. Tapping one opens the publisher's own page.",
+  newsEmpty: "Nothing new about these right now.",
+  newsByline: (source, when) => `${source}, ${when}`,
 
   cashTitle: "Cash",
   cashHint: "Idle dollars sit in a token tracking a fund of short Treasury bills, not in a lending pool.",

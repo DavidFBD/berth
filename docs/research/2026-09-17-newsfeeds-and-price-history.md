@@ -77,6 +77,40 @@ Prices, this round, zero cost:
 
 Registry: change SPCX to `category: "equity"` and retire the "private" category and its "Private" label, or keep the category for a future truly private listing but not for SpaceX.
 
+
+## 7. What shipped, and where it differs from the above
+
+Built the same day, in two rounds (commits on master).
+
+**Price performance.** As recommended: DefiLlama keyed by the pinned CoinGecko
+Robinhood ids, oracle still the displayed price. Two things this research did
+not catch, both found by looking at the numbers rather than the docs.
+
+- The series carries marks the share never made, on days the market was shut.
+  These tokens trade around the clock on a thin venue: the GameStop token sat
+  at $34.44 across a Saturday, a Sunday and Labor Day while the same stock's
+  xStock wrapper read $19.20, and the Strategy token printed $266.01 on a
+  Sunday against $130 on the Friday. Drawn unfiltered that is a seventy
+  percent rally a visitor would have been shown. `lib/market-calendar`
+  computes the ten NYSE closures by rule, so the filter cannot go stale.
+- Bad marks land inside the week too, on the thinnest names: Sandisk printed
+  $6,972.01 on a Thursday against a real $1,494. A despike drops an interior
+  close only when it is more than 20% from the median of itself and its two
+  neighbours.
+- The change figures do NOT come from DefiLlama's `/percentage`, which would
+  measure a Monday against a Sunday print. Both numbers come off the one
+  filtered series, which also halved the upstream requests.
+
+**News.** Nasdaq per-symbol RSS only, against this document's own four source
+recommendation. The issuer newsrooms are the cleanest rights tier and the
+worst content: NVIDIA's feed is a marketing blog, Apple's is consumer product
+news, both attribute to a staff username, and Tesla's and Sandisk's investor
+feeds were 49 and 14 days stale when checked. Google News stayed out on its
+terms and its unresolvable links. Both belong beside a single listing rather
+than in the river, and `/api/listing-news?symbol=` is ready for that.
+
+**Registry.** SPCX is `equity`; the `private` category is gone.
+
 ## 6. Gaps
 
 - No feed was fetched from a Vercel datacenter address; Nasdaq, Yahoo and Google may throttle or block there where they did not from a home connection.

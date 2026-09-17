@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { notFound, useSearchParams } from "next/navigation";
 import { isAddress, type Address } from "viem";
-import { CashShelf, ListingBoard } from "@/components/board";
+import { CashShelf, ListingBoard, NewsFeed } from "@/components/board";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
@@ -91,6 +91,7 @@ function Gallery() {
           setSellOpen(true);
         }}
       />
+      <NewsFeed />
       {mounted && (
         <>
           <DepositDrawer

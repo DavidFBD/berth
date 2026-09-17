@@ -12,6 +12,7 @@ import {
   CashShelf,
   HoldingsList,
   ListingBoard,
+  NewsFeed,
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { VaultPositions } from "@/components/vaults";
@@ -95,6 +96,7 @@ export function Home() {
             onTakeOut={() => openSell(CASH_LISTING)}
           />
           <ListingBoard onBuy={openBuy} onSell={openSell} />
+          <NewsFeed />
           <VaultPositions
             onWithdraw={(vault) => {
               setWithdrawVault(vault);
