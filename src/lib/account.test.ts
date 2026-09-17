@@ -86,7 +86,16 @@ describe("the home account", () => {
     expect(homeSpokeAddress(emailSession)).toBe(EMBEDDED);
   });
 
-  it("does not exist for external-only or still-warming browsers", () => {
+  it("is the connected EVM wallet when there is no email session", () => {
+    expect(homeSpokeAddress(externalSession, STORE)).toBe(STORE);
+    expect(homeSpokeAddress(warmingSession, STORE)).toBe(STORE);
+  });
+
+  it("prefers the email session over a connected wallet", () => {
+    expect(homeSpokeAddress(emailSession, STORE)).toBe(EMBEDDED);
+  });
+
+  it("does not exist for a browser with neither", () => {
     expect(homeSpokeAddress(externalSession)).toBeUndefined();
     expect(homeSpokeAddress(warmingSession)).toBeUndefined();
   });

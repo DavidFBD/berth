@@ -32,16 +32,16 @@ export function FundsModule({ onTopUp }: { onTopUp: () => void }) {
   const privy = usePrivyEmbeddedWallet();
   const signedIn = privy.enabled && privy.authenticated;
   const embedded = useEmbeddedHoldings();
-  const { emailMode, isLoading, holdings, erroredChains, gasShortChains, totalUsd } =
+  const { connected, isLoading, holdings, erroredChains, gasShortChains, totalUsd } =
     embedded;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const copy = useCopy();
   const money = useMoney();
 
-  const worth = emailMode && !isLoading && totalUsd !== undefined;
+  const worth = connected && !isLoading && totalUsd !== undefined;
   // Anything to investigate? Holdings, or networks we couldn't read.
   const canPeek =
-    emailMode && !isLoading && (holdings.length > 0 || erroredChains.length > 0);
+    connected && !isLoading && (holdings.length > 0 || erroredChains.length > 0);
 
   return (
     <div className="flex items-center gap-3.5 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
@@ -52,7 +52,7 @@ export function FundsModule({ onTopUp }: { onTopUp: () => void }) {
         <div className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
           {copy.fundsTitle}
         </div>
-        {emailMode && isLoading ? (
+        {connected && isLoading ? (
           // Mirrors the loaded shape: worth sentence + peek hint, so the
           // module doesn't grow when the sweep lands.
           <div className="mt-1 flex flex-col gap-1.5">
@@ -68,8 +68,8 @@ export function FundsModule({ onTopUp }: { onTopUp: () => void }) {
           </div>
         ) : (
           <div className="mt-0.5 text-[13px] text-muted-foreground">
-            {signedIn
-              ? emailMode && holdings.length === 0
+            {connected
+              ? holdings.length === 0
                 ? copy.fundsEmpty
                 : copy.fundsSendAnything
               : copy.fundsSignIn}
@@ -98,13 +98,26 @@ export function FundsModule({ onTopUp }: { onTopUp: () => void }) {
           </button>
         )}
       </div>
-      <Button
-        variant="secondary"
-        className="h-11 shrink-0 rounded-full px-4 text-[13.5px] font-bold"
-        onClick={signedIn ? onTopUp : privy.login}
-      >
-        {signedIn ? copy.topUp : copy.signIn}
-      </Button>
+      {/* Email accounts top up through Privy's funding flow; a connected
+          wallet holds its own funds and needs no button; a browser with
+          neither is offered the sign in. */}
+      {signedIn ? (
+        <Button
+          variant="secondary"
+          className="h-11 shrink-0 rounded-full px-4 text-[13.5px] font-bold"
+          onClick={onTopUp}
+        >
+          {copy.topUp}
+        </Button>
+      ) : !connected ? (
+        <Button
+          variant="secondary"
+          className="h-11 shrink-0 rounded-full px-4 text-[13.5px] font-bold"
+          onClick={privy.login}
+        >
+          {copy.signIn}
+        </Button>
+      ) : null}
 
       <FundsBreakdownDrawer
         open={drawerOpen}
@@ -148,7 +161,7 @@ function FundsBreakdownDrawer({
           <DrawerDescription>{copy.fundsInsideSub}</DrawerDescription>
         </DrawerHeader>
 
-        <div className="flex max-h-[65cqh] flex-col gap-3 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+        <div className="flex max-h-[65svh] flex-col gap-3 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
           {holdings.length > 0 && (
             <div className="flex flex-col gap-1">
               {holdings.map(({ chainKey, token, balance, usdValue }) => (

@@ -12,8 +12,8 @@ import { useListingPrices } from "@/hooks/use-listing-prices";
  * stock, fund and cash listing the account holds, valued by the solver
  * oracle. Earlier vault positions are listed in their own section and are
  * not summed here; their value comes from a different oracle and they are
- * not part of what Berth sells. Shown for email accounts only, since a
- * browser without one has funds but no account.
+ * not part of what Berth sells. Shown whenever there is an account (an email
+ * session or a connected EVM wallet); a browser with neither has no figure.
  */
 export function AccountTotal() {
   const copy = useCopy();
@@ -23,7 +23,7 @@ export function AccountTotal() {
   const holdings = useHubHoldings(account.hubWallet);
   const prices = useListingPrices();
 
-  if (!funds.emailMode) return null;
+  if (!account.spokeAddress) return null;
 
   const holdingsUsd = holdings.settled
     ? holdings.held.reduce((sum, holding) => {

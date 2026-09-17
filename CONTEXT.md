@@ -35,7 +35,9 @@ a round that changes behaviour.
   one `sendMessage` signature on Base (`hubWalletSwap`). Rule in
   `lib/account` (`HOME_CHAIN`, `homeSpokeAddress`), derived by
   `hooks/use-hub-account` through the same SDK call the deposit builder uses.
-  Only an email session owns an account; external wallets fund.
+  An email session or a connected EVM wallet owns an account (the address
+  rule on the home chain); a browser with only a non-EVM wallet funds but
+  has no account until it signs in with email.
 - **Funds** — the user's own wallets, what can pay for an order: the Privy
   embedded wallets in email mode, the connected wallet otherwise. Swept and
   valued by `hooks/use-embedded-holdings`, shown by `components/funds-module`.

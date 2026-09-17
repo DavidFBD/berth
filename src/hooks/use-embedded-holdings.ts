@@ -5,7 +5,7 @@ import { getXBalancesQueryOptions } from "@sodax/dapp-kit";
 import {
   getXChainType,
   getXService,
-  useXAccount,
+  useXAccounts,
 } from "@sodax/wallet-sdk-react";
 import {
   ChainKeys,
@@ -32,10 +32,10 @@ export type EmbeddedHolding = {
 };
 
 /**
- * Chains a Privy email account can actually sign on: one embedded address
- * covers every EVM chain, and the embedded Solana wallet is bridged into the
- * SODAX wallet store. Everything else (Bitcoin, Sui, Stellar…) needs an
- * external wallet and stays out of the email-mode flow.
+ * Chains the funds sweep covers: every EVM chain (one address covers them
+ * all, embedded or connected) and Solana. Everything else (Bitcoin, Sui,
+ * Stellar…) is read per token in the drawers when such a wallet is
+ * connected, never swept.
  */
 export const EMBEDDED_CHAINS: readonly SpokeChainKey[] =
   DEPOSIT_SOURCE_CHAINS.filter(
@@ -64,6 +64,8 @@ const DUST_USD = 0.1;
 export type EmbeddedHoldingsResult = {
   /** True when the user is signed in via email with an embedded wallet. */
   emailMode: boolean;
+  /** True when any chain resolved an address to sweep: email or a connected wallet. */
+  connected: boolean;
   /** True while balance sweeps or oracle prices are still in flight. */
   isLoading: boolean;
   /** What the embedded wallets hold, largest USD value first (unpriced last, in chain order). */
@@ -87,10 +89,19 @@ export type EmbeddedHoldingsResult = {
  */
 export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
   const session = useAccountSession();
-  const solanaAccount = useXAccount({ xChainType: "SOLANA" });
+  const xAccounts = useXAccounts();
   const prices = useUsdPrices();
 
   const emailMode = session.emailSession;
+  // One address per chain through the one rule: the embedded wallet in an
+  // email session, the connected wallet of that family otherwise. A browser
+  // with neither sweeps nothing.
+  const addressFor = (chainKey: SpokeChainKey): string | undefined => {
+    const chainType = getXChainType(chainKey);
+    const store = chainType ? xAccounts[chainType]?.address : undefined;
+    return resolveAccount(chainKey, session, store).address;
+  };
+  const connected = EMBEDDED_CHAINS.some((chainKey) => addressFor(chainKey));
 
   const swept = useQueries({
     queries: EMBEDDED_CHAINS.map((chainKey) => ({
@@ -98,12 +109,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
         xService: getXService(getXChainType(chainKey)!),
         xChainId: chainKey,
         xTokens: getDepositTokens(chainKey).map(toBalanceReadToken),
-        // The store address passed here is the Solana account: EVM rows
-        // resolve to the embedded address and never read it, and
-        // EMBEDDED_CHAINS contains nothing but EVM + Solana.
-        address: emailMode
-          ? resolveAccount(chainKey, session, solanaAccount.address).address
-          : undefined,
+        address: addressFor(chainKey),
       }),
       // Must come AFTER the spread — see SWEEP_INTERVAL_MS.
       refetchInterval: SWEEP_INTERVAL_MS,
@@ -179,6 +185,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
 
   return {
     emailMode,
+    connected,
     isLoading: swept.isLoading || prices.isLoading,
     holdings,
     erroredChains: swept.erroredChains,

@@ -59,10 +59,16 @@ export function resolveAccount(
 export const HOME_CHAIN: SpokeChainKey = ChainKeys.BASE_MAINNET;
 
 /**
- * The spoke address the account derives from: the Privy embedded EVM address,
- * and nothing else. External wallets fund a buy; they never own the shelf,
- * so a browser without an email session has no account, only a teapot.
+ * The spoke address the account derives from, by the one address rule on
+ * the home chain: the Privy embedded EVM address in an email session,
+ * otherwise the connected EVM wallet. The address that signs on Base is the
+ * address whose hub wallet is the account, whichever wallet that is. A
+ * browser with only a non-EVM wallet (Phantom on Solana alone, Xverse) has
+ * funds but no account until it signs in with email.
  */
-export function homeSpokeAddress(session: AccountSession): string | undefined {
-  return session.emailSession ? session.embeddedEvmAddress : undefined;
+export function homeSpokeAddress(
+  session: AccountSession,
+  connectedEvmAddress?: string,
+): string | undefined {
+  return resolveAccount(HOME_CHAIN, session, connectedEvmAddress).address;
 }

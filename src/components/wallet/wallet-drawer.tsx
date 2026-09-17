@@ -165,7 +165,7 @@ function FamilyList({
 }) {
   const copy = useCopy();
   return (
-    <ScrollArea className="max-h-[55cqh]">
+    <ScrollArea className="max-h-[55svh]">
       <div className="flex flex-col gap-0.5 px-2">
         {groups.map((group) => {
           // The Privy-bridged embedded wallet surfaces here like any
@@ -358,7 +358,7 @@ function ConnectorLevel({
   }
 
   return (
-    <ScrollArea className="max-h-[55cqh]">
+    <ScrollArea className="max-h-[55svh]">
       <div className="flex flex-col gap-0.5 px-2">
         {sorted.map((connector) => (
           <ConnectorRow

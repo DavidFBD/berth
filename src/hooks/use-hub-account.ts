@@ -1,14 +1,15 @@
 "use client";
 
 import { useGetUserHubWalletAddress } from "@sodax/dapp-kit";
+import { useXAccount } from "@sodax/wallet-sdk-react";
 import type { Address } from "@sodax/sdk";
 import { HOME_CHAIN, homeSpokeAddress } from "@/lib/account";
 import { useAccountSession } from "@/hooks/use-account";
 
 export type HubAccount = {
   /**
-   * The spoke address the account derives from (the Privy EVM address on the
-   * home chain). Undefined when nobody is signed in by email.
+   * The spoke address the account derives from: the Privy EVM address in an
+   * email session, else the connected EVM wallet. Undefined when neither.
    */
   spokeAddress: string | undefined;
   /**
@@ -23,7 +24,8 @@ export type HubAccount = {
 
 /**
  * The user's one account on the hub: the SODAX hub wallet derived from the
- * Privy embedded address on the home chain (Base). Derived through the SAME
+ * user's EVM address on the home chain (Base), the Privy embedded address in
+ * an email session or the connected wallet otherwise. Derived through the SAME
  * SDK call the deposit builder uses for `dstAddress`
  * (`hubProvider.getUserHubWalletAddress`), so the address read here is by
  * construction the address a buy lands in. Deterministic, so dapp-kit caches
@@ -34,7 +36,11 @@ export type HubAccount = {
  */
 export function useHubAccount(spokeAddressOverride?: string): HubAccount {
   const session = useAccountSession();
-  const spokeAddress = spokeAddressOverride ?? homeSpokeAddress(session);
+  // The connected EVM wallet, when there is one: the store address the
+  // home-chain rule falls back to outside an email session.
+  const connectedEvm = useXAccount({ xChainType: "EVM" });
+  const spokeAddress =
+    spokeAddressOverride ?? homeSpokeAddress(session, connectedEvm.address);
 
   const derived = useGetUserHubWalletAddress({
     params: { spokeChainId: HOME_CHAIN, spokeAddress },

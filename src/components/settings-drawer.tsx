@@ -55,7 +55,7 @@ export function SettingsDrawer({
             <DrawerDescription>{copy.settingsSub}</DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex max-h-[65cqh] flex-col gap-5 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          <div className="flex max-h-[65svh] flex-col gap-5 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <section className="flex flex-col gap-2">
               <h3
                 id="appearance-label"
