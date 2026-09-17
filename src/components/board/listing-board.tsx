@@ -89,12 +89,15 @@ export function ListingBoard({
           const moved = performance.performanceOf(listing);
           const direction = changeDirection(moved?.changePct);
           const series = moved?.series;
-          // The line is coloured by its OWN window, not by the day: an
-          // eighty day climb drawn red because this morning dipped would
-          // contradict the shape a person is looking at.
-          const lineDirection = changeDirection(
-            series && percentChange(series[0], series[series.length - 1]),
-          );
+          // The line carries its OWN window, not the day: an eighty day
+          // climb drawn red because this morning dipped would contradict the
+          // shape a person is looking at. The figure under it says the same
+          // thing in digits, which is what fills a desktop row that would
+          // otherwise be a name, a lot of air, and a price.
+          const windowChange = series
+            ? percentChange(series[0], series[series.length - 1])
+            : undefined;
+          const lineDirection = changeDirection(windowChange);
           return (
             // Two siblings, never nested buttons: the row buys, the small
             // button sells. Only a held row offers the second.
@@ -127,11 +130,20 @@ export function ListingBoard({
                   </div>
                 </div>
                 {series && lineDirection && (
-                  <Sparkline
-                    values={series}
-                    direction={lineDirection}
-                    className="shrink-0"
-                  />
+                  <div className="flex shrink-0 flex-col items-center gap-0.5">
+                    <Sparkline
+                      values={series}
+                      direction={lineDirection}
+                      className="h-[18px] w-12 lg:w-24 xl:w-28"
+                    />
+                    {windowChange !== undefined && (
+                      <span
+                        className={`money text-[10px] tabular-nums ${CHANGE_TONE[lineDirection]}`}
+                      >
+                        {formatPercentChange(windowChange, 1)}
+                      </span>
+                    )}
+                  </div>
                 )}
                 <div className="shrink-0 text-right">
                   <div className="money text-sm tabular-nums text-foreground">

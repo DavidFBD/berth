@@ -71,7 +71,17 @@ export function Home() {
 
   return (
     <AuthGate>
-      <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-12 sm:max-w-lg">
+      {/*
+        One column on a phone, a composition on a desktop. The account's own
+        figure spans the top, then three tracks: what you have on the left,
+        what you can buy in the middle, what is being said about it on the
+        right. Two tracks from 1024px (the news falls under the board, since
+        three columns at that width would squeeze a board row below the space
+        its name, line and price need), three from 1280px. Below 1024px
+        nothing changes at all: every placement class is breakpoint-prefixed,
+        so the phone keeps the single column it was designed as.
+      */}
+      <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-12 sm:max-w-lg lg:max-w-5xl xl:max-w-7xl">
         <header className="sticky top-0 z-10 -mx-4 mb-5 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur">
           {/* Brand never shrinks; the account pill truncates instead. */}
           <div className="flex shrink-0 items-center gap-2">
@@ -87,22 +97,32 @@ export function Home() {
         </header>
 
         <AccountTotal />
-        <FundsModule onTopUp={() => setAccountOpen(true)} />
 
-        <div className="mt-4 flex flex-col gap-4">
-          <HoldingsList onSell={openSell} />
-          <CashShelf
-            onPark={() => openBuy(CASH_LISTING)}
-            onTakeOut={() => openSell(CASH_LISTING)}
-          />
-          <ListingBoard onBuy={openBuy} onSell={openSell} />
-          <NewsFeed />
-          <VaultPositions
-            onWithdraw={(vault) => {
-              setWithdrawVault(vault);
-              setWithdrawOpen(true);
-            }}
-          />
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">
+          {/* What you hold and what can pay for the next order. */}
+          <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
+            <FundsModule onTopUp={() => setAccountOpen(true)} />
+            <HoldingsList onSell={openSell} />
+            <CashShelf
+              onPark={() => openBuy(CASH_LISTING)}
+              onTakeOut={() => openSell(CASH_LISTING)}
+            />
+            <VaultPositions
+              onWithdraw={(vault) => {
+                setWithdrawVault(vault);
+                setWithdrawOpen(true);
+              }}
+            />
+          </div>
+
+          {/* The board keeps the widest track: it is what people come to do. */}
+          <div className="lg:col-start-2 lg:row-start-1">
+            <ListingBoard onBuy={openBuy} onSell={openSell} />
+          </div>
+
+          <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
+            <NewsFeed />
+          </div>
         </div>
 
         <DepositDrawer

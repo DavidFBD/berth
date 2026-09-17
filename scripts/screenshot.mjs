@@ -5,6 +5,11 @@
  *   pnpm shot                                  # webkit, iPhone viewport, 390x844
  *   pnpm shot --browser chromium --out x.png
  *   pnpm shot --url http://localhost:3000/foo --viewport 1280x800
+ *   pnpm shot --scheme dark                    # emulates prefers-color-scheme
+ *
+ * Appearance is light, dark or system (next-themes), so --scheme only flips
+ * the app for a visitor left on system, which is the default. A check of the
+ * dark palette wants both: one shot per scheme.
  *
  * Webkit is the default on purpose: every iOS browser is WebKit, so a change
  * that only renders correctly in Chromium is not verified. Browser builds come
@@ -26,6 +31,7 @@ const browserName = arg("browser", "webkit");
 const [width, height] = arg("viewport", "390x844").split("x").map(Number);
 const settleMs = Number(arg("settle", "3000"));
 const dpr = Number(arg("dpr", "2"));
+const colorScheme = arg("scheme", "light");
 
 const engine = browserName === "chromium" ? chromium : webkit;
 
@@ -50,6 +56,7 @@ const browser = await engine.launch();
 const ctx = await browser.newContext({
   viewport: { width, height },
   deviceScaleFactor: dpr,
+  colorScheme,
 });
 const page = await ctx.newPage();
 await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });
@@ -57,6 +64,6 @@ await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });
 await page.waitForTimeout(settleMs);
 await page.screenshot({ path: out });
 console.log(
-  `${out} (${browserName} ${width}x${height})`,
+  `${out} (${browserName} ${width}x${height} ${colorScheme})`,
 );
 await browser.close();

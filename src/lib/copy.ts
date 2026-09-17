@@ -337,7 +337,7 @@ export const COPY: Copy = {
   boardHint: "Robinhood Stock Tokens. Choose one to buy.",
   boardYouHold: (amount) => `You hold ${amount}`,
   boardPerformanceNote: (days) =>
-    `The line is the last ${days} days. The change is day over day, counting only days the market was open.`,
+    `The figure under the line is the last ${days} days. The figure by the price is the day. Only days the market was open are counted.`,
 
   holdingsTitle: "What you own",
   holdingsHint: "Held in your account. Sell any of it with one signature.",

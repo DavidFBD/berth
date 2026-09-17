@@ -109,6 +109,16 @@ feeds were 49 and 14 days stale when checked. Google News stayed out on its
 terms and its unresolvable links. Both belong beside a single listing rather
 than in the river, and `/api/listing-news?symbol=` is ready for that.
 
+**Images.** Asked for after the first build, and the answer is that this source
+has none. Nasdaq's RSS carries no `media:content`, no `enclosure` and no
+`content:encoded`. Its article pages do expose an `og:image`, but it is one
+generic 2019 stock photograph shared by every article: fourteen out of fourteen
+identical, across four publishers. Nasdaq declares itself canonical and carries
+no link back to the Motley Fool or Zacks original, so there is no publisher page
+to follow for a real image either. Any real per-article image therefore arrives
+with a licensed source: Marketaux's `image_url` is the one this research already
+recommends, and it comes with the key and the written sign-off, not before.
+
 **Registry.** SPCX is `equity`; the `private` category is gone.
 
 ## 6. Gaps

@@ -29,7 +29,7 @@ import {
 export default function BoardGalleryPage() {
   if (process.env.NODE_ENV === "production") notFound();
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:max-w-lg lg:max-w-5xl xl:max-w-7xl">
       <h1 className="font-display text-xl text-foreground">The board</h1>
       <Suspense fallback={<Skeleton className="h-40 w-full" />}>
         <Gallery />
@@ -71,27 +71,37 @@ function Gallery() {
 
   return (
     <>
-      <CashShelf
-        onPark={() => {
-          setBuyListing(CASH_LISTING);
-          setBuyOpen(true);
-        }}
-        onTakeOut={() => {
-          setSellListing(CASH_LISTING);
-          setSellOpen(true);
-        }}
-      />
-      <ListingBoard
-        onBuy={(picked) => {
-          setBuyListing(picked);
-          setBuyOpen(true);
-        }}
-        onSell={(picked) => {
-          setSellListing(picked);
-          setSellOpen(true);
-        }}
-      />
-      <NewsFeed />
+      {/* The same three tracks Home composes, so the desktop layout can be
+          reviewed here without a session. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">
+        <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
+          <CashShelf
+            onPark={() => {
+              setBuyListing(CASH_LISTING);
+              setBuyOpen(true);
+            }}
+            onTakeOut={() => {
+              setSellListing(CASH_LISTING);
+              setSellOpen(true);
+            }}
+          />
+        </div>
+        <div className="lg:col-start-2 lg:row-start-1">
+          <ListingBoard
+            onBuy={(picked) => {
+              setBuyListing(picked);
+              setBuyOpen(true);
+            }}
+            onSell={(picked) => {
+              setSellListing(picked);
+              setSellOpen(true);
+            }}
+          />
+        </div>
+        <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
+          <NewsFeed />
+        </div>
+      </div>
       {mounted && (
         <>
           <DepositDrawer
