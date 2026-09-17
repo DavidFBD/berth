@@ -320,11 +320,11 @@ export const COPY: Copy = {
   fundsTotalLabel: "Total",
 
   boardTitle: "Stocks and funds",
-  boardHint: "Robinhood Stock Tokens on Sonic. Choose one to buy.",
+  boardHint: "Robinhood Stock Tokens. Choose one to buy.",
   boardYouHold: (amount) => `You hold ${amount}`,
 
   holdingsTitle: "What you own",
-  holdingsHint: "Held in your account on Sonic. Sell any of it with one signature.",
+  holdingsHint: "Held in your account. Sell any of it with one signature.",
   holdingsEmpty: "Nothing yet. Your first buy lands here.",
 
   cashTitle: "Cash",
@@ -342,7 +342,7 @@ export const COPY: Copy = {
 
   buy: "Buy",
   buyTitle: (name) => `Buy ${name}`,
-  buySub: "Pay from any wallet, on any network. It lands in your account on Sonic.",
+  buySub: "Pay from any wallet, on any network. It lands in your account.",
   orderTitleFallback: "Place an order",
   whatPayingWith: "What are you paying with?",
   gasShortWarning: (chainName, symbol) =>
@@ -481,7 +481,7 @@ export const COPY: Copy = {
   infoSub: "What an order does, what you own, and what it costs.",
   infoHowTitle: "One signature, any network",
   infoHowBody:
-    "You pay with what you hold, on the network where you hold it. A network of solvers fills the order and delivers the stock token to your account on Sonic. Selling works the same way in reverse. Berth never holds your funds.",
+    "You pay with what you hold, on the network where you hold it. A network of solvers fills the order and delivers the stock token to your account. Selling works the same way in reverse. Berth never holds your funds.",
   infoOwnTitle: "What you own",
   infoOwnBody:
     "A Robinhood Stock Token is a debt security issued by Robinhood Assets in Jersey that tracks the price of a share and its dividends. It is not the share itself: no voting rights, and the issuer's credit risk sits with you. Cash you park is a token tracking a fund of short US Treasury bills.",
