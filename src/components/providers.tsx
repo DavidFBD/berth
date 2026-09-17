@@ -10,6 +10,7 @@ import { MotionConfig } from "motion/react";
 import { AppPrivyProvider, PRIVY_ENABLED } from "@/components/privy-provider";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
 import { SettingsProvider } from "@/components/settings-provider";
+import { TextureFlag } from "@/components/texture-flag";
 import { WalletDiagnostics } from "@/components/dev/wallet-diagnostics";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
 import { installLogCapture } from "@/lib/error-log-buffer";
@@ -45,6 +46,8 @@ export function Providers({ children }: { children: ReactNode }) {
             <IconContext.Provider value={ICON_DEFAULTS}>
               {/* Motion respects the OS reduce-motion preference app-wide. */}
               <MotionConfig reducedMotion="user">
+                {/* Off unless a visitor asks for it; see texture-flag. */}
+                <TextureFlag />
                 {PRIVY_ENABLED && mounted && <PrivySolanaBridge />}
                 {/* Temporary: diagnosing why localhost shows an empty wallet
                     while prod shows the same embedded wallet's holdings. */}

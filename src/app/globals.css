@@ -316,3 +316,66 @@ p {
 .shadow-raised {
   box-shadow: var(--shadow-raised);
 }
+
+/* ————— Grain and glass, on trial —————
+   Both are banned by the brand sheet ("No glow, blur, glass, 3D, or
+   photographs"), so neither is on by default. They exist behind
+   components/texture-flag so the two can be judged against the live app
+   before the sheet is amended: ?texture=grain, ?texture=glass, ?texture=on,
+   ?texture=off. If the sheet changes, this block graduates into the base
+   styles; if it does not, this block and the flag come out together. */
+:root {
+  /* Above the drawer (z-50) so one tooth covers the whole screen rather
+     than stopping at the edge of an open sheet. */
+  --z-grain: 100;
+  --grain-opacity: 0.045;
+  --glass-tint: 72%;
+}
+.dark {
+  /* Dark surfaces swallow noise, and they are where banding shows. */
+  --grain-opacity: 0.07;
+  --glass-tint: 64%;
+}
+
+/* Grain: one fixed layer of monochrome turbulence over everything, never
+   in the way of a pointer. Fixed rather than repeated per surface, so it
+   does not travel with scroll and reads as the screen's own tooth. */
+[data-texture="grain"] body::after,
+[data-texture="on"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-grain);
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+}
+
+/* Glass, only where two things actually overlap: the header the page
+   scrolls under, the scrim a drawer sits on, and the drawer itself. A
+   frosted panel that floats over nothing is decoration; these three are
+   the places depth is real. The inner hairline is the edge refraction that
+   separates glass from a blurred rectangle. */
+[data-texture="glass"] header.sticky,
+[data-texture="on"] header.sticky {
+  background: color-mix(in oklab, var(--background) var(--glass-tint), transparent);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  box-shadow: inset 0 1px 0 0 color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
+[data-texture="glass"] [data-slot="drawer-overlay"],
+[data-texture="on"] [data-slot="drawer-overlay"] {
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+}
+
+/* The sheet itself stays opaque, and this is the whole argument for why
+   glass has to be placed rather than applied. Frosting the drawer was tried
+   and reverted the same hour: the board showed straight through a sheet
+   holding an amount field, so "Buy NVIDIA" sat on top of GameStop's price
+   and the confirm button had two rows of someone else's numbers running
+   through it. A surface a person reads money on is opaque. The scrim under
+   it and the bar it slides over are the places depth is real, and those are
+   the two rules above. */
