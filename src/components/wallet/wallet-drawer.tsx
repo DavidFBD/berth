@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopy } from "@/components/settings-provider";
+import type { Copy } from "@/lib/copy";
 import {
   sortConnectors,
   useChainGroups,
@@ -52,6 +53,7 @@ export function WalletDrawer({
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }) {
+  const copy = useCopy();
   const mounted = useMounted();
   const { state, open: openModal, close: closeModal, back, selectChain, selectWallet, retry } =
     useWalletModal();
@@ -104,7 +106,7 @@ export function WalletDrawer({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Back"
+                aria-label={copy.walletBack}
                 className="absolute left-0"
                 onClick={back}
               >
@@ -113,14 +115,14 @@ export function WalletDrawer({
             )}
             <DrawerTitle>
               {atFamilyLevel
-                ? "Wallets"
-                : `Connect ${activeGroup?.displayName ?? state.chainType}`}
+                ? copy.walletsTitle
+                : copy.walletConnectTitle(
+                    activeGroup?.displayName ?? state.chainType,
+                  )}
             </DrawerTitle>
           </div>
           <DrawerDescription>
-            {atFamilyLevel
-              ? "Connect a wallet for each network you want to deposit from."
-              : "Choose a wallet to continue."}
+            {atFamilyLevel ? copy.walletsSub : copy.walletConnectSub}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -205,7 +207,7 @@ function FamilyList({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Disconnect ${group.displayName}`}
+                  aria-label={copy.walletDisconnectLabel(group.displayName)}
                   disabled={disconnecting === group.chainType}
                   onClick={() => onDisconnect(group.chainType)}
                   className="text-muted-foreground hover:text-destructive"
@@ -269,6 +271,7 @@ function ConnectorLevel({
   onRetry: () => void;
   onBack: () => void;
 }) {
+  const copy = useCopy();
   const connectors = useXConnectors({ xChainType: state.chainType });
   const sorted = useMemo(() => sortConnectors(connectors), [connectors]);
 
@@ -279,25 +282,23 @@ function ConnectorLevel({
         icon={<ConnectorIcon connector={state.connector} size="lg" />}
         title={
           isWalletConnect
-            ? "Continue in your wallet…"
-            : `Waiting for ${state.connector.name}…`
+            ? copy.walletScanTitle
+            : copy.walletWaitingTitle(state.connector.name)
         }
         detail={
-          isWalletConnect
-            ? "Scan the QR code or approve the request in your wallet app."
-            : "Approve the connection request in your wallet."
+          isWalletConnect ? copy.walletScanBody : copy.walletWaitingBody
         }
       >
         <Spinner className="size-5 text-muted-foreground" />
         <Button variant="ghost" size="sm" onClick={onBack}>
-          Cancel
+          {copy.walletCancel}
         </Button>
       </StatusPanel>
     );
   }
 
   if (state.kind === "error") {
-    const { title, detail } = friendlyConnectError(state.error);
+    const { title, detail } = friendlyConnectError(state.error, copy);
     return (
       <StatusPanel
         icon={
@@ -310,10 +311,10 @@ function ConnectorLevel({
       >
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={onBack}>
-            Choose another wallet
+            {copy.walletChooseAnother}
           </Button>
           <Button size="sm" onClick={onRetry}>
-            Retry
+            {copy.walletTryAgain}
           </Button>
         </div>
       </StatusPanel>
@@ -328,7 +329,7 @@ function ConnectorLevel({
             <Check className="size-5" />
           </span>
         }
-        title="Connected"
+        title={copy.walletConnectedTitle}
         detail={
           state.account.address
             ? `${state.connector.name} · ${shortenAddress(state.account.address)}`
@@ -347,11 +348,11 @@ function ConnectorLevel({
             <Wallet className="size-5" />
           </span>
         }
-        title="No wallets found"
-        detail="No wallets are available for this network in your browser."
+        title={copy.walletNoneTitle}
+        detail={copy.walletNoneBody}
       >
         <Button variant="outline" size="sm" onClick={onBack}>
-          Back
+          {copy.walletBack}
         </Button>
       </StatusPanel>
     );
@@ -379,6 +380,7 @@ function ConnectorRow({
   connector: IXConnector;
   onSelect: (connector: IXConnector) => void;
 }) {
+  const copy = useCopy();
   if (!connector.isInstalled && connector.installUrl) {
     return (
       <div className={ROW_CLASS}>
@@ -392,7 +394,7 @@ function ConnectorRow({
           rel="noopener noreferrer"
           className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
         >
-          Get
+          {copy.walletGet}
           <ArrowSquareOut className="size-3.5" />
         </a>
       </div>
@@ -494,19 +496,24 @@ function DrawerListSkeleton() {
   );
 }
 
-function friendlyConnectError(error: Error): {
-  title: string;
-  detail: string;
-} {
+/**
+ * The two ways connecting ends badly, told apart by what the wallet said.
+ * Copy is passed in rather than read from the hook: this runs outside a
+ * component, and the words still belong in lib/copy like every other line.
+ */
+function friendlyConnectError(
+  error: Error,
+  copy: Copy,
+): { title: string; detail: string } {
   const message = error.message ?? "";
   if (/reject|denied|cancell?ed|dismiss/i.test(message)) {
     return {
-      title: "Request cancelled",
-      detail: "You dismissed the request in your wallet. Try again when ready.",
+      title: copy.walletCancelledTitle,
+      detail: copy.walletCancelledBody,
     };
   }
   return {
-    title: "Connection failed",
-    detail: message || "Something went wrong while connecting.",
+    title: copy.walletFailedTitle,
+    detail: message || copy.walletFailedBody,
   };
 }

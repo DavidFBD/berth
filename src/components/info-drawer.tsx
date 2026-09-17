@@ -37,7 +37,7 @@ export function InfoDrawer() {
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="About this app"
+        aria-label={copy.infoOpenLabel}
         className="shrink-0"
         onClick={() => setOpen(true)}
       >

@@ -1,3 +1,6 @@
+"use client";
+
+import { useCopy } from "@/components/settings-provider"
 import { cn } from "@/lib/utils"
 
 /**
@@ -6,11 +9,12 @@ import { cn } from "@/lib/utils"
  * only ever say <Spinner className="size-4" />.
  */
 function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
+  const copy = useCopy();
   return (
     <svg
       data-slot="spinner"
       role="status"
-      aria-label="Loading"
+      aria-label={copy.loadingLabel}
       viewBox="0 0 16 16"
       fill="currentColor"
       className={cn("size-4", className)}

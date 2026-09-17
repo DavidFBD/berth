@@ -574,7 +574,7 @@ export function WithdrawDrawer({
                           autoComplete="off"
                           autoCorrect="off"
                           spellCheck={false}
-                          aria-label="Custom destination address"
+                          aria-label={copy.withdrawCustomAddressLabel}
                           className="money w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
                         />
                         <p className="text-[11.5px] leading-snug text-destructive">

@@ -27,6 +27,65 @@ export type Copy = {
   continueWithWallet: (name: string) => string;
   walletConnecting: (name: string) => string;
   walletConnectFailed: string;
+
+  /* — labels only a screen reader hears, which are copy like any other — */
+  infoOpenLabel: string;
+  /** The sell drawer's free-text address field. */
+  withdrawCustomAddressLabel: string;
+  /** `face` is the avatar's own name. */
+  avatarChooseLabel: (face: string) => string;
+  inviteCopyLabel: string;
+  rewardsChipLabel: string;
+  /** The rank chip's compact form: "Lv 3". */
+  rankLevelShort: (level: number) => string;
+  /** What the chip reads out in full: "Harbour Master, level 9". */
+  rankAriaLabel: (name: string, level: number) => string;
+
+  /* — the account drawer: who you are, where to send funds, the way out — */
+  accountSignedInAs: (email: string) => string;
+  accountSignedInEmail: string;
+  accountSignOut: string;
+  /** A receive row names the family it is for, because sending the wrong
+   *  asset to the right-looking address is how people lose money. */
+  receiveEvmTitle: string;
+  receiveEvmBody: string;
+  receiveEvmToast: string;
+  receiveSolanaTitle: string;
+  receiveSolanaBody: string;
+  receiveSolanaToast: string;
+  /** `what` is the row's own title: "Copy Solana address". */
+  receiveShowQr: (what: string) => string;
+  receiveCopyLabel: (what: string) => string;
+  receiveCopied: string;
+  topUpSub: string;
+
+  /* — the wallet drawer: connecting one wallet per chain family — */
+  walletsTitle: string;
+  walletsSub: string;
+  /** `family` is the chain family's own name: "Connect Solana". */
+  walletConnectTitle: (family: string) => string;
+  walletConnectSub: string;
+  walletBack: string;
+  /** `name` is the wallet's own name, for the icon-only disconnect button. */
+  walletDisconnectLabel: (name: string) => string;
+  /** On a wallet this browser does not have: a link to go and install it. */
+  walletGet: string;
+  walletWaitingTitle: (name: string) => string;
+  walletWaitingBody: string;
+  /** WalletConnect shows a code rather than taking the browser over. */
+  walletScanTitle: string;
+  walletScanBody: string;
+  walletCancel: string;
+  walletConnectedTitle: string;
+  walletNoneTitle: string;
+  walletNoneBody: string;
+  walletChooseAnother: string;
+  walletTryAgain: string;
+  /** The two ways connecting ends badly, told apart by the wallet's message. */
+  walletCancelledTitle: string;
+  walletCancelledBody: string;
+  walletFailedTitle: string;
+  walletFailedBody: string;
   /** Shown on the welcome screen when an invite code is waiting in the pocket. */
   inviteWaiting: string;
   /** Footer line under "powered by": the one honest sentence about risk. */
@@ -322,6 +381,51 @@ export const COPY: Copy = {
   continueWithWallet: (name) => `Continue with ${name}`,
   walletConnecting: (name) => `Waiting for ${name}…`,
   walletConnectFailed: "Could not connect. Try again, or continue with email.",
+
+  infoOpenLabel: "How Berth works",
+  withdrawCustomAddressLabel: "Address to send to",
+  avatarChooseLabel: (face) => `Choose ${face}`,
+  inviteCopyLabel: "Copy your invite link",
+  rewardsChipLabel: "Your rewards",
+  rankLevelShort: (level) => `Lv ${level}`,
+  rankAriaLabel: (name, level) => `${name}, level ${level}`,
+
+  accountSignedInAs: (email) => `Signed in as ${email}`,
+  accountSignedInEmail: "Signed in via email",
+  accountSignOut: "Sign out",
+  receiveEvmTitle: "EVM address",
+  receiveEvmBody:
+    "One address for Ethereum, Base, Arbitrum, Polygon, BNB and every other EVM network.",
+  receiveEvmToast: "Works on every EVM network. Send funds there to top up.",
+  receiveSolanaTitle: "Solana address",
+  receiveSolanaBody: "Only for Solana assets: SOL, JitoSOL, USDC on Solana.",
+  receiveSolanaToast: "Only send Solana assets to this one.",
+  receiveShowQr: (what) => `Show ${what} as a QR code`,
+  receiveCopyLabel: (what) => `Copy ${what}`,
+  receiveCopied: "Address copied",
+  topUpSub: "Card, bank, or crypto from any network.",
+
+  walletsTitle: "Wallets",
+  walletsSub: "Connect a wallet for each network you want to pay from.",
+  walletConnectTitle: (family) => `Connect ${family}`,
+  walletConnectSub: "Choose a wallet to continue.",
+  walletBack: "Back",
+  walletDisconnectLabel: (name) => `Disconnect ${name}`,
+  walletGet: "Get",
+  walletWaitingTitle: (name) => `Waiting for ${name}`,
+  walletWaitingBody: "Approve the connection request in your wallet.",
+  walletScanTitle: "Continue in your wallet",
+  walletScanBody: "Scan the code, or approve the request in your wallet app.",
+  walletCancel: "Cancel",
+  walletConnectedTitle: "Connected",
+  walletNoneTitle: "No wallets found",
+  walletNoneBody: "No wallet for this network is available in this browser.",
+  walletChooseAnother: "Choose another wallet",
+  walletTryAgain: "Try again",
+  walletCancelledTitle: "Request cancelled",
+  walletCancelledBody: "You dismissed the request in your wallet. Try again when you are ready.",
+  walletFailedTitle: "Connection failed",
+  walletFailedBody: "Something went wrong while connecting.",
   inviteWaiting: "A friend invited you. Sign in and the invite is yours.",
   footerNote:
     "Stock tokens track a share; they are not the share. Read what you own before you buy.",

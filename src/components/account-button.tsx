@@ -89,7 +89,7 @@ export function AccountButton({
           <DrawerHeader>
             <DrawerTitle>{copy.accountTotalLabel}</DrawerTitle>
             <DrawerDescription>
-              {email ? `Signed in as ${email}` : "Signed in via email"}
+              {email ? copy.accountSignedInAs(email) : copy.accountSignedInEmail}
             </DrawerDescription>
           </DrawerHeader>
 
@@ -98,10 +98,10 @@ export function AccountButton({
             {address ? (
               <>
                 <ReceiveRow
-                  title="EVM address"
-                  description="One address for Ethereum, Base, Arbitrum, Polygon, BNB and every other EVM network."
+                  title={copy.receiveEvmTitle}
+                  description={copy.receiveEvmBody}
                   address={address}
-                  copyToast="Works on every EVM network SODAX supports. Send funds there to top up."
+                  copyToast={copy.receiveEvmToast}
                 />
                 {/* Privy's /solana hooks are not SSR-safe — client-only. */}
                 {mounted && <SolanaReceive />}
@@ -154,7 +154,7 @@ export function AccountButton({
               }}
             >
               <SignOut className="size-5" />
-              Sign out
+              {copy.accountSignOut}
             </Button>
           </div>
         </DrawerContent>
@@ -210,15 +210,16 @@ function usePrivySolanaAddress(): string | undefined {
 
 /** Embedded Solana address row — isolated because the hook is client-only. */
 function SolanaReceive() {
+  const copy = useCopy();
   const solanaAddress = usePrivySolanaAddress();
 
   if (!solanaAddress) return null;
   return (
     <ReceiveRow
-      title="Solana address"
-      description="Only for Solana assets: SOL, JitoSOL, USDC on Solana."
+      title={copy.receiveSolanaTitle}
+      description={copy.receiveSolanaBody}
       address={solanaAddress}
-      copyToast="Only send Solana assets to this one."
+      copyToast={copy.receiveSolanaToast}
     />
   );
 }
@@ -305,6 +306,7 @@ function ReceiveRow({
   address: string;
   copyToast: string;
 }) {
+  const copy = useCopy();
   const [qrOpen, setQrOpen] = useState(false);
 
   return (
@@ -318,7 +320,7 @@ function ReceiveRow({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={`Show ${title} as QR code`}
+          aria-label={copy.receiveShowQr(title)}
           aria-expanded={qrOpen}
           className="shrink-0 text-muted-foreground hover:text-foreground"
           onClick={() => setQrOpen((open) => !open)}
@@ -328,11 +330,11 @@ function ReceiveRow({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={`Copy ${title}`}
+          aria-label={copy.receiveCopyLabel(title)}
           className="shrink-0 text-muted-foreground hover:text-foreground"
           onClick={() => {
             void navigator.clipboard.writeText(address);
-            toast.success("Address copied", {
+            toast.success(copy.receiveCopied, {
               description: `${shortenAddress(address, 6)} · ${copyToast}`,
             });
           }}
@@ -409,9 +411,7 @@ function FundButton({ address }: { address: string }) {
       <PlusCircle className="size-5 text-primary" />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="text-sm font-medium text-foreground">{copy.topUp}</span>
-        <span className="text-xs text-muted-foreground">
-          Card, bank, or crypto from any chain
-        </span>
+        <span className="text-xs text-muted-foreground">{copy.topUpSub}</span>
       </div>
     </button>
   );

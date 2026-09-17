@@ -144,7 +144,7 @@ export function RewardsPanel() {
                 <button
                   key={avatar.id}
                   type="button"
-                  aria-label={`Choose ${avatar.label}`}
+                  aria-label={copy.avatarChooseLabel(avatar.label)}
                   aria-pressed={resolveAvatarId(avatarId) === avatar.id}
                   disabled={setAvatar.isPending}
                   onClick={() =>
@@ -448,7 +448,7 @@ function ProgressRow({
         <button
           type="button"
           onClick={() => copyText(inviteLink(code))}
-          aria-label="Copy your invite link"
+          aria-label={copy.inviteCopyLabel}
           className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background/60 text-primary transition-[transform,background-color] duration-150 ease-lift hover:bg-background active:scale-[0.94]"
         >
           {copied ? <Check className="size-4.5" /> : <UserPlus className="size-4.5" />}
@@ -599,7 +599,7 @@ export function RankChip({
   onClick,
   presence = false,
   placeholder,
-  ariaPrefix = "Your rewards",
+  ariaPrefix,
   ariaSuffix,
 }: {
   onClick?: () => void;
@@ -608,6 +608,7 @@ export function RankChip({
   ariaPrefix?: string;
   ariaSuffix?: string;
 }) {
+  const copy = useCopy();
   const profile = useProfile();
   if (!profile.data && placeholder === undefined) return null;
   const rank = profile.data ? rankForXp(profile.data.xp) : null;
@@ -640,7 +641,7 @@ export function RankChip({
         )}
       </span>
       <span className="text-xs font-medium text-foreground">
-        {rank ? `Lv ${rank.level}` : placeholder}
+        {rank ? copy.rankLevelShort(rank.level) : placeholder}
       </span>
     </motion.span>
   );
@@ -655,8 +656,8 @@ export function RankChip({
       type="button"
       onClick={onClick}
       aria-label={[
-        ariaPrefix,
-        rank ? `${rank.name}, level ${rank.level}` : null,
+        ariaPrefix ?? copy.rewardsChipLabel,
+        rank ? copy.rankAriaLabel(rank.name, rank.level) : null,
         ariaSuffix,
       ]
         .filter(Boolean)
