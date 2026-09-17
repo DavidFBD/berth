@@ -328,12 +328,12 @@ p {
   /* Above the drawer (z-50) so one tooth covers the whole screen rather
      than stopping at the edge of an open sheet. */
   --z-grain: 100;
-  --grain-opacity: 0.045;
+  --grain-opacity: 0.11;
   --glass-tint: 72%;
 }
 .dark {
   /* Dark surfaces swallow noise, and they are where banding shows. */
-  --grain-opacity: 0.07;
+  --grain-opacity: 0.16;
   --glass-tint: 64%;
 }
 
@@ -348,7 +348,7 @@ p {
   z-index: var(--z-grain);
   pointer-events: none;
   opacity: var(--grain-opacity);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
   background-size: 160px 160px;
 }
 
@@ -357,8 +357,8 @@ p {
    frosted panel that floats over nothing is decoration; these three are
    the places depth is real. The inner hairline is the edge refraction that
    separates glass from a blurred rectangle. */
-[data-texture="glass"] header.sticky,
-[data-texture="on"] header.sticky {
+[data-texture="glass"] [data-glass="bar"],
+[data-texture="on"] [data-glass="bar"] {
   background: color-mix(in oklab, var(--background) var(--glass-tint), transparent);
   backdrop-filter: blur(16px) saturate(1.6);
   -webkit-backdrop-filter: blur(16px) saturate(1.6);

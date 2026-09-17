@@ -86,7 +86,13 @@ export function Home() {
         so the phone keeps the single column it was designed as.
       */}
       <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-12 sm:max-w-lg lg:max-w-5xl xl:max-w-7xl">
-        <header className="sticky top-0 z-10 -mx-4 mb-5 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur">
+        {/* data-glass names the surface for the grain-and-glass trial, so
+            the rule does not hang off a utility class that could be edited
+            away without anyone noticing the effect went with it. */}
+        <header
+          data-glass="bar"
+          className="sticky top-0 z-10 -mx-4 mb-5 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur"
+        >
           {/* Brand never shrinks; the account pill truncates instead. */}
           <div className="flex shrink-0 items-center gap-2">
             <BerthMark className="size-[26px]" />
