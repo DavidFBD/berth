@@ -27,7 +27,13 @@ export type FeedItem = Omit<NewsItem, "symbol" | "name">;
 
 const BLOCK = /<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi;
 
-function decodeEntities(text: string): string {
+/**
+ * Exported for the X column too: the API hands back post text with its
+ * ampersands and angle brackets escaped, and rendering "Import &amp; Export"
+ * would be showing the transport rather than the words. Decoding restores
+ * what the author typed, which is the opposite of editing it.
+ */
+export function decodeEntities(text: string): string {
   return (
     text
       .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -140,10 +146,33 @@ export function mergeNews(
   items: readonly NewsItem[],
   { limit, perSymbol }: { limit: number; perSymbol: number },
 ): NewsItem[] {
+  return mergeBySymbol(items, {
+    limit,
+    perSymbol,
+    keyOf: (item) => titleKey(item.title),
+  });
+}
+
+/**
+ * The two rules above, over anything that knows its listing and its time.
+ * The X column wants the same breadth guarantee for the same reason: sorted
+ * on time alone it is whatever NVIDIA and Strategy posted this morning.
+ *
+ * An item whose `keyOf` is empty is dropped, since a thing with no identity
+ * cannot be told apart from the next one.
+ */
+export function mergeBySymbol<T extends { symbol: string; publishedAt: number }>(
+  items: readonly T[],
+  {
+    limit,
+    perSymbol,
+    keyOf,
+  }: { limit: number; perSymbol: number; keyOf: (item: T) => string },
+): T[] {
   const seen = new Set<string>();
-  const unique: NewsItem[] = [];
+  const unique: T[] = [];
   for (const item of items) {
-    const key = titleKey(item.title);
+    const key = keyOf(item);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     unique.push(item);
@@ -151,9 +180,9 @@ export function mergeNews(
   unique.sort((a, b) => b.publishedAt - a.publishedAt);
 
   const room = Math.max(limit, 0);
-  const taken = new Set<NewsItem>();
+  const taken = new Set<T>();
   const counts = new Map<string, number>();
-  const kept: NewsItem[] = [];
+  const kept: T[] = [];
   for (const item of unique) {
     if (kept.length >= room) break;
     const count = counts.get(item.symbol) ?? 0;

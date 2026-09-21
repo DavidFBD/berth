@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, X } from "@phosphor-icons/react";
+import { ArrowUpRight, X, XLogo } from "@phosphor-icons/react";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
 import { useListingNews } from "@/hooks/use-listing-news";
+import { useListingX } from "@/hooks/use-listing-x";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT } from "@/lib/motion";
@@ -38,30 +40,33 @@ const CARD = {
   shown: { opacity: 1, y: 0, transition: { duration: 0.22, ease: EASE_LIFT } },
 };
 
+/** Posts lead, because they are the livelier half and the reason to look. */
+type Tab = "posts" | "headlines";
+
 /**
- * What is being written about the listings, newest first.
+ * What is being said about the listings, newest first, in two registers.
  *
- * Headline, who published it and when, and a link out to them. Never the
- * article itself: the words belong to whoever wrote them, and a reader
- * deciding what to buy is better served by the publisher's page than by our
- * summary of it. Every card leaves the app, which the arrow says.
+ * **Posts** is X: the companies' own accounts and a dozen market desks,
+ * whitelisted, because a cashtag search returns watchlist spam and
+ * copypasta. It leads, since a wire story is usually two hours old by the
+ * time Nasdaq carries it and a post is minutes old.
  *
- * `filter` narrows the river to one listing, which the board sets from a row
- * on a desktop. The whole list is keyed on it, so changing the filter plays
- * as one swap rather than twelve independent ones.
+ * **Headlines** is the original river of publisher stories, unchanged.
  *
- * On the tile instead of a photograph: the feed carries no images. Nasdaq
- * serves none in the document, and every article page on it answers with the
- * same generic 2019 stock photograph, verified across fourteen articles from
- * four publishers. Twelve cards wearing one recycled picture would be worse
- * than none, so the slot holds the thing we actually know and a reader
- * actually wants: which listing the story is about, and what that listing
- * did today. A licensed wire that carries real per-article images (Marketaux
- * serves an `image_url`) can take this slot whenever that call is made.
+ * Neither ever shows the article or unfurls a link preview: the words belong
+ * to whoever wrote them, and every card leaves the app, which the mark in
+ * the corner says. A post additionally carries its author's name, handle and
+ * avatar and links to the post itself, which is what X asks of anyone
+ * displaying one outside an embed. Its text is never trimmed to fit for the
+ * same reason, so the card clamps and the link finishes the sentence.
  *
- * Silence is not failure. A quiet hour, a stale feed and a blocked request
- * all end here as the same calm line, because none of them is something a
- * reader can act on.
+ * `filter` narrows both tabs to one listing, which the board sets from a row
+ * on a desktop. Each list is keyed on the tab and the filter together, so
+ * either change plays as one swap rather than twelve independent ones.
+ *
+ * Silence is not failure. A quiet hour, a stale feed, an expired token and a
+ * blocked request all end here as the same calm line, because none of them
+ * is something a reader can act on.
  */
 export function NewsFeed({
   filter,
@@ -71,12 +76,65 @@ export function NewsFeed({
   onClearFilter?: () => void;
 }) {
   const copy = useCopy();
+  const [tab, setTab] = useState<Tab>("posts");
   const news = useListingNews(filter?.symbol);
+  const posts = useListingX(filter?.symbol);
   const performance = useListingPerformance();
+
+  const showing = tab === "posts" ? posts : news;
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "posts", label: copy.newsTabPosts },
+    { id: "headlines", label: copy.newsTabHeadlines },
+  ];
+
+  /** The listing tile's figures, shared by both kinds of card. */
+  const movement = (symbol: string) => {
+    const listing = LISTING_BY_SYMBOL.get(symbol);
+    const moved = listing ? performance.performanceOf(listing) : undefined;
+    return { moved, direction: changeDirection(moved?.changePct) };
+  };
 
   return (
     <Panel surface="sheet">
-      <SectionHeading title={copy.newsTitle} hint={copy.newsHint} />
+      <SectionHeading
+        title={copy.newsTitle}
+        hint={tab === "posts" ? copy.postsHint : copy.newsHint}
+        action={
+          <div
+            role="tablist"
+            aria-label={copy.newsTabsLabel}
+            className="flex shrink-0 gap-0.5 rounded-full bg-muted p-0.5"
+          >
+            {tabs.map((entry) => {
+              const active = entry.id === tab;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setTab(entry.id)}
+                  className={`relative rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-150 ease-lift ${
+                    active
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="news-tab"
+                      transition={{ duration: 0.22, ease: EASE_LIFT }}
+                      className="absolute inset-0 rounded-full bg-background shadow-xs"
+                    />
+                  )}
+                  <span className="relative">{entry.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        }
+      />
+
       <div className="empty:hidden">
         <AnimatePresence initial={false}>
           {filter && (
@@ -108,11 +166,13 @@ export function NewsFeed({
         </AnimatePresence>
       </div>
 
-      {news.isLoading ? (
+      {showing.isLoading ? (
         <ul className="divide-y divide-border border-t border-border">
           {[0, 1, 2].map((row) => (
             <li key={row} className="flex items-start gap-3 px-4 py-3">
-              <Skeleton className="size-11 shrink-0 rounded-lg" />
+              <Skeleton
+                className={`size-11 shrink-0 ${tab === "posts" ? "rounded-full" : "rounded-lg"}`}
+              />
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <Skeleton className="h-4 w-11/12" />
                 <Skeleton className="h-3 w-1/2" />
@@ -120,73 +180,146 @@ export function NewsFeed({
             </li>
           ))}
         </ul>
-      ) : news.items.length === 0 ? (
+      ) : showing.items.length === 0 ? (
         <p className="border-t border-border px-4 py-4 text-sm text-muted-foreground">
-          {filter ? copy.newsEmptyFor(filter.name) : copy.newsEmpty}
+          {tab === "posts"
+            ? filter
+              ? copy.postsEmptyFor(filter.name)
+              : copy.postsEmpty
+            : filter
+              ? copy.newsEmptyFor(filter.name)
+              : copy.newsEmpty}
         </p>
       ) : (
         <AnimatePresence mode="wait" initial={false}>
           <motion.ul
-            key={filter?.symbol ?? "all"}
+            key={`${tab}:${filter?.symbol ?? "all"}`}
             variants={LIST}
             initial="hidden"
             animate="shown"
             exit="gone"
             className="divide-y divide-border border-t border-border"
           >
-            {news.items.map((item) => {
-              const listing = LISTING_BY_SYMBOL.get(item.symbol);
-              const moved = listing
-                ? performance.performanceOf(listing)
-                : undefined;
-              const direction = changeDirection(moved?.changePct);
-              return (
-                <motion.li key={item.url} variants={CARD}>
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-start gap-3 px-4 py-3 transition-[background-color] duration-150 ease-lift hover:bg-muted/60"
-                  >
-                    {/* The ticker, in the face the app reserves for numbers,
-                        tinted by how the listing moved. It says at a glance
-                        which of twelve stories is about the thing you hold. */}
-                    <span
-                      aria-hidden="true"
-                      className="money flex size-11 shrink-0 flex-col items-center justify-center rounded-lg bg-muted text-[10.5px] leading-none font-semibold tracking-tight"
-                    >
-                      <span className="text-foreground/80">{item.symbol}</span>
-                      {moved?.changePct !== undefined && direction && (
+            {tab === "posts"
+              ? posts.items.map((post) => {
+                  const { moved, direction } = movement(post.symbol);
+                  return (
+                    <motion.li key={post.id} variants={CARD}>
+                      <a
+                        href={post.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-3 px-4 py-3 transition-[background-color] duration-150 ease-lift hover:bg-muted/60"
+                      >
+                        {/* Name, handle and face travel with the post, and
+                            the whole card opens the original. That is what
+                            X asks of a post shown outside an embed. */}
+                        {/* A plain img on purpose: these are 73px files
+                            already served from X's own CDN, there are about
+                            two dozen distinct ones, and routing them through
+                            next/image would buy nothing but a per-image
+                            charge on every optimisation. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={post.author.avatarUrl}
+                          alt=""
+                          width={44}
+                          height={44}
+                          loading="lazy"
+                          className="size-11 shrink-0 rounded-full bg-muted object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-baseline gap-1.5 text-xs">
+                            <span className="truncate font-medium text-foreground">
+                              {post.author.name}
+                            </span>
+                            <span className="truncate text-muted-foreground">
+                              {copy.postsByline(
+                                post.author.username,
+                                formatTimeAgo(post.publishedAt),
+                              )}
+                            </span>
+                          </p>
+                          {/* Verbatim, and clamped rather than cut: editing
+                              a post to fit is not ours to do. */}
+                          <p className="mt-1 line-clamp-5 text-sm leading-snug whitespace-pre-line text-foreground">
+                            {post.text}
+                          </p>
+                          <p className="mt-1.5 flex items-center gap-1.5 text-[11px]">
+                            <span className="text-foreground/70">
+                              {post.name}
+                            </span>
+                            {moved?.changePct !== undefined && direction && (
+                              <span className={`money ${TONE[direction]}`}>
+                                {formatPercentChange(moved.changePct, 1)}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <XLogo
+                          aria-label={copy.postsSourceLabel}
+                          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                        />
+                      </a>
+                    </motion.li>
+                  );
+                })
+              : news.items.map((item) => {
+                  const { moved, direction } = movement(item.symbol);
+                  return (
+                    <motion.li key={item.url} variants={CARD}>
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-3 px-4 py-3 transition-[background-color] duration-150 ease-lift hover:bg-muted/60"
+                      >
+                        {/* The ticker, in the face the app reserves for
+                            numbers, tinted by how the listing moved. It says
+                            at a glance which of twelve stories is about the
+                            thing you hold. */}
                         <span
-                          className={`mt-0.5 text-[8.5px] ${TONE[direction]}`}
+                          aria-hidden="true"
+                          className="money flex size-11 shrink-0 flex-col items-center justify-center rounded-lg bg-muted text-[10.5px] leading-none font-semibold tracking-tight"
                         >
-                          {formatPercentChange(moved.changePct, 1)}
+                          <span className="text-foreground/80">
+                            {item.symbol}
+                          </span>
+                          {moved?.changePct !== undefined && direction && (
+                            <span
+                              className={`mt-0.5 text-[8.5px] ${TONE[direction]}`}
+                            >
+                              {formatPercentChange(moved.changePct, 1)}
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
 
-                    <div className="min-w-0 flex-1">
-                      {/* Two lines, then it stops: a river of headlines is
-                          for scanning, and the publisher's page has the rest. */}
-                      <p className="line-clamp-2 text-sm leading-snug font-medium text-foreground">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        <span className="text-foreground/70">{item.name}</span>
-                        {/* Punctuation, not copy: the separator belongs to
-                            the layout, the words on either side to lib/copy. */}
-                        <span aria-hidden="true"> · </span>
-                        {copy.newsByline(
-                          item.source,
-                          formatTimeAgo(item.publishedAt),
-                        )}
-                      </p>
-                    </div>
-                    <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  </a>
-                </motion.li>
-              );
-            })}
+                        <div className="min-w-0 flex-1">
+                          {/* Two lines, then it stops: a river of headlines
+                              is for scanning, and the publisher's page has
+                              the rest. */}
+                          <p className="line-clamp-2 text-sm leading-snug font-medium text-foreground">
+                            {item.title}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            <span className="text-foreground/70">
+                              {item.name}
+                            </span>
+                            {/* Punctuation, not copy: the separator belongs
+                                to the layout, the words on either side to
+                                lib/copy. */}
+                            <span aria-hidden="true"> · </span>
+                            {copy.newsByline(
+                              item.source,
+                              formatTimeAgo(item.publishedAt),
+                            )}
+                          </p>
+                        </div>
+                        <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      </a>
+                    </motion.li>
+                  );
+                })}
           </motion.ul>
         </AnimatePresence>
       )}

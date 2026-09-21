@@ -9,7 +9,9 @@ Minimum size: 16 px for the mark, 80 px wide for the wordmark.
 ## Colour rules
 The mark is ink (#151B1A) on bg (#F4F5F2), or bg on ink, or ink on accent (#1F4ED8). Never accent on bg for the mark alone.
 The accent is for one thing per composition: a link, a primary action, or one word of a headline. Never two.
-No gradients, except a faint surface to surface-2 wash on the OG background. No glow, 3D, or photographs.
+No gradients, except a faint surface to surface-2 wash on the OG background. No glow, 3D, or photographs of our own.
+
+One exception to photographs, added 2026-09-21: an avatar that belongs to somebody else's post. A post shown on X's terms must carry its author's face beside their name and handle, so the posts column carries avatars at 44px, circular, and nowhere else. They are attribution, not decoration: we never choose them, never crop them for effect, and never use one to illustrate anything. The rest of the app still has no photographs.
 
 Grain and glass are allowed, added 2026-09-17, and each has one rule.
 

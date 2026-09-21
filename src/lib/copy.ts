@@ -153,6 +153,20 @@ export type Copy = {
   newsEmptyFor: (name: string) => string;
   /** Follows the listing's name: "NVIDIA The Motley Fool, 2 hours ago". */
   newsByline: (source: string, when: string) => string;
+  /** The two ways of reading the column. Both are nouns, not verbs. */
+  newsTabPosts: string;
+  newsTabHeadlines: string;
+  /** Names what the tabs switch, for a screen reader. */
+  newsTabsLabel: string;
+  /** The posts tab's own hint, which promises something different. */
+  postsHint: string;
+  /** Shown when the accounts we follow have been quiet. */
+  postsEmpty: string;
+  postsEmptyFor: (name: string) => string;
+  /** Follows the author's name: "NVIDIA @nvidia, 2 hours ago". */
+  postsByline: (handle: string, when: string) => string;
+  /** On the mark that says where a post came from. */
+  postsSourceLabel: string;
 
   /* — cash: idle dollars in the Treasury ETF token — */
   cashTitle: string;
@@ -484,6 +498,15 @@ export const COPY: Copy = {
   newsShowAll: "Show all",
   newsEmptyFor: (name) => `Nothing new about ${name} right now.`,
   newsByline: (source, when) => `${source}, ${when}`,
+  newsTabPosts: "Posts",
+  newsTabHeadlines: "Headlines",
+  newsTabsLabel: "What to read",
+  postsHint:
+    "What the companies and the market desks are posting on X. Tapping one opens the post.",
+  postsEmpty: "The accounts we follow have been quiet.",
+  postsEmptyFor: (name) => `Nothing about ${name} on X right now.`,
+  postsByline: (handle, when) => `@${handle}, ${when}`,
+  postsSourceLabel: "Posted on X",
 
   cashTitle: "Cash",
   cashHint: "Idle dollars sit in a token tracking a fund of short Treasury bills, not in a lending pool.",
