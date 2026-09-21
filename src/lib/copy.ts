@@ -365,6 +365,14 @@ export type Copy = {
   xpToNext: (xp: string, rankName: string) => string;
   pickFace: (amount: number) => string;
   newFace: string;
+  /** Offered only to a wallet account, which has no email of its own. */
+  addEmailTitle: string;
+  addEmailSub: (amount: number) => string;
+  /** While the wallet is being asked to prove it owns the address. */
+  addEmailSigning: string;
+  /** The honest ending: that address is somebody else's account already. */
+  addEmailTaken: string;
+  addEmailFailed: string;
   inviteLockedTitle: (rankName: string) => string;
   inviteLockedSub: (level: number) => string;
   friendInvitedYou: string;
@@ -694,6 +702,12 @@ export const COPY: Copy = {
   xpToNext: (xp, rankName) => `${xp} XP to ${rankName}`,
   pickFace: (amount) => `Pick an avatar · +${amount} XP`,
   newFace: "Change avatar",
+  addEmailTitle: "Add an email to your account",
+  addEmailSub: (amount) => `Keeps your account recoverable. +${amount} XP`,
+  addEmailSigning: "Confirm in your wallet, so we know the account is yours.",
+  addEmailTaken:
+    "That email already belongs to another account. Try a different one.",
+  addEmailFailed: "That did not go through. Try again.",
   inviteLockedTitle: (rankName) => `Invites unlock at ${rankName}`,
   inviteLockedSub: (level) =>
     `Reach level ${level} and you can invite friends too.`,
