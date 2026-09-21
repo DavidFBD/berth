@@ -365,8 +365,6 @@ export type Copy = {
   xpToNext: (xp: string, rankName: string) => string;
   pickFace: (amount: number) => string;
   newFace: string;
-  addEmailTitle: string;
-  addEmailSub: (amount: number) => string;
   inviteLockedTitle: (rankName: string) => string;
   inviteLockedSub: (level: number) => string;
   friendInvitedYou: string;
@@ -696,8 +694,6 @@ export const COPY: Copy = {
   xpToNext: (xp, rankName) => `${xp} XP to ${rankName}`,
   pickFace: (amount) => `Pick an avatar · +${amount} XP`,
   newFace: "Change avatar",
-  addEmailTitle: "Add an email to your account",
-  addEmailSub: (amount) => `Keeps your account recoverable. +${amount} XP`,
   inviteLockedTitle: (rankName) => `Invites unlock at ${rankName}`,
   inviteLockedSub: (level) =>
     `Reach level ${level} and you can invite friends too.`,

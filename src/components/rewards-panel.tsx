@@ -8,7 +8,6 @@ import {
   CaretDown,
   Check,
   UserCircle,
-  EnvelopeSimple,
   HandHeart,
   LockSimple,
   Receipt,
@@ -35,7 +34,6 @@ import {
   useSetAvatar,
   useXpHistory,
 } from "@/hooks/use-profile";
-import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useCopy } from "@/components/settings-provider";
 
 /**
@@ -47,7 +45,6 @@ import { useCopy } from "@/components/settings-provider";
 export function RewardsPanel() {
   const profile = useProfile();
   const setAvatar = useSetAvatar();
-  const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
   /**
    * Whether the avatar grid is unfolded. null = no explicit choice, and the
@@ -57,7 +54,7 @@ export function RewardsPanel() {
   const [gridToggled, setGridToggled] = useState<boolean | null>(null);
 
   if (!profile.data) return null;
-  const { xp, avatarId, hasEmail } = profile.data;
+  const { xp, avatarId } = profile.data;
   const rank = rankForXp(xp);
   const currentSrc = avatarSrc(avatarId);
   const gridOpen = gridToggled ?? avatarId == null;
@@ -181,26 +178,26 @@ export function RewardsPanel() {
 
       <LedgerRow />
 
-      {/* The invitation: wallet guests can put a name to the account. The
-          server pays the reward once the Privy session and the wallet meet
-          on one row, so this button only has to open the door. */}
-      {!hasEmail && privy.enabled && !privy.authenticated && (
-        <button
-          type="button"
-          onClick={privy.login}
-          className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
-        >
-          <EnvelopeSimple className="size-5 shrink-0 text-primary" />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="text-sm font-medium text-foreground">
-              {copy.addEmailTitle}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {copy.addEmailSub(XP_ACTIONS.email_linked.amount)}
-            </span>
-          </span>
-        </button>
-      )}
+      {/* Removed 2026-09-21. This offered a wallet guest an email "for your
+          account" and called `privy.login`, which is the sign-in flow: there
+          is no link flow in this app, and `linkEmail` appears nowhere. Two
+          things went wrong and only one of them was the button. An email
+          that already had a Privy account signed the user into THAT account,
+          because accounts.ts resolves by privy_did first and the claim path
+          only fires for a DID with no row. And a fresh email was no better,
+          because lib/account.ts says an email session wins on EVM chains
+          while Privy is configured email-only with createOnLogin
+          "users-without-wallets", so every sign-in mints an embedded wallet
+          and moves the money account off the wallet the user connected.
+          Their holdings stay safe in the wallet's own hub account and stop
+          being visible, and anything bought meanwhile lands somewhere else.
+
+          The rewards row can genuinely hold a wallet and a DID together;
+          the money account cannot, so there is nothing to offer here until
+          the address rule stops letting an email session override a
+          connected wallet. The server side is untouched and still correct
+          for the direction that does work: an email user who later connects
+          a wallet claims their row and is paid email_linked once. */}
     </div>
   );
 }
