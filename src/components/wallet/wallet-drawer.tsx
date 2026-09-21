@@ -101,13 +101,13 @@ export function WalletDrawer({
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <div className="relative flex items-center justify-center">
+          <div className="relative flex items-center gap-1 group-data-[swipe-axis=y]/drawer-popup:justify-center">
             {!atFamilyLevel && (
               <Button
                 variant="ghost"
                 size="icon-sm"
                 aria-label={copy.walletBack}
-                className="absolute left-0"
+                className="group-data-[swipe-axis=y]/drawer-popup:absolute group-data-[swipe-axis=y]/drawer-popup:left-0"
                 onClick={back}
               >
                 <ArrowLeft />
@@ -167,7 +167,7 @@ function FamilyList({
 }) {
   const copy = useCopy();
   return (
-    <ScrollArea className="max-h-[55svh]">
+    <ScrollArea className="group-data-[swipe-axis=y]/drawer-popup:max-h-[55svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
       <div className="flex flex-col gap-0.5 px-2">
         {groups.map((group) => {
           // The Privy-bridged embedded wallet surfaces here like any
@@ -359,7 +359,7 @@ function ConnectorLevel({
   }
 
   return (
-    <ScrollArea className="max-h-[55svh]">
+    <ScrollArea className="group-data-[swipe-axis=y]/drawer-popup:max-h-[55svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
       <div className="flex flex-col gap-0.5 px-2">
         {sorted.map((connector) => (
           <ConnectorRow

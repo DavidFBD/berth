@@ -4,6 +4,7 @@ import * as React from "react"
 import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer"
 
 import { cn } from "@/lib/utils"
+import { useDrawerSide } from "@/hooks/use-drawer-side"
 
 type DrawerContextProps = {
   hasSnapPoints: boolean
@@ -24,19 +25,37 @@ function useDrawer() {
   return context
 }
 
+/**
+ * The direction is decided here rather than at each of the eight call sites,
+ * so a drawer added later is a side sheet on a desktop without anyone having
+ * to remember. A caller that genuinely needs one fixed direction can still
+ * pass `swipeDirection` and it wins; nothing does today.
+ *
+ * A drawer with snap points keeps the bottom, because a snap point is a
+ * fraction of a sheet's HEIGHT and means nothing on a sheet that is already
+ * floor to ceiling. Nothing uses them today either, but the rule belongs
+ * next to the decision rather than in a comment somewhere else.
+ */
 function Drawer({
   modal = true,
   showSwipeHandle = false,
   snapPoints,
-  swipeDirection = "down",
+  swipeDirection,
   ...props
 }: DrawerPrimitive.Root.Props & {
   showSwipeHandle?: boolean
 }) {
   const hasSnapPoints = snapPoints != null && snapPoints.length > 0
+  const responsiveSide = useDrawerSide()
+  const direction = swipeDirection ?? (hasSnapPoints ? "down" : responsiveSide)
   const contextValue = React.useMemo(
-    () => ({ hasSnapPoints, modal, showSwipeHandle, swipeDirection }),
-    [hasSnapPoints, modal, showSwipeHandle, swipeDirection]
+    () => ({
+      hasSnapPoints,
+      modal,
+      showSwipeHandle,
+      swipeDirection: direction,
+    }),
+    [hasSnapPoints, modal, showSwipeHandle, direction]
   )
 
   return (
@@ -45,7 +64,7 @@ function Drawer({
         data-slot="drawer"
         modal={modal}
         snapPoints={snapPoints}
-        swipeDirection={swipeDirection}
+        swipeDirection={direction}
         {...props}
       />
     </DrawerContext.Provider>
@@ -143,7 +162,7 @@ function DrawerContent({
             // column), so no drawer spans a wide window edge to edge.
             "data-[swipe-axis=y]:inset-x-0 data-[swipe-axis=y]:mx-auto data-[swipe-axis=y]:w-full data-[swipe-axis=y]:sm:max-w-lg data-[swipe-axis=y]:data-nested-drawer-open:h-(--stack-height)",
             // Axis: x.
-            "data-[swipe-axis=x]:inset-y-0 data-[swipe-axis=x]:flex-row",
+            "data-[swipe-axis=x]:inset-y-0 data-[swipe-axis=x]:flex-row data-[swipe-axis=x]:[--drawer-content-width:min(28rem,100vw)]",
             // Direction: down.
             "data-[swipe-direction=down]:bottom-0 data-[swipe-direction=down]:origin-bottom data-[swipe-direction=down]:[--closed-transform:translate3d(0,calc(100%+var(--drawer-inset,0px)+2px),0)] data-[swipe-direction=down]:[--translate-y:calc(var(--drawer-snap-point-offset,0px)+var(--drawer-swipe-movement-y)-var(--stack-peek-offset)-(var(--stack-shrink)*var(--stack-height)))]",
             // Direction: up.
@@ -176,7 +195,10 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="drawer-header"
       className={cn(
-        "flex shrink-0 flex-col gap-0.5 p-4 pb-0 group-data-[swipe-axis=y]/drawer-popup:text-center md:gap-0.5 md:text-left",
+        // A bottom sheet has a swipe handle above the title; a side sheet
+        // has nothing between the title and the top of the screen, so it
+        // takes the breathing room itself.
+        "flex shrink-0 flex-col gap-0.5 p-4 pb-0 group-data-[swipe-axis=x]/drawer-popup:pt-6 group-data-[swipe-axis=y]/drawer-popup:text-center md:gap-0.5 md:text-left",
         className
       )}
       {...props}
@@ -189,7 +211,12 @@ function DrawerFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="drawer-footer"
       className={cn(
-        "mt-auto flex shrink-0 flex-col gap-2 p-4 pt-0 pb-[max(env(safe-area-inset-bottom),1rem)]",
+        // `mt-auto` pins the action to the bottom edge, which is right on a
+        // short bottom sheet and wrong on a sheet that runs floor to
+        // ceiling: it strands the button most of a screen below the field
+        // it confirms, which is the exact complaint the side sheet exists
+        // to fix. On the x axis the footer simply follows the form.
+        "flex shrink-0 flex-col gap-2 p-4 pt-0 pb-[max(env(safe-area-inset-bottom),1rem)] group-data-[swipe-axis=y]/drawer-popup:mt-auto group-data-[swipe-axis=x]/drawer-popup:pt-4",
         className,
       )}
       {...props}

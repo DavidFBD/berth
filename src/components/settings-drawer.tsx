@@ -55,7 +55,7 @@ export function SettingsDrawer({
             <DrawerDescription>{copy.settingsSub}</DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex max-h-[65svh] flex-col gap-5 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          <div className="flex flex-col gap-5 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)] group-data-[swipe-axis=y]/drawer-popup:max-h-[65svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
             <section className="flex flex-col gap-2">
               <h3
                 id="appearance-label"
