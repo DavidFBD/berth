@@ -151,7 +151,15 @@ export const TOPICS: readonly Topic[] = [
   { symbol: "MU", terms: ["$MU", "Micron"], query: ["Micron"] },
   { symbol: "SNDK", terms: ["$SNDK", "Sandisk"], query: ["Sandisk"] },
   { symbol: "SPY", terms: ["$SPY", "S&P 500"], query: ['"S&P 500"'] },
-  { symbol: "QQQ", terms: ["$QQQ", "Nasdaq"], query: ["Nasdaq"] },
+  {
+    symbol: "QQQ",
+    // The index, not the exchange. Bare "Nasdaq" matched Benzinga's
+    // "TURB Explodes on $3.48M Energy Storage Deal [NASDAQ: $TURB]", which
+    // is a penny stock we do not list wearing an exchange's name. The query
+    // net can stay broad, because this is what decides.
+    terms: ["$QQQ", "Nasdaq 100", "Nasdaq-100", "Nasdaq100"],
+    query: ["Nasdaq"],
+  },
   {
     symbol: "SGOV",
     terms: ["$SGOV", "T-bill", "T-bills", "Treasury"],
@@ -256,6 +264,16 @@ const PROMOTIONAL = [
   /\bsubscribe\b/i,
   /\bsign up\b/i,
   /\bwebinar\b/i,
+  /\bwebcast\b/i,
+  /\bjoin us\b/i,
+  /\bregister\b/i,
+  /\brsvp\b/i,
+  /\bsave your seat\b/i,
+  // "Join Tony Kim, BlackRock's Head of Global Technology Funds, and SpaceX
+  // CFO Bret Johnsen, for a live conversation" is an event invitation
+  // wearing a news sentence, and iShares posts them often enough to take a
+  // fund's only slot.
+  /\bjoin\b[\s\S]{0,90}?\bfor a (live|conversation|discussion|panel)\b/i,
   /\blink in bio\b/i,
   /\bgiveaway\b/i,
   /\bpromo code\b/i,
@@ -286,6 +304,32 @@ export function avatarAt(profileImageUrl: string): string {
   return profileImageUrl.replace(/_normal(\.\w+)$/, "_bigger$1");
 }
 
+/**
+ * The post's words, without the link furniture.
+ *
+ * Every url in a post arrives as a t.co shortener, and in our card it is dead
+ * text: the whole card is one link to the post, so a url inside it cannot be
+ * clicked, and an anchor cannot be nested in an anchor anyway. It is noise
+ * that can do nothing.
+ *
+ * `display_url` was the obvious alternative and does not help: Reuters
+ * publishes reut.rs/3VlS4OT, which reads no better than t.co/U3bSDVd5tt, and
+ * Reuters routinely repeats the same shortener twice in one post, so the raw
+ * text often ends in the same dead link printed twice.
+ *
+ * So they come out. X's own embed does not render the raw shortener either,
+ * the card opens the post where every link is live, and no word the author
+ * wrote is touched. What is removed is a pointer, not a sentence.
+ */
+export function stripLinks(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function postUrl(username: string, id: string): string {
   return `https://x.com/${username}/status/${id}`;
 }
@@ -294,11 +338,6 @@ export function postUrl(username: string, id: string): string {
  * How much a post carried, as one number. A repost is a stronger signal than
  * a like, because it costs the sender something: their own timeline. A quote
  * costs them a sentence as well.
- *
- * Deliberately NOT divided by the author's following. Normalising would rank
- * a small account's one viral post above a wire's genuine scoop, and breadth
- * across the listings is already guaranteed by the per-symbol cap below, so
- * the raw figure is the honest one.
  */
 export function engagementScore(post: {
   likes: number;
@@ -309,26 +348,117 @@ export function engagementScore(post: {
 }
 
 /**
- * The column's running order: what carried furthest first, with room kept
- * for more than one listing.
+ * What each author normally gets, from the sample already in hand. No extra
+ * request: the two searches return up to 200 posts, which is several days of
+ * most of these accounts.
  *
- * Two passes, as the headline river does it, but scored rather than timed. A
- * straight engagement sort is Tesla and NVIDIA forever, because an ETF
- * issuer posting about Treasury bills will never out-like Elon Musk; the
- * `perSymbol` cap gives every listing its turn first, and the remaining room
- * then goes to whatever carried furthest regardless of name.
+ * This is the fix for the column's real defect. Raw engagement ranks FAME,
+ * not news: @saylor's throwaway line scores thirty-seven thousand and a wire
+ * desk's genuine scoop scores fifteen hundred, so sorting by it simply lists
+ * our accounts in order of following, every refresh, forever. Measured
+ * against the author's own median, a wire at three times its normal reach is
+ * visibly a scoop and a five-million-follower account posting a slogan is
+ * visibly a slow day.
  *
- * The second pass keeps a cap of its own, at twice the first. Without one it
- * undoes the first: @saylor and @SpaceX score twenty to thirty-seven
- * thousand where a wire's best scores fifteen hundred, so "fill the rest by
- * score" means eight more posts from the same two accounts, and a column
- * about thirteen listings becomes a column about two.
- *
- * Ties break on recency, so a quiet week still reorders rather than freezing.
+ * An author with fewer than three posts in the sample gets no baseline and
+ * scores neutrally, because one post is not a median and an ETF issuer that
+ * speaks twice a month would otherwise be judged on a sample of one.
  */
+const BASELINE_MIN_POSTS = 3;
+
+export function authorBaselines(
+  posts: readonly XPost[],
+): Map<string, number> {
+  const byAuthor = new Map<string, number[]>();
+  for (const post of posts) {
+    const key = post.author.username.toLowerCase();
+    const scores = byAuthor.get(key) ?? [];
+    scores.push(engagementScore(post));
+    byAuthor.set(key, scores);
+  }
+  const baselines = new Map<string, number>();
+  for (const [author, scores] of byAuthor) {
+    if (scores.length < BASELINE_MIN_POSTS) continue;
+    const sorted = [...scores].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    const median =
+      sorted.length % 2 === 0
+        ? (sorted[middle - 1] + sorted[middle]) / 2
+        : sorted[middle];
+    // A median of zero would divide the ranking by nothing.
+    baselines.set(author, Math.max(median, 1));
+  }
+  return baselines;
+}
+
+/** How far above its author's own normal a post reached. 1 is normal. */
+export function relativeReach(
+  post: XPost,
+  baselines: Map<string, number>,
+): number {
+  const baseline = baselines.get(post.author.username.toLowerCase());
+  if (baseline === undefined) return 1;
+  return engagementScore(post) / baseline;
+}
+
+/**
+ * Age, as a multiplier. Three days halves a post's standing, so something
+ * that carried genuinely far still holds its place for most of a week while
+ * this morning's real news can climb past last Tuesday's slogan. This is the
+ * dial to turn if the column feels stale or feels twitchy.
+ */
+export const HALF_LIFE_MS = 3 * 24 * 60 * 60 * 1000;
+
+export function recencyWeight(publishedAt: number, now: number): number {
+  const age = Math.max(0, now - publishedAt);
+  return 2 ** (-age / HALF_LIFE_MS);
+}
+
+/**
+ * Whether a post says anything. Engagement and newsworthiness are different
+ * axes and no amount of arithmetic on the first will produce the second, so
+ * this is the one crude reading of the text itself.
+ *
+ * A figure is the tell. "Strategy has acquired 950 BTC and repurchased $174M"
+ * and "the 10-year yield climbed above 5%" both carry one; "The only clarity
+ * you need is Bitcoin" and "A little more orange" are slogans from the same
+ * accounts on the same week, and a column called In the news should prefer
+ * the former even when the latter was liked twenty times more.
+ *
+ * Deliberately gentle, and a multiplier rather than a filter: it reorders the
+ * column, it never silences an account.
+ */
+const FIGURE = /\$\s?\d|\d+(\.\d+)?\s?%|\b\d{2,}\b/;
+const SLOGAN_CHARS = 80;
+
+export function substanceWeight(text: string): number {
+  if (FIGURE.test(text)) return 1.25;
+  return text.trim().length < SLOGAN_CHARS ? 0.55 : 1;
+}
+
+/**
+ * One post's standing in the column: how far it reached for its own author,
+ * faded by age, weighted by whether it said anything.
+ */
+export function newsScore(
+  post: XPost,
+  baselines: Map<string, number>,
+  now: number,
+): number {
+  return (
+    relativeReach(post, baselines) *
+    recencyWeight(post.publishedAt, now) *
+    substanceWeight(post.text)
+  );
+}
+
 export function rankPosts(
   posts: readonly XPost[],
-  { limit, perSymbol }: { limit: number; perSymbol: number },
+  {
+    limit,
+    perSymbol,
+    now = Date.now(),
+  }: { limit: number; perSymbol: number; now?: number },
 ): XPost[] {
   const seen = new Set<string>();
   const unique: XPost[] = [];
@@ -337,9 +467,10 @@ export function rankPosts(
     seen.add(post.id);
     unique.push(post);
   }
+  const baselines = authorBaselines(unique);
+  const scored = new Map(unique.map((post) => [post, newsScore(post, baselines, now)]));
   unique.sort(
-    (a, b) =>
-      engagementScore(b) - engagementScore(a) || b.publishedAt - a.publishedAt,
+    (a, b) => (scored.get(b) ?? 0) - (scored.get(a) ?? 0) || b.publishedAt - a.publishedAt,
   );
 
   const room = Math.max(limit, 0);

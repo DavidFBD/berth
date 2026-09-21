@@ -9,6 +9,7 @@ import {
   looksPromotional,
   postUrl,
   rankPosts,
+  stripLinks,
   symbolsForText,
   type XPost,
 } from "@/lib/x-feed";
@@ -146,7 +147,8 @@ function toPost(
   if (looksPromotional(tweet.text) || looksEmpty(tweet.text)) return undefined;
 
 
-  const text = decodeEntities(tweet.text);
+  const text = stripLinks(decodeEntities(tweet.text));
+  if (!text) return undefined;
   const mentioned = symbolsForText(text);
   let symbol: string | undefined;
   if (tier === "company") {

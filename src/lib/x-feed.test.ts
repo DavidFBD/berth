@@ -6,8 +6,14 @@ import {
   buildPressQueries,
   looksEmpty,
   looksPromotional,
+  HALF_LIFE_MS,
+  authorBaselines,
   engagementScore,
+  newsScore,
   rankPosts,
+  recencyWeight,
+  stripLinks,
+  substanceWeight,
   symbolsForText,
   type XPost,
 } from "./x-feed";
@@ -150,14 +156,6 @@ describe("rankPosts", () => {
     name: symbol,
   });
 
-  it("puts what carried furthest first", () => {
-    const ranked = rankPosts(
-      [post("1", "NVDA", 10), post("2", "TSLA", 900), post("3", "SPY", 100)],
-      { limit: 12, perSymbol: 2 },
-    );
-    expect(ranked.map((entry) => entry.id)).toEqual(["2", "3", "1"]);
-  });
-
   it("weighs a repost above a like, since it costs the sender more", () => {
     const quiet = { ...post("1", "NVDA", 100), retweets: 0 };
     const carried = { ...post("2", "TSLA", 50), retweets: 40 };
@@ -184,5 +182,182 @@ describe("rankPosts", () => {
       perSymbol: 2,
     });
     expect(ranked).toHaveLength(1);
+  });
+});
+
+/**
+ * The column's editorial rule, pinned against the posts that exposed it.
+ *
+ * Ranking by raw engagement ranked fame: in the first live run @saylor's "The
+ * only clarity you need is Bitcoin" (27,661 likes) and SpaceX's rocket
+ * marketing took four of the top four, and Walter Bloomberg's "US 10-year
+ * yield hits highest since 2007" placed tenth. Every case below is from that
+ * run.
+ */
+describe("news scoring", () => {
+  const NOW = Date.UTC(2026, 8, 21, 12, 0, 0);
+  const daysAgo = (days: number) => NOW - days * 24 * 60 * 60 * 1000;
+
+  const make = (
+    over: Partial<XPost> & { username: string; likes: number },
+  ): XPost => ({
+    id: `${over.username}-${over.likes}-${over.publishedAt ?? 0}`,
+    text: "a post about something or other that is reasonably long",
+    publishedAt: NOW,
+    author: {
+      name: over.username,
+      username: over.username,
+      avatarUrl: "https://x/a.jpg",
+    },
+    url: "https://x.com/a/status/1",
+    retweets: 0,
+    quotes: 0,
+    symbol: "NVDA",
+    name: "NVIDIA",
+    ...over,
+  });
+
+  it("measures a post against its own author, not against everyone", () => {
+    // A wire at three times its normal reach is a scoop; a huge account
+    // posting below its own average is having a slow day.
+    const sample = [
+      ...[300, 320, 280].map((likes) => make({ username: "wire", likes })),
+      ...[20_000, 25_000, 30_000].map((likes) =>
+        make({ username: "famous", likes }),
+      ),
+    ];
+    const baselines = authorBaselines(sample);
+    expect(baselines.get("wire")).toBe(300);
+    expect(baselines.get("famous")).toBe(25_000);
+
+    const scoop = make({ username: "wire", likes: 900 });
+    const slowDay = make({ username: "famous", likes: 20_000 });
+    expect(newsScore(scoop, baselines, NOW)).toBeGreaterThan(
+      newsScore(slowDay, baselines, NOW),
+    );
+  });
+
+  it("gives a sparse author no baseline, so one post is not a median", () => {
+    const sample = [make({ username: "issuer", likes: 40 })];
+    expect(authorBaselines(sample).has("issuer")).toBe(false);
+  });
+
+  it("halves a post's standing every three days", () => {
+    expect(recencyWeight(NOW, NOW)).toBeCloseTo(1);
+    expect(recencyWeight(NOW - HALF_LIFE_MS, NOW)).toBeCloseTo(0.5);
+    expect(recencyWeight(daysAgo(6), NOW)).toBeCloseTo(0.25);
+  });
+
+  it("prefers a post carrying a figure to a slogan", () => {
+    expect(
+      substanceWeight("Strategy has acquired 950 BTC and repurchased $174M"),
+    ).toBeGreaterThan(substanceWeight("The only clarity you need is Bitcoin."));
+    expect(substanceWeight("A little more orange.")).toBeLessThan(1);
+    expect(
+      substanceWeight("The 10-year Treasury yield climbed above 5%"),
+    ).toBeGreaterThan(1);
+  });
+
+  it("puts this morning's announcement above last week's slogan", () => {
+    const sample = [
+      ...[5_000, 4_000, 6_000].map((likes) =>
+        make({ username: "saylor", likes, publishedAt: daysAgo(4) }),
+      ),
+      ...[500, 400, 600].map((likes) =>
+        make({ username: "strategy", likes, publishedAt: daysAgo(4) }),
+      ),
+    ];
+    const slogan = make({
+      username: "saylor",
+      likes: 27_661,
+      retweets: 2_875,
+      publishedAt: daysAgo(6),
+      text: "The only clarity you need is Bitcoin.",
+    });
+    const announcement = make({
+      username: "strategy",
+      likes: 1_093,
+      publishedAt: NOW,
+      text: "Strategy has acquired 950 BTC and repurchased $174M of $STRC.",
+    });
+    const baselines = authorBaselines([...sample, slogan, announcement]);
+    expect(newsScore(announcement, baselines, NOW)).toBeGreaterThan(
+      newsScore(slogan, baselines, NOW),
+    );
+  });
+
+  it("still lets a genuinely big post hold its place for days", () => {
+    const sample = [300, 320, 280].map((likes) =>
+      make({ username: "wire", likes }),
+    );
+    const huge = make({
+      username: "wire",
+      likes: 9_000,
+      publishedAt: daysAgo(3),
+      text: "Fed cuts rates by 50 basis points, its largest move since 2020",
+    });
+    const ordinary = make({
+      username: "wire",
+      likes: 340,
+      publishedAt: NOW,
+      text: "Markets open slightly higher on light volume ahead of data",
+    });
+    const baselines = authorBaselines([...sample, huge, ordinary]);
+    expect(newsScore(huge, baselines, NOW)).toBeGreaterThan(
+      newsScore(ordinary, baselines, NOW),
+    );
+  });
+});
+
+describe("stripLinks", () => {
+  it("takes out the dead shortener a card cannot click", () => {
+    expect(
+      stripLinks("Oil falls amid diplomacy hopes https://t.co/jUb3cTeyu6"),
+    ).toBe("Oil falls amid diplomacy hopes");
+  });
+
+  it("takes out the same link Reuters printed twice", () => {
+    expect(
+      stripLinks("China's Xi to visit the US https://t.co/zvogXpbNld https://t.co/zvogXpbNld"),
+    ).toBe("China's Xi to visit the US");
+  });
+
+  it("leaves a link in the middle without gluing the words together", () => {
+    expect(stripLinks("Watch https://t.co/abc the launch")).toBe(
+      "Watch the launch",
+    );
+  });
+
+  it("keeps the author's own line breaks", () => {
+    expect(stripLinks("Flight 14 is go.\n\nTuesday. https://t.co/a")).toBe(
+      "Flight 14 is go.\n\nTuesday.",
+    );
+  });
+});
+
+/** Two placements the live column got wrong, and must not get wrong again. */
+describe("placements the first live run got wrong", () => {
+  it("does not read another stock's exchange tag as the Nasdaq 100 fund", () => {
+    const post = "TURB Explodes on $3.48M Energy Storage Deal [NASDAQ: $TURB]";
+    expect(symbolsForText(post)).not.toContain("QQQ");
+  });
+
+  it("still reads the index itself", () => {
+    expect(
+      symbolsForText("SpaceX will make up 2.82% of the Nasdaq 100 on Monday"),
+    ).toContain("QQQ");
+    expect(symbolsForText("$QQQ opens higher")).toContain("QQQ");
+  });
+
+  it("drops an event invitation wearing a news sentence", () => {
+    const post =
+      "What does the next phase of AI look like from the perspective of SpaceX and BlackRock?\n\nJoin Tony Kim, BlackRock's Head of Global Technology Funds, and SpaceX CFO, Bret Johnsen, for a live conversation hosted by @Fidelity Investments.";
+    expect(looksPromotional(post)).toBe(true);
+  });
+
+  it("leaves a story that merely contains the word join alone", () => {
+    expect(
+      looksPromotional("Altman and Huang set to join Xi at White House dinner"),
+    ).toBe(false);
   });
 });
