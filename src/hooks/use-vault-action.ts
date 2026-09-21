@@ -31,7 +31,9 @@ import {
   extractErrorCode,
   friendlyError,
   rawErrorMessage,
+  type GasContext,
 } from "@/lib/error-copy";
+import { getChainName, getNativeGasToken } from "@/lib/chains";
 import { COPY } from "@/lib/copy";
 import {
   TRACKING_RELEASE_MS,
@@ -54,6 +56,22 @@ export type { PourStep as VaultActionStep };
 
 /** Any connected wallet provider — the exact family is resolved at runtime. */
 type AnyWalletProvider = GetWalletProviderType<SpokeChainKey>;
+
+/**
+ * What the source chain charges its fee in, so a wallet that cannot pay can
+ * be told what to top up and where. Both directions pay on the source chain:
+ * a withdraw signs on the chain the shares sit on, not the one the money
+ * lands on.
+ */
+function gasContextFor(srcChainKey: SpokeChainKey): GasContext | undefined {
+  const native = getNativeGasToken(srcChainKey);
+  if (!native) return undefined;
+  return {
+    symbol: native.symbol,
+    decimals: native.decimals,
+    network: getChainName(srcChainKey),
+  };
+}
 
 /**
  * The toast copy for the fill's terminal moment. Supplied per run because the
@@ -405,6 +423,7 @@ export function useVaultAction(options?: {
             friendlyError(
               built.error,
               COPY.errCouldNotPrepare,
+              gasContextFor(args.srcChainKey),
             ),
             built.error,
           );
@@ -445,6 +464,7 @@ export function useVaultAction(options?: {
               friendlyError(
                 approved.error,
                 COPY.errApprovalFailed,
+                gasContextFor(args.srcChainKey),
               ),
               approved.error,
             );
@@ -470,6 +490,7 @@ export function useVaultAction(options?: {
               friendlyError(
                 built.error,
                 COPY.errCouldNotPrepare,
+                gasContextFor(args.srcChainKey),
               ),
               built.error,
             );
@@ -492,7 +513,7 @@ export function useVaultAction(options?: {
         });
         if (!swapped.ok) {
           fail(
-            friendlyError(swapped.error, COPY.errOrderFailed),
+            friendlyError(swapped.error, COPY.errOrderFailed, gasContextFor(args.srcChainKey)),
             swapped.error,
           );
           return false;
@@ -563,6 +584,7 @@ export function useVaultAction(options?: {
             friendlyError(
               built.error,
               COPY.errCouldNotPrepare,
+              gasContextFor(args.srcChainKey),
             ),
             built.error,
           );
@@ -582,6 +604,7 @@ export function useVaultAction(options?: {
             friendlyError(
               swapped.error,
               COPY.errOrderFailed,
+              gasContextFor(args.srcChainKey),
             ),
             swapped.error,
           );

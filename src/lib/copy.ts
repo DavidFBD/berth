@@ -296,6 +296,13 @@ export type Copy = {
   errApprovalFailed: string;
   errAllowanceStillPending: string;
   errOrderFailed: string;
+  /**
+   * `shortfall` is already formatted with its symbol, e.g. "0.00024 ETH".
+   * Said when the wallet cannot cover the network fee, where the generic
+   * failure line would send the user round a loop that cannot succeed.
+   */
+  errNeedsGas: (shortfall: string, network: string) => string;
+  errNeedsGasUnknown: (network: string) => string;
 
   /* — keys export — */
   exportKeysTitle: string;
@@ -613,6 +620,10 @@ export const COPY: Copy = {
   errAllowanceStillPending:
     "The approval is still confirming. Wait a few seconds and try again.",
   errOrderFailed: "The order did not go through. Try again.",
+  errNeedsGas: (shortfall, network) =>
+    `Not enough to cover the network fee. Add about ${shortfall} on ${network} and try again.`,
+  errNeedsGasUnknown: (network) =>
+    `Not enough to cover the network fee. Add a little more on ${network} and try again.`,
 
   exportKeysTitle: "Take your keys",
   exportKeysSub:

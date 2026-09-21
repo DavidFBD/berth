@@ -100,7 +100,18 @@ function hash(input: string): string {
 export function fingerprintOf(context: ErrorReportContext): string {
   const normalized = (context.rawMessage ?? context.friendlyMessage)
     .toLowerCase()
+    // Request ids first: a UUID survives both rules below (its groups start
+    // with a letter as often as not, and `\b\d[\d.,]*\b` needs a word
+    // boundary a hex group does not give), so one Solana RPC outage filed
+    // five identical issues, #16 through #20, differing only by the id the
+    // node echoed back.
+    .replace(/\b[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/g, "uuid")
     .replace(/0x[a-f0-9]{6,}/g, "0x…")
+    // Base58 account addresses, which carry no 0x and are not all digits.
+    // The alphabet is matched as lowercased above, so its exclusions (0, O,
+    // I, l) collapse to "no zero": what is left is a long unbroken run of
+    // letters and digits, which in a node's message is always an identifier.
+    .replace(/\b[1-9a-z]{32,44}\b/g, "acct")
     .replace(/\b\d[\d.,]*\b/g, "n")
     .slice(0, 300);
   return hash(
@@ -115,11 +126,16 @@ export function fingerprintOf(context: ErrorReportContext): string {
 }
 
 /**
- * Fingerprints already sent this session. A failing pour is often retried, and
- * the SDK itself retries underneath, so without this one bad afternoon becomes
- * a hundred comments on one issue.
+ * Fingerprints already sent this session, each holding the attempt itself. A
+ * failing pour is often retried, and the SDK itself retries underneath, so
+ * without this one bad afternoon becomes a hundred comments on one issue.
+ *
+ * The attempt is kept rather than the bare fingerprint so a repeat can answer
+ * with what actually happened to the first one. It used to answer "duplicate"
+ * unconditionally, which the UI reads as filed, so a second failure could tell
+ * the user the team had been told when nothing had been sent at all.
  */
-const sentThisSession = new Set<string>();
+const reportedThisSession = new Map<string, Promise<ErrorReportResult>>();
 
 /** True when this failure is worth a team's attention. */
 export function isReportable(friendlyMessage: string, cancelledCopy: string) {
@@ -130,11 +146,26 @@ export async function submitErrorReport(
   context: ErrorReportContext,
 ): Promise<ErrorReportResult> {
   const fingerprint = fingerprintOf(context);
-  if (sentThisSession.has(fingerprint)) {
-    return { status: "duplicate", reason: "already reported this session" };
+  const earlier = reportedThisSession.get(fingerprint);
+  if (earlier) {
+    // Whatever became of the first attempt is the truth about this one, down
+    // to the issue number, so a retry can still show the same reference.
+    const result = await earlier;
+    return { ...result, reason: "already reported this session" };
   }
-  sentThisSession.add(fingerprint);
 
+  const attempt = sendReport(context, fingerprint);
+  reportedThisSession.set(fingerprint, attempt);
+  const result = await attempt;
+  // Let a retry through: this attempt never reached the tracker.
+  if (result.status === "failed") reportedThisSession.delete(fingerprint);
+  return result;
+}
+
+async function sendReport(
+  context: ErrorReportContext,
+  fingerprint: string,
+): Promise<ErrorReportResult> {
   const payload: ErrorReportPayload = {
     ...context,
     fingerprint,
@@ -157,13 +188,10 @@ export async function submitErrorReport(
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      // Let a retry through: this attempt never reached the tracker.
-      sentThisSession.delete(fingerprint);
       return { status: "failed", reason: `route responded ${response.status}` };
     }
     return (await response.json()) as ErrorReportResult;
   } catch (error) {
-    sentThisSession.delete(fingerprint);
     return {
       status: "failed",
       reason: error instanceof Error ? error.message : "network error",
