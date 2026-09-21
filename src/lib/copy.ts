@@ -167,6 +167,11 @@ export type Copy = {
   postsByline: (handle: string, when: string) => string;
   /** On the mark that says where a post came from. */
   postsSourceLabel: string;
+  /**
+   * What a screen reader hears in place of the three figures under a post.
+   * The figures themselves arrive already shortened: "11", "54", "1.2K".
+   */
+  postsMetrics: (replies: string, reposts: string, likes: string) => string;
 
   /* — cash: idle dollars in the Treasury ETF token — */
   cashTitle: string;
@@ -507,6 +512,8 @@ export const COPY: Copy = {
   postsEmptyFor: (name) => `Nothing about ${name} on X right now.`,
   postsByline: (handle, when) => `@${handle}, ${when}`,
   postsSourceLabel: "Posted on X",
+  postsMetrics: (replies, reposts, likes) =>
+    `${replies} replies, ${reposts} reposts, ${likes} likes`,
 
   cashTitle: "Cash",
   cashHint: "Idle dollars sit in a token tracking a fund of short Treasury bills, not in a lending pool.",

@@ -78,6 +78,7 @@ type SearchTweet = {
     like_count?: number;
     retweet_count?: number;
     quote_count?: number;
+    reply_count?: number;
   };
 };
 
@@ -175,6 +176,7 @@ function toPost(
     likes: tweet.public_metrics?.like_count ?? 0,
     retweets: tweet.public_metrics?.retweet_count ?? 0,
     quotes: tweet.public_metrics?.quote_count ?? 0,
+    replies: tweet.public_metrics?.reply_count ?? 0,
     symbol,
     name,
   };

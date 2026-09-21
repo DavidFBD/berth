@@ -9,6 +9,7 @@ import {
   HALF_LIFE_MS,
   authorBaselines,
   engagementScore,
+  formatCount,
   newsScore,
   rankPosts,
   recencyWeight,
@@ -152,6 +153,7 @@ describe("rankPosts", () => {
     likes,
     retweets: 0,
     quotes: 0,
+    replies: 0,
     symbol,
     name: symbol,
   });
@@ -212,6 +214,7 @@ describe("news scoring", () => {
     url: "https://x.com/a/status/1",
     retweets: 0,
     quotes: 0,
+    replies: 0,
     symbol: "NVDA",
     name: "NVIDIA",
     ...over,
@@ -359,5 +362,25 @@ describe("placements the first live run got wrong", () => {
     expect(
       looksPromotional("Altman and Huang set to join Xi at White House dinner"),
     ).toBe(false);
+  });
+});
+
+describe("formatCount", () => {
+  it("keeps a small number exact, since rounding it reads as evasion", () => {
+    expect(formatCount(0)).toBe("0");
+    expect(formatCount(11)).toBe("11");
+    expect(formatCount(264)).toBe("264");
+    expect(formatCount(999)).toBe("999");
+  });
+
+  it("shortens a big one the way a reader would say it", () => {
+    expect(formatCount(1_206)).toBe("1.2K");
+    expect(formatCount(27_661)).toBe("27.7K");
+    expect(formatCount(1_400_000)).toBe("1.4M");
+  });
+
+  it("drops a decimal that says nothing", () => {
+    expect(formatCount(5_000)).toBe("5K");
+    expect(formatCount(2_000_000)).toBe("2M");
   });
 });

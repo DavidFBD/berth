@@ -58,6 +58,7 @@ export type XPost = {
   likes: number;
   retweets: number;
   quotes: number;
+  replies: number;
   /** The listing this was placed against. */
   symbol: string;
   /** That listing's plain name, for the chip on the card. */
@@ -328,6 +329,20 @@ export function stripLinks(text: string): string {
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * A count as a reader would say it: 264, 1.2K, 27.7K, 1.4M. Under a thousand
+ * stays exact, because rounding a small number reads as evasion, and a whole
+ * thousand loses its decimal so it is "5K" and never "5.0K".
+ */
+export function formatCount(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return "0";
+  if (value < 1_000) return String(Math.round(value));
+  const [scaled, suffix] =
+    value < 1_000_000 ? [value / 1_000, "K"] : [value / 1_000_000, "M"];
+  const rounded = Math.round(scaled * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}${suffix}`;
 }
 
 export function postUrl(username: string, id: string): string {

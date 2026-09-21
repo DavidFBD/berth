@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, X, XLogo } from "@phosphor-icons/react";
+import {
+  ArrowUpRight,
+  ChatCircle,
+  Heart,
+  Repeat,
+  X,
+  XLogo,
+} from "@phosphor-icons/react";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
@@ -12,6 +19,7 @@ import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT } from "@/lib/motion";
 import { formatTimeAgo } from "@/lib/news";
+import { formatCount } from "@/lib/x-feed";
 import {
   changeDirection,
   formatPercentChange,
@@ -245,16 +253,51 @@ export function NewsFeed({
                           <p className="mt-1 line-clamp-5 text-sm leading-snug whitespace-pre-line text-foreground">
                             {post.text}
                           </p>
-                          <p className="mt-1.5 flex items-center gap-1.5 text-[11px]">
-                            <span className="text-foreground/70">
-                              {post.name}
-                            </span>
-                            {moved?.changePct !== undefined && direction && (
-                              <span className={`money ${TONE[direction]}`}>
-                                {formatPercentChange(moved.changePct, 1)}
+                          <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px]">
+                            <p className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate text-foreground/70">
+                                {post.name}
                               </span>
-                            )}
-                          </p>
+                              {moved?.changePct !== undefined && direction && (
+                                <span className={`money ${TONE[direction]}`}>
+                                  {formatPercentChange(moved.changePct, 1)}
+                                </span>
+                              )}
+                            </p>
+                            {/* How far the post carried, in X's own order.
+                                Quiet on purpose: it is context for the post
+                                above it, not a scoreboard, so it sits in the
+                                muted tone and a count of zero is simply
+                                absent rather than written as "0". The figures
+                                are as fresh as the cache, up to six hours. */}
+                            <span
+                              className="flex shrink-0 items-center gap-2 text-muted-foreground"
+                              aria-label={copy.postsMetrics(
+                                formatCount(post.replies),
+                                formatCount(post.retweets),
+                                formatCount(post.likes),
+                              )}
+                            >
+                              {[
+                                { icon: ChatCircle, value: post.replies },
+                                { icon: Repeat, value: post.retweets },
+                                { icon: Heart, value: post.likes },
+                              ].map(({ icon: Glyph, value }, index) =>
+                                value > 0 ? (
+                                  <span
+                                    key={index}
+                                    aria-hidden="true"
+                                    className="flex items-center gap-1"
+                                  >
+                                    <Glyph className="size-3.5" />
+                                    <span className="money">
+                                      {formatCount(value)}
+                                    </span>
+                                  </span>
+                                ) : null,
+                              )}
+                            </span>
+                          </div>
                         </div>
                         <XLogo
                           aria-label={copy.postsSourceLabel}
