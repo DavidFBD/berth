@@ -368,8 +368,18 @@ export type Copy = {
   /** Offered only to a wallet account, which has no email of its own. */
   addEmailTitle: string;
   addEmailSub: (amount: number) => string;
+  addEmailPlaceholder: string;
+  addEmailContinue: string;
   /** While the wallet is being asked to prove it owns the address. */
   addEmailSigning: string;
+  addEmailSending: string;
+  /** Above the code field; `email` is the address it went to. */
+  addEmailCodeSent: (email: string) => string;
+  addEmailCodePlaceholder: string;
+  addEmailVerify: string;
+  addEmailVerifying: string;
+  addEmailDone: string;
+  addEmailCancel: string;
   /** The honest ending: that address is somebody else's account already. */
   addEmailTaken: string;
   addEmailFailed: string;
@@ -704,7 +714,16 @@ export const COPY: Copy = {
   newFace: "Change avatar",
   addEmailTitle: "Add an email to your account",
   addEmailSub: (amount) => `Keeps your account recoverable. +${amount} XP`,
+  addEmailPlaceholder: "you@example.com",
+  addEmailContinue: "Continue",
   addEmailSigning: "Confirm in your wallet, so we know the account is yours.",
+  addEmailSending: "Sending you a code.",
+  addEmailCodeSent: (email) => `Enter the code we sent to ${email}.`,
+  addEmailCodePlaceholder: "6 digit code",
+  addEmailVerify: "Add email",
+  addEmailVerifying: "Checking the code.",
+  addEmailDone: "Email added.",
+  addEmailCancel: "Cancel",
   addEmailTaken:
     "That email already belongs to another account. Try a different one.",
   addEmailFailed: "That did not go through. Try again.",

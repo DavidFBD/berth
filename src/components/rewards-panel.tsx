@@ -20,6 +20,8 @@ import { HOME_CHAIN } from "@/lib/account";
 import { useAccount } from "@/hooks/use-account";
 import { useLinkEmail } from "@/hooks/use-link-email";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { SPRING_POP, SPRING_SHELF } from "@/lib/motion";
 import { AVATARS, avatarSrc, type AvatarId, resolveAvatarId } from "@/lib/avatars";
@@ -195,45 +197,138 @@ export function RewardsPanel() {
 
       <LedgerRow />
 
-      {/* Restored 2026-09-21, in the opposite order to the version that
-          was removed the same day. That one called `privy.login`, which
-          mints an embedded wallet, which hands the money account to an
-          address the user never chose. This one signs in with the WALLET
-          first (no embedded wallet, because createOnLogin is
-          "users-without-wallets" and this user has one), so the Privy
-          session is anchored to the address that already owned the account,
-          and only then links the email. See hooks/use-link-email.
-
-          Offered only to a wallet account: an email session already has an
-          email, and there is nothing to sign with otherwise. */}
-      {!hasEmail &&
-        privy.enabled &&
-        !privy.authenticated &&
-        account.mode === "external" &&
-        account.address && (
-          <button
-            type="button"
-            disabled={link.state === "signing" || link.state === "linking"}
-            onClick={() => void link.start(account.address!)}
-            className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99] disabled:pointer-events-none disabled:opacity-70"
-          >
-            <EnvelopeSimple className="size-5 shrink-0 text-primary" />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-sm font-medium text-foreground">
+      {/* The email is asked for BEFORE the signature, because being asked
+          to sign for something you have not been told about yet is how the
+          second attempt at this felt. The gate deliberately does NOT read
+          `privy.authenticated`: signing in is step two of this very flow, so
+          a gate that read it would unmount the form mid-flow, which is
+          exactly what happened on 2026-09-21. `mode === "external"` already
+          means there is no email session here. See hooks/use-link-email. */}
+      {!hasEmail && privy.enabled && account.mode === "external" && account.address && (
+        <div className="rounded-lg bg-muted/60 p-3">
+          {link.state === "idle" ? (
+            <button
+              type="button"
+              onClick={link.open}
+              className="flex min-h-9 w-full items-center gap-3 text-left"
+            >
+              <EnvelopeSimple className="size-5 shrink-0 text-primary" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-medium text-foreground">
+                  {copy.addEmailTitle}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {copy.addEmailSub(XP_ACTIONS.email_linked.amount)}
+                </span>
+              </span>
+            </button>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <EnvelopeSimple className="size-5 shrink-0 text-primary" />
                 {copy.addEmailTitle}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {link.state === "signing"
-                  ? copy.addEmailSigning
-                  : link.state === "taken"
-                    ? copy.addEmailTaken
-                    : link.state === "failed"
-                      ? copy.addEmailFailed
-                      : copy.addEmailSub(XP_ACTIONS.email_linked.amount)}
-              </span>
-            </span>
-          </button>
-        )}
+              </p>
+
+              {link.state === "code" || link.state === "verifying" ? (
+                <form
+                  className="flex flex-col gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const code = new FormData(event.currentTarget).get("code");
+                    if (typeof code === "string" && code.trim()) {
+                      void link.submitCode(code.trim());
+                    }
+                  }}
+                >
+                  <p className="text-xs text-muted-foreground">
+                    {copy.addEmailCodeSent(link.pendingEmail)}
+                  </p>
+                  <Input
+                    name="code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder={copy.addEmailCodePlaceholder}
+                    aria-label={copy.addEmailCodePlaceholder}
+                    disabled={link.state === "verifying"}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={link.state === "verifying"}
+                    >
+                      {copy.addEmailVerify}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={link.cancel}
+                    >
+                      {copy.addEmailCancel}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <form
+                  className="flex flex-col gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const email = new FormData(event.currentTarget).get("email");
+                    if (typeof email === "string" && email.trim()) {
+                      void link.submitEmail(email.trim(), account.address!);
+                    }
+                  }}
+                >
+                  <Input
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    placeholder={copy.addEmailPlaceholder}
+                    aria-label={copy.addEmailTitle}
+                    disabled={link.state !== "email" && link.state !== "taken"}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={link.state !== "email" && link.state !== "taken"}
+                    >
+                      {copy.addEmailContinue}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={link.cancel}
+                    >
+                      {copy.addEmailCancel}
+                    </Button>
+                  </div>
+                </form>
+              )}
+
+              {/* One line that says where the flow is, or what went wrong. */}
+              {link.state !== "email" && link.state !== "code" && (
+                <p className="text-xs text-muted-foreground">
+                  {link.state === "signing"
+                    ? copy.addEmailSigning
+                    : link.state === "sending"
+                      ? copy.addEmailSending
+                      : link.state === "verifying"
+                        ? copy.addEmailVerifying
+                        : link.state === "taken"
+                          ? copy.addEmailTaken
+                          : link.state === "done"
+                            ? copy.addEmailDone
+                            : copy.addEmailFailed}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

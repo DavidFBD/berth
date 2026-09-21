@@ -49,7 +49,7 @@ export async function verifyPrivyAuth(
   }
 }
 
-type PrivyLinkedAccount = {
+export type PrivyLinkedAccount = {
   type: string;
   address?: string;
   email?: string;
@@ -110,11 +110,42 @@ const walletCache = new Map<string, { address: string | null; at: number }>();
 const WALLET_CACHE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The DID's embedded EVM wallet, from Privy's own records — the server-side
- * verified answer to "which wallet is this email user", replacing the old
- * client-asserted body field. Null when none is minted yet or the API
- * hiccups; identity then rests on the DID alone, which is fine.
+ * The EVM address this Privy user's account belongs to, from Privy's own
+ * records: the server-side verified answer to "who is this DID", replacing
+ * the old client-asserted body field.
+ *
+ * Embedded first, then any linked external wallet, and the order is the
+ * whole point. An email user's account is their embedded wallet, so that
+ * must win even when they have also linked an external one, because
+ * lib/account gives the money account to the embedded address in email mode
+ * and the two must name the same person.
+ *
+ * The external fallback exists because a Privy session can now be created by
+ * signing with an external wallet (hooks/use-link-email), and that user has
+ * no embedded wallet at all. Without the fallback this returned null, the
+ * claim path in accounts.ts never fired for want of an address, and a user
+ * who had just proved ownership of the wallet holding their positions was
+ * handed a brand new empty account instead. That happened to a real account
+ * on 2026-09-21 and is what this fallback exists to prevent.
+ *
+ * Null when the user has no EVM wallet at all or the API hiccups; identity
+ * then rests on the DID alone, which is fine.
  */
+export function pickAccountWallet(
+  accounts: readonly PrivyLinkedAccount[],
+): string | null {
+  const evmWallets = accounts.filter(
+    (account) =>
+      account.type === "wallet" &&
+      account.chain_type === "ethereum" &&
+      account.address,
+  );
+  const embedded = evmWallets.find(
+    (account) => account.wallet_client_type === "privy",
+  );
+  return (embedded ?? evmWallets[0])?.address?.toLowerCase() ?? null;
+}
+
 export async function fetchPrivyWallet(did: string): Promise<string | null> {
   const cached = walletCache.get(did);
   if (cached && Date.now() - cached.at < WALLET_CACHE_MS && cached.address) {
@@ -122,14 +153,7 @@ export async function fetchPrivyWallet(did: string): Promise<string | null> {
   }
   const accounts = await fetchPrivyUser(did);
   if (accounts === null) return null; // API hiccup: don't cache the failure
-  const embedded = accounts.find(
-    (account) =>
-      account.type === "wallet" &&
-      account.wallet_client_type === "privy" &&
-      account.chain_type === "ethereum" &&
-      account.address,
-  );
-  const address = embedded?.address?.toLowerCase() ?? null;
+  const address = pickAccountWallet(accounts);
   walletCache.set(did, { address, at: Date.now() });
   return address;
 }

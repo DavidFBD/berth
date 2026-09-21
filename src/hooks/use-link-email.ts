@@ -2,108 +2,125 @@
 
 import { useCallback, useState } from "react";
 import { getAddress } from "viem";
-import { useLinkAccount, useLoginWithSiwe } from "@privy-io/react-auth";
+import { useLinkEmail as usePrivyLinkEmail, useLoginWithSiwe } from "@privy-io/react-auth";
 import { useXSignMessage } from "@sodax/wallet-sdk-react";
-import { HOME_CHAIN } from "@/lib/account";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 
 /**
  * Putting an email on a wallet account, in the one order that does not move
+ * the account, and in the order a person would expect.
+ *
+ * Two earlier versions of this were wrong, both instructively.
+ *
+ * The first called `privy.login`, which mints an embedded wallet, which
+ * hands the money account to an address the user never chose: lib/account
+ * gives the account to whichever address wins on the home chain, and an
+ * email session wins there whenever an embedded wallet exists. So the rule
+ * is to never let one be created. Signing in with the WALLET does not create
+ * one, because `createOnLogin` is "users-without-wallets" and this user has
+ * a wallet, so the session lands anchored to the address that already owned
  * the account.
  *
- * The previous attempt at this called `privy.login`, which is the sign-in
- * flow, and it was removed after it signed a user into a stranger's account
- * (see the note in rewards-panel and the round in thoughts.md). The failure
- * was not the button. It was the order of operations.
+ * The second got that right and the order wrong. It signed first and asked
+ * for the email afterwards, through Privy's modal, which meant a person was
+ * asked to sign before being told what they were adding. Worse, signing in
+ * flipped `authenticated`, the button's own gate read that, and the button
+ * unmounted itself mid-flow so the email step never ran at all.
  *
- * `lib/account` gives the money account to whichever address wins on the
- * home chain, and an email session wins there whenever a Privy EMBEDDED
- * wallet exists. So the rule is simply: never let one be created. Signing in
- * with email mints one, which moves the account off the wallet the user
- * connected and leaves their holdings somewhere they cannot see. Signing in
- * with the WALLET does not, because `createOnLogin` is
- * "users-without-wallets" and this user has one. The Privy session then
- * exists, anchored to the very address that already owned the account, and
- * an email can be linked onto it with nothing moving.
+ * So the email is collected first, in our own field, and the signature is
+ * the second step of a thing already explained. Privy's headless
+ * `useLinkEmail` keeps the code exchange inside our UI rather than bouncing
+ * to a modal that can be orphaned by a re-render:
  *
- * So: SIWE first, email second. Three steps, in this order, always.
- *   1. Privy mints a SIWE message for the connected address.
- *   2. The wallet signs it, through the same `useXSignMessage` the rewards
- *      session already uses, so no new signing path enters the app.
- *   3. `linkEmail` opens Privy's own modal on top of the new session.
+ *   1. The user types an email and submits.
+ *   2. The wallet signs Privy's SIWE message, through the same
+ *      `useXSignMessage` the rewards session already uses.
+ *   3. Privy sends a code to that address; the user types it back.
  *
- * The server needs nothing: the claim path in lib/server/accounts sees a DID
- * arriving with a wallet, attaches it to the existing row, reads the email
- * off Privy and pays `email_linked` once.
+ * Nothing is sent on chain and no gas is spent; step 2 is a plain message
+ * signature. Bound to Base because that is HOME_CHAIN and therefore the
+ * chain the account is a function of. The wallet may label the prompt with
+ * whatever network it currently has selected, which is cosmetic.
  *
- * Bound to Base because that is HOME_CHAIN and therefore the chain the
- * account is a function of. Nothing is sent, so no chain switch is needed;
- * the id only binds the session in the message text.
+ * The server needs the fallback in lib/server/privy to see this user's
+ * external wallet, or the claim cannot find their existing row.
  */
 
 export type LinkEmailState =
   | "idle"
+  /** The email field is open and waiting. */
+  | "email"
   /** Waiting for the wallet to sign Privy's message. */
   | "signing"
-  /** Privy's email modal is open. */
-  | "linking"
+  /** Asking Privy to send the code. */
+  | "sending"
+  /** The code field is open and waiting. */
+  | "code"
+  | "verifying"
   | "done"
-  /** The email already belongs to a different Privy account. */
+  /** The address already belongs to a different Privy account. */
   | "taken"
   | "failed";
 
 const BASE_CHAIN_ID = 8453;
 
+/** Privy reports the cause on the error object rather than by type. */
+function privyErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const code = (error as { privyErrorCode?: unknown }).privyErrorCode;
+  return typeof code === "string" ? code : undefined;
+}
+
 export function useLinkEmail({ onLinked }: { onLinked?: () => void } = {}): {
   state: LinkEmailState;
-  start: (address: string) => Promise<void>;
-  reset: () => void;
+  /** The address the code went to, for the "we sent a code to…" line. */
+  pendingEmail: string;
+  open: () => void;
+  cancel: () => void;
+  submitEmail: (email: string, address: string) => Promise<void>;
+  submitCode: (code: string) => Promise<void>;
 } {
   const privy = usePrivyEmbeddedWallet();
   const [state, setState] = useState<LinkEmailState>("idle");
+  const [pendingEmail, setPendingEmail] = useState("");
   const { generateSiweMessage, loginWithSiwe } = useLoginWithSiwe();
+  const { sendCode, linkWithCode } = usePrivyLinkEmail();
   const { mutateAsync: sign } = useXSignMessage();
 
-  const { linkEmail } = useLinkAccount({
-    onSuccess: () => {
-      setState("done");
-      // The row only learns it has an email on the next sync, which is also
-      // where the XP ceremony is played.
-      onLinked?.();
-    },
-    onError: (error) => {
-      // The honest version of the bug this replaced: the address belongs to
-      // somebody else's Privy account, and the only truthful thing to do is
-      // say so rather than quietly become them.
-      setState(error === "linked_to_another_user" ? "taken" : "failed");
-    },
-  });
+  const open = useCallback(() => setState("email"), []);
+  const cancel = useCallback(() => {
+    setState("idle");
+    setPendingEmail("");
+  }, []);
 
-  const start = useCallback(
-    async (address: string) => {
+  const submitEmail = useCallback(
+    async (email: string, address: string) => {
       if (!privy.enabled || !privy.ready) return;
-      setState("signing");
       try {
-        // An already-authenticated session needs no SIWE step; this is the
-        // user who connected a wallet and then came back.
+        // A session already in hand needs no second signature: this is the
+        // user who signed, then mistyped the code and came back.
         if (!privy.authenticated) {
+          setState("signing");
           const message = await generateSiweMessage({
             address: getAddress(address),
             chainId: `eip155:${BASE_CHAIN_ID}`,
           });
           const signature = await sign({ xChainType: "EVM", message });
           if (typeof signature !== "string" || !signature.startsWith("0x")) {
-            setState("idle");
+            // Declined, which is not a failure: put the field back as it was.
+            setState("email");
             return;
           }
           await loginWithSiwe({ message, signature });
         }
-        setState("linking");
-        linkEmail();
-      } catch {
-        // A declined signature is the common case and is not a failure: the
-        // user changed their mind and the panel should look untouched.
-        setState("idle");
+        setState("sending");
+        await sendCode({ email });
+        setPendingEmail(email);
+        setState("code");
+      } catch (error) {
+        setState(
+          privyErrorCode(error) === "linked_to_another_user" ? "taken" : "email",
+        );
       }
     },
     [
@@ -113,14 +130,29 @@ export function useLinkEmail({ onLinked }: { onLinked?: () => void } = {}): {
       generateSiweMessage,
       sign,
       loginWithSiwe,
-      linkEmail,
+      sendCode,
     ],
   );
 
-  const reset = useCallback(() => setState("idle"), []);
+  const submitCode = useCallback(
+    async (code: string) => {
+      setState("verifying");
+      try {
+        await linkWithCode({ code });
+        setState("done");
+        // The row only learns it has an email on the next sync, which is
+        // also where the XP ceremony is played.
+        onLinked?.();
+      } catch (error) {
+        // The honest ending of the path that once signed a user into a
+        // stranger's account: say whose it is, do not become them.
+        setState(
+          privyErrorCode(error) === "linked_to_another_user" ? "taken" : "code",
+        );
+      }
+    },
+    [linkWithCode, onLinked],
+  );
 
-  return { state, start, reset };
+  return { state, pendingEmail, open, cancel, submitEmail, submitCode };
 }
-
-/** The chain the SIWE session is bound to, exported for the test. */
-export const LINK_EMAIL_CHAIN = HOME_CHAIN;
