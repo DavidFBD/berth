@@ -14,9 +14,11 @@ import type { Nudge } from "@/lib/nudge";
  * are copy.ts's. Dismissing it sends the next true line, or none, and a
  * standing line stays away for a week.
  *
- * Deliberately a sentence and not a banner: no accent, no box, set in the
- * muted tone at the size of the total's own sub line, so the page's first
- * read is still the figure above it.
+ * Deliberately a sentence and not a banner: no accent, set in the muted tone,
+ * so the page's first read is still the figure above it. It sits in a hairline
+ * outline only as wide as its words, because at full width the dismiss button
+ * landed at the far edge of the page and read as belonging to the page, not
+ * to the line (David, 2026-09-23).
  */
 type Actions = {
   onAddFunds: () => void;
@@ -68,10 +70,10 @@ export function NudgeLineView({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.24, ease: EASE_LIFT }}
-          className="-mt-2 mb-5 flex items-start gap-2 px-1"
+          className="-mt-2 mb-5 flex w-fit max-w-full items-start gap-1.5 rounded-xl border border-border/70 py-1.5 pr-1.5 pl-3"
           role="status"
         >
-          <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+          <p className="min-w-0 py-0.5 text-sm text-muted-foreground">
             {shown.text}
             {shown.action ? (
               <>
