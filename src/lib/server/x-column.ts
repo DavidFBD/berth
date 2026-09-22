@@ -235,9 +235,11 @@ function shortlist(candidates: readonly Candidate[], now: number): Candidate[] {
  */
 async function judge(
   candidates: readonly Candidate[],
-): Promise<{ posts: XPost[]; substance: Map<string, number> }> {
+): Promise<{ posts: XPost[]; substance: Map<string, number>; read: number; kept: number }> {
   const questions = postQuestions();
   const substance = new Map<string, number>();
+  let read = 0;
+  let kept = 0;
   const judged = await Promise.all(
     candidates.map(async (candidate) => {
       const answers = (await cachedVerdict(
@@ -246,18 +248,22 @@ async function judge(
         questions,
       )) as PostAnswers | undefined;
       if (!answers) return candidate.post.symbol ? candidate.post : undefined;
+      read += 1;
       const verdict = readPostAnswers(answers, candidate.tier, candidate.owned);
       if (!verdict.keep) return undefined;
       const symbol = verdict.symbol ?? candidate.post.symbol;
       const name = symbol ? NAME_BY_SYMBOL.get(symbol) : undefined;
       if (!symbol || !name) return undefined;
       substance.set(candidate.post.id, verdict.weight);
+      kept += 1;
       return { ...candidate.post, symbol, name };
     }),
   );
   return {
     posts: judged.filter((post): post is XPost => post !== undefined),
     substance,
+    read,
+    kept,
   };
 }
 
@@ -267,10 +273,19 @@ async function judge(
  * themselves. Judged over the whole feed rather than per listing, so a
  * listing's own page, the column and the nudge share one set of verdicts.
  */
+/**
+ * What this refresh looked at, for the column's "Curated by Jev" line. Every
+ * figure is a count of something that happened, never an estimate: `seen` is
+ * what X returned across the week's window, `read` is how many of those Jev
+ * actually answered for (the shortlist, not the lot), `kept` is what survived.
+ */
+export type Curation = { seen: number; accounts: number; read: number; kept: number };
+
 export async function gatherPosts(): Promise<{
   posts: XPost[];
   substance: Map<string, number> | undefined;
   failures: string[];
+  curation: Curation | undefined;
 }> {
   const jobs: { tier: "company" | "press"; query: string }[] = [
     { tier: "company", query: buildCompanyQuery() },
@@ -282,6 +297,7 @@ export async function gatherPosts(): Promise<{
   const canJudge = jevConfigured();
   const candidates: Candidate[] = [];
   const seen = new Set<string>();
+  const authors = new Set<string>();
   const failures: string[] = [];
   results.forEach((result, index) => {
     if (result.status === "rejected") {
@@ -294,14 +310,25 @@ export async function gatherPosts(): Promise<{
       // The same post comes back from more than one press query.
       if (seen.has(tweet.id)) continue;
       seen.add(tweet.id);
+      const author = (tweet as { author?: SearchUser }).author?.username;
+      if (author) authors.add(author.toLowerCase());
       const candidate = toCandidate(tweet, jobs[index].tier, canJudge);
       if (candidate) candidates.push(candidate);
     }
   });
 
   if (!canJudge) {
-    return { posts: candidates.map((candidate) => candidate.post), substance: undefined, failures };
+    return {
+      posts: candidates.map((candidate) => candidate.post),
+      substance: undefined,
+      failures,
+      curation: undefined,
+    };
   }
-  const { posts, substance } = await judge(shortlist(candidates, Date.now()));
-  return { posts, substance, failures };
+  const { posts, substance, read, kept } = await judge(shortlist(candidates, Date.now()));
+  // No line at all when Jev answered for nothing: "read 0, kept 40" would be
+  // the keyword rules wearing Jev's name.
+  const curation =
+    read > 0 ? { seen: seen.size, accounts: authors.size, read, kept } : undefined;
+  return { posts, substance, failures, curation };
 }

@@ -1,5 +1,6 @@
+import { verdictFor } from "@/lib/news-judge";
 import { rankPosts, type XPost } from "@/lib/x-feed";
-import { NAME_BY_SYMBOL, gatherPosts } from "@/lib/server/x-column";
+import { NAME_BY_SYMBOL, gatherPosts, type Curation } from "@/lib/server/x-column";
 
 /**
  * What is being said on X about the listings. The searching, the budget and
@@ -15,9 +16,20 @@ const FEED_LIMIT = 12;
 const PER_SYMBOL_LIMIT = 2;
 /** Asking about one listing is a different question: show its own run. */
 const SYMBOL_LIMIT = 8;
+/**
+ * Kept posts sent beyond the visible ones, for the column to rotate in one
+ * at a time. They were already fetched and judged for this refresh, so the
+ * column can keep moving for minutes on one response and no extra call.
+ */
+const RESERVE = 24;
+const SYMBOL_RESERVE = 8;
 
 export type ListingXResponse = {
   items: XPost[];
+  /** Ranked after `items`, oldest-first never: the column rotates these in. */
+  reserve: XPost[];
+  /** What Jev read this refresh, when it read anything. */
+  curation?: Curation;
   /** Present only when something degraded, for the console. */
   reason?: string;
 };
@@ -25,18 +37,28 @@ export type ListingXResponse = {
 export async function GET(request: Request): Promise<Response> {
   const wanted = new URL(request.url).searchParams.get("symbol")?.toUpperCase();
   if (wanted && !NAME_BY_SYMBOL.has(wanted)) {
-    return Response.json({ items: [], reason: `no listing called ${wanted}` });
+    return Response.json({ items: [], reserve: [], reason: `no listing called ${wanted}` });
   }
 
-  const { posts, substance, failures } = await gatherPosts();
+  const { posts, substance, failures, curation } = await gatherPosts();
   const gathered = wanted ? posts.filter((post) => post.symbol === wanted) : posts;
 
+  const visible = wanted ? SYMBOL_LIMIT : FEED_LIMIT;
+  // One ranking for both: its first pass is the breadth pass, so the first
+  // twelve of a longer list are exactly the twelve a short one would give.
+  const ranked = rankPosts(gathered, {
+    limit: visible + (wanted ? SYMBOL_RESERVE : RESERVE),
+    perSymbol: wanted ? SYMBOL_LIMIT : PER_SYMBOL_LIMIT,
+    substance,
+  }).map((post) => {
+    const weight = substance?.get(post.id);
+    return weight === undefined ? post : { ...post, verdict: verdictFor(weight) };
+  });
+
   const payload: ListingXResponse = {
-    items: rankPosts(gathered, {
-      limit: wanted ? SYMBOL_LIMIT : FEED_LIMIT,
-      perSymbol: wanted ? SYMBOL_LIMIT : PER_SYMBOL_LIMIT,
-      substance,
-    }),
+    items: ranked.slice(0, visible),
+    reserve: ranked.slice(visible),
+    curation,
   };
   if (failures.length > 0) payload.reason = [...new Set(failures)].join("; ");
   return Response.json(payload);

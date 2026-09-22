@@ -10,16 +10,19 @@ import {
   X,
   XLogo,
 } from "@phosphor-icons/react";
+import { JevMark } from "@/components/jev-mark";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
 import { useListingNews } from "@/hooks/use-listing-news";
 import { useListingX } from "@/hooks/use-listing-x";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
+import { useRotatingFeed } from "@/hooks/use-rotating-feed";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT } from "@/lib/motion";
 import { formatTimeAgo } from "@/lib/news";
-import { formatCount } from "@/lib/x-feed";
+import { formatCount, type Verdict } from "@/lib/x-feed";
 import {
   changeDirection,
   formatPercentChange,
@@ -46,7 +49,14 @@ const LIST = {
 const CARD = {
   hidden: { opacity: 0, y: 8 },
   shown: { opacity: 1, y: 0, transition: { duration: 0.22, ease: EASE_LIFT } },
+  // A rotated-out card fades where it stands while the rest close up under it.
+  leave: { opacity: 0, transition: { duration: 0.2, ease: EASE_LIFT } },
 };
+/** A rotated-in card arrives slower than the first settle: it is news, not layout. */
+const ARRIVE = { duration: 0.5, ease: EASE_LIFT };
+
+/** Where Jev's name links: its maker, where the claim can be checked. */
+const JEV_URL = "https://typesafe.ai";
 
 /** Posts lead, because they are the livelier half and the reason to look. */
 type Tab = "posts" | "headlines";
@@ -79,15 +89,34 @@ type Tab = "posts" | "headlines";
 export function NewsFeed({
   filter,
   onClearFilter,
+  limit,
 }: {
   filter?: TokenListing | null;
   onClearFilter?: () => void;
+  /**
+   * Fewer cards at once, for the welcome screen, where the column is a
+   * window on the market beside the way in and not the page. The cards past
+   * the limit join the rotation rather than being dropped.
+   */
+  limit?: number;
 }) {
   const copy = useCopy();
   const [tab, setTab] = useState<Tab>("posts");
   const news = useListingNews(filter?.symbol);
   const posts = useListingX(filter?.symbol);
   const performance = useListingPerformance();
+  // Posts turn slowly through everything Jev kept this refresh; headlines
+  // and the loading state stand still.
+  const shownPosts = limit ? posts.items.slice(0, limit) : posts.items;
+  const reservePosts = limit ? [...posts.items.slice(limit), ...posts.reserve] : posts.reserve;
+  const river = useRotatingFeed(shownPosts, reservePosts, tab === "posts");
+  const headlines = limit ? news.items.slice(0, limit) : news.items;
+  const verdictWord: Record<Verdict, string> = {
+    material: copy.jevVerdictMaterial,
+    fact: copy.jevVerdictFact,
+    analysis: copy.jevVerdictAnalysis,
+  };
+  const count = (value: number) => value.toLocaleString("en-US");
 
   const showing = tab === "posts" ? posts : news;
   const tabs: { id: Tab; label: string }[] = [
@@ -174,6 +203,33 @@ export function NewsFeed({
         </AnimatePresence>
       </div>
 
+      {tab === "posts" && posts.curation && (
+        <div className="flex items-center gap-1.5 px-4 pb-3 text-[11px] text-muted-foreground">
+          <JevMark className="size-3.5 text-foreground" />
+          <span className="font-medium text-foreground">{copy.jevCuratedBy}</span>
+          <InfoTip label={copy.jevCuratedBy}>
+            <p>{copy.jevAbout}</p>
+            <p className="mt-1.5 text-muted-foreground">
+              {copy.jevCuration(
+                count(posts.curation.seen),
+                count(posts.curation.accounts),
+                count(posts.curation.read),
+                count(posts.curation.kept),
+              )}
+            </p>
+            <a
+              href={JEV_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1.5 inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-2 hover:underline"
+            >
+              {copy.jevLinkLabel}
+              <ArrowUpRight className="size-3" aria-hidden />
+            </a>
+          </InfoTip>
+        </div>
+      )}
+
       {showing.isLoading ? (
         <ul className="divide-y divide-border border-t border-border">
           {[0, 1, 2].map((row) => (
@@ -207,12 +263,23 @@ export function NewsFeed({
             animate="shown"
             exit="gone"
             className="divide-y divide-border border-t border-border"
+            ref={tab === "posts" ? river.ref : undefined}
+            {...(tab === "posts" ? river.handlers : {})}
           >
-            {tab === "posts"
-              ? posts.items.map((post) => {
+            {tab === "posts" ? (
+              // popLayout lets the leaving card step out of the flow at once,
+              // so the column never grows by one while it turns.
+              <AnimatePresence mode="popLayout" initial={false}>
+                {river.visible.map((post) => {
                   const { moved, direction } = movement(post.symbol);
                   return (
-                    <motion.li key={post.id} variants={CARD}>
+                    <motion.li
+                      key={post.id}
+                      variants={CARD}
+                      exit="leave"
+                      layout="position"
+                      transition={{ layout: ARRIVE }}
+                    >
                       <a
                         href={post.url}
                         target="_blank"
@@ -253,14 +320,27 @@ export function NewsFeed({
                           <p className="mt-1 line-clamp-5 text-sm leading-snug whitespace-pre-line text-foreground">
                             {post.text}
                           </p>
-                          <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px]">
-                            <p className="flex min-w-0 items-center gap-1.5">
-                              <span className="truncate text-foreground/70">
+                          {/* Wraps rather than squeezes: at a narrow column
+                              the counts drop to their own line instead of
+                              crushing the listing's name to nothing. */}
+                          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
+                            <p className="flex items-center gap-1.5">
+                              <span className="text-foreground/70">
                                 {post.name}
                               </span>
                               {moved?.changePct !== undefined && direction && (
                                 <span className={`money ${TONE[direction]}`}>
                                   {formatPercentChange(moved.changePct, 1)}
+                                </span>
+                              )}
+                              {post.verdict && (
+                                <span
+                                  title={copy.jevVerdictLabel(verdictWord[post.verdict])}
+                                  aria-label={copy.jevVerdictLabel(verdictWord[post.verdict])}
+                                  className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground"
+                                >
+                                  <JevMark className="size-2.5" />
+                                  {verdictWord[post.verdict]}
                                 </span>
                               )}
                             </p>
@@ -306,8 +386,10 @@ export function NewsFeed({
                       </a>
                     </motion.li>
                   );
-                })
-              : news.items.map((item) => {
+                })}
+              </AnimatePresence>
+            ) : (
+              headlines.map((item) => {
                   const { moved, direction } = movement(item.symbol);
                   return (
                     <motion.li key={item.url} variants={CARD}>
@@ -362,7 +444,8 @@ export function NewsFeed({
                       </a>
                     </motion.li>
                   );
-                })}
+                })
+            )}
           </motion.ul>
         </AnimatePresence>
       )}

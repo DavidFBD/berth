@@ -63,7 +63,16 @@ export type XPost = {
   symbol: string;
   /** That listing's plain name, for the chip on the card. */
   name: string;
+  /**
+   * Jev's reading of the post, when it gave one: the rubric level in
+   * lib/news-judge, coarsened to three words a reader can use. Absent when
+   * the keyword rules alone placed it, so the chip never claims a reading
+   * that did not happen.
+   */
+  verdict?: Verdict;
 };
+
+export type Verdict = "material" | "fact" | "analysis";
 
 /**
  * An account that speaks for a listing. Handles are verified against the API

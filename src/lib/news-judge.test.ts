@@ -6,6 +6,7 @@ import {
   postQuestions,
   readPostAnswers,
   substanceToWeight,
+  verdictFor,
   type PostAnswers,
 } from "@/lib/news-judge";
 
@@ -121,5 +122,13 @@ describe("keepHeadline", () => {
   it("drops the past-returns what-if, which scores just under the floor", () => {
     // "If You Invested $1000 in Nvidia a Decade Ago..." scored 2.08.
     expect(keepHeadline(headline(0.97, 2.08))).toBe(false);
+  });
+});
+
+describe("verdictFor", () => {
+  it("reads a weight back as the rubric level a reader sees", () => {
+    expect(verdictFor(substanceToWeight(3.6))).toBe("material");
+    expect(verdictFor(substanceToWeight(2.9))).toBe("fact");
+    expect(verdictFor(substanceToWeight(2.1))).toBe("analysis");
   });
 });

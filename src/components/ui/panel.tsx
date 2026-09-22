@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
 
 /**
@@ -52,6 +53,11 @@ export function Panel({
  * typographic move the brand sheet actually specifies, and it makes every
  * section shout its own name at the same pitch. A heading carries its own
  * weight at a size a person can read.
+ *
+ * What the section is for, and any measurement note, sit behind an (i) beside
+ * the title rather than as paragraphs under it (David, 2026-09-22: the
+ * headings read as verbose). A person who already knows what the board is
+ * should not read it again on every visit; one who does not is one tap away.
  */
 export function SectionHeading({
   title,
@@ -61,9 +67,9 @@ export function SectionHeading({
   className,
 }: {
   title: string;
-  /** One line under the title saying what the section is for. */
+  /** What the section is for; behind the (i). */
   hint?: string;
-  /** A second, quieter line: a measurement note or a caveat. */
+  /** A measurement note or a caveat; behind the same (i), after the hint. */
   note?: string;
   /** A control that belongs to the section as a whole. */
   action?: ReactNode;
@@ -72,23 +78,19 @@ export function SectionHeading({
   return (
     <div
       className={cn(
-        "flex items-start justify-between gap-3 px-4 pt-3.5 pb-2.5",
+        "flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5",
         className,
       )}
     >
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-1">
         <h2 className="font-display text-[15px] leading-tight font-semibold tracking-[-0.012em] text-foreground">
           {title}
         </h2>
-        {hint && (
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            {hint}
-          </p>
-        )}
-        {note && (
-          <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
-            {note}
-          </p>
+        {(hint || note) && (
+          <InfoTip label={title}>
+            {hint && <p>{hint}</p>}
+            {note && <p className={hint ? "mt-1.5 text-muted-foreground" : ""}>{note}</p>}
+          </InfoTip>
         )}
       </div>
       {action && <div className="shrink-0">{action}</div>}

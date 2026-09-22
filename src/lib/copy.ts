@@ -172,6 +172,23 @@ export type Copy = {
    * The figures themselves arrive already shortened: "11", "54", "1.2K".
    */
   postsMetrics: (replies: string, reposts: string, likes: string) => string;
+  /**
+   * The posts tab's credit line. Jev (TypeSafe's model) reads every post
+   * before it is shown, and saying so is the point: the column is chosen,
+   * not scraped. The counts are real, from this refresh; see x-column.
+   */
+  jevCuratedBy: string;
+  jevCuration: (seen: string, accounts: string, read: string, kept: string) => string;
+  /** What Jev is, first line of the (i). */
+  jevAbout: string;
+  /** The link out to its maker, inside the (i). */
+  jevLinkLabel: string;
+  /** Jev's reading of one post, on its card. Absent when Jev did not read it. */
+  jevVerdictMaterial: string;
+  jevVerdictFact: string;
+  jevVerdictAnalysis: string;
+  /** The chip's tooltip and accessible name: "Jev reads this as new fact". */
+  jevVerdictLabel: (verdict: string) => string;
 
   /* — cash: idle dollars in the Treasury ETF token — */
   cashTitle: string;
@@ -746,6 +763,16 @@ export const COPY: Copy = {
   ledgerTitle: "Activity",
   ledgerLoading: "Loading…",
   ledgerEmpty: "Nothing yet. Your first trade will show here.",
+
+  jevCuratedBy: "Curated by Jev",
+  jevCuration: (seen, accounts, read, kept) =>
+    `X returned ${seen} posts from ${accounts} accounts this week. Jev read ${read} and kept ${kept}.`,
+  jevAbout: "Jev is a model by TypeSafe. It reads each post before it is shown, and keeps the ones that report something.",
+  jevLinkLabel: "About Jev, by TypeSafe",
+  jevVerdictMaterial: "Material news",
+  jevVerdictFact: "New fact",
+  jevVerdictAnalysis: "Analysis",
+  jevVerdictLabel: (verdict) => `Jev reads this as ${verdict.toLowerCase()}`,
 
   nudgeAddFunds: "Your account is empty. Add funds by card, bank or crypto whenever you are ready.",
   nudgeAddFundsAction: "Add funds",

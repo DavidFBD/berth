@@ -18,20 +18,27 @@ const X_REFETCH_MS = 60 * 60 * 1000;
 export function useListingX(symbol?: string): {
   isLoading: boolean;
   items: XPost[];
+  reserve: XPost[];
+  curation: ListingXResponse["curation"];
 } {
   const query = useQuery({
     queryKey: ["listings", "x", symbol ?? "all"],
-    queryFn: async (): Promise<XPost[]> => {
+    queryFn: async (): Promise<ListingXResponse> => {
       const response = await fetch(
         symbol ? `/api/listing-x?symbol=${encodeURIComponent(symbol)}` : "/api/listing-x",
       );
-      if (!response.ok) return [];
+      if (!response.ok) return { items: [], reserve: [] };
       const payload = (await response.json()) as ListingXResponse;
       if (payload.reason) console.warn("[listing-x]", payload.reason);
-      return payload.items ?? [];
+      return payload;
     },
     staleTime: X_REFETCH_MS,
     refetchInterval: X_REFETCH_MS,
   });
-  return { isLoading: query.isLoading, items: query.data ?? [] };
+  return {
+    isLoading: query.isLoading,
+    items: query.data?.items ?? [],
+    reserve: query.data?.reserve ?? [],
+    curation: query.data?.curation,
+  };
 }

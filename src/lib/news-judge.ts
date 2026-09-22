@@ -178,6 +178,19 @@ export function substanceToWeight(score: number): number {
   return Math.round((0.4 + clamped * 0.3) * 100) / 100;
 }
 
+/**
+ * A ranking weight back to the reader's word for it. The weight is linear in
+ * the rubric score (`substanceToWeight`), so this is the score's level,
+ * rounded: 3.5 and over reads as material news, 2.5 and over as a new fact,
+ * anything kept below that as analysis.
+ */
+export function verdictFor(weight: number): "material" | "fact" | "analysis" {
+  const score = (weight - 0.4) / 0.3;
+  if (score >= 3.5) return "material";
+  if (score >= 2.5) return "fact";
+  return "analysis";
+}
+
 /* — headlines — */
 
 const HEADLINE_LEVELS = [

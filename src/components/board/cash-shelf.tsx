@@ -49,6 +49,9 @@ export function CashShelf({
           cash is what this block is for, and hanging the buttons off the
           number pushed the number out of its own line. */}
       <SectionHeading
+        hint={
+          ratePct !== null ? copy.cashYieldLine(`${ratePct.toFixed(2)}%`) : copy.cashHint
+        }
         title={copy.cashTitle}
         action={
           <div className="flex items-center gap-1.5">
@@ -85,11 +88,6 @@ export function CashShelf({
             {CASH_LISTING.symbol}
           </p>
         )}
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-          {ratePct !== null
-            ? copy.cashYieldLine(`${ratePct.toFixed(2)}%`)
-            : copy.cashHint}
-        </p>
       </div>
     </section>
   );
