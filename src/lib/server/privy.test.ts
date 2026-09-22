@@ -51,4 +51,21 @@ describe("pickAccountWallet", () => {
     expect(pickAccountWallet([])).toBeNull();
     expect(pickAccountWallet([email])).toBeNull();
   });
+
+  it("knows a newer embedded wallet by either of its other names", () => {
+    const v2 = { ...embedded, wallet_client_type: "privy-v2" };
+    const byConnector = { ...embedded, wallet_client_type: undefined, connector_type: "embedded" };
+    expect(pickAccountWallet([external, v2])).toBe(embedded.address!.toLowerCase());
+    expect(pickAccountWallet([external, byConnector])).toBe(embedded.address!.toLowerCase());
+  });
+
+  it("ignores a Solana embedded wallet when choosing the EVM account", () => {
+    const solanaEmbedded = { ...solana, wallet_client_type: "privy" };
+    expect(pickAccountWallet([solanaEmbedded, external])).toBe(external.address!.toLowerCase());
+  });
+
+  it("skips a wallet entry with no address", () => {
+    const blank = { ...external, address: undefined };
+    expect(pickAccountWallet([blank])).toBeNull();
+  });
 });

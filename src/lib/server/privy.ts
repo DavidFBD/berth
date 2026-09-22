@@ -55,7 +55,21 @@ export type PrivyLinkedAccount = {
   email?: string;
   chain_type?: string;
   wallet_client_type?: string;
+  connector_type?: string;
 };
+
+/**
+ * Whether a linked wallet is one Privy holds for the user. Two client types
+ * name it ("privy" and, on newer wallets, "privy-v2"), and the connector
+ * type says "embedded" for both; any of the three is enough.
+ */
+export function isEmbeddedWallet(account: PrivyLinkedAccount): boolean {
+  return (
+    account.wallet_client_type === "privy" ||
+    account.wallet_client_type === "privy-v2" ||
+    account.connector_type === "embedded"
+  );
+}
 
 /**
  * The verified email on a Privy user, from the server-side REST API (the
@@ -128,8 +142,10 @@ const WALLET_CACHE_MS = 24 * 60 * 60 * 1000;
  * handed a brand new empty account instead. That happened to a real account
  * on 2026-09-21 and is what this fallback exists to prevent.
  *
- * Null when the user has no EVM wallet at all or the API hiccups; identity
- * then rests on the DID alone, which is fine.
+ * Null when the user has no EVM wallet at all. With several external
+ * wallets and no embedded one the first Privy lists wins; today only one can
+ * be linked (SIWE is the only way in, and there is no link-a-wallet flow), so
+ * that choice is not yet reachable.
  */
 export function pickAccountWallet(
   accounts: readonly PrivyLinkedAccount[],
@@ -140,20 +156,27 @@ export function pickAccountWallet(
       account.chain_type === "ethereum" &&
       account.address,
   );
-  const embedded = evmWallets.find(
-    (account) => account.wallet_client_type === "privy",
-  );
+  const embedded = evmWallets.find(isEmbeddedWallet);
   return (embedded ?? evmWallets[0])?.address?.toLowerCase() ?? null;
 }
 
-export async function fetchPrivyWallet(did: string): Promise<string | null> {
+/**
+ * `ok: false` means Privy could not be asked, which is not the same as the
+ * user having no wallet. The difference is an account: carrying on without
+ * the address once created a fresh empty row for a wallet owner whose real
+ * row was one lookup away, and that row then won every later sync. So the
+ * caller refuses the request instead (rewards-route answers 503).
+ */
+export type PrivyWalletLookup = { ok: true; address: string | null } | { ok: false };
+
+export async function fetchPrivyWallet(did: string): Promise<PrivyWalletLookup> {
   const cached = walletCache.get(did);
   if (cached && Date.now() - cached.at < WALLET_CACHE_MS && cached.address) {
-    return cached.address;
+    return { ok: true, address: cached.address };
   }
   const accounts = await fetchPrivyUser(did);
-  if (accounts === null) return null; // API hiccup: don't cache the failure
+  if (accounts === null) return { ok: false }; // don't cache the failure
   const address = pickAccountWallet(accounts);
   walletCache.set(did, { address, at: Date.now() });
-  return address;
+  return { ok: true, address };
 }
