@@ -94,7 +94,18 @@ export const COMPANY_SOURCES: readonly CompanySource[] = [
   { username: "USCFInvestments", symbols: ["USO"] },
 ];
 
-/** Wires and market desks, filtered to our names by topic. */
+/**
+ * Wires and market desks, filtered to our names by topic.
+ *
+ * The second half of this list arrived with Jev (2026-09-22). Before it, a
+ * busy squawk desk was a liability: financialjuice and FirstSquawk post
+ * hundreds of lines a day and most of them are about nothing we list, or are
+ * about us in a way that says nothing. With every post read and placed by
+ * lib/news-judge, a firehose is only a larger sample to choose from. Every
+ * handle was checked against the API the same day, per the note on
+ * CompanySource: Forbes was left out (contributor churn), Kitco and sec_news
+ * are near-dead accounts, and NYTBusiness does not exist.
+ */
 export const PRESS_SOURCES: readonly string[] = [
   "Reuters",
   "business",
@@ -108,6 +119,24 @@ export const PRESS_SOURCES: readonly string[] = [
   "Investingcom",
   "Benzinga",
   "StockMKTNewz",
+  "AP",
+  "ReutersBiz",
+  "axios",
+  "BBCBusiness",
+  "TheEconomist",
+  "barronsonline",
+  "MarketWatch",
+  "FortuneMagazine",
+  "FoxBusiness",
+  "FirstSquawk",
+  "LiveSquawk",
+  "financialjuice",
+  "TechCrunch",
+  "verge",
+  "ElectrekCo",
+  "SpaceflightNow",
+  "SpaceNews_Inc",
+  "OilandEnergy",
 ];
 
 /**
@@ -140,8 +169,8 @@ export const TOPICS: readonly Topic[] = [
   { symbol: "TSLA", terms: ["$TSLA", "Tesla"], query: ["Tesla"] },
   {
     symbol: "SPCX",
-    terms: ["$SPCX", "SpaceX", "Starship"],
-    query: ["SpaceX"],
+    terms: ["$SPCX", "SpaceX", "Starship", "Starlink"],
+    query: ["SpaceX", "Starlink"],
   },
   { symbol: "GME", terms: ["$GME", "GameStop"], query: ["GameStop"] },
   {
@@ -201,33 +230,59 @@ export function buildCompanyQuery(
 }
 
 /**
+ * The press accounts, packed into `from:` groups short enough to leave room
+ * for topics. Thirty accounts spell out to more than the whole 512-character
+ * budget on their own, so they cannot share one query any more.
+ */
+const FROM_GROUP_CHARS = 250;
+
+export function groupSources(press: readonly string[]): string[][] {
+  const groups: string[][] = [];
+  let group: string[] = [];
+  const width = (names: readonly string[]) =>
+    names.map((name) => `from:${name}`).join(" OR ").length + 2;
+  for (const name of press) {
+    if (group.length > 0 && width([...group, name]) > FROM_GROUP_CHARS) {
+      groups.push(group);
+      group = [];
+    }
+    group.push(name);
+  }
+  if (group.length > 0) groups.push(group);
+  return groups;
+}
+
+/**
  * Press queries, packed into as few requests as the length limit allows.
  * Splitting by topic rather than by account keeps every wire eligible for
- * every name, which is what makes the quiet listings appear at all.
+ * every name, which is what makes the quiet listings appear at all. Each
+ * group of accounts gets the full set of topics.
  */
 export function buildPressQueries(
   topics: readonly Topic[] = TOPICS,
   press: readonly string[] = PRESS_SOURCES,
 ): string[] {
-  const from = `(${press.map((name) => `from:${name}`).join(" OR ")})`;
   const queries: string[] = [];
-  let bucket: string[] = [];
+  for (const group of groupSources(press)) {
+    const from = `(${group.map((name) => `from:${name}`).join(" OR ")})`;
+    let bucket: string[] = [];
 
-  const render = (pieces: readonly string[]) =>
-    `${from} (${pieces.join(" OR ")}) ${BASE_FILTERS}`;
-  const flush = () => {
-    if (bucket.length > 0) queries.push(render(bucket));
-    bucket = [];
-  };
+    const render = (pieces: readonly string[]) =>
+      `${from} (${pieces.join(" OR ")}) ${BASE_FILTERS}`;
+    const flush = () => {
+      if (bucket.length > 0) queries.push(render(bucket));
+      bucket = [];
+    };
 
-  for (const topic of topics) {
-    const piece = (topic.query ?? topic.terms).map(queryTerm).join(" OR ");
-    if (bucket.length > 0 && render([...bucket, piece]).length > MAX_QUERY_CHARS) {
-      flush();
+    for (const topic of topics) {
+      const piece = (topic.query ?? topic.terms).map(queryTerm).join(" OR ");
+      if (bucket.length > 0 && render([...bucket, piece]).length > MAX_QUERY_CHARS) {
+        flush();
+      }
+      bucket.push(piece);
     }
-    bucket.push(piece);
+    flush();
   }
-  flush();
   return queries;
 }
 
@@ -459,11 +514,13 @@ export function newsScore(
   post: XPost,
   baselines: Map<string, number>,
   now: number,
+  /** Jev's reading of the post, when it gave one; replaces the regex guess. */
+  substance?: number,
 ): number {
   return (
     relativeReach(post, baselines) *
     recencyWeight(post.publishedAt, now) *
-    substanceWeight(post.text)
+    (substance ?? substanceWeight(post.text))
   );
 }
 
@@ -473,7 +530,14 @@ export function rankPosts(
     limit,
     perSymbol,
     now = Date.now(),
-  }: { limit: number; perSymbol: number; now?: number },
+    substance,
+  }: {
+    limit: number;
+    perSymbol: number;
+    now?: number;
+    /** Per post id, from lib/news-judge. Posts missing from it use the heuristic. */
+    substance?: ReadonlyMap<string, number>;
+  },
 ): XPost[] {
   const seen = new Set<string>();
   const unique: XPost[] = [];
@@ -483,7 +547,12 @@ export function rankPosts(
     unique.push(post);
   }
   const baselines = authorBaselines(unique);
-  const scored = new Map(unique.map((post) => [post, newsScore(post, baselines, now)]));
+  const scored = new Map(
+    unique.map((post) => [
+      post,
+      newsScore(post, baselines, now, substance?.get(post.id)),
+    ]),
+  );
   unique.sort(
     (a, b) => (scored.get(b) ?? 0) - (scored.get(a) ?? 0) || b.publishedAt - a.publishedAt,
   );

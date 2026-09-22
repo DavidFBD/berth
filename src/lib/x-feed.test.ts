@@ -4,6 +4,7 @@ import {
   avatarAt,
   buildCompanyQuery,
   buildPressQueries,
+  PRESS_SOURCES,
   looksEmpty,
   looksPromotional,
   HALF_LIFE_MS,
@@ -35,12 +36,21 @@ describe("query building", () => {
     expect(query).toContain("-is:retweet");
   });
 
-  it("asks for the whole press tier in one request", () => {
+  it("asks for the whole press tier in three requests", () => {
+    // Thirty accounts since Jev (2026-09-22): their from: list alone is over
+    // the 512-character limit, so it splits into groups, each asking every
+    // topic. Three is what that costs; more means the list grew.
     const queries = buildPressQueries();
-    expect(queries).toHaveLength(1);
+    expect(queries).toHaveLength(3);
     for (const query of queries) {
       expect(query.length).toBeLessThanOrEqual(MAX_QUERY_CHARS);
     }
+  });
+
+  it("keeps every press account and every topic in play", () => {
+    const joined = buildPressQueries().join(" ");
+    for (const name of PRESS_SOURCES) expect(joined).toContain(`from:${name}`);
+    for (const query of buildPressQueries()) expect(query).toContain("NVIDIA");
   });
 
   it("quotes a phrase and leaves a bare word alone", () => {
@@ -57,8 +67,10 @@ describe("query building", () => {
     expect(press.length).toBeLessThan(MAX_QUERY_CHARS - 80);
   });
 
-  it("is two calls in total, which is the floor the length limit allows", () => {
-    expect(1 + buildPressQueries().length).toBe(2);
+  it("is four calls a refresh in total, well inside the monthly cap", () => {
+    // Four calls every six hours is 16 a day and ~48,000 posts a month
+    // against a cap of three million.
+    expect(1 + buildPressQueries().length).toBe(4);
   });
 
   it("splits rather than overrun when there is more to ask", () => {

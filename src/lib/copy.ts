@@ -394,6 +394,19 @@ export type Copy = {
   ledgerTitle: string;
   ledgerLoading: string;
   ledgerEmpty: string;
+
+  /* — the nudge: one line under the total, only ever a true thing — */
+  nudgeAddFunds: string;
+  nudgeAddFundsAction: string;
+  nudgeFirstBuy: string;
+  /** `name` is the listing's plain name. Says there is news, never what to do about it. */
+  nudgeHeldNews: (name: string) => string;
+  nudgeHeldNewsAction: string;
+  nudgeParkCash: string;
+  nudgeParkCashAction: string;
+  nudgeInvite: string;
+  nudgeInviteAction: string;
+  nudgeDismissLabel: string;
 };
 
 export const COPY: Copy = {
@@ -733,4 +746,15 @@ export const COPY: Copy = {
   ledgerTitle: "Activity",
   ledgerLoading: "Loading…",
   ledgerEmpty: "Nothing yet. Your first trade will show here.",
+
+  nudgeAddFunds: "Your account is empty. Add funds by card, bank or crypto whenever you are ready.",
+  nudgeAddFundsAction: "Add funds",
+  nudgeFirstBuy: "Your funds have arrived. Choose any name on the board when you are ready.",
+  nudgeHeldNews: (name) => `There is news about ${name} today.`,
+  nudgeHeldNewsAction: "Read it",
+  nudgeParkCash: "Idle dollars can wait in Cash, a Treasury bill fund, until you need them.",
+  nudgeParkCashAction: "Park cash",
+  nudgeInvite: "Invites are open to you now. Your link is in your account.",
+  nudgeInviteAction: "Open account",
+  nudgeDismissLabel: "Dismiss",
 };

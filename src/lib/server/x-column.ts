@@ -1,0 +1,307 @@
+import { TOKEN_LISTINGS } from "@/lib/listings";
+import { decodeEntities } from "@/lib/news";
+import {
+  JUDGE_VERSION,
+  postQuestions,
+  postState,
+  readPostAnswers,
+  type PostAnswers,
+} from "@/lib/news-judge";
+import { cachedVerdict, jevConfigured } from "@/lib/server/jev";
+import {
+  COMPANY_SOURCES,
+  authorBaselines,
+  avatarAt,
+  buildCompanyQuery,
+  buildPressQueries,
+  looksEmpty,
+  looksPromotional,
+  newsScore,
+  postUrl,
+  stripLinks,
+  symbolsForText,
+  type XPost,
+} from "@/lib/x-feed";
+
+/**
+ * The X column's server half: searching, placing and judging. The route in
+ * app/api/listing-x ranks what this gathers; lib/server/nudge reads it too.
+ *
+ * What is being said on X about the listings, newest first.
+ *
+ * The token never reaches the browser: every request is made here, and the
+ * result is cached, so one pair of queries serves every visitor.
+ *
+ * The budget, which is the point. Four queries per refresh (the 512-character
+ * limit splits the company tier from thirty press accounts, which themselves
+ * split three ways), six hours apart, is sixteen calls a day: about 480 a
+ * month against a rate limit of 450 every fifteen minutes. Each asks for 100
+ * posts, so around 48,000 posts a month against a three million cap, under
+ * two percent. Nothing is fetched at all on a day nobody opens the app,
+ * because the cache fills on demand rather than on a timer.
+ *
+ * What buys that is freshness, knowingly. `sort_order=relevancy` over recent
+ * search's seven-day window returns the week's best posts rather than the
+ * last hour's, for the same one call, so a post that carried well stays in
+ * the column for days instead of being pushed out by whatever was posted
+ * most recently. Ranking is by engagement, not by clock: see rankPosts.
+ *
+ * Which accounts, and why not a cashtag search, is argued in lib/x-feed.
+ *
+ * Then Jev reads what survives the keyword rules (lib/news-judge): it drops
+ * the ads and the empty roundups the regexes miss, places a post the keywords
+ * could not ("OPEC agrees a deeper cut" is the oil fund's), and its reading
+ * of substance replaces the regex guess in the ranking. Only the posts that
+ * could reach a card are asked about, and each verdict is cached for two
+ * weeks, so a refresh pays for what is new since the last one. With no key,
+ * no credit or a slow answer, the column is exactly what it was before.
+ *
+ * Always 200: a quiet hour, an expired token and a rate limit all reach the
+ * reader as the same calm line, because none of them is something a reader
+ * can act on. The console gets the reason.
+ */
+
+const X_SEARCH = "https://api.x.com/2/tweets/search/recent";
+/**
+ * Six hours. The window being searched is seven days wide, so a shorter
+ * cache would spend calls re-reading mostly the same week.
+ */
+const REVALIDATE_SECONDS = 6 * 60 * 60;
+
+/** The most one request may return, since the call costs the same either way. */
+const MAX_RESULTS = 100;
+
+
+
+type SearchUser = {
+  id: string;
+  name: string;
+  username: string;
+  profile_image_url?: string;
+};
+
+type SearchTweet = {
+  id: string;
+  text: string;
+  created_at?: string;
+  author_id?: string;
+  public_metrics?: {
+    like_count?: number;
+    retweet_count?: number;
+    quote_count?: number;
+    reply_count?: number;
+  };
+};
+
+type SearchResponse = {
+  data?: SearchTweet[];
+  includes?: { users?: SearchUser[] };
+  errors?: { detail?: string; title?: string }[];
+  title?: string;
+  detail?: string;
+};
+
+export const NAME_BY_SYMBOL: ReadonlyMap<string, string> = new Map(
+  TOKEN_LISTINGS.map((listing) => [listing.symbol, listing.name]),
+);
+
+/** Which listing an account speaks for, read from the post when it is one of several. */
+const SYMBOLS_BY_ACCOUNT = new Map(
+  COMPANY_SOURCES.map((source) => [
+    source.username.toLowerCase(),
+    source.symbols,
+  ]),
+);
+
+async function search(query: string): Promise<SearchTweet[]> {
+  const token = process.env.X_BEARER_TOKEN;
+  if (!token) throw new Error("X_BEARER_TOKEN not set");
+
+  const url = new URL(X_SEARCH);
+  url.searchParams.set("query", query);
+  url.searchParams.set("max_results", String(MAX_RESULTS));
+  // The week's best rather than the last hour's, for the same one call.
+  url.searchParams.set("sort_order", "relevancy");
+  url.searchParams.set("tweet.fields", "created_at,public_metrics");
+  url.searchParams.set("expansions", "author_id");
+  url.searchParams.set("user.fields", "name,username,profile_image_url");
+
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+    next: { revalidate: REVALIDATE_SECONDS },
+    signal: AbortSignal.timeout(12_000),
+  });
+  const payload = (await response.json().catch(() => ({}))) as SearchResponse;
+  if (!response.ok) {
+    const said = payload.detail ?? payload.title ?? `answered ${response.status}`;
+    throw new Error(`X ${said}`);
+  }
+
+  const users = new Map(
+    (payload.includes?.users ?? []).map((user) => [user.id, user]),
+  );
+  // Carried on the tweet so placement and shaping can stay one pass.
+  return (payload.data ?? []).map((tweet) => ({
+    ...tweet,
+    author: tweet.author_id ? users.get(tweet.author_id) : undefined,
+  })) as (SearchTweet & { author?: SearchUser })[];
+}
+
+/**
+ * One search result as a card, or nothing if it cannot be shown at all.
+ *
+ * A press post the keywords could not place is still returned, with an empty
+ * `symbol`, when Jev is there to place it; `owned` is what a company account
+ * may be placed among.
+ */
+type Candidate = { post: XPost; tier: "company" | "press"; owned?: readonly string[] };
+
+function toCandidate(
+  tweet: SearchTweet & { author?: SearchUser },
+  tier: "company" | "press",
+  canJudge: boolean,
+): Candidate | undefined {
+  const author = tweet.author;
+  if (!author?.username || !author.profile_image_url) return undefined;
+  const publishedAt = tweet.created_at ? Date.parse(tweet.created_at) : Number.NaN;
+  if (!Number.isFinite(publishedAt)) return undefined;
+  if (looksPromotional(tweet.text) || looksEmpty(tweet.text)) return undefined;
+
+
+  const text = stripLinks(decodeEntities(tweet.text));
+  if (!text) return undefined;
+  const mentioned = symbolsForText(text);
+  let symbol: string | undefined;
+  let owned: readonly string[] | undefined;
+  if (tier === "company") {
+    owned = SYMBOLS_BY_ACCOUNT.get(author.username.toLowerCase()) ?? [];
+    // An issuer speaking for two of our funds is placed by what it said.
+    symbol = owned.find((candidate) => mentioned.includes(candidate)) ?? owned[0];
+  } else {
+    // Without Jev, a wire is only ever about a listing if it named one.
+    symbol = mentioned[0];
+  }
+  if (!symbol && !canJudge) return undefined;
+  const name = symbol ? NAME_BY_SYMBOL.get(symbol) : undefined;
+  if (symbol && !name) return undefined;
+
+  const post: XPost = {
+    id: tweet.id,
+    text,
+    publishedAt,
+    author: {
+      name: author.name,
+      username: author.username,
+      avatarUrl: avatarAt(author.profile_image_url),
+    },
+    url: postUrl(author.username, tweet.id),
+    likes: tweet.public_metrics?.like_count ?? 0,
+    retweets: tweet.public_metrics?.retweet_count ?? 0,
+    quotes: tweet.public_metrics?.quote_count ?? 0,
+    replies: tweet.public_metrics?.reply_count ?? 0,
+    symbol: symbol ?? "",
+    name: name ?? "",
+  };
+  return { post, tier, owned };
+}
+
+/**
+ * How many per listing are worth asking Jev about, and how many unplaced
+ * wire posts besides. A column shows at most eight of one name, so the ninth
+ * best by the free heuristic was never going to be read.
+ */
+const JUDGE_PER_SYMBOL = 8;
+const JUDGE_UNPLACED = 30;
+
+function shortlist(candidates: readonly Candidate[], now: number): Candidate[] {
+  const baselines = authorBaselines(candidates.map((candidate) => candidate.post));
+  const ranked = [...candidates].sort(
+    (a, b) => newsScore(b.post, baselines, now) - newsScore(a.post, baselines, now),
+  );
+  const counts = new Map<string, number>();
+  return ranked.filter(({ post }) => {
+    const key = post.symbol || "";
+    const count = counts.get(key) ?? 0;
+    if (count >= (key ? JUDGE_PER_SYMBOL : JUDGE_UNPLACED)) return false;
+    counts.set(key, count + 1);
+    return true;
+  });
+}
+
+/**
+ * Jev's pass over the shortlist: what to drop, where to place, how to weigh.
+ * A post Jev did not answer for keeps its keyword placement, or goes if it
+ * had none.
+ */
+async function judge(
+  candidates: readonly Candidate[],
+): Promise<{ posts: XPost[]; substance: Map<string, number> }> {
+  const questions = postQuestions();
+  const substance = new Map<string, number>();
+  const judged = await Promise.all(
+    candidates.map(async (candidate) => {
+      const answers = (await cachedVerdict(
+        JUDGE_VERSION,
+        postState(candidate.post),
+        questions,
+      )) as PostAnswers | undefined;
+      if (!answers) return candidate.post.symbol ? candidate.post : undefined;
+      const verdict = readPostAnswers(answers, candidate.tier, candidate.owned);
+      if (!verdict.keep) return undefined;
+      const symbol = verdict.symbol ?? candidate.post.symbol;
+      const name = symbol ? NAME_BY_SYMBOL.get(symbol) : undefined;
+      if (!symbol || !name) return undefined;
+      substance.set(candidate.post.id, verdict.weight);
+      return { ...candidate.post, symbol, name };
+    }),
+  );
+  return {
+    posts: judged.filter((post): post is XPost => post !== undefined),
+    substance,
+  };
+}
+
+/**
+ * Every judged post the searches returned this refresh, placed and, where Jev
+ * answered, weighted. Unranked: the column and the nudge each rank for
+ * themselves. Judged over the whole feed rather than per listing, so a
+ * listing's own page, the column and the nudge share one set of verdicts.
+ */
+export async function gatherPosts(): Promise<{
+  posts: XPost[];
+  substance: Map<string, number> | undefined;
+  failures: string[];
+}> {
+  const jobs: { tier: "company" | "press"; query: string }[] = [
+    { tier: "company", query: buildCompanyQuery() },
+    ...buildPressQueries().map((query) => ({ tier: "press" as const, query })),
+  ];
+
+  const results = await Promise.allSettled(jobs.map((job) => search(job.query)));
+
+  const canJudge = jevConfigured();
+  const candidates: Candidate[] = [];
+  const seen = new Set<string>();
+  const failures: string[] = [];
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      failures.push(
+        result.reason instanceof Error ? result.reason.message : "X request failed",
+      );
+      return;
+    }
+    for (const tweet of result.value) {
+      // The same post comes back from more than one press query.
+      if (seen.has(tweet.id)) continue;
+      seen.add(tweet.id);
+      const candidate = toCandidate(tweet, jobs[index].tier, canJudge);
+      if (candidate) candidates.push(candidate);
+    }
+  });
+
+  if (!canJudge) {
+    return { posts: candidates.map((candidate) => candidate.post), substance: undefined, failures };
+  }
+  const { posts, substance } = await judge(shortlist(candidates, Date.now()));
+  return { posts, substance, failures };
+}

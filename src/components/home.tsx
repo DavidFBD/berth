@@ -13,6 +13,7 @@ import {
   HoldingsList,
   ListingBoard,
   NewsFeed,
+  NudgeLine,
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { Panel } from "@/components/ui/panel";
@@ -107,6 +108,11 @@ export function Home() {
         </header>
 
         <AccountTotal />
+        <NudgeLine
+          onAddFunds={() => setAccountOpen(true)}
+          onParkCash={() => openBuy(CASH_LISTING)}
+          onOpenAccount={() => setAccountOpen(true)}
+        />
 
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">
           {/*

@@ -1,0 +1,229 @@
+import type {
+  ChoiceAnswer,
+  ChoiceQuestion,
+  NoulAnswer,
+  NoulQuestion,
+  ScoreAnswer,
+  ScoreQuestion,
+} from "@/lib/server/jev";
+
+/**
+ * What Jev is asked about a piece of news, and what its answers mean.
+ *
+ * Pure: no fetching, no cache, so the thresholds below can be tested against
+ * answers written by hand. The asking lives in lib/server/jev.
+ *
+ * The keyword rules in lib/x-feed stay, and stay first. They are free and
+ * they run whether or not Jev answers, so the column is never worse than it
+ * was before Jev. What Jev adds is the reading those rules cannot do: whether
+ * "Apple" is the company or the fruit, whether a wire is reporting a figure
+ * or pitching a newsletter, and whether a post that names no listing at all
+ * ("OPEC agrees a deeper cut") is still about one of ours (the oil fund).
+ *
+ * Bump `JUDGE_VERSION` whenever a question or rubric changes, or verdicts
+ * cached against the old wording keep answering the old question.
+ */
+export const JUDGE_VERSION = "news-1";
+
+/**
+ * Who each listing is, in words a reader of the news would recognise. Jev
+ * reads meanings, not tickers (its own docs: semantic beats symbolic), so a
+ * fund is described by what moves it.
+ */
+export const LISTING_BRIEFS: Readonly<Record<string, string>> = {
+  SPCX: "SpaceX, the rocket and Starlink satellite company, including Starship launches",
+  NVDA: "NVIDIA, the maker of AI chips and graphics processors",
+  AAPL: "Apple, the iPhone and Mac company (not the fruit)",
+  TSLA: "Tesla, the electric car, battery and robotaxi company",
+  GME: "GameStop, the video game retailer",
+  MSTR: "Strategy (formerly MicroStrategy), the company that buys and holds bitcoin, led by Michael Saylor",
+  MU: "Micron, the memory chip maker",
+  SNDK: "Sandisk, the flash storage maker",
+  SPY: "an S&P 500 index fund: news about the S&P 500 or the US stock market as a whole",
+  QQQ: "a Nasdaq-100 index fund: news about the Nasdaq-100 or large US tech stocks as a group",
+  SGOV: "a short-term US Treasury bill fund: news about T-bill yields, Fed rate decisions or short-term interest rates",
+  USO: "an oil fund: news about crude oil prices, OPEC, Brent or WTI",
+  SLV: "a silver fund: news about the price of silver",
+};
+
+export type Tier = "company" | "press";
+
+const SUBSTANCE_LEVELS = [
+  "Advertising, a promotion, an event invitation or a broadcast schedule",
+  "A slogan, greeting, joke or opinion with no new information",
+  "Commentary or analysis of facts that were already known",
+  "Reports a new fact, figure or event",
+  "Material news: earnings, guidance, a deal, a filing, regulation or a large price move",
+];
+
+export type PostQuestions = {
+  listing: ChoiceQuestion;
+  substance: ScoreQuestion;
+  selling: NoulQuestion;
+};
+
+export type PostAnswers = {
+  listing: ChoiceAnswer;
+  substance: ScoreAnswer;
+  selling: NoulAnswer;
+};
+
+/** State for one post: who said it and exactly what they said. */
+export function postState(post: { author: { name: string; username: string }; text: string }) {
+  return { author: `${post.author.name} (@${post.author.username})`, post: post.text };
+}
+
+export function postQuestions(): PostQuestions {
+  return {
+    listing: {
+      type: "choice",
+      instructions:
+        "Which one of these companies or funds is `post` mainly about? Choose none if it only mentions one in passing.",
+      criteria: {
+        ...LISTING_BRIEFS,
+        none: "None of them: the post is mainly about something else",
+      },
+    },
+    substance: {
+      type: "score",
+      instructions:
+        "How much new information does `post` give someone who owns the company or fund it is about?",
+      criteria: SUBSTANCE_LEVELS,
+    },
+    selling: {
+      type: "noul",
+      instructions:
+        "Is `post` advertising or selling something: a newsletter, a trading group or signal service, a course, a giveaway, an event, a broadcast, or a coin or penny stock being promoted?",
+      criteria: {
+        true: "It is advertising or promotion",
+        false: "It is reporting or commenting, not selling",
+      },
+    },
+  };
+}
+
+/**
+ * The floors, per tier, because the tiers are trusted differently. A company
+ * speaking for itself keeps anything that is not an ad or a bare slogan; the
+ * wires must at least comment on something real.
+ *
+ * Measured on live posts 2026-09-22. At 2.0 the press tier keeps Reuters on a
+ * record Nasdaq close (3.5) and Bloomberg on SpaceX joining the Nasdaq-100
+ * (3.1), and drops CNBC's daily "biggest analyst calls" roundups (0.3 to 0.5),
+ * "The Nvidia Dip: Are Investors Missing the Bigger Picture?" (1.0) and Maye
+ * Musk on her son's press (1.8).
+ *
+ * There is deliberately no third tier of accounts we did not pick. It was
+ * tried the same day: of 96 posts matching our names, two came from accounts
+ * over 100k followers and both read as hot takes, while the rest included a
+ * post about banks "colluding" to manipulate the market that Jev rated as
+ * substantive news (3.0). Jev reads what a post says, not whether the person
+ * saying it can be trusted. The author list is still the trust decision.
+ */
+const FLOORS: Record<Tier, { substance: number; selling: number; placement: number }> = {
+  company: { substance: 0.9, selling: 0.6, placement: 0.35 },
+  press: { substance: 2.0, selling: 0.5, placement: 0.45 },
+};
+
+export type PostVerdict =
+  /** Keep, placed against `symbol`, with `weight` in place of the heuristic substance weight. */
+  | { keep: true; symbol: string | undefined; weight: number }
+  | { keep: false; why: string };
+
+/**
+ * What the answers mean for one post.
+ *
+ * `symbol` is Jev's placement when it is confident, otherwise undefined and
+ * the caller keeps its keyword placement. `allowed` limits the placement: a
+ * company account may only be placed among the listings it speaks for, so
+ * @iShares is never filed under Tesla however it words a post.
+ */
+export function readPostAnswers(
+  answers: PostAnswers,
+  tier: Tier,
+  allowed?: readonly string[],
+): PostVerdict {
+  const floor = FLOORS[tier];
+  if (answers.selling.noul >= floor.selling) return { keep: false, why: "selling" };
+  if (answers.substance.score < floor.substance) return { keep: false, why: "no substance" };
+
+  const probabilities = answers.listing.probabilities;
+  const none = probabilities.none ?? 0;
+  let symbol: string | undefined;
+  let best = 0;
+  for (const [candidate, probability] of Object.entries(probabilities)) {
+    if (candidate === "none") continue;
+    if (allowed && !allowed.includes(candidate)) continue;
+    if (probability > best) {
+      best = probability;
+      symbol = candidate;
+    }
+  }
+  if (best < floor.placement) symbol = undefined;
+  // A company's own account is about the company even when Jev hears a
+  // general remark; only the tiers that had to earn their place are dropped
+  // for being about nothing of ours.
+  if (tier === "press" && !symbol && none >= 0.5) return { keep: false, why: "off topic" };
+
+  return { keep: true, symbol, weight: substanceToWeight(answers.substance.score) };
+}
+
+/**
+ * The rubric's 0 to 4 as a ranking multiplier, on the same scale as the
+ * heuristic it replaces (0.55 for a slogan, 1.25 for a figure): a plain
+ * report is 1.1, material news 1.6.
+ */
+export function substanceToWeight(score: number): number {
+  const clamped = Math.min(Math.max(score, 0), 4);
+  return Math.round((0.4 + clamped * 0.3) * 100) / 100;
+}
+
+/* — headlines — */
+
+const HEADLINE_LEVELS = [
+  "A list of stocks to buy, a stock-picking pitch, or a question like whether to buy",
+  "An opinion or prediction with no new event behind it",
+  "Analysis or a recap of facts that were already known",
+  "Reports a new fact, figure or event",
+  "Material news: earnings, guidance, a deal, a filing, regulation or a large price move",
+];
+
+export type HeadlineQuestions = { about: NoulQuestion; substance: ScoreQuestion };
+export type HeadlineAnswers = { about: NoulAnswer; substance: ScoreAnswer };
+
+export function headlineState(item: { title: string; source: string }, symbol: string, name: string) {
+  return {
+    headline: item.title,
+    publisher: item.source,
+    listing: LISTING_BRIEFS[symbol] ?? name,
+  };
+}
+
+export function headlineQuestions(): HeadlineQuestions {
+  return {
+    about: {
+      type: "noul",
+      instructions:
+        "Is `headline` mainly about `listing`, rather than mentioning it among others or in passing?",
+    },
+    substance: {
+      type: "score",
+      instructions:
+        "How much new information does `headline` promise someone who owns `listing`?",
+      criteria: HEADLINE_LEVELS,
+    },
+  };
+}
+
+/**
+ * Measured 2026-09-22. Nasdaq's feeds are mostly The Motley Fool and Zacks,
+ * and Jev scores their formats in a narrow band: "If You Invested $1000 in
+ * Nvidia a Decade Ago" 2.1, "Rosenblatt Initiates Coverage of Sandisk" 2.3,
+ * "Apple Launches New Products in Time for New CEO" 3.0. The floor sits just
+ * above the what-if. A question about whether a headline is clickbait was
+ * tried and dropped: it flagged Ryan Cohen's $26.4M insider buy (0.92)
+ * because the headline ended "Is GME Now a Buy?".
+ */
+export function keepHeadline(answers: HeadlineAnswers): boolean {
+  return answers.about.noul >= 0.35 && answers.substance.score >= 2.2;
+}
