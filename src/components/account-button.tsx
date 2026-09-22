@@ -67,7 +67,9 @@ export function AccountButton({
   // Not signed in via email but past the AuthGate means an external wallet
   // is connected. The welcome screen owns sign-in, so the header shows the
   // wallet pill plus the rewards chip; the chip opens the rewards panel.
-  if (!privy.authenticated) return <ExternalAccountEntry />;
+  if (!privy.authenticated) {
+    return <ExternalAccountEntry open={accountOpen} onOpenChange={setAccountOpen} />;
+  }
 
   const email = privy.user?.email?.address;
   const address = privy.embedded?.address;
@@ -179,8 +181,20 @@ export function AccountButton({
  * the rewards chip, which opens a small drawer holding the rewards panel
  * (rank, avatar grid, and the email invitation with its reward).
  */
-function ExternalAccountEntry() {
-  const [serviceOpen, setServiceOpen] = useState(false);
+/**
+ * A wallet user's header: rank chip, wallet pill, and the rewards drawer the
+ * chip opens. It honours the same open state the page passes AccountButton,
+ * so "Open account" in the nudge line opens this drawer for a wallet user
+ * rather than an email drawer that is never rendered for them (it did
+ * nothing at all until 2026-09-22).
+ */
+function ExternalAccountEntry({
+  open: serviceOpen,
+  onOpenChange: setServiceOpen,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const copy = useCopy();
   return (
     <div className="flex min-w-0 items-center gap-1.5">

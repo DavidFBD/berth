@@ -2,10 +2,12 @@
 
 import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAccount } from "@/hooks/use-account";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useProfile } from "@/hooks/use-profile";
+import { HOME_CHAIN } from "@/lib/account";
 import {
   activeSkips,
   factsQuery,
@@ -54,6 +56,7 @@ export function useNudge(): { nudge: Nudge | null; dismiss: () => void } {
   const holdings = useHubHoldings(account.hubWallet);
   const funds = useEmbeddedHoldings();
   const profile = useProfile();
+  const home = useAccount(HOME_CHAIN);
   // Read once, with the clock, when the hook mounts; a dismissal updates it.
   const [skip, setSkip] = useState<NudgeKind[]>(() =>
     typeof window === "undefined" ? [] : activeSkips(readDismissed(), Date.now()),
@@ -74,6 +77,7 @@ export function useNudge(): { nudge: Nudge | null; dismiss: () => void } {
           .sort(),
         funds: (funds.totalUsd ?? 0) >= SPENDABLE_FLOOR_USD,
         canInvite: Boolean(profile.data?.referralCode),
+        wallet: home.mode === "external",
         skip,
       }
     : undefined;

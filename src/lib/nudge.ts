@@ -32,6 +32,12 @@ export type NudgeFacts = {
   funds: boolean;
   /** The account's rank has unlocked its invite link. */
   canInvite: boolean;
+  /**
+   * The account is an external wallet rather than an email account. "Add
+   * funds by card, bank or crypto" is the email account's top-up drawer and
+   * is not true of a wallet, which is funded from outside Berth.
+   */
+  wallet: boolean;
   /** Lines this person dismissed recently, so the next true one is said instead. */
   skip: NudgeKind[];
 };
@@ -57,7 +63,7 @@ export function eligibleKinds(facts: NudgeFacts, hasHeldNews: boolean): NudgeKin
     if (!facts.skip.includes(kind)) kinds.push(kind);
   };
   if (hasHeldNews) say("heldNews");
-  if (!facts.funds && facts.held.length === 0) say("addFunds");
+  if (!facts.funds && facts.held.length === 0 && !facts.wallet) say("addFunds");
   if (facts.funds && stocks.length === 0) say("firstBuy");
   if (facts.funds && stocks.length > 0 && !facts.held.includes(CASH_SYMBOL)) {
     say("parkCash");
@@ -87,6 +93,7 @@ export function parseFacts(
     held: [...new Set(held)].sort(),
     funds: params.get("funds") === "1",
     canInvite: params.get("invite") === "1",
+    wallet: params.get("wallet") === "1",
     skip: [...new Set(skip)].sort(),
   };
 }
@@ -96,6 +103,7 @@ export function factsQuery(facts: NudgeFacts): string {
   if (facts.held.length > 0) params.set("held", [...facts.held].sort().join(","));
   if (facts.funds) params.set("funds", "1");
   if (facts.canInvite) params.set("invite", "1");
+  if (facts.wallet) params.set("wallet", "1");
   if (facts.skip.length > 0) params.set("skip", [...facts.skip].sort().join(","));
   return params.toString();
 }

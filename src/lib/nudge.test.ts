@@ -12,6 +12,7 @@ const facts = (partial: Partial<NudgeFacts>): NudgeFacts => ({
   held: [],
   funds: false,
   canInvite: false,
+  wallet: false,
   skip: [],
   ...partial,
 });
@@ -19,6 +20,10 @@ const facts = (partial: Partial<NudgeFacts>): NudgeFacts => ({
 describe("eligibleKinds", () => {
   it("tells an empty account how to begin, and nothing else", () => {
     expect(eligibleKinds(facts({}), false)).toEqual(["addFunds"]);
+  });
+
+  it("does not offer the card and bank top-up to a wallet account", () => {
+    expect(eligibleKinds(facts({ wallet: true }), false)).toEqual([]);
   });
 
   it("points funds with nothing bought at the board", () => {
@@ -55,11 +60,23 @@ describe("parseFacts", () => {
       new URLSearchParams("held=tsla,NVDA,NVDA,EVIL&funds=1&skip=invite,drain,invite"),
       known,
     );
-    expect(parsed).toEqual({ held: ["NVDA", "TSLA"], funds: true, canInvite: false, skip: ["invite"] });
+    expect(parsed).toEqual({
+      held: ["NVDA", "TSLA"],
+      funds: true,
+      canInvite: false,
+      wallet: false,
+      skip: ["invite"],
+    });
   });
 
   it("round-trips through the query string", () => {
-    const original = facts({ held: ["NVDA", "SGOV"], funds: true, canInvite: true, skip: ["parkCash"] });
+    const original = facts({
+      held: ["NVDA", "SGOV"],
+      funds: true,
+      canInvite: true,
+      wallet: true,
+      skip: ["parkCash"],
+    });
     expect(parseFacts(new URLSearchParams(factsQuery(original)), known)).toEqual({
       ...original,
       held: ["NVDA", "SGOV"].sort(),
