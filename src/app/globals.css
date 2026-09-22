@@ -198,7 +198,23 @@
   }
 }
 
+/* Jev's live ring: one slow outward pulse from the mark, then quiet. Slower
+   and fainter than a notification ping on purpose: it says the column is
+   being tended, not that something needs you. */
+@keyframes jev-ping {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.5;
+  }
+  70%,
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  [data-jev-ping],
   [data-step-ring],
   [data-slot="spinner"] circle {
     animation: none !important;

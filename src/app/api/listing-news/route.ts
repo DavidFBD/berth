@@ -5,6 +5,14 @@ import {
   parseFeedItems,
   type NewsItem,
 } from "@/lib/news";
+import {
+  JUDGE_VERSION,
+  headlineQuestions,
+  headlineState,
+  keepHeadline,
+  type HeadlineAnswers,
+} from "@/lib/news-judge";
+import { cachedVerdict, jevConfigured } from "@/lib/server/jev";
 
 /**
  * Headlines about the listings, newest first.
@@ -39,6 +47,14 @@ import {
  * that, and the seam here is one function wide so a licensed wire can take
  * its place in an afternoon. See
  * docs/research/2026-09-17-newsfeeds-and-price-history.md.
+ *
+ * Jev reads each listing's newest headlines (lib/news-judge) and drops the
+ * two kinds Nasdaq's feeds are thick with: pieces that are not really about
+ * the listing ("3 AI Stocks to Buy" filed under every name it mentions) and
+ * pitches with no event behind them ("Should You Buy Nvidia Before
+ * Earnings?"). Verdicts are cached for two weeks, so the quarter-hour refresh
+ * pays only for headlines it has not seen. A headline Jev did not answer for
+ * is kept, exactly as before Jev.
  *
  * Always 200: no headlines is a soft degrade the card renders as a quiet
  * spell, never an error.
@@ -83,6 +99,31 @@ async function readFeed(listing: TokenListing): Promise<NewsItem[]> {
     }));
 }
 
+/** The newest this many per listing are read; a card never reaches further back. */
+const JUDGE_PER_SYMBOL = 14;
+
+async function judgeHeadlines(items: readonly NewsItem[]): Promise<NewsItem[]> {
+  const questions = headlineQuestions();
+  const newest = [...items].sort((a, b) => b.publishedAt - a.publishedAt);
+  const counts = new Map<string, number>();
+  const pool = newest.filter((item) => {
+    const count = counts.get(item.symbol) ?? 0;
+    counts.set(item.symbol, count + 1);
+    return count < JUDGE_PER_SYMBOL;
+  });
+  const kept = await Promise.all(
+    pool.map(async (item) => {
+      const answers = (await cachedVerdict(
+        JUDGE_VERSION,
+        headlineState(item, item.symbol, item.name),
+        questions,
+      )) as HeadlineAnswers | undefined;
+      return !answers || keepHeadline(answers) ? item : undefined;
+    }),
+  );
+  return kept.filter((item): item is NewsItem => item !== undefined);
+}
+
 export async function GET(request: Request): Promise<Response> {
   const wanted = new URL(request.url).searchParams.get("symbol")?.toUpperCase();
   const listings = wanted
@@ -107,8 +148,10 @@ export async function GET(request: Request): Promise<Response> {
     }
   }
 
+  const judged = jevConfigured() ? await judgeHeadlines(gathered) : gathered;
+
   const payload: ListingNewsResponse = {
-    items: mergeNews(gathered, {
+    items: mergeNews(judged, {
       limit: wanted ? SYMBOL_LIMIT : FEED_LIMIT,
       // One listing asked about may fill its own card entirely.
       perSymbol: wanted ? SYMBOL_LIMIT : PER_SYMBOL_LIMIT,

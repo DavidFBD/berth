@@ -8,6 +8,7 @@ import {
   HoldingsList,
   ListingBoard,
   NewsFeed,
+  NudgeLineView,
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
@@ -16,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useMounted } from "@/hooks/use-mounted";
 import { HOME_CHAIN } from "@/lib/account";
+import { NUDGE_KINDS, type Nudge } from "@/lib/nudge";
 import {
   CASH_LISTING,
   TOKEN_LISTINGS,
@@ -74,6 +76,18 @@ function Gallery() {
       ) ?? null,
   );
 
+  // ?nudge=kind previews one line; none of them needs a session here.
+  const nudgeWanted = params.get("nudge") ?? "heldNews";
+  const [nudge, setNudge] = useState<Nudge | null>(() =>
+    nudgeWanted === "none"
+      ? null
+      : nudgeWanted === "heldNews"
+        ? { kind: "heldNews", symbol: "NVDA", name: "NVIDIA", postUrl: "https://x.com/FirstSquawk" }
+        : (NUDGE_KINDS as readonly string[]).includes(nudgeWanted)
+          ? ({ kind: nudgeWanted } as Nudge)
+          : null,
+  );
+
   // The drawers read the wallet store, which only exists in the browser;
   // rendering them on the server threw and fell back to client rendering.
   const mounted = useMounted();
@@ -87,6 +101,16 @@ function Gallery() {
 
   return (
     <>
+      <NudgeLineView
+        nudge={nudge}
+        onDismiss={() => setNudge(null)}
+        onAddFunds={() => {}}
+        onParkCash={() => {
+          setBuyListing(CASH_LISTING);
+          setBuyOpen(true);
+        }}
+        onOpenAccount={() => {}}
+      />
       {/* The same three tracks Home composes, so the desktop layout can be
           reviewed here without a session. */}
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">
@@ -126,10 +150,12 @@ function Gallery() {
             newsFilterSymbol={newsFilter?.symbol}
           />
         </div>
-        <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
+        <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1 xl:self-stretch xl:[contain:size]">
           <NewsFeed
             filter={newsFilter}
             onClearFilter={() => setNewsFilter(null)}
+            limit={6}
+            fill
           />
         </div>
       </div>

@@ -11,7 +11,7 @@ import {
 } from "@sodax/wallet-sdk-react";
 import { Button } from "@/components/ui/button";
 import { BerthMark } from "@/components/berth-mark";
-import { MarketPreview } from "@/components/board";
+import { MarketPreview, NewsFeed } from "@/components/board";
 import { WalletDrawer } from "@/components/wallet";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -69,7 +69,7 @@ function WelcomeScreen() {
   // panel are public, so it is the real thing and not a mock. On a phone the
   // two stack, and the way in stays above the board.
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-8 px-6 py-10 sm:max-w-lg lg:max-w-5xl lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:items-center lg:gap-12">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-8 px-6 py-10 sm:max-w-lg lg:max-w-5xl lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:items-center lg:gap-12 xl:max-w-7xl xl:grid-cols-[minmax(0,1fr)_minmax(0,46rem)] xl:gap-10">
       <div className="flex flex-col items-center gap-6 text-center lg:items-start lg:text-left">
       <div className="flex flex-col items-center gap-3 lg:items-start">
         <BerthMark className="size-16" title="Berth" />
@@ -125,7 +125,15 @@ function WelcomeScreen() {
       </div>
       </div>
 
-      <MarketPreview />
+      {/* The board and what is being said about it: the same live, public
+          data the signed-in column reads, from the same cache, so a
+          visitor costs no extra call. Under the board from 1024px, beside
+          it from 1280px at exactly its height, last on a phone so the way
+          in stays first. */}
+      <div className="flex flex-col gap-4 xl:grid xl:grid-cols-2 xl:items-stretch xl:gap-6">
+        <MarketPreview />
+        <NewsFeed limit={6} fill />
+      </div>
 
       <WalletDrawer open={walletsOpen} onOpenChange={setWalletsOpen} />
     </div>

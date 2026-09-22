@@ -13,6 +13,7 @@ import {
   HoldingsList,
   ListingBoard,
   NewsFeed,
+  NudgeLine,
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { Panel } from "@/components/ui/panel";
@@ -107,6 +108,11 @@ export function Home() {
         </header>
 
         <AccountTotal />
+        <NudgeLine
+          onAddFunds={() => setAccountOpen(true)}
+          onParkCash={() => openBuy(CASH_LISTING)}
+          onOpenAccount={() => setAccountOpen(true)}
+        />
 
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">
           {/*
@@ -145,10 +151,15 @@ export function Home() {
             />
           </div>
 
-          <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
+          {/* Six cards at a time, the rest rotating in. From 1280px the
+              column is exactly as tall as the board beside it rather than
+              running on below it (see NewsFeed `fill`). */}
+          <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1 xl:self-stretch xl:[contain:size]">
             <NewsFeed
               filter={newsFilter}
               onClearFilter={() => setNewsFilter(null)}
+              limit={6}
+              fill
             />
           </div>
         </div>
