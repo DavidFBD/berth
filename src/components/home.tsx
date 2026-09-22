@@ -151,10 +151,15 @@ export function Home() {
             />
           </div>
 
-          <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
+          {/* Six cards at a time, the rest rotating in. From 1280px the
+              column is exactly as tall as the board beside it rather than
+              running on below it (see NewsFeed `fill`). */}
+          <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1 xl:self-stretch xl:[contain:size]">
             <NewsFeed
               filter={newsFilter}
               onClearFilter={() => setNewsFilter(null)}
+              limit={6}
+              fill
             />
           </div>
         </div>

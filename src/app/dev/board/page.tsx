@@ -150,10 +150,12 @@ function Gallery() {
             newsFilterSymbol={newsFilter?.symbol}
           />
         </div>
-        <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
+        <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1 xl:self-stretch xl:[contain:size]">
           <NewsFeed
             filter={newsFilter}
             onClearFilter={() => setNewsFilter(null)}
+            limit={6}
+            fill
           />
         </div>
       </div>

@@ -11,7 +11,6 @@ import {
   XLogo,
 } from "@phosphor-icons/react";
 import { JevMark } from "@/components/jev-mark";
-import { InfoTip } from "@/components/ui/info-tip";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
@@ -90,6 +89,7 @@ export function NewsFeed({
   filter,
   onClearFilter,
   limit,
+  fill = false,
 }: {
   filter?: TokenListing | null;
   onClearFilter?: () => void;
@@ -99,6 +99,15 @@ export function NewsFeed({
    * the limit join the rotation rather than being dropped.
    */
   limit?: number;
+  /**
+   * Take the height the grid row gives it instead of setting it. With
+   * `contain: size` the column contributes nothing to the row's height, so
+   * the row is as tall as its neighbour (the board) and the column fills
+   * exactly that, clipping at its bottom edge. Only where the column sits
+   * beside something in the same row: from 1280px. Below that it stacks,
+   * and a contained column would collapse to nothing.
+   */
+  fill?: boolean;
 }) {
   const copy = useCopy();
   const [tab, setTab] = useState<Tab>("posts");
@@ -132,10 +141,39 @@ export function NewsFeed({
   };
 
   return (
-    <Panel surface="sheet">
+    <Panel
+      surface="sheet"
+      className={
+        fill ? "xl:flex xl:h-full xl:flex-col xl:overflow-hidden xl:[contain:size]" : undefined
+      }
+    >
       <SectionHeading
         title={copy.newsTitle}
         hint={tab === "posts" ? copy.postsHint : copy.newsHint}
+        more={
+          tab === "posts" && posts.curation ? (
+            <>
+              <p className="mt-1.5">{copy.jevAbout}</p>
+              <p className="mt-1.5 text-muted-foreground">
+                {copy.jevCuration(
+                  count(posts.curation.seen),
+                  count(posts.curation.accounts),
+                  count(posts.curation.read),
+                  count(posts.curation.kept),
+                )}
+              </p>
+              <a
+                href={JEV_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1.5 inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-2 hover:underline"
+              >
+                {copy.jevLinkLabel}
+                <ArrowUpRight className="size-3" aria-hidden />
+              </a>
+            </>
+          ) : undefined
+        }
         action={
           <div
             role="tablist"
@@ -204,29 +242,9 @@ export function NewsFeed({
       </div>
 
       {tab === "posts" && posts.curation && (
-        <div className="flex items-center gap-1.5 px-4 pb-3 text-[11px] text-muted-foreground">
-          <JevMark className="size-3.5 text-foreground" />
+        <div className="flex items-center gap-1.5 px-4 pb-3 text-[11px]">
+          <JevMark live className="size-3.5 text-foreground" />
           <span className="font-medium text-foreground">{copy.jevCuratedBy}</span>
-          <InfoTip label={copy.jevCuratedBy}>
-            <p>{copy.jevAbout}</p>
-            <p className="mt-1.5 text-muted-foreground">
-              {copy.jevCuration(
-                count(posts.curation.seen),
-                count(posts.curation.accounts),
-                count(posts.curation.read),
-                count(posts.curation.kept),
-              )}
-            </p>
-            <a
-              href={JEV_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1.5 inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-2 hover:underline"
-            >
-              {copy.jevLinkLabel}
-              <ArrowUpRight className="size-3" aria-hidden />
-            </a>
-          </InfoTip>
         </div>
       )}
 

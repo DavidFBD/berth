@@ -63,6 +63,7 @@ export function SectionHeading({
   title,
   hint,
   note,
+  more,
   action,
   className,
 }: {
@@ -71,6 +72,8 @@ export function SectionHeading({
   hint?: string;
   /** A measurement note or a caveat; behind the same (i), after the hint. */
   note?: string;
+  /** Anything else the (i) should hold, after the hint and note. */
+  more?: ReactNode;
   /** A control that belongs to the section as a whole. */
   action?: ReactNode;
   className?: string;
@@ -86,10 +89,11 @@ export function SectionHeading({
         <h2 className="font-display text-[15px] leading-tight font-semibold tracking-[-0.012em] text-foreground">
           {title}
         </h2>
-        {(hint || note) && (
+        {(hint || note || more) && (
           <InfoTip label={title}>
             {hint && <p>{hint}</p>}
             {note && <p className={hint ? "mt-1.5 text-muted-foreground" : ""}>{note}</p>}
+            {more}
           </InfoTip>
         )}
       </div>

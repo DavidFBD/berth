@@ -764,7 +764,7 @@ export const COPY: Copy = {
   ledgerLoading: "Loading…",
   ledgerEmpty: "Nothing yet. Your first trade will show here.",
 
-  jevCuratedBy: "Curated by Jev",
+  jevCuratedBy: "Live curation by Jev",
   jevCuration: (seen, accounts, read, kept) =>
     `X returned ${seen} posts from ${accounts} accounts this week. Jev read ${read} and kept ${kept}.`,
   jevAbout: "Jev is a model by TypeSafe. It reads each post before it is shown, and keeps the ones that report something.",
