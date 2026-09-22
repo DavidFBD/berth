@@ -12,6 +12,7 @@ import type {
   XpHistoryResponse,
 } from "@/lib/profile-types";
 import { announceRewards } from "@/components/xp-toast";
+import { useLinkInProgress } from "@/hooks/use-link-email";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import {
   clearPendingReferral,
@@ -30,7 +31,12 @@ function useIdentity() {
   const privy = usePrivyEmbeddedWallet();
   const { getAccessToken } = usePrivy();
   const external = useXAccount({ xChainId: ChainKeys.SONIC_MAINNET });
-  const authenticated = privy.enabled && privy.authenticated;
+  // A wallet account borrowing a Privy session to add an email is still a
+  // wallet account: keyed on the DID for that moment, the panel would blank
+  // mid-flow and a shared browser could inherit the wrong row.
+  const linking = useLinkInProgress();
+  const authenticated =
+    privy.enabled && privy.authenticated && !linking && !privy.walletAccountSession;
   const wallet = authenticated ? privy.embedded?.address : external.address;
   const key = authenticated ? (privy.user?.id ?? null) : (wallet ?? null);
   return { authenticated, wallet: wallet ?? null, key, getAccessToken };

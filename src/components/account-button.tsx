@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { useLinkInProgress } from "@/hooks/use-link-email";
 import { AnimatePresence, motion } from "motion/react";
 import { useAddFunds, useExportWallet } from "@privy-io/react-auth";
 import {
@@ -53,6 +54,7 @@ export function AccountButton({
   onOpenChange?: (open: boolean) => void;
 } = {}) {
   const privy = usePrivyEmbeddedWallet();
+  const linking = useLinkInProgress();
   const mounted = useMounted();
   const copy = useCopy();
   const [accountOpenState, setAccountOpenState] = useState(false);
@@ -67,7 +69,10 @@ export function AccountButton({
   // Not signed in via email but past the AuthGate means an external wallet
   // is connected. The welcome screen owns sign-in, so the header shows the
   // wallet pill plus the rewards chip; the chip opens the rewards panel.
-  if (!privy.authenticated) {
+  // A wallet account stays a wallet account while it borrows a Privy
+  // session to add an email, and after: the email drawer below assumes an
+  // embedded wallet this person does not have. See hooks/use-link-email.
+  if (!privy.authenticated || linking || privy.walletAccountSession) {
     return <ExternalAccountEntry open={accountOpen} onOpenChange={setAccountOpen} />;
   }
 

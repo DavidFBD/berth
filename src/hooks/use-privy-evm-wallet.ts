@@ -24,13 +24,17 @@ export function usePrivyEmbeddedWallet() {
   const { ready, authenticated, user, login, logout, getAccessToken } =
     usePrivy();
   const { wallets } = useWallets();
+  // Newer embedded wallets report "privy-v2"; both are Privy's, and the
+  // server's pickAccountWallet reads them the same way.
   const embedded = wallets.find(
-    (wallet) => wallet.walletClientType === "privy",
+    (wallet) => wallet.walletClientType === "privy" || wallet.walletClientType === "privy-v2",
   );
   return {
     enabled: PRIVY_ENABLED,
     ready,
     authenticated,
+    /** See `isWalletAccountUser`: a session the app has no screen for. */
+    walletAccountSession: authenticated && isWalletAccountUser(user),
     user,
     login,
     logout,
@@ -41,6 +45,32 @@ export function usePrivyEmbeddedWallet() {
      */
     getAccessToken,
   };
+}
+
+/**
+ * Whether a Privy user is a wallet account: an external EVM wallet linked,
+ * no embedded one. Such a user signs in to Privy only as scaffolding for
+ * adding an email (hooks/use-link-email); a session like that is never a
+ * place to stay, because the email screens assume an embedded wallet and the
+ * money lives on the external one. Read from linked accounts, not from the
+ * live wallet list, so an email user whose embedded wallet is still being
+ * created is not mistaken for one: they have no external wallet linked.
+ */
+export function isWalletAccountUser(user: unknown): boolean {
+  const linked = (user as { linkedAccounts?: unknown[] } | null | undefined)?.linkedAccounts;
+  if (!Array.isArray(linked)) return false;
+  const evm = linked.filter(
+    (account): account is { walletClientType?: string; connectorType?: string } =>
+      typeof account === "object" &&
+      account !== null &&
+      (account as { type?: string }).type === "wallet" &&
+      (account as { chainType?: string }).chainType === "ethereum",
+  );
+  const embedded = (account: { walletClientType?: string; connectorType?: string }) =>
+    account.walletClientType === "privy" ||
+    account.walletClientType === "privy-v2" ||
+    account.connectorType === "embedded";
+  return evm.some((account) => !embedded(account)) && !evm.some(embedded);
 }
 
 type Eip1193 = {

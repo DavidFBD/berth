@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Envelope, HandHeart, Wallet } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { isUserRejectedError } from "@sodax/dapp-kit";
@@ -14,6 +14,7 @@ import { BerthMark } from "@/components/berth-mark";
 import { MarketPreview, NewsFeed } from "@/components/board";
 import { WalletDrawer } from "@/components/wallet";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
+import { useLinkInProgress } from "@/hooks/use-link-email";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useCopy } from "@/components/settings-provider";
 import { COPY } from "@/lib/copy";
@@ -32,11 +33,30 @@ import { pendingReferralCode } from "@/lib/referral";
 export function AuthGate({ children }: { children: ReactNode }) {
   const privy = usePrivyEmbeddedWallet();
   const connected = useConnectedChains();
+  const linking = useLinkInProgress();
+  const copy = useCopy();
+
+  // A Privy session belonging to a wallet account is only ever scaffolding
+  // for adding an email (hooks/use-link-email). Found outside that flow it
+  // is either left over from an interrupted one, or someone signed in with
+  // the email of a wallet account; neither has a screen here, because the
+  // money is on a wallet this browser may not hold. End it, and say why when
+  // there is no wallet to fall back on.
+  const stray = PRIVY_ENABLED && privy.ready && privy.walletAccountSession && !linking;
+  const { logout } = privy;
+  const noWallet = connected.status !== "loading" && connected.total === 0;
+  useEffect(() => {
+    if (!stray) return;
+    void logout().then(() => {
+      if (noWallet) toast(copy.walletAccountEmailSignIn);
+    });
+  }, [stray, logout, noWallet, copy.walletAccountEmailSignIn]);
 
   const settling =
-    (PRIVY_ENABLED && !privy.ready) || connected.status === "loading";
+    (PRIVY_ENABLED && !privy.ready) || connected.status === "loading" || stray;
   const isIn =
-    (PRIVY_ENABLED && privy.authenticated) || connected.total > 0;
+    (PRIVY_ENABLED && privy.authenticated && !privy.walletAccountSession) ||
+    connected.total > 0;
 
   if (settling) return <Splash />;
   if (!isIn) return <WelcomeScreen />;

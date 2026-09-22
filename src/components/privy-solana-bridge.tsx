@@ -64,7 +64,9 @@ export function PrivySolanaBridge() {
   }, [ready, wallets]);
 
   // Step 2: auto-connect the discovered Privy connector for email users.
-  const authenticated = privy.authenticated;
+  // Only a real email session: a wallet account borrowing Privy to add an
+  // email must never have a Solana wallet connected on its behalf.
+  const authenticated = privy.authenticated && !privy.walletAccountSession;
   const connected = Boolean(solanaAccount.address);
   useEffect(() => {
     if (!authenticated || connected || connectAttemptedRef.current) return;
