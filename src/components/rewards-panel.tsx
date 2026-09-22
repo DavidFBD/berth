@@ -15,7 +15,6 @@ import {
   Ticket,
   UserPlus,
 } from "@phosphor-icons/react";
-import { useQueryClient } from "@tanstack/react-query";
 import { HOME_CHAIN } from "@/lib/account";
 import { useAccount } from "@/hooks/use-account";
 import { useLinkEmail } from "@/hooks/use-link-email";
@@ -53,16 +52,11 @@ import { useCopy } from "@/components/settings-provider";
 export function RewardsPanel() {
   const profile = useProfile();
   const privy = usePrivyEmbeddedWallet();
-  const queryClient = useQueryClient();
   // The account the email would attach to, by the one address rule. Its
   // `mode` is also the gate: "external" is exactly the case with a wallet to
   // sign with and no email session already in hand.
   const account = useAccount(HOME_CHAIN);
-  const link = useLinkEmail({
-    onLinked: () => {
-      void queryClient.invalidateQueries({ queryKey: ["profile"] });
-    },
-  });
+  const link = useLinkEmail();
   const setAvatar = useSetAvatar();
   const copy = useCopy();
   /**
@@ -204,7 +198,10 @@ export function RewardsPanel() {
           a gate that read it would unmount the form mid-flow, which is
           exactly what happened on 2026-09-21. `mode === "external"` already
           means there is no email session here. See hooks/use-link-email. */}
-      {!hasEmail && privy.enabled && account.mode === "external" && account.address && (
+      {(!hasEmail || link.state === "done") &&
+        privy.enabled &&
+        account.mode === "external" &&
+        account.address && (
         <div className="rounded-lg bg-muted/60 p-3">
           {link.state === "idle" ? (
             <button
@@ -229,8 +226,9 @@ export function RewardsPanel() {
                 {copy.addEmailTitle}
               </p>
 
-              {link.state === "code" || link.state === "verifying" ? (
+              {link.state === "done" ? null : link.state === "code" || link.state === "verifying" ? (
                 <form
+                  key="code"
                   className="flex flex-col gap-2"
                   onSubmit={(event) => {
                     event.preventDefault();
@@ -249,28 +247,30 @@ export function RewardsPanel() {
                     autoComplete="one-time-code"
                     placeholder={copy.addEmailCodePlaceholder}
                     aria-label={copy.addEmailCodePlaceholder}
+                    aria-invalid={link.error === "codeWrong" || undefined}
                     disabled={link.state === "verifying"}
                   />
-                  <div className="flex gap-2">
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={link.state === "verifying"}
-                    >
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="submit" size="sm" disabled={link.state === "verifying"}>
                       {copy.addEmailVerify}
                     </Button>
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
-                      onClick={link.cancel}
+                      disabled={link.state === "verifying"}
+                      onClick={() => void link.resend()}
                     >
+                      {copy.addEmailResend}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={link.cancel}>
                       {copy.addEmailCancel}
                     </Button>
                   </div>
                 </form>
               ) : (
                 <form
+                  key="email"
                   className="flex flex-col gap-2"
                   onSubmit={(event) => {
                     event.preventDefault();
@@ -285,6 +285,7 @@ export function RewardsPanel() {
                     type="email"
                     required
                     autoComplete="email"
+                    defaultValue={link.pendingEmail}
                     placeholder={copy.addEmailPlaceholder}
                     aria-label={copy.addEmailTitle}
                     disabled={link.state !== "email" && link.state !== "taken"}
@@ -297,34 +298,48 @@ export function RewardsPanel() {
                     >
                       {copy.addEmailContinue}
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={link.cancel}
-                    >
+                    <Button type="button" size="sm" variant="ghost" onClick={link.cancel}>
                       {copy.addEmailCancel}
                     </Button>
                   </div>
                 </form>
               )}
 
-              {/* One line that says where the flow is, or what went wrong. */}
-              {link.state !== "email" && link.state !== "code" && (
-                <p className="text-xs text-muted-foreground">
-                  {link.state === "signing"
+              {/* One line that says where the flow is, or what went wrong.
+                  Every failure lands here: a silent return to the same form
+                  looked like a button that did nothing. */}
+              {(() => {
+                const line =
+                  link.state === "signing"
                     ? copy.addEmailSigning
                     : link.state === "sending"
                       ? copy.addEmailSending
                       : link.state === "verifying"
                         ? copy.addEmailVerifying
-                        : link.state === "taken"
-                          ? copy.addEmailTaken
-                          : link.state === "done"
-                            ? copy.addEmailDone
-                            : copy.addEmailFailed}
-                </p>
-              )}
+                        : link.state === "saving"
+                          ? copy.addEmailSaving
+                          : link.state === "taken"
+                            ? copy.addEmailTaken
+                            : link.state === "done"
+                              ? copy.addEmailDone
+                              : link.error === "codeWrong"
+                                ? copy.addEmailCodeWrong
+                                : link.error === "failed"
+                                  ? copy.addEmailFailed
+                                  : link.resent && link.state === "code"
+                                    ? copy.addEmailResent
+                                    : null;
+                if (!line) return null;
+                const bad = link.state === "taken" || link.error !== null;
+                return (
+                  <p
+                    role={bad ? "alert" : "status"}
+                    className={`text-xs ${bad ? "text-bad" : "text-muted-foreground"}`}
+                  >
+                    {line}
+                  </p>
+                );
+              })()}
             </div>
           )}
         </div>

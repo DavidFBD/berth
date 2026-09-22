@@ -400,6 +400,16 @@ export type Copy = {
   /** The honest ending: that address is somebody else's account already. */
   addEmailTaken: string;
   addEmailFailed: string;
+  /** After the code is accepted, while the rewards row is told. */
+  addEmailSaving: string;
+  addEmailCodeWrong: string;
+  addEmailResend: string;
+  addEmailResent: string;
+  /**
+   * Someone signed in with the email of a wallet account. The funds are on
+   * the wallet, so the email alone opens nothing; say so and send them to it.
+   */
+  walletAccountEmailSignIn: string;
   inviteLockedTitle: (rankName: string) => string;
   inviteLockedSub: (level: number) => string;
   friendInvitedYou: string;
@@ -743,7 +753,7 @@ export const COPY: Copy = {
   pickFace: (amount) => `Pick an avatar · +${amount} XP`,
   newFace: "Change avatar",
   addEmailTitle: "Add an email to your account",
-  addEmailSub: (amount) => `Keeps your account recoverable. +${amount} XP`,
+  addEmailSub: (amount) => `+${amount} XP. Your wallet stays the key to your account.`,
   addEmailPlaceholder: "you@example.com",
   addEmailContinue: "Continue",
   addEmailSigning: "Confirm in your wallet, so we know the account is yours.",
@@ -757,6 +767,11 @@ export const COPY: Copy = {
   addEmailTaken:
     "That email already belongs to another account. Try a different one.",
   addEmailFailed: "That did not go through. Try again.",
+  addEmailSaving: "Saving it to your account.",
+  addEmailCodeWrong: "That code did not work. Check it, or send a new one.",
+  addEmailResend: "Send a new code",
+  addEmailResent: "A new code is on its way.",
+  walletAccountEmailSignIn: "That email belongs to a wallet account. Connect the wallet to sign in.",
   inviteLockedTitle: (rankName) => `Invites unlock at ${rankName}`,
   inviteLockedSub: (level) =>
     `Reach level ${level} and you can invite friends too.`,
