@@ -192,9 +192,10 @@ export function useAwardTheme() {
 export function useAwardPour() {
   return useProfileMutation(
     "/api/xp/pour",
-    (vars: { direction: "in" | "out"; intentTxHash: string }) => ({
+    (vars: { direction: "in" | "out"; intentTxHash: string; fillTxHash?: string }) => ({
       direction: vars.direction,
       intentTxHash: vars.intentTxHash,
+      fillTxHash: vars.fillTxHash,
     }),
   );
 }

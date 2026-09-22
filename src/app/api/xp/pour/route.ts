@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { RewardList } from "@/lib/profile-types";
 import { awardXp } from "@/lib/server/accounts";
+import { recordOrder } from "@/lib/server/orders";
 import { verifyPourTx } from "@/lib/server/pour-verify";
 import {
   readRewardsCaller,
@@ -8,7 +9,12 @@ import {
   rewardsResponse,
 } from "@/lib/server/rewards-route";
 
-/** Reward a filled pour. Body: direction ('in' | 'out') + the intent's hub tx hash. */
+/**
+ * Reward a filled pour, and record it as an order. Body: direction
+ * ('in' | 'out'), the intent's hub tx hash, and optionally the solver's fill
+ * tx hash, which only ever helps the order record pick between two fills
+ * (lib/orders pickFill) and is never trusted on its own.
+ */
 export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);
   if (!read.ok) return read.response;
@@ -37,6 +43,22 @@ export async function POST(request: NextRequest) {
   if (!verdict.ok) {
     return NextResponse.json({ error: verdict.reason }, { status: 422 });
   }
+
+  const claimedFill =
+    typeof read.caller.body.fillTxHash === "string" &&
+    /^0x[0-9a-f]{64}$/i.test(read.caller.body.fillTxHash)
+      ? read.caller.body.fillTxHash
+      : null;
+  // Awaited, not fired and forgotten: a serverless function may be frozen
+  // the moment it answers. recordOrder never throws, so the award is safe.
+  await recordOrder({
+    sodax: verdict.sodax,
+    userId: user.id,
+    intentTx: txHash,
+    direction: kind === "pour_out" ? "sell" : "buy",
+    intent: verdict.intent,
+    claimedFillTx: claimedFill,
+  });
 
   const rewards: RewardList = [];
   const pour = await awardXp(user.id, kind, txHash);

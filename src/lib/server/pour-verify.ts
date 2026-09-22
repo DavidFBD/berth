@@ -35,6 +35,11 @@ export type PourRejection =
 
 export type PourVerdict = { ok: true } | { ok: false; reason: PourRejection };
 
+/** A verified pour, with what it was, for the order record (lib/server/orders). */
+export type VerifiedPour =
+  | { ok: true; intent: Intent; sodax: Sodax }
+  | { ok: false; reason: PourRejection };
+
 const EVM_ADDRESS = /^0x[0-9a-f]{40}$/i;
 
 /**
@@ -114,7 +119,7 @@ export async function verifyPourTx({
   txHash: string;
   direction: "in" | "out";
   accountWallet: string | null;
-}): Promise<PourVerdict> {
+}): Promise<VerifiedPour> {
   if (!(await receiptSucceeded(txHash))) {
     return { ok: false, reason: "not confirmed" };
   }
@@ -143,5 +148,6 @@ export async function verifyPourTx({
       listing.address.toLowerCase(),
     ),
   );
-  return judgePour({ direction, intent, vaultAddresses, accountWallet });
+  const verdict = judgePour({ direction, intent, vaultAddresses, accountWallet });
+  return verdict.ok ? { ok: true, intent, sodax } : verdict;
 }

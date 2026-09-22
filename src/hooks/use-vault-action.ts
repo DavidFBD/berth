@@ -310,6 +310,8 @@ export function useVaultAction(options?: {
         awardPour({
           direction: pour?.context.action === "withdraw" ? "out" : "in",
           intentTxHash,
+          // Helps the order record tell two quick fills of one listing apart.
+          fillTxHash,
         });
       }
     } else if (pour) {
