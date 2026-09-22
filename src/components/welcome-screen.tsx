@@ -47,9 +47,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const noWallet = connected.status !== "loading" && connected.total === 0;
   useEffect(() => {
     if (!stray) return;
-    void logout().then(() => {
-      if (noWallet) toast(copy.walletAccountEmailSignIn);
-    });
+    logout()
+      .then(() => {
+        if (noWallet) toast(copy.walletAccountEmailSignIn);
+      })
+      .catch(() => {
+        // Privy keeps the session; the next render tries again.
+      });
   }, [stray, logout, noWallet, copy.walletAccountEmailSignIn]);
 
   const settling =

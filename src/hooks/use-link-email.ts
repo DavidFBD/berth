@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { getAddress } from "viem";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLinkEmail as usePrivyLinkEmail, useLoginWithSiwe } from "@privy-io/react-auth";
@@ -62,6 +62,12 @@ export type LinkEmailState =
   | "verifying"
   /** Linked; telling the rewards row and closing the session. */
   | "saving"
+  /**
+   * Linked on Privy, but the rewards row could not be told. The session is
+   * kept open on purpose: it is the only thing that can tell it, so "Try
+   * again" retries just the save and Cancel gives up.
+   */
+  | "saveFailed"
   | "done"
   /** The address already belongs to a different Privy account. */
   | "taken";
@@ -77,6 +83,8 @@ type Snapshot = {
   resent: boolean;
   /** This flow signed in to Privy, so this flow must sign out. */
   startedSession: boolean;
+  /** The wallet the flow is for; a different wallet connecting ends it. */
+  address: string;
 };
 
 const INITIAL: Snapshot = {
@@ -85,6 +93,7 @@ const INITIAL: Snapshot = {
   pendingEmail: "",
   resent: false,
   startedSession: false,
+  address: "",
 };
 
 let snapshot: Snapshot = INITIAL;
@@ -124,23 +133,33 @@ function privyErrorCode(error: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-/** A wallet's "no", which is a choice and not a failure. EIP-1193 4001. */
+/**
+ * A wallet's "no", which is a choice and not a failure. EIP-1193 4001.
+ * Deliberately narrow: a looser match on "cancel" would also swallow a
+ * request cancelled by the network, which is a failure the person should see.
+ */
 function isDecline(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const { code, message } = error as { code?: unknown; message?: unknown };
   return (
     code === 4001 ||
     code === "ACTION_REJECTED" ||
-    (typeof message === "string" && /reject|denied|declined|cancel/i.test(message))
+    (typeof message === "string" && /user rejected|user denied|rejected the request/i.test(message))
   );
 }
 
-export function useLinkEmail(): Snapshot & {
+/**
+ * `address` is the wallet account the panel is showing. If a different
+ * wallet takes its place mid-flow, the flow is for someone who is no longer
+ * here, so it is ended and its session closed.
+ */
+export function useLinkEmail(address: string | undefined): Snapshot & {
   open: () => void;
   cancel: () => void;
   submitEmail: (email: string, address: string) => Promise<void>;
   submitCode: (code: string) => Promise<void>;
   resend: () => Promise<void>;
+  retrySave: () => Promise<void>;
 } {
   const current = useSyncExternalStore(subscribe, read, readServer);
   const privy = usePrivyEmbeddedWallet();
@@ -150,17 +169,29 @@ export function useLinkEmail(): Snapshot & {
   const { mutateAsync: sign } = useXSignMessage();
   const { logout, getAccessToken } = privy;
 
-  /** Close what this flow opened, then land on `patch`. */
+  /**
+   * Close what this flow opened, then land on `patch`. The session is ended
+   * BEFORE the flow lets go of it: cleared first, the session guard in
+   * AuthGate would see a wallet account's Privy session with no flow holding
+   * it, treat it as stray, and blank the whole app to a splash while it
+   * logged out a second time.
+   */
   const finish = useCallback(
     async (patch: Partial<Snapshot>) => {
-      const started = snapshot.startedSession;
+      if (snapshot.startedSession) await logout().catch(() => {});
       set({ ...patch, startedSession: false });
-      if (started) await logout().catch(() => {});
       // Whatever the rewards panel knew was keyed to a session now gone.
       void queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
     [logout, queryClient],
   );
+
+  useEffect(() => {
+    const flowAddress = snapshot.address;
+    if (!flowAddress || snapshot.state === "idle") return;
+    if (address && address.toLowerCase() === flowAddress.toLowerCase()) return;
+    void finish({ ...INITIAL });
+  }, [address, finish]);
 
   const open = useCallback(() => set({ ...INITIAL, state: "email" }), []);
 
@@ -171,7 +202,7 @@ export function useLinkEmail(): Snapshot & {
   const submitEmail = useCallback(
     async (email: string, address: string) => {
       if (!privy.enabled || !privy.ready || inProgress(snapshot.state)) return;
-      set({ error: null, resent: false, pendingEmail: email });
+      set({ error: null, resent: false, pendingEmail: email, address });
       try {
         if (!privy.authenticated) {
           set({ state: "signing" });
@@ -215,6 +246,42 @@ export function useLinkEmail(): Snapshot & {
     }
   }, [sendCode]);
 
+  /**
+   * Three tries, because this is the one moment the row can learn it: once
+   * the session closes, a wallet account never signs in to Privy again. The
+   * server answers 503 rather than guess while Privy is slow
+   * (lib/server/rewards-route). Saved means the row now says it has an
+   * email, not merely that the request returned: Privy can take a moment to
+   * report a link it has just made, and a 200 without the email is a retry.
+   * If it never lands, the session stays open for "Try again".
+   */
+  const save = useCallback(async () => {
+    set({ state: "saving", error: null });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+      try {
+        const token = await getAccessToken();
+        const response = await fetch("/api/profile", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({}),
+        });
+        if (!response.ok) continue;
+        const data = (await response.json()) as ProfileResponse;
+        if (!data.hasEmail) continue;
+        announceRewards(data.rewards, data.xp);
+        await finish({ state: "done", error: null });
+        return;
+      } catch {
+        // Try again.
+      }
+    }
+    set({ state: "saveFailed", error: "failed" });
+  }, [getAccessToken, finish]);
+
   const submitCode = useCallback(
     async (code: string) => {
       if (snapshot.state !== "code") return;
@@ -235,36 +302,15 @@ export function useLinkEmail(): Snapshot & {
       // Linked on Privy's side. Tell the rewards row while this session can
       // still prove who it is; the server resolves the wallet from Privy and
       // attaches the DID and the email to that wallet's own row.
-      set({ state: "saving" });
-      // Three tries, because this is the one moment the row can learn it:
-      // once the session closes, a wallet account never signs in to Privy
-      // again. The server answers 503 rather than guess when Privy itself is
-      // slow (lib/server/rewards-route), which is what the retries are for.
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          const token = await getAccessToken();
-          const response = await fetch("/api/profile", {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              ...(token ? { authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({}),
-          });
-          if (response.ok) {
-            const data = (await response.json()) as ProfileResponse;
-            announceRewards(data.rewards, data.xp);
-            break;
-          }
-        } catch {
-          // Try again below.
-        }
-        await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
-      }
-      await finish({ state: "done", error: null });
+      await save();
     },
-    [linkWithCode, getAccessToken, finish],
+    [linkWithCode, save, finish],
   );
 
-  return { ...current, open, cancel, submitEmail, submitCode, resend };
+  const retrySave = useCallback(async () => {
+    if (snapshot.state !== "saveFailed") return;
+    await save();
+  }, [save]);
+
+  return { ...current, open, cancel, submitEmail, submitCode, resend, retrySave };
 }

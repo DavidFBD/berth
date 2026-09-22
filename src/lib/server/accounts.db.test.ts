@@ -93,6 +93,23 @@ describe("getOrCreateUser", () => {
     expect(again!.user.id).toBe(real!.user.id);
   });
 
+  it("never retires a real account's row to repair a fork", async () => {
+    // An email user who exported their embedded key and connected it as a
+    // wallet: a wallet-only row exists for that address, but their own row
+    // is an account with an email, so it must stay theirs.
+    const walletRow = await getOrCreateUser({ did: null, wallet: "0xexportedkey00000000" });
+    const emailUser = await getOrCreateUser({ did: "did:privy:emailuser", wallet: null });
+    await sql.query(`update users set email = 'a@b.c' where id = $1`, [emailUser!.user.id]);
+
+    const after = await getOrCreateUser({ did: "did:privy:emailuser", wallet: "0xexportedkey00000000" });
+    expect(after!.user.id).toBe(emailUser!.user.id);
+    expect(after!.user.privy_did).toBe("did:privy:emailuser");
+    const other = (await sql.query(`select privy_did from users where id = $1`, [
+      walletRow!.user.id,
+    ])) as { privy_did: string | null }[];
+    expect(other[0].privy_did).toBeNull();
+  });
+
   it("never steals an address that belongs to another account", async () => {
     const owner = await getOrCreateUser({ did: null, wallet: "0xownedwallet00000000" });
     const other = await getOrCreateUser({

@@ -94,10 +94,21 @@ export async function getOrCreateUser({
     // survives for anyone who needs to look; it cannot go without an
     // identity (users_identity), so its DID is retired as "retired:<did>",
     // which no Privy token can ever present.
-    if (wallet && !user.wallet_address) {
+    //
+    // Only an empty row is retired: no email, no order, nobody seated on
+    // its invite. An email user can reach the same shape by exporting their
+    // embedded key and connecting it as an external wallet, and their row is
+    // an account, not a fork; that case keeps the old refusal below.
+    if (wallet && !user.wallet_address && !user.email) {
       const shadowed = (await sql.query(
-        `select id from users where wallet_address = $1 and privy_did is null`,
-        [wallet],
+        `select w.id from users w
+         where w.wallet_address = $1 and w.privy_did is null
+           and not exists (
+             select 1 from xp_events e
+             where e.user_id = $2 and e.kind in ('pour_in', 'pour_out', 'friend_poured')
+           )
+           and not exists (select 1 from users r where r.referred_by = $2)`,
+        [wallet, user.id],
       )) as { id: string }[];
       if (shadowed[0]) {
         await sql.query(

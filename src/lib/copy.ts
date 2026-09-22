@@ -405,6 +405,9 @@ export type Copy = {
   addEmailCodeWrong: string;
   addEmailResend: string;
   addEmailResent: string;
+  /** The email is on the account but the rewards side did not hear of it. */
+  addEmailSaveFailed: string;
+  addEmailRetrySave: string;
   /**
    * Someone signed in with the email of a wallet account. The funds are on
    * the wallet, so the email alone opens nothing; say so and send them to it.
@@ -771,6 +774,8 @@ export const COPY: Copy = {
   addEmailCodeWrong: "That code did not work. Check it, or send a new one.",
   addEmailResend: "Send a new code",
   addEmailResent: "A new code is on its way.",
+  addEmailSaveFailed: "Your email was added, but saving it here did not go through.",
+  addEmailRetrySave: "Try again",
   walletAccountEmailSignIn: "That email belongs to a wallet account. Connect the wallet to sign in.",
   inviteLockedTitle: (rankName) => `Invites unlock at ${rankName}`,
   inviteLockedSub: (level) =>

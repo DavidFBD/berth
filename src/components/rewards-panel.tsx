@@ -56,7 +56,7 @@ export function RewardsPanel() {
   // `mode` is also the gate: "external" is exactly the case with a wallet to
   // sign with and no email session already in hand.
   const account = useAccount(HOME_CHAIN);
-  const link = useLinkEmail();
+  const link = useLinkEmail(account.address);
   const setAvatar = useSetAvatar();
   const copy = useCopy();
   /**
@@ -226,7 +226,16 @@ export function RewardsPanel() {
                 {copy.addEmailTitle}
               </p>
 
-              {link.state === "done" ? null : link.state === "code" || link.state === "verifying" ? (
+              {link.state === "done" || link.state === "saving" ? null : link.state === "saveFailed" ? (
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" onClick={() => void link.retrySave()}>
+                    {copy.addEmailRetrySave}
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={link.cancel}>
+                    {copy.addEmailCancel}
+                  </Button>
+                </div>
+              ) : link.state === "code" || link.state === "verifying" ? (
                 <form
                   key="code"
                   className="flex flex-col gap-2"
@@ -322,6 +331,8 @@ export function RewardsPanel() {
                             ? copy.addEmailTaken
                             : link.state === "done"
                               ? copy.addEmailDone
+                              : link.state === "saveFailed"
+                                ? copy.addEmailSaveFailed
                               : link.error === "codeWrong"
                                 ? copy.addEmailCodeWrong
                                 : link.error === "failed"
