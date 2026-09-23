@@ -69,6 +69,47 @@ describe("getOrCreateUser", () => {
     expect(claimed!.user.privy_did).toBe("did:privy:claimer");
   });
 
+  it("moves a shadowed wallet owner back onto their real row", async () => {
+    // The 2026-09-21 fork: the wallet's row exists, and a DID-only row was
+    // made for the same person while Privy could not name their wallet.
+    const real = await getOrCreateUser({ did: null, wallet: "0xshadowedwallet00000" });
+    const empty = await getOrCreateUser({ did: "did:privy:shadowed", wallet: null });
+    expect(empty!.user.id).not.toBe(real!.user.id);
+
+    const repaired = await getOrCreateUser({
+      did: "did:privy:shadowed",
+      wallet: "0xshadowedwallet00000",
+    });
+    expect(repaired!.user.id).toBe(real!.user.id);
+    expect(repaired!.user.privy_did).toBe("did:privy:shadowed");
+    expect(repaired!.created).toBe(false);
+
+    // The empty row survives with its DID retired, and the next sync is stable.
+    const left = (await sql.query(`select privy_did from users where id = $1`, [
+      empty!.user.id,
+    ])) as { privy_did: string | null }[];
+    expect(left[0].privy_did).toBe("retired:did:privy:shadowed");
+    const again = await getOrCreateUser({ did: "did:privy:shadowed", wallet: "0xshadowedwallet00000" });
+    expect(again!.user.id).toBe(real!.user.id);
+  });
+
+  it("never retires a real account's row to repair a fork", async () => {
+    // An email user who exported their embedded key and connected it as a
+    // wallet: a wallet-only row exists for that address, but their own row
+    // is an account with an email, so it must stay theirs.
+    const walletRow = await getOrCreateUser({ did: null, wallet: "0xexportedkey00000000" });
+    const emailUser = await getOrCreateUser({ did: "did:privy:emailuser", wallet: null });
+    await sql.query(`update users set email = 'a@b.c' where id = $1`, [emailUser!.user.id]);
+
+    const after = await getOrCreateUser({ did: "did:privy:emailuser", wallet: "0xexportedkey00000000" });
+    expect(after!.user.id).toBe(emailUser!.user.id);
+    expect(after!.user.privy_did).toBe("did:privy:emailuser");
+    const other = (await sql.query(`select privy_did from users where id = $1`, [
+      walletRow!.user.id,
+    ])) as { privy_did: string | null }[];
+    expect(other[0].privy_did).toBeNull();
+  });
+
   it("never steals an address that belongs to another account", async () => {
     const owner = await getOrCreateUser({ did: null, wallet: "0xownedwallet00000000" });
     const other = await getOrCreateUser({

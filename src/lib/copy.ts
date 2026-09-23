@@ -392,6 +392,37 @@ export type Copy = {
   xpToNext: (xp: string, rankName: string) => string;
   pickFace: (amount: number) => string;
   newFace: string;
+  /** Offered only to a wallet account, which has no email of its own. */
+  addEmailTitle: string;
+  addEmailSub: (amount: number) => string;
+  addEmailPlaceholder: string;
+  addEmailContinue: string;
+  /** While the wallet is being asked to prove it owns the address. */
+  addEmailSigning: string;
+  addEmailSending: string;
+  /** Above the code field; `email` is the address it went to. */
+  addEmailCodeSent: (email: string) => string;
+  addEmailCodePlaceholder: string;
+  addEmailVerify: string;
+  addEmailVerifying: string;
+  addEmailDone: string;
+  addEmailCancel: string;
+  /** The honest ending: that address is somebody else's account already. */
+  addEmailTaken: string;
+  addEmailFailed: string;
+  /** After the code is accepted, while the rewards row is told. */
+  addEmailSaving: string;
+  addEmailCodeWrong: string;
+  addEmailResend: string;
+  addEmailResent: string;
+  /** The email is on the account but the rewards side did not hear of it. */
+  addEmailSaveFailed: string;
+  addEmailRetrySave: string;
+  /**
+   * Someone signed in with the email of a wallet account. The funds are on
+   * the wallet, so the email alone opens nothing; say so and send them to it.
+   */
+  walletAccountEmailSignIn: string;
   inviteLockedTitle: (rankName: string) => string;
   inviteLockedSub: (level: number) => string;
   friendInvitedYou: string;
@@ -740,6 +771,28 @@ export const COPY: Copy = {
   xpToNext: (xp, rankName) => `${xp} XP to ${rankName}`,
   pickFace: (amount) => `Pick an avatar · +${amount} XP`,
   newFace: "Change avatar",
+  addEmailTitle: "Add an email to your account",
+  addEmailSub: (amount) => `+${amount} XP. Your wallet stays the key to your account.`,
+  addEmailPlaceholder: "you@example.com",
+  addEmailContinue: "Continue",
+  addEmailSigning: "Confirm in your wallet, so we know the account is yours.",
+  addEmailSending: "Sending you a code.",
+  addEmailCodeSent: (email) => `Enter the code we sent to ${email}.`,
+  addEmailCodePlaceholder: "6 digit code",
+  addEmailVerify: "Add email",
+  addEmailVerifying: "Checking the code.",
+  addEmailDone: "Email added.",
+  addEmailCancel: "Cancel",
+  addEmailTaken:
+    "That email already belongs to another account. Try a different one.",
+  addEmailFailed: "That did not go through. Try again.",
+  addEmailSaving: "Saving it to your account.",
+  addEmailCodeWrong: "That code did not work. Check it, or send a new one.",
+  addEmailResend: "Send a new code",
+  addEmailResent: "A new code is on its way.",
+  addEmailSaveFailed: "Your email was added, but saving it here did not go through.",
+  addEmailRetrySave: "Try again",
+  walletAccountEmailSignIn: "That email belongs to a wallet account. Connect the wallet to sign in.",
   inviteLockedTitle: (rankName) => `Invites unlock at ${rankName}`,
   inviteLockedSub: (level) =>
     `Reach level ${level} and you can invite friends too.`,

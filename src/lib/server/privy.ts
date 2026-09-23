@@ -49,13 +49,27 @@ export async function verifyPrivyAuth(
   }
 }
 
-type PrivyLinkedAccount = {
+export type PrivyLinkedAccount = {
   type: string;
   address?: string;
   email?: string;
   chain_type?: string;
   wallet_client_type?: string;
+  connector_type?: string;
 };
+
+/**
+ * Whether a linked wallet is one Privy holds for the user. Two client types
+ * name it ("privy" and, on newer wallets, "privy-v2"), and the connector
+ * type says "embedded" for both; any of the three is enough.
+ */
+export function isEmbeddedWallet(account: PrivyLinkedAccount): boolean {
+  return (
+    account.wallet_client_type === "privy" ||
+    account.wallet_client_type === "privy-v2" ||
+    account.connector_type === "embedded"
+  );
+}
 
 /**
  * The verified email on a Privy user, from the server-side REST API (the
@@ -110,26 +124,59 @@ const walletCache = new Map<string, { address: string | null; at: number }>();
 const WALLET_CACHE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The DID's embedded EVM wallet, from Privy's own records — the server-side
- * verified answer to "which wallet is this email user", replacing the old
- * client-asserted body field. Null when none is minted yet or the API
- * hiccups; identity then rests on the DID alone, which is fine.
+ * The EVM address this Privy user's account belongs to, from Privy's own
+ * records: the server-side verified answer to "who is this DID", replacing
+ * the old client-asserted body field.
+ *
+ * Embedded first, then any linked external wallet, and the order is the
+ * whole point. An email user's account is their embedded wallet, so that
+ * must win even when they have also linked an external one, because
+ * lib/account gives the money account to the embedded address in email mode
+ * and the two must name the same person.
+ *
+ * The external fallback exists because a Privy session can now be created by
+ * signing with an external wallet (hooks/use-link-email), and that user has
+ * no embedded wallet at all. Without the fallback this returned null, the
+ * claim path in accounts.ts never fired for want of an address, and a user
+ * who had just proved ownership of the wallet holding their positions was
+ * handed a brand new empty account instead. That happened to a real account
+ * on 2026-09-21 and is what this fallback exists to prevent.
+ *
+ * Null when the user has no EVM wallet at all. With several external
+ * wallets and no embedded one the first Privy lists wins; today only one can
+ * be linked (SIWE is the only way in, and there is no link-a-wallet flow), so
+ * that choice is not yet reachable.
  */
-export async function fetchPrivyWallet(did: string): Promise<string | null> {
-  const cached = walletCache.get(did);
-  if (cached && Date.now() - cached.at < WALLET_CACHE_MS && cached.address) {
-    return cached.address;
-  }
-  const accounts = await fetchPrivyUser(did);
-  if (accounts === null) return null; // API hiccup: don't cache the failure
-  const embedded = accounts.find(
+export function pickAccountWallet(
+  accounts: readonly PrivyLinkedAccount[],
+): string | null {
+  const evmWallets = accounts.filter(
     (account) =>
       account.type === "wallet" &&
-      account.wallet_client_type === "privy" &&
       account.chain_type === "ethereum" &&
       account.address,
   );
-  const address = embedded?.address?.toLowerCase() ?? null;
+  const embedded = evmWallets.find(isEmbeddedWallet);
+  return (embedded ?? evmWallets[0])?.address?.toLowerCase() ?? null;
+}
+
+/**
+ * `ok: false` means Privy could not be asked, which is not the same as the
+ * user having no wallet. The difference is an account: carrying on without
+ * the address once created a fresh empty row for a wallet owner whose real
+ * row was one lookup away, and that row then won every later sync. So the
+ * caller refuses the request instead (rewards-route answers 503).
+ */
+export type PrivyWalletLookup = { ok: true; address: string | null } | { ok: false };
+
+export async function fetchPrivyWallet(did: string): Promise<PrivyWalletLookup> {
+  const cached = walletCache.get(did);
+  if (cached && Date.now() - cached.at < WALLET_CACHE_MS && cached.address) {
+    return { ok: true, address: cached.address };
+  }
+  const accounts = await fetchPrivyUser(did);
+  if (accounts === null) return { ok: false }; // don't cache the failure
+  const address = pickAccountWallet(accounts);
   walletCache.set(did, { address, at: Date.now() });
-  return address;
+  return { ok: true, address };
 }

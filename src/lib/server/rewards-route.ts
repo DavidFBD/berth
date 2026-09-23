@@ -57,8 +57,15 @@ export async function readRewardsCaller(
   >;
 
   if (did) {
-    const wallet = normalizeWallet(await fetchPrivyWallet(did));
-    return { ok: true, caller: { did, wallet, body } };
+    const lookup = await fetchPrivyWallet(did);
+    if (!lookup.ok) {
+      // Never guess who this is: see PrivyWalletLookup.
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "identity lookup failed" }, { status: 503 }),
+      };
+    }
+    return { ok: true, caller: { did, wallet: normalizeWallet(lookup.address), body } };
   }
 
   const sessionToken = request.headers.get("x-wallet-session");

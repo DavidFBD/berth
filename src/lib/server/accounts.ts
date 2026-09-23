@@ -84,6 +84,54 @@ export async function getOrCreateUser({
       )[0];
       created = true;
     }
+    // The repair path. A DID row with no wallet, while an unclaimed row
+    // already holds this wallet, is the fork this function exists to
+    // prevent, already made: a wallet owner who signed in to Privy during an
+    // outage (or before lib/server/privy could see external wallets, as on
+    // 2026-09-21) was handed an empty row, and it has shadowed their real
+    // one on every sync since. The wallet row is the account, so the DID
+    // moves to it. The empty row is kept, not deleted, so its ledger
+    // survives for anyone who needs to look; it cannot go without an
+    // identity (users_identity), so its DID is retired as "retired:<did>",
+    // which no Privy token can ever present.
+    //
+    // Only an empty row is retired: no email, no order, nobody seated on
+    // its invite. An email user can reach the same shape by exporting their
+    // embedded key and connecting it as an external wallet, and their row is
+    // an account, not a fork; that case keeps the old refusal below.
+    if (wallet && !user.wallet_address && !user.email) {
+      const shadowed = (await sql.query(
+        `select w.id from users w
+         where w.wallet_address = $1 and w.privy_did is null
+           and not exists (
+             select 1 from xp_events e
+             where e.user_id = $2 and e.kind in ('pour_in', 'pour_out', 'friend_poured')
+           )
+           and not exists (select 1 from users r where r.referred_by = $2)`,
+        [wallet, user.id],
+      )) as { id: string }[];
+      if (shadowed[0]) {
+        await sql.query(
+          `update users set privy_did = 'retired:' || privy_did, updated_at = now()
+           where id = $1 and wallet_address is null`,
+          [user.id],
+        );
+        const moved = (
+          (await sql.query(
+            `update users set privy_did = $1, updated_at = now()
+             where id = $2 and privy_did is null
+             returning ${USER_COLUMNS}`,
+            [did, shadowed[0].id],
+          )) as UserRow[]
+        )[0];
+        if (moved) return { user: moved, created: false };
+        // Lost a race for the wallet row: put the DID back where it was.
+        await sql.query(
+          `update users set privy_did = $1, updated_at = now() where id = $2`,
+          [did, user.id],
+        );
+      }
+    }
     // Store the embedded wallet the first time we see it, so pours keyed by
     // address land on this same row. Never steal an address that already
     // belongs to another account.

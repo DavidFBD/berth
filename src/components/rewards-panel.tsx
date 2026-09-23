@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import {
   CaretDown,
+  EnvelopeSimple,
   Check,
   UserCircle,
   HandHeart,
@@ -14,6 +15,12 @@ import {
   Ticket,
   UserPlus,
 } from "@phosphor-icons/react";
+import { HOME_CHAIN } from "@/lib/account";
+import { useAccount } from "@/hooks/use-account";
+import { useLinkEmail } from "@/hooks/use-link-email";
+import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { SPRING_POP, SPRING_SHELF } from "@/lib/motion";
 import { AVATARS, avatarSrc, type AvatarId, resolveAvatarId } from "@/lib/avatars";
@@ -44,6 +51,12 @@ import { useCopy } from "@/components/settings-provider";
  */
 export function RewardsPanel() {
   const profile = useProfile();
+  const privy = usePrivyEmbeddedWallet();
+  // The account the email would attach to, by the one address rule. Its
+  // `mode` is also the gate: "external" is exactly the case with a wallet to
+  // sign with and no email session already in hand.
+  const account = useAccount(HOME_CHAIN);
+  const link = useLinkEmail(account.address);
   const setAvatar = useSetAvatar();
   const copy = useCopy();
   /**
@@ -54,7 +67,7 @@ export function RewardsPanel() {
   const [gridToggled, setGridToggled] = useState<boolean | null>(null);
 
   if (!profile.data) return null;
-  const { xp, avatarId } = profile.data;
+  const { xp, avatarId, hasEmail } = profile.data;
   const rank = rankForXp(xp);
   const currentSrc = avatarSrc(avatarId);
   const gridOpen = gridToggled ?? avatarId == null;
@@ -178,26 +191,170 @@ export function RewardsPanel() {
 
       <LedgerRow />
 
-      {/* Removed 2026-09-21. This offered a wallet guest an email "for your
-          account" and called `privy.login`, which is the sign-in flow: there
-          is no link flow in this app, and `linkEmail` appears nowhere. Two
-          things went wrong and only one of them was the button. An email
-          that already had a Privy account signed the user into THAT account,
-          because accounts.ts resolves by privy_did first and the claim path
-          only fires for a DID with no row. And a fresh email was no better,
-          because lib/account.ts says an email session wins on EVM chains
-          while Privy is configured email-only with createOnLogin
-          "users-without-wallets", so every sign-in mints an embedded wallet
-          and moves the money account off the wallet the user connected.
-          Their holdings stay safe in the wallet's own hub account and stop
-          being visible, and anything bought meanwhile lands somewhere else.
+      {/* The email is asked for BEFORE the signature, because being asked
+          to sign for something you have not been told about yet is how the
+          second attempt at this felt. The gate deliberately does NOT read
+          `privy.authenticated`: signing in is step two of this very flow, so
+          a gate that read it would unmount the form mid-flow, which is
+          exactly what happened on 2026-09-21. `mode === "external"` already
+          means there is no email session here. See hooks/use-link-email. */}
+      {(!hasEmail || link.state === "done") &&
+        privy.enabled &&
+        account.mode === "external" &&
+        account.address && (
+        <div className="rounded-lg bg-muted/60 p-3">
+          {link.state === "idle" ? (
+            <button
+              type="button"
+              onClick={link.open}
+              className="flex min-h-9 w-full items-center gap-3 text-left"
+            >
+              <EnvelopeSimple className="size-5 shrink-0 text-primary" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-medium text-foreground">
+                  {copy.addEmailTitle}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {copy.addEmailSub(XP_ACTIONS.email_linked.amount)}
+                </span>
+              </span>
+            </button>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <EnvelopeSimple className="size-5 shrink-0 text-primary" />
+                {copy.addEmailTitle}
+              </p>
 
-          The rewards row can genuinely hold a wallet and a DID together;
-          the money account cannot, so there is nothing to offer here until
-          the address rule stops letting an email session override a
-          connected wallet. The server side is untouched and still correct
-          for the direction that does work: an email user who later connects
-          a wallet claims their row and is paid email_linked once. */}
+              {link.state === "done" || link.state === "saving" ? null : link.state === "saveFailed" ? (
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" onClick={() => void link.retrySave()}>
+                    {copy.addEmailRetrySave}
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={link.cancel}>
+                    {copy.addEmailCancel}
+                  </Button>
+                </div>
+              ) : link.state === "code" || link.state === "verifying" ? (
+                <form
+                  key="code"
+                  className="flex flex-col gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const code = new FormData(event.currentTarget).get("code");
+                    if (typeof code === "string" && code.trim()) {
+                      void link.submitCode(code.trim());
+                    }
+                  }}
+                >
+                  <p className="text-xs text-muted-foreground">
+                    {copy.addEmailCodeSent(link.pendingEmail)}
+                  </p>
+                  <Input
+                    name="code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder={copy.addEmailCodePlaceholder}
+                    aria-label={copy.addEmailCodePlaceholder}
+                    aria-invalid={link.error === "codeWrong" || undefined}
+                    disabled={link.state === "verifying"}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="submit" size="sm" disabled={link.state === "verifying"}>
+                      {copy.addEmailVerify}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={link.state === "verifying"}
+                      onClick={() => void link.resend()}
+                    >
+                      {copy.addEmailResend}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={link.cancel}>
+                      {copy.addEmailCancel}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <form
+                  key="email"
+                  className="flex flex-col gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const email = new FormData(event.currentTarget).get("email");
+                    if (typeof email === "string" && email.trim()) {
+                      void link.submitEmail(email.trim(), account.address!);
+                    }
+                  }}
+                >
+                  <Input
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    defaultValue={link.pendingEmail}
+                    placeholder={copy.addEmailPlaceholder}
+                    aria-label={copy.addEmailTitle}
+                    disabled={link.state !== "email" && link.state !== "taken"}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={link.state !== "email" && link.state !== "taken"}
+                    >
+                      {copy.addEmailContinue}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={link.cancel}>
+                      {copy.addEmailCancel}
+                    </Button>
+                  </div>
+                </form>
+              )}
+
+              {/* One line that says where the flow is, or what went wrong.
+                  Every failure lands here: a silent return to the same form
+                  looked like a button that did nothing. */}
+              {(() => {
+                const line =
+                  link.state === "signing"
+                    ? copy.addEmailSigning
+                    : link.state === "sending"
+                      ? copy.addEmailSending
+                      : link.state === "verifying"
+                        ? copy.addEmailVerifying
+                        : link.state === "saving"
+                          ? copy.addEmailSaving
+                          : link.state === "taken"
+                            ? copy.addEmailTaken
+                            : link.state === "done"
+                              ? copy.addEmailDone
+                              : link.state === "saveFailed"
+                                ? copy.addEmailSaveFailed
+                              : link.error === "codeWrong"
+                                ? copy.addEmailCodeWrong
+                                : link.error === "failed"
+                                  ? copy.addEmailFailed
+                                  : link.resent && link.state === "code"
+                                    ? copy.addEmailResent
+                                    : null;
+                if (!line) return null;
+                const bad = link.state === "taken" || link.error !== null;
+                return (
+                  <p
+                    role={bad ? "alert" : "status"}
+                    className={`text-xs ${bad ? "text-bad" : "text-muted-foreground"}`}
+                  >
+                    {line}
+                  </p>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
