@@ -8,6 +8,7 @@ import {
   HoldingsList,
   ListingBoard,
   NewsFeed,
+  ComparisonLine,
   NudgeLineView,
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
@@ -111,6 +112,20 @@ function Gallery() {
         }}
         onOpenAccount={() => {}}
       />
+      {/* "Since your first buy" beside the S&P 500 fund, as the holdings
+          rows set it, with the figures from David's account on 2026-09-23. */}
+      <Panel className="px-4 py-3">
+        <ComparisonLine
+          comparison={{ since: "2026-09-21", paid: 7.42, worth: 7.28, changePct: -1.9, benchmarkWorth: 7.53, benchmarkChangePct: 1.5, tradingDays: 2 }}
+          label="All of it since Sep 21"
+          withBenchmark
+        />
+        <ComparisonLine
+          comparison={{ since: "2026-09-21", paid: 4.56, worth: 4.46, changePct: -2.1, benchmarkWorth: 4.62, benchmarkChangePct: 1.5, tradingDays: 2 }}
+          label="Since Sep 21"
+          withBenchmark
+        />
+      </Panel>
       {/* The same three tracks Home composes, so the desktop layout can be
           reviewed here without a session. */}
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">

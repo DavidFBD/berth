@@ -1,10 +1,13 @@
 import type { Intent, Sodax } from "@sodax/sdk";
 import { getSql } from "@/lib/server/db";
+import { COINGECKO_ID_BY_LOWER_SYMBOL } from "@/lib/coingecko-ids";
 import { listListings } from "@/lib/listings";
 import {
   TRANSFER_TOPIC,
   addressTopic,
+  isDollarStable,
   pickFill,
+  priceIdFor,
   readOrder,
   type OrderRecord,
 } from "@/lib/orders";
@@ -38,6 +41,27 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T | undefined>
     if (!response.ok) return undefined;
     const payload = (await response.json()) as { result?: T };
     return payload.result ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A coin's dollar price at a moment, from DefiLlama's historical endpoint
+ * (keyless, the same source as the app's other prices). Undefined when it
+ * has none, which leaves the order's dollars unknown rather than guessed.
+ */
+export async function priceAt(id: string, at: Date): Promise<number | undefined> {
+  try {
+    const seconds = Math.floor(at.getTime() / 1000);
+    const response = await fetch(
+      `https://coins.llama.fi/prices/historical/${seconds}/coingecko:${id}`,
+      { cache: "no-store", signal: AbortSignal.timeout(8_000) },
+    );
+    if (!response.ok) return undefined;
+    const payload = (await response.json()) as { coins?: Record<string, { price?: number }> };
+    const price = payload.coins?.[`coingecko:${id}`]?.price;
+    return typeof price === "number" && price > 0 ? price : undefined;
   } catch {
     return undefined;
   }
@@ -91,7 +115,14 @@ export async function buildOrder({
   }
   const filledAt = fill ? await blockTime(`0x${fill.blockNumber.toString(16)}`) : null;
 
+  const priceId =
+    direction === "buy" && payToken && !isDollarStable(payToken.symbol)
+      ? priceIdFor(payToken.symbol, COINGECKO_ID_BY_LOWER_SYMBOL)
+      : undefined;
+  const payUsdPrice = priceId && placedAt ? await priceAt(priceId, placedAt) : undefined;
+
   return readOrder({
+    payUsdPrice,
     intentTx,
     direction,
     intent,
@@ -112,8 +143,8 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
     `insert into orders (
        user_id, wallet_address, intent_tx, fill_tx, direction, listing_symbol,
        listing_address, quantity, min_quantity, pay_symbol, pay_chain,
-       pay_amount, fee_amount, usd_value, placed_at, filled_at
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      on conflict (intent_tx) do update set
        user_id = coalesce(orders.user_id, excluded.user_id),
        wallet_address = coalesce(orders.wallet_address, excluded.wallet_address),
@@ -121,6 +152,7 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
        quantity = coalesce(orders.quantity, excluded.quantity),
        pay_amount = coalesce(orders.pay_amount, excluded.pay_amount),
        usd_value = coalesce(orders.usd_value, excluded.usd_value),
+       usd_source = coalesce(orders.usd_source, excluded.usd_source),
        placed_at = coalesce(orders.placed_at, excluded.placed_at),
        filled_at = coalesce(orders.filled_at, excluded.filled_at)`,
     [
@@ -140,6 +172,7 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
       order.usdValue,
       order.placedAt,
       order.filledAt,
+      order.usdSource,
     ],
   );
 }

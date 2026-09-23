@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressTopic, decodeFee, isDollarStable, pickFill, readOrder } from "@/lib/orders";
+import { addressTopic, decodeFee, isDollarStable, pickFill, priceIdFor, readOrder } from "@/lib/orders";
 
 /** A real Cash buy from 2026-09-21: 2 USDC from BNB Chain, 0.4% partner fee. */
 const CASH_BUY = {
@@ -53,6 +53,25 @@ describe("readOrder", () => {
     const order = readOrder({ intentTx: "0x1", direction: "buy", intent: CASH_BUY, listing: CASH, pay: USDC_BSC });
     expect(order.quantity).toBeNull();
     expect(order.fillTx).toBeNull();
+  });
+
+  it("prices a buy paid in a coin at that coin's price at the order", () => {
+    // The real SpaceX buy: 146.73 KAIA at 0.03186 dollars each.
+    const order = readOrder({
+      intentTx: "0x1",
+      direction: "buy",
+      intent: { ...CASH_BUY, inputAmount: 146_140_000_000_000_000_000n },
+      listing: CASH,
+      pay: { symbol: "KAIA", decimals: 18, chainKey: "kaia" },
+      payUsdPrice: 0.03186,
+    });
+    expect(order.usdSource).toBe("price");
+    expect(Number(order.usdValue)).toBeCloseTo(146.148 * 0.03186, 4);
+  });
+
+  it("marks a stablecoin's dollars as exact", () => {
+    const order = readOrder({ intentTx: "0x1", direction: "buy", intent: CASH_BUY, listing: CASH, pay: USDC_BSC });
+    expect(order.usdSource).toBe("stable");
   });
 
   it("never puts a dollar figure on a buy paid in something that is not a dollar", () => {
@@ -109,6 +128,12 @@ describe("helpers", () => {
     expect(addressTopic("0x34CB1d8453553e65e0596b076a7eedd08b8069fc")).toBe(
       "0x00000000000000000000000034cb1d8453553e65e0596b076a7eedd08b8069fc",
     );
+  });
+
+  it("finds a price id for a native coin, then in the app's own list", () => {
+    expect(priceIdFor("KAIA")).toBe("kaia");
+    expect(priceIdFor("aave", { aave: "aave" })).toBe("aave");
+    expect(priceIdFor("NOPE")).toBeUndefined();
   });
 
   it("counts only dollar stablecoins as dollars", () => {

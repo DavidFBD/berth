@@ -58,6 +58,13 @@ export type ListingPerformance = {
   series?: number[];
   /** ISO date of the first close in `series`. */
   seriesFrom?: string;
+  /**
+   * The ISO date of every mark in `series`, one for one. Needed because the
+   * despike removes marks from inside the week, so a date cannot be counted
+   * forward from `seriesFrom`. "Since your first buy" reads the benchmark's
+   * mark on the day of the buy from here.
+   */
+  seriesDates?: string[];
 };
 
 export type ListingPerformanceResponse = {
@@ -115,6 +122,7 @@ async function readChunk(
     found[symbol] = {
       series: values,
       seriesFrom: dates[0],
+      seriesDates: dates,
       changePct: percentChange(values[values.length - 2], values[values.length - 1]),
     };
   }

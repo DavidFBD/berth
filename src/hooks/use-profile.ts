@@ -11,6 +11,7 @@ import type {
   ReferralPanel,
   XpHistoryResponse,
 } from "@/lib/profile-types";
+import type { OrdersResponse } from "@/app/api/orders/route";
 import { announceRewards } from "@/components/xp-toast";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import {
@@ -165,6 +166,8 @@ function useProfileMutation<TVars>(
       // corner (steeping → poured); both are cheap refetches on next open.
       void queryClient.invalidateQueries({ queryKey: ["xp-history", key] });
       void queryClient.invalidateQueries({ queryKey: ["referral-panel", key] });
+      // A pour is also a new order row (lib/server/orders).
+      void queryClient.invalidateQueries({ queryKey: ["orders", key] });
     },
   });
 }
@@ -213,6 +216,18 @@ export function useReferralPanel(enabled: boolean) {
 }
 
 /** The house ledger, newest first. Fetched only while it's unfolded. */
+/**
+ * The account's orders, for "since your first buy" beside the S&P 500 fund
+ * (lib/benchmark). Refetched after every pour by useProfileMutation.
+ */
+export function useOrders(enabled = true) {
+  return useRewardsQuery<OrdersResponse, OrdersResponse["orders"]>(
+    "orders",
+    "/api/orders",
+    { enabled, staleTime: 5 * 60_000, select: (data) => data.orders },
+  );
+}
+
 export function useXpHistory(enabled: boolean) {
   return useRewardsQuery<XpHistoryResponse, XpHistoryResponse["events"]>(
     "xp-history",

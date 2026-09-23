@@ -30,8 +30,14 @@ export type OrderRecord = {
   /** Decimal units of the paying token, fee included on a buy. */
   payAmount: string | null;
   feeAmount: string | null;
-  /** Dollars, only when the paying side is a dollar stablecoin. Never a guess. */
+  /**
+   * Dollars paid, fee included. Exact for a stablecoin; otherwise the pay
+   * token's DefiLlama price at the minute of the order times the amount.
+   * Null when neither is known, never a guess.
+   */
   usdValue: string | null;
+  /** How `usdValue` was reached: "stable", "price", or null when it is null. */
+  usdSource: "stable" | "price" | null;
   placedAt: Date | null;
   filledAt: Date | null;
 };
@@ -41,6 +47,44 @@ const DOLLAR_STABLES = new Set(["USDC", "USDT", "USDS", "DAI", "BNUSD", "USDC.E"
 
 export function isDollarStable(symbol: string | null | undefined): boolean {
   return symbol ? DOLLAR_STABLES.has(symbol.toUpperCase()) : false;
+}
+
+/**
+ * CoinGecko ids for what people pay with that the app's own id list
+ * (lib/coingecko-ids, which covers the listed ERC-20s) leaves out: each
+ * chain's native coin and the staked forms seen in real orders. Checked
+ * against DefiLlama's historical endpoint on 2026-09-23.
+ */
+const PAY_PRICE_IDS: Readonly<Record<string, string>> = {
+  eth: "ethereum",
+  weth: "ethereum",
+  bnb: "binancecoin",
+  wbnb: "binancecoin",
+  avax: "avalanche-2",
+  pol: "polygon-ecosystem-token",
+  matic: "polygon-ecosystem-token",
+  kaia: "kaia",
+  sol: "solana",
+  jitosol: "jito-staked-sol",
+  btc: "bitcoin",
+  sui: "sui",
+  xlm: "stellar",
+  near: "near",
+  inj: "injective-protocol",
+  icx: "icon",
+  s: "sonic-3",
+  stx: "blockstack",
+  hype: "hyperliquid",
+};
+
+/** The id to price a pay token by, from this list, then the app's own. */
+export function priceIdFor(
+  symbol: string | null | undefined,
+  known: Readonly<Record<string, string>> = {},
+): string | undefined {
+  if (!symbol) return undefined;
+  const lower = symbol.toLowerCase();
+  return PAY_PRICE_IDS[lower] ?? known[lower];
 }
 
 /**
@@ -81,6 +125,7 @@ export function readOrder({
   fillTx,
   placedAt,
   filledAt,
+  payUsdPrice,
 }: {
   intentTx: string;
   direction: "buy" | "sell";
@@ -91,6 +136,8 @@ export function readOrder({
   fillTx?: string | null;
   placedAt?: Date | null;
   filledAt?: Date | null;
+  /** The pay token's dollar price at the order, for a buy not paid in dollars. */
+  payUsdPrice?: number;
 }): OrderRecord {
   const fee = decodeFee(intent.data);
   const units = (value: bigint, decimals: number) => formatUnits(value, decimals);
@@ -125,10 +172,24 @@ export function readOrder({
     payChain: pay?.chainKey ?? null,
     payAmount,
     feeAmount: pay && direction === "buy" ? units(fee, pay.decimals) : null,
-    usdValue: direction === "buy" && isDollarStable(pay?.symbol) ? payAmount : null,
+    ...dollars(direction, pay?.symbol, payAmount, payUsdPrice),
     placedAt: placedAt ?? null,
     filledAt: filledAt ?? null,
   };
+}
+
+function dollars(
+  direction: "buy" | "sell",
+  symbol: string | undefined,
+  payAmount: string | null,
+  price: number | undefined,
+): { usdValue: string | null; usdSource: "stable" | "price" | null } {
+  if (direction !== "buy" || payAmount === null) return { usdValue: null, usdSource: null };
+  if (isDollarStable(symbol)) return { usdValue: payAmount, usdSource: "stable" };
+  if (price !== undefined && Number.isFinite(price) && price > 0) {
+    return { usdValue: (Number(payAmount) * price).toFixed(6), usdSource: "price" };
+  }
+  return { usdValue: null, usdSource: null };
 }
 
 /** The ERC-20 Transfer event's topic. */

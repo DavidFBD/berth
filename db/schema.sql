@@ -70,8 +70,9 @@ create index if not exists referral_clicks_code_idx on referral_clicks (code);
 -- One row per filled order, written when the fill is verified (and backfilled
 -- once from xp_events refs). What the ledger never kept: which listing, how
 -- much of it, what it cost. Performance and "since your first buy" read here.
--- Amounts are decimal units, not raw integers; `usd_value` is filled only when
--- the paying side is a dollar stablecoin, so it is never an estimate.
+-- Amounts are decimal units, not raw integers. `usd_value` is exact for a
+-- stablecoin and priced at the order's minute otherwise; `usd_source` says
+-- which ('stable' or 'price'), and both stay null when neither is known.
 create table if not exists orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references users(id) on delete set null,
@@ -92,6 +93,8 @@ create table if not exists orders (
   filled_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table orders add column if not exists usd_source text;
 
 create index if not exists orders_user_idx on orders (user_id, placed_at);
 create index if not exists orders_wallet_idx on orders (wallet_address, placed_at);

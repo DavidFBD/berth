@@ -14,7 +14,10 @@
 import { neon } from "@neondatabase/serverless";
 import { Sodax } from "@sodax/sdk";
 
-const { readOrder, pickFill, TRANSFER_TOPIC, addressTopic } = await import("../src/lib/orders.ts");
+const { readOrder, pickFill, priceIdFor, isDollarStable, TRANSFER_TOPIC, addressTopic } = await import(
+  "../src/lib/orders.ts"
+);
+const { COINGECKO_ID_BY_LOWER_SYMBOL } = await import("../src/lib/coingecko-ids.ts");
 const { listListings } = await import("../src/lib/listings.ts");
 
 const WRITE = process.argv.includes("--write");
@@ -36,6 +39,13 @@ async function rpc(method, params) {
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
   return (await response.json()).result;
+}
+async function priceAt(id, at) {
+  const seconds = Math.floor(at.getTime() / 1000);
+  const response = await fetch(`https://coins.llama.fi/prices/historical/${seconds}/coingecko:${id}`);
+  if (!response.ok) return undefined;
+  const price = (await response.json()).coins?.[`coingecko:${id}`]?.price;
+  return typeof price === "number" && price > 0 ? price : undefined;
 }
 async function blockTime(hex) {
   const block = await rpc("eth_getBlockByNumber", [hex, false]);
@@ -80,7 +90,13 @@ for (const pour of pours) {
     fill = Array.isArray(logs) ? pickFill(logs) : undefined;
   }
   const filledAt = fill ? await blockTime(`0x${fill.blockNumber.toString(16)}`) : null;
+  const priceId =
+    direction === "buy" && pay && !isDollarStable(pay.symbol)
+      ? priceIdFor(pay.symbol, COINGECKO_ID_BY_LOWER_SYMBOL)
+      : undefined;
+  const payUsdPrice = priceId && placedAt ? await priceAt(priceId, placedAt) : undefined;
   const order = readOrder({
+    payUsdPrice,
     intentTx: pour.ref,
     direction,
     intent,
@@ -93,16 +109,18 @@ for (const pour of pours) {
   });
   console.log(
     `${order.direction} ${order.quantity ?? "?"} ${order.listingSymbol} for ${order.payAmount ?? "?"} ${order.paySymbol ?? "?"}` +
-      ` usd=${order.usdValue ?? "-"} placed=${order.placedAt?.toISOString() ?? "?"} fill=${order.fillTx ? "yes" : "no"}`,
+      ` usd=${order.usdValue ?? "-"} (${order.usdSource ?? "unknown"}) placed=${order.placedAt?.toISOString() ?? "?"} fill=${order.fillTx ? "yes" : "no"}`,
   );
   if (!WRITE) continue;
   await sql.query(
     `insert into orders (
        user_id, wallet_address, intent_tx, fill_tx, direction, listing_symbol,
        listing_address, quantity, min_quantity, pay_symbol, pay_chain,
-       pay_amount, fee_amount, usd_value, placed_at, filled_at
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      on conflict (intent_tx) do update set
+       usd_value = coalesce(orders.usd_value, excluded.usd_value),
+       usd_source = coalesce(orders.usd_source, excluded.usd_source),
        fill_tx = coalesce(orders.fill_tx, excluded.fill_tx),
        quantity = coalesce(orders.quantity, excluded.quantity),
        filled_at = coalesce(orders.filled_at, excluded.filled_at)`,
@@ -110,7 +128,7 @@ for (const pour of pours) {
       pour.user_id, order.walletAddress, order.intentTx, order.fillTx, order.direction,
       order.listingSymbol, order.listingAddress, order.quantity, order.minQuantity,
       order.paySymbol, order.payChain, order.payAmount, order.feeAmount, order.usdValue,
-      order.placedAt, order.filledAt,
+      order.placedAt, order.filledAt, order.usdSource,
     ],
   );
 }

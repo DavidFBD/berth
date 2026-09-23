@@ -139,6 +139,16 @@ export type Copy = {
   holdingsTitle: string;
   holdingsHint: string;
   holdingsEmpty: string;
+  /**
+   * "Since your first buy" beside the S&P 500 fund (lib/benchmark). `date`
+   * arrives formatted: "Sep 21". Always descriptive, never a verdict.
+   */
+  holdingSince: (date: string) => string;
+  holdingBenchmark: string;
+  holdingsTogether: (date: string) => string;
+  holdingsMarketDays: (days: number) => string;
+  /** Behind the (i): how the comparison is made, and what it is not. */
+  holdingsBenchmarkNote: string;
 
   /* — the newsfeed: what is being written about the listings — */
   newsTitle: string;
@@ -522,6 +532,12 @@ export const COPY: Copy = {
   holdingsTitle: "What you own",
   holdingsHint: "Held in your account. Sell any of it with one signature.",
   holdingsEmpty: "Nothing yet. Your first buy lands here.",
+  holdingSince: (date) => `Since ${date}`,
+  holdingBenchmark: "S&P 500 fund",
+  holdingsTogether: (date) => `All of it since ${date}`,
+  holdingsMarketDays: (days) => (days === 1 ? "1 market day" : `${days} market days`),
+  holdingsBenchmarkNote:
+    "Each holding since your first buy, beside the same dollars put into the S&P 500 fund on the same days, both valued at today's prices. Your side includes the fee you paid; the fund side does not. Prices are one a day, so a few days mostly shows noise. It describes what happened, and says nothing about what to do.",
 
   newsTitle: "In the news",
   newsHint:

@@ -33,6 +33,7 @@ const base: OrderRecord = {
   payAmount: "2",
   feeAmount: "0.008",
   usdValue: "2",
+  usdSource: "stable",
   placedAt: new Date("2026-09-21T09:19:00Z"),
   filledAt: null,
 };
