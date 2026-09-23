@@ -8,6 +8,8 @@ import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
+import { useMoves } from "@/hooks/use-moves";
+import { JevMark } from "@/components/jev-mark";
 import { useOrders } from "@/hooks/use-profile";
 import { combine, compareHolding, type HoldingComparison } from "@/lib/benchmark";
 import { formatTokenAmount } from "@/lib/format";
@@ -86,6 +88,7 @@ export function HoldingsList({
   const prices = useListingPrices();
   const performance = useListingPerformance();
   const orders = useOrders(Boolean(account.spokeAddress));
+  const moves = useMoves();
 
   if (!account.spokeAddress) return null;
 
@@ -162,6 +165,18 @@ export function HoldingsList({
                   <div className="money mt-0.5 text-xs text-muted-foreground">
                     {formatTokenAmount(balance, listing.decimals, 6)} {listing.symbol}
                   </div>
+                  {moves.get(listing.symbol) && (
+                    <a
+                      href={moves.get(listing.symbol)!.post.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={copy.moveReadPost(moves.get(listing.symbol)!.post.name)}
+                      className="mt-1 flex w-fit items-center gap-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      <JevMark className="size-2.5" />
+                      {copy.moveInTheNews(moves.get(listing.symbol)!.post.name)}
+                    </a>
+                  )}
                   {comparisons.has(listing.symbol) && (
                     <ComparisonLine
                       comparison={comparisons.get(listing.symbol)!}

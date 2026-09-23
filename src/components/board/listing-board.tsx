@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { CaretRight, Funnel } from "@phosphor-icons/react";
 import { Sparkline } from "@/components/board/sparkline";
+import { JevMark } from "@/components/jev-mark";
 import { Button } from "@/components/ui/button";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +13,7 @@ import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
+import { useMoves } from "@/hooks/use-moves";
 import { formatTokenAmount } from "@/lib/format";
 import { STOCK_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT, SPRING_POP } from "@/lib/motion";
@@ -54,6 +56,7 @@ export function ListingBoard({
   newsFilterSymbol?: string;
 }) {
   const copy = useCopy();
+  const moves = useMoves();
   const money = useMoney();
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallet);
@@ -147,6 +150,17 @@ export function ListingBoard({
                   {/* Only when there is something to say. Twelve rows reading
                       "Stock" under twelve company names is a column of noise,
                       and the section is already called Stocks and funds. */}
+                  {/* A move large for this listing, and the post Jev read as
+                      related to it. Text only: the row is the buy button, and
+                      the post itself is in the news column. */}
+                  {moves.get(listing.symbol) && (
+                    <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                      <JevMark className="size-2.5" />
+                      <span className="truncate">
+                        {copy.moveInTheNews(moves.get(listing.symbol)!.post.name)}
+                      </span>
+                    </div>
+                  )}
                   {hasPosition && (
                     <div className="money mt-0.5 truncate text-xs text-foreground/80">
                       {copy.boardYouHold(

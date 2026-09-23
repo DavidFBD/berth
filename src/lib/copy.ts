@@ -149,6 +149,14 @@ export type Copy = {
   holdingsMarketDays: (days: number) => string;
   /** Behind the (i): how the comparison is made, and what it is not. */
   holdingsBenchmarkNote: string;
+  /**
+   * Under a listing that moved a lot for it, naming the post Jev read as
+   * related (lib/server/moves). "In the news", never "because": Berth does
+   * not claim to know why a price moved. `source` is the author's name.
+   */
+  moveInTheNews: (source: string) => string;
+  /** The same line's link, for a screen reader: where it goes. */
+  moveReadPost: (source: string) => string;
 
   /* — the newsfeed: what is being written about the listings — */
   newsTitle: string;
@@ -567,6 +575,8 @@ export const COPY: Copy = {
   holdingBenchmark: "S&P 500 fund",
   holdingsTogether: (date) => `All of it since ${date}`,
   holdingsMarketDays: (days) => (days === 1 ? "1 market day" : `${days} market days`),
+  moveInTheNews: (source) => `In the news: ${source}`,
+  moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
     "Each holding since your first buy, beside the same dollars put into the S&P 500 fund on the same days, both valued at today's prices. Your side includes the fee you paid; the fund side does not. Prices are one a day, so a few days mostly shows noise. It describes what happened, and says nothing about what to do.",
 
