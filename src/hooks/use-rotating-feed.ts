@@ -10,7 +10,8 @@ import { nextDelayMs, startRotation, turn, type Rotation } from "@/lib/rotation"
  * screen (a card arriving above the one being read would push it away), and
  * while the tab is hidden. New data from the server restarts the turn.
  *
- * Attach `ref` to the list and spread `handlers` on it.
+ * Attach `ref` (a callback ref) to the list and spread `handlers` on it;
+ * `node` is the list once mounted.
  */
 export function useRotatingFeed<T extends { id: string }>(
   items: readonly T[],
@@ -30,15 +31,16 @@ export function useRotatingFeed<T extends { id: string }>(
     setState({ signature, rotation });
   }
 
-  const ref = useRef<HTMLUListElement | null>(null);
+  // State rather than a ref, so the observer attaches whenever the list
+  // actually mounts (after a tab swap's exit animation, say), and so the
+  // "new to you" timer (hooks/use-seen-posts) can watch the same node.
+  const [node, ref] = useState<HTMLUListElement | null>(null);
   const [held, setHeld] = useState(false);
   const [onScreen, setOnScreen] = useState(true);
   const [visibleTab, setVisibleTab] = useState(true);
   const turns = useRef(0);
 
-  const mounted = rotation.visible.length > 0;
   useEffect(() => {
-    const node = ref.current;
     if (!node || typeof IntersectionObserver === "undefined") return;
     // Only the top strip matters: that is where the next card lands.
     const observer = new IntersectionObserver(
@@ -47,8 +49,7 @@ export function useRotatingFeed<T extends { id: string }>(
     );
     observer.observe(node);
     return () => observer.disconnect();
-    // The list mounts after its data does, so re-attach when it appears.
-  }, [mounted]);
+  }, [node]);
 
   useEffect(() => {
     const update = () => setVisibleTab(document.visibilityState === "visible");
@@ -74,5 +75,5 @@ export function useRotatingFeed<T extends { id: string }>(
     onBlur: () => setHeld(false),
   };
 
-  return { visible: rotation.visible, ref, handlers, moving };
+  return { visible: rotation.visible, ref, node, handlers, moving };
 }

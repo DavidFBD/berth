@@ -5,9 +5,11 @@ import type { ListingXResponse } from "@/app/api/listing-x/route";
 import type { XPost } from "@/lib/x-feed";
 
 /**
- * The route caches upstream for six hours, so polling harder buys nothing
- * and costs a request per visitor per interval. An hour is enough to pick up
- * a refreshed cache without asking for one.
+ * The route caches upstream for an hour (lib/server/x-column), so polling
+ * harder buys nothing and costs a request per visitor per interval. Polling
+ * on the same hour picks up each refreshed cache within the hour. TanStack's
+ * default refetch on window focus only fires once the data is stale, so a
+ * tab that comes back after more than an hour asks once on return.
  */
 const X_REFETCH_MS = 60 * 60 * 1000;
 

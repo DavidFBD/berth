@@ -7,6 +7,11 @@
  *   pnpm shot --url http://localhost:3000/foo --viewport 1280x800
  *   pnpm shot --scheme dark                    # emulates prefers-color-scheme
  *   pnpm shot --hover "li:has-text('NVIDIA')"  # a hover-revealed control
+ *   pnpm shot --local-storage '{"key":"value"}' # seeded once, before first load
+ *   pnpm shot --reload-out second.png          # reload in the same context, shoot again
+ *
+ * The last two exist for state a browser keeps between visits (the posts
+ * column's "new to you" mark): seed it, shoot, reload, shoot again.
  *
  * Appearance is light, dark or system (next-themes), so --scheme only flips
  * the app for a visitor left on system, which is the default. A check of the
@@ -35,6 +40,21 @@ const dpr = Number(arg("dpr", "2"));
 const colorScheme = arg("scheme", "light");
 // A control that only exists under the cursor cannot be reviewed without one.
 const hover = arg("hover", null);
+const storageSeedRaw = arg("local-storage", null);
+let storageSeed = null;
+if (storageSeedRaw) {
+  try {
+    storageSeed = JSON.parse(storageSeedRaw);
+  } catch (error) {
+    console.error(`--local-storage is not valid JSON: ${error.message}`);
+    process.exit(1);
+  }
+  if (!storageSeed || typeof storageSeed !== "object" || Array.isArray(storageSeed)) {
+    console.error('--local-storage wants an object of key to value, like \'{"key":"value"}\'');
+    process.exit(1);
+  }
+}
+const reloadOut = arg("reload-out", null);
 
 const engine = browserName === "chromium" ? chromium : webkit;
 
@@ -61,6 +81,20 @@ const ctx = await browser.newContext({
   deviceScaleFactor: dpr,
   colorScheme,
 });
+if (storageSeed) {
+  // Once per tab, so a reload keeps whatever the page wrote in between.
+  await ctx.addInitScript((seed) => {
+    try {
+      // The page itself only, never an iframe inside it.
+      if (window !== window.top) return;
+      if (sessionStorage.getItem("__shot_seeded")) return;
+      sessionStorage.setItem("__shot_seeded", "1");
+      for (const [key, value] of Object.entries(seed)) {
+        localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
+      }
+    } catch {}
+  }, storageSeed);
+}
 const page = await ctx.newPage();
 await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });
 // Font swaps and first queries need a beat after network idle.
@@ -74,4 +108,10 @@ await page.screenshot({ path: out });
 console.log(
   `${out} (${browserName} ${width}x${height} ${colorScheme})`,
 );
+if (reloadOut) {
+  await page.reload({ waitUntil: "networkidle", timeout: 90_000 });
+  await page.waitForTimeout(settleMs);
+  await page.screenshot({ path: reloadOut });
+  console.log(`${reloadOut} (after reload, same context)`);
+}
 await browser.close();

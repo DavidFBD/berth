@@ -34,11 +34,14 @@ import {
  *
  * The budget, which is the point. Four queries per refresh (the 512-character
  * limit splits the company tier from thirty press accounts, which themselves
- * split three ways), six hours apart, is sixteen calls a day: about 480 a
- * month against a rate limit of 450 every fifteen minutes. Each asks for 100
- * posts, so around 48,000 posts a month against a three million cap, under
- * two percent. Nothing is fetched at all on a day nobody opens the app,
- * because the cache fills on demand rather than on a timer.
+ * split three ways), an hour apart, is ninety-six calls a day: about 2,900 a
+ * month, against a rate limit of 450 every fifteen minutes that one refresh
+ * never comes near. Each asks for 100 posts, so at most around 288,000 posts
+ * a month against the three million cap, under a tenth of it. That is the
+ * ceiling, reached only if someone opens the app every hour of every day:
+ * nothing is fetched in an hour nobody opens it, because the cache fills on
+ * demand rather than on a timer. Jev's side barely moves, since its verdicts
+ * are cached for two weeks and an hourly refresh only asks about what is new.
  *
  * What buys that is freshness, knowingly. `sort_order=relevancy` over recent
  * search's seven-day window returns the week's best posts rather than the
@@ -63,10 +66,13 @@ import {
 
 const X_SEARCH = "https://api.x.com/2/tweets/search/recent";
 /**
- * Six hours. The window being searched is seven days wide, so a shorter
- * cache would spend calls re-reading mostly the same week.
+ * An hour. The window being searched is seven days wide, so most of each
+ * refresh re-reads the same week, but the hour is what lets a desk's post
+ * from this morning reach the column this morning, and the budget above has
+ * room for it many times over. The client polls on the same hour
+ * (hooks/use-listing-x), so a poll can land on a fresh fetch.
  */
-const REVALIDATE_SECONDS = 6 * 60 * 60;
+const REVALIDATE_SECONDS = 60 * 60;
 
 /** The most one request may return, since the call costs the same either way. */
 const MAX_RESULTS = 100;

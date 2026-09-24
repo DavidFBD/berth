@@ -18,6 +18,7 @@ import { useListingNews } from "@/hooks/use-listing-news";
 import { useListingX } from "@/hooks/use-listing-x";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useRotatingFeed } from "@/hooks/use-rotating-feed";
+import { useSeenPosts } from "@/hooks/use-seen-posts";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT } from "@/lib/motion";
 import { formatTimeAgo } from "@/lib/news";
@@ -119,6 +120,13 @@ export function NewsFeed({
   const shownPosts = limit ? posts.items.slice(0, limit) : posts.items;
   const reservePosts = limit ? [...posts.items.slice(limit), ...posts.reserve] : posts.reserve;
   const river = useRotatingFeed(shownPosts, reservePosts, tab === "posts");
+  // "New" on the cards this browser has not been shown before (lib/seen-posts).
+  const seen = useSeenPosts(
+    posts.items.concat(posts.reserve),
+    river.visible,
+    tab === "posts",
+    river.node,
+  );
   const headlines = limit ? news.items.slice(0, limit) : news.items;
   const verdictWord: Record<Verdict, string> = {
     material: copy.jevVerdictMaterial,
@@ -293,6 +301,7 @@ export function NewsFeed({
                   return (
                     <motion.li
                       key={post.id}
+                      data-post-id={post.id}
                       variants={CARD}
                       exit="leave"
                       layout="position"
@@ -322,16 +331,37 @@ export function NewsFeed({
                           className="size-11 shrink-0 rounded-full bg-muted object-cover"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="flex items-baseline gap-1.5 text-xs">
-                            <span className="truncate font-medium text-foreground">
+                          {/* At 390px the row runs out. The handle gives
+                              way first, down to nothing, then the name; the
+                              time and the mark never do, because the time is
+                              the column's honesty about age. */}
+                          <p className="flex min-w-0 items-baseline text-xs">
+                            <span className="mr-1.5 min-w-0 shrink truncate font-medium text-foreground">
                               {post.author.name}
                             </span>
-                            <span className="truncate text-muted-foreground">
-                              {copy.postsByline(
-                                post.author.username,
-                                formatTimeAgo(post.publishedAt),
-                              )}
+                            {/* The handle carries its own trailing space
+                                and there is no gap before the time, so a
+                                handle squeezed to nothing leaves nothing
+                                behind. */}
+                            <span className="min-w-0 truncate text-muted-foreground [flex-shrink:100000]">
+                              {copy.postsHandle(post.author.username)}
+                              {"\u00a0"}
                             </span>
+                            <span className="shrink-0 whitespace-nowrap text-muted-foreground">
+                              {formatTimeAgo(post.publishedAt)}
+                            </span>
+                            {/* Ink, not accent, and a word rather than a
+                                chip: the Jev verdict below is the card's
+                                one badge, and this only says the reader
+                                has not met the post yet. */}
+                            {seen.isNew(post.id) && (
+                              <span
+                                title={copy.postNewToYouLabel}
+                                className="ml-1.5 shrink-0 text-[10.5px] font-medium text-foreground"
+                              >
+                                {copy.postNewToYou}
+                              </span>
+                            )}
                           </p>
                           {/* Verbatim, and clamped rather than cut: editing
                               a post to fit is not ours to do. */}
@@ -367,7 +397,7 @@ export function NewsFeed({
                                 above it, not a scoreboard, so it sits in the
                                 muted tone and a count of zero is simply
                                 absent rather than written as "0". The figures
-                                are as fresh as the cache, up to six hours. */}
+                                are as fresh as the cache, up to an hour. */}
                             <span
                               className="flex shrink-0 items-center gap-2 text-muted-foreground"
                               aria-label={copy.postsMetrics(

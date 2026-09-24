@@ -184,8 +184,19 @@ export type Copy = {
   /** Shown when the accounts we follow have been quiet. */
   postsEmpty: string;
   postsEmptyFor: (name: string) => string;
-  /** Follows the author's name: "NVIDIA @nvidia, 2 hours ago". */
-  postsByline: (handle: string, when: string) => string;
+  /**
+   * Between the author's name and the time: "NVIDIA @nvidia, 2 hours ago".
+   * Its own string because on a narrow row it gives way first, comma and
+   * all, while the time never does.
+   */
+  postsHandle: (handle: string) => string;
+  /**
+   * Beside the time on a post this browser has not been shown before
+   * (lib/seen-posts). Never on a first visit, when everything would carry it.
+   */
+  postNewToYou: string;
+  /** Its tooltip. */
+  postNewToYouLabel: string;
   /** On the mark that says where a post came from. */
   postsSourceLabel: string;
   /**
@@ -630,10 +641,12 @@ export const COPY: Copy = {
   newsTabHeadlines: "Headlines",
   newsTabsLabel: "What to read",
   postsHint:
-    "What the companies and the market desks are posting on X. Tapping one opens the post.",
+    "What the companies and the market desks are posting on X. Tapping one opens the post. The list refreshes every hour, and the posts you have not seen yet are marked New.",
   postsEmpty: "The accounts we follow have been quiet.",
   postsEmptyFor: (name) => `Nothing about ${name} on X right now.`,
-  postsByline: (handle, when) => `@${handle}, ${when}`,
+  postsHandle: (handle) => `@${handle},`,
+  postNewToYou: "New",
+  postNewToYouLabel: "You have not seen this post here before",
   postsSourceLabel: "Posted on X",
   postsMetrics: (replies, reposts, likes) =>
     `${replies} replies, ${reposts} reposts, ${likes} likes`,

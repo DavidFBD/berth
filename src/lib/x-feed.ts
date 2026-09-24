@@ -481,12 +481,15 @@ export function relativeReach(
 }
 
 /**
- * Age, as a multiplier. Three days halves a post's standing, so something
- * that carried genuinely far still holds its place for most of a week while
- * this morning's real news can climb past last Tuesday's slogan. This is the
- * dial to turn if the column feels stale or feels twitchy.
+ * Age, as a multiplier. A day halves a post's standing, so this morning's
+ * news of the same substance and reach as yesterday's clearly wins, while a
+ * post that carried genuinely far (several times its author's normal) still
+ * holds its place for two or three days. It was three days until 2026-09-24,
+ * when the column refreshed every six hours and a slow fade suited it; with
+ * an hourly refresh the fresher reading is the honest one. This is the dial
+ * to turn if the column feels stale or feels twitchy.
  */
-export const HALF_LIFE_MS = 3 * 24 * 60 * 60 * 1000;
+export const HALF_LIFE_MS = 24 * 60 * 60 * 1000;
 
 export function recencyWeight(publishedAt: number, now: number): number {
   const age = Math.max(0, now - publishedAt);

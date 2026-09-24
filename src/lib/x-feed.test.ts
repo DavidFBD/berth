@@ -257,10 +257,26 @@ describe("news scoring", () => {
     expect(authorBaselines(sample).has("issuer")).toBe(false);
   });
 
-  it("halves a post's standing every three days", () => {
+  it("halves a post's standing every day", () => {
+    expect(HALF_LIFE_MS).toBe(24 * 60 * 60 * 1000);
     expect(recencyWeight(NOW, NOW)).toBeCloseTo(1);
     expect(recencyWeight(NOW - HALF_LIFE_MS, NOW)).toBeCloseTo(0.5);
-    expect(recencyWeight(daysAgo(6), NOW)).toBeCloseTo(0.25);
+    expect(recencyWeight(daysAgo(2), NOW)).toBeCloseTo(0.25);
+  });
+
+  it("puts this morning's post clearly above yesterday's of equal weight", () => {
+    // Same author, same reach, same substance: only the age differs, and a
+    // day of it is now a factor of two rather than a rounding error.
+    const sample = [300, 320, 280].map((likes) =>
+      make({ username: "wire", likes }),
+    );
+    const text = "Treasury yields rise 12 basis points after the jobs report";
+    const yesterday = make({ username: "wire", likes: 600, publishedAt: daysAgo(1), text });
+    const today = make({ username: "wire", likes: 600, publishedAt: NOW, text });
+    const baselines = authorBaselines([...sample, yesterday, today]);
+    expect(newsScore(today, baselines, NOW)).toBeCloseTo(
+      2 * newsScore(yesterday, baselines, NOW),
+    );
   });
 
   it("prefers a post carrying a figure to a slogan", () => {
@@ -301,7 +317,22 @@ describe("news scoring", () => {
     );
   });
 
-  it("still lets a genuinely big post hold its place for days", () => {
+  it("keeps a post at four times its author's normal above a normal fresh one at a day and a half", () => {
+    // Pinned against the one-day half life: 4 x 2^-1.5 is about 1.41 against 1.
+    const sample = [300, 300, 300, 300, 300].map((likes) =>
+      make({ username: "wire", likes }),
+    );
+    const text = "Oil settles higher as supply talks stall, with traders watching the weekly inventory data";
+    const strong = make({ username: "wire", likes: 1_200, publishedAt: NOW - 1.5 * HALF_LIFE_MS, text });
+    const normal = make({ username: "wire", likes: 300, publishedAt: NOW, text });
+    const baselines = authorBaselines([...sample, strong, normal]);
+    expect(baselines.get("wire")).toBe(300);
+    expect(newsScore(strong, baselines, NOW)).toBeGreaterThan(
+      newsScore(normal, baselines, NOW),
+    );
+  });
+
+  it("still lets a genuinely big post beat a weak fresh one for days", () => {
     const sample = [300, 320, 280].map((likes) =>
       make({ username: "wire", likes }),
     );
