@@ -39,6 +39,14 @@ export const XP_ACTIONS = {
    * the table are worth the same.
    */
   invite_accepted: { amount: 250, once: true },
+  /**
+   * A buy still on the books thirty days later. Paid once per pour (the
+   * dedup ref is the pour's own tx hash), awarded by the daily cron after
+   * it re-reads the position on chain, and parked unannounced so the toast
+   * fires the next time the account is actually looking. Patience is the
+   * one thing a berth is for; no daily streak will ever sit beside it.
+   */
+  held_30_days: { amount: 150, once: false },
 } as const;
 
 export type XpKind = keyof typeof XP_ACTIONS;
@@ -69,6 +77,7 @@ export const REWARD_REASONS: Record<XpKind, string> = {
   theme_tried: "for trying another appearance",
   friend_poured: "a friend made their first trade",
   invite_accepted: "for joining on a friend's invite",
+  held_30_days: "for holding thirty days",
 };
 
 /**
@@ -87,6 +96,16 @@ export const RANKS = [
   { level: 9, xp: 5200, name: "Harbour Warden" },
   { level: 10, xp: 7500, name: "Harbour Master" },
 ] as const;
+
+/**
+ * The rank's glyph from the brand kit, one per rung, served from
+ * public/ranks (copied from public/berth-brand/app/ranks so the kit stays
+ * the untouched source). Levels off the ladder clamp to the ends.
+ */
+export function rankGlyphSrc(level: number): string {
+  const n = Math.min(Math.max(Math.round(level), 1), RANKS.length);
+  return `/ranks/rank-${String(n).padStart(2, "0")}.svg`;
+}
 
 export type RankInfo = {
   level: number;

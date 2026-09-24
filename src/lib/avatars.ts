@@ -13,9 +13,29 @@ export const AVATARS = [
   { id: "rope", label: "The Rope", src: "/avatars/rope.svg" },
   { id: "tidemark", label: "The Tide Mark", src: "/avatars/tidemark.svg" },
   { id: "compass", label: "The Compass", src: "/avatars/compass.svg" },
+  /**
+   * The three faces below unlock with rank. `unlockLevel` is the rung on
+   * the ladder (src/lib/xp.ts RANKS) from which the face can be picked; the
+   * server checks it too, the picker only decides how to say it.
+   */
+  { id: "beacon", label: "The Beacon", src: "/avatars/beacon.svg", unlockLevel: 7 },
+  { id: "bell", label: "The Bell", src: "/avatars/bell.svg", unlockLevel: 8 },
+  { id: "capstan", label: "The Capstan", src: "/avatars/capstan.svg", unlockLevel: 10 },
 ] as const;
 
 export type AvatarId = (typeof AVATARS)[number]["id"];
+export type Avatar = (typeof AVATARS)[number];
+
+/** The rank level from which a face can be picked; 1 for the open set. */
+export function avatarUnlockLevel(id: AvatarId): number {
+  const avatar = AVATARS.find((a) => a.id === id);
+  return avatar && "unlockLevel" in avatar ? avatar.unlockLevel : 1;
+}
+
+/** Whether an account at `level` may wear this face. */
+export function canUseAvatar(id: AvatarId, level: number): boolean {
+  return level >= avatarUnlockLevel(id);
+}
 
 /**
  * Ids stored before the rebrand (2026-09-17), mapped one to one onto the

@@ -23,7 +23,7 @@ import { listListings } from "@/lib/listings";
 let instance: Sodax | undefined;
 
 /** Module singleton: the config is static and the SDK client is stateless. */
-function getSodax(): Sodax {
+export function getSodax(): Sodax {
   instance ??= new Sodax(sodaxConfig);
   return instance;
 }

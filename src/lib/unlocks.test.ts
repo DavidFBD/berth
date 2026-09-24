@@ -1,0 +1,60 @@
+import { describe, expect, it } from "vitest";
+import { AVATARS, avatarUnlockLevel } from "./avatars";
+import { unlockAt, unlockLevels, unlocksBetween } from "./unlocks";
+import { INVITE_UNLOCK_LEVEL, RANKS } from "./xp";
+
+describe("unlockAt", () => {
+  it("opens the invite link at the invite rung", () => {
+    expect(INVITE_UNLOCK_LEVEL).toBe(3);
+    expect(unlockAt(3)).toEqual({ kind: "invite" });
+  });
+
+  it("opens the three rank faces on their rungs", () => {
+    expect(unlockAt(7)).toEqual({ kind: "avatar", avatarId: "beacon", face: "Beacon" });
+    expect(unlockAt(8)).toEqual({ kind: "avatar", avatarId: "bell", face: "Bell" });
+    expect(unlockAt(10)).toEqual({ kind: "avatar", avatarId: "capstan", face: "Capstan" });
+  });
+
+  it("opens nothing on every other rung, or off the ladder", () => {
+    for (const level of [1, 2, 4, 5, 6, 9, 0, 11]) {
+      expect(unlockAt(level)).toBeNull();
+    }
+  });
+
+  it("covers every gated face, on the rung the face itself names", () => {
+    for (const avatar of AVATARS) {
+      const level = avatarUnlockLevel(avatar.id);
+      if (level === 1) continue;
+      expect(unlockAt(level)).toMatchObject({ kind: "avatar", avatarId: avatar.id });
+    }
+  });
+});
+
+describe("unlockLevels", () => {
+  it("lists the opening rungs in ladder order, all on the ladder", () => {
+    expect(unlockLevels()).toEqual([3, 7, 8, 10]);
+    for (const level of unlockLevels()) {
+      expect(RANKS.some((rank) => rank.level === level)).toBe(true);
+    }
+  });
+});
+
+describe("unlocksBetween", () => {
+  it("lists every opening passed on a jump, lowest rung first", () => {
+    expect(unlocksBetween(6, 8)).toEqual([
+      { kind: "avatar", avatarId: "beacon", face: "Beacon" },
+      { kind: "avatar", avatarId: "bell", face: "Bell" },
+    ]);
+    expect(unlocksBetween(2, 10).map((unlock) => unlockLevelOf(unlock))).toEqual([3, 7, 8, 10]);
+  });
+
+  it("excludes the rung left and includes the rung reached", () => {
+    expect(unlocksBetween(7, 8)).toEqual([unlockAt(8)]);
+    expect(unlocksBetween(3, 6)).toEqual([]);
+    expect(unlocksBetween(8, 8)).toEqual([]);
+  });
+});
+
+function unlockLevelOf(unlock: ReturnType<typeof unlocksBetween>[number]): number {
+  return unlockLevels().find((level) => unlockAt(level) === unlock)!;
+}

@@ -98,3 +98,28 @@ alter table orders add column if not exists usd_source text;
 
 create index if not exists orders_user_idx on orders (user_id, placed_at);
 create index if not exists orders_wallet_idx on orders (wallet_address, placed_at);
+
+-- The thirty day hold check (lib/server/holds): a buy still on the books a
+-- month later earns held_30_days, once. hold_checked_at stamps the verdict
+-- so a buy is judged once; hold_outcome says which ('paid' or 'forfeit').
+-- A read that failed leaves both null and the next daily run tries again.
+alter table orders add column if not exists hold_checked_at timestamptz;
+alter table orders add column if not exists hold_outcome text
+  check (hold_outcome in ('paid', 'forfeit'));
+
+-- Where the buy was actually delivered: intent.dstAddress, the wallet the
+-- fill's Transfer went to (lib/server/orders), lowercased. The hold check
+-- reads the balance there and nowhere else; a buy without it is not judged.
+alter table orders add column if not exists delivered_to text;
+
+-- The last hold check that could not reach a verdict (a failed read). The
+-- cron walks never-tried rows first, so one row that always fails cannot
+-- starve the ones behind it.
+alter table orders add column if not exists hold_attempted_at timestamptz;
+
+-- The cron's candidate query filters unchecked buys by the same effective
+-- date expression it indexes here; the partial index keeps that a short
+-- range scan however long the order book grows.
+create index if not exists orders_hold_due_idx
+  on orders ((coalesce(filled_at, placed_at, created_at)))
+  where direction = 'buy' and hold_checked_at is null;

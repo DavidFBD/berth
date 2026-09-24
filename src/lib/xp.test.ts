@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { levelUpRank, rankForXp, RANKS } from "./xp";
+import { levelUpRank, rankForXp, rankGlyphSrc, RANKS, REWARD_REASONS, XP_ACTIONS } from "./xp";
 
 describe("levelUpRank", () => {
   it("returns the rank arrived at when a boundary is crossed", () => {
@@ -44,5 +46,31 @@ describe("rankForXp", () => {
     expect(top.level).toBe(10);
     expect(top.progress).toBe(1);
     expect(top.nextName).toBeNull();
+  });
+});
+
+describe("rankGlyphSrc", () => {
+  it("names one glyph per rung, zero padded", () => {
+    expect(rankGlyphSrc(1)).toBe("/ranks/rank-01.svg");
+    expect(rankGlyphSrc(10)).toBe("/ranks/rank-10.svg");
+  });
+
+  it("clamps levels off the ladder to its ends", () => {
+    expect(rankGlyphSrc(0)).toBe("/ranks/rank-01.svg");
+    expect(rankGlyphSrc(42)).toBe("/ranks/rank-10.svg");
+  });
+
+  it("every rung's glyph exists on disk", () => {
+    for (const rank of RANKS) {
+      const src = rankGlyphSrc(rank.level);
+      expect(existsSync(path.join(process.cwd(), "public", src)), `${src} is missing`).toBe(true);
+    }
+  });
+});
+
+describe("held_30_days", () => {
+  it("pays 150 XP, repeatably, with a reason for the ledger", () => {
+    expect(XP_ACTIONS.held_30_days).toEqual({ amount: 150, once: false });
+    expect(REWARD_REASONS.held_30_days).toBe("for holding thirty days");
   });
 });

@@ -19,6 +19,12 @@ export type OrderRecord = {
   fillTx: string | null;
   direction: "buy" | "sell";
   walletAddress: string | null;
+  /**
+   * intent.dstAddress, lowercased: the wallet the output was delivered to.
+   * On a buy this is exactly where the fill's Transfer landed, and the one
+   * place the thirty day hold check reads the balance (lib/server/holds).
+   */
+  deliveredTo: string | null;
   listingSymbol: string;
   listingAddress: string;
   /** Decimal units of the listing: received on a buy, sold on a sell. */
@@ -104,6 +110,8 @@ export type IntentFacts = {
   inputAmount: bigint;
   minOutputAmount: bigint;
   srcAddress: string;
+  /** Where the output is delivered: on a buy, the hub wallet the fill's Transfer goes to. */
+  dstAddress?: string;
   data: string;
 };
 
@@ -164,6 +172,7 @@ export function readOrder({
     fillTx: fillTx ? fillTx.toLowerCase() : null,
     direction,
     walletAddress: evm ? intent.srcAddress.toLowerCase() : null,
+    deliveredTo: intent.dstAddress ? intent.dstAddress.toLowerCase() : null,
     listingSymbol: listing.symbol,
     listingAddress: listing.address.toLowerCase(),
     quantity,

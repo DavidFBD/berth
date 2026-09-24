@@ -12,6 +12,9 @@
  * punctuation; no emoji; names, not tickers, wherever a person is reading.
  */
 
+import type { Unlock } from "@/lib/unlocks";
+import { REWARD_REASONS } from "@/lib/xp";
+
 export type Copy = {
   /* — brand and shell — */
   brand: string;
@@ -397,7 +400,36 @@ export type Copy = {
   walletEmbeddedNote: string;
   walletConnectedLabel: string;
   rankLine: (level: number, xp: string) => string;
-  xpToNext: (xp: string, rankName: string) => string;
+  /** "+150 XP": a payout, or one still coming. */
+  xpPlus: (amount: number) => string;
+  /* the ladder: ten rungs under the rank, and one caption line */
+  /** The rung row, for a screen reader. */
+  ladderLabel: string;
+  ladderRungAria: (
+    name: string,
+    level: number,
+    state: "reached" | "current" | "ahead",
+  ) => string;
+  /** The default caption: the next rung. `xp` is already formatted. */
+  ladderNext: (xp: string, rankName: string) => string;
+  ladderTop: string;
+  /** A tapped rung. `xp` is its threshold, already formatted. */
+  ladderRung: (rankName: string, xp: string) => string;
+  ladderHere: string;
+  /** What a rung opens, said about a rung not reached yet. */
+  unlockNext: (unlock: Unlock) => string;
+  /** The same, about a rung already reached. */
+  unlockDone: (unlock: Unlock) => string;
+  /* the level-up card */
+  levelUpTitle: (rankName: string) => string;
+  /** `reason` is the single reward's REWARD_REASONS line, when there was one. */
+  levelUpLine: (level: number, total: number, reason: string | null) => string;
+  /** The card's second line, when the rung opened something. */
+  levelUpUnlock: (unlock: Unlock) => string;
+  /* rank-gated faces in the picker */
+  /** `face` is the avatar's own name, `rankName` the rung it opens on. */
+  avatarLockedLabel: (face: string, rankName: string) => string;
+  avatarUnlocksAt: (rankName: string) => string;
   pickFace: (amount: number) => string;
   newFace: string;
   /** Offered only to a wallet account, which has no email of its own. */
@@ -460,6 +492,12 @@ export type Copy = {
   ledgerTitle: string;
   ledgerLoading: string;
   ledgerEmpty: string;
+  /** Buys that will pay held_30_days once they have been held thirty days. */
+  ledgerHoldsTitle: string;
+  /** `name` is the listing's plain name, null when it is not known. */
+  ledgerHoldReason: (name: string | null) => string;
+  /** When a pending hold pays, `date` already formatted. */
+  ledgerHoldDue: (date: string) => string;
 
   /* — the nudge: one line under the total, only ever a true thing — */
   nudgeAddFunds: string;
@@ -778,7 +816,35 @@ export const COPY: Copy = {
   walletEmbeddedNote: " · from your email sign in",
   walletConnectedLabel: "Connected",
   rankLine: (level, xp) => `Level ${level} · ${xp} XP`,
-  xpToNext: (xp, rankName) => `${xp} XP to ${rankName}`,
+  xpPlus: (amount) => `+${amount.toLocaleString()} XP`,
+  ladderLabel: "The ten ranks",
+  ladderRungAria: (name, level, state) =>
+    state === "current"
+      ? `${name}, level ${level}, where you are`
+      : state === "reached"
+        ? `${name}, level ${level}, reached`
+        : `${name}, level ${level}`,
+  ladderNext: (xp, rankName) => `${xp} XP to ${rankName}.`,
+  ladderTop: "You have reached the top of the ladder.",
+  ladderRung: (rankName, xp) => `${rankName}, from ${xp} XP.`,
+  ladderHere: "You are here.",
+  unlockNext: (unlock) =>
+    unlock.kind === "invite"
+      ? "Unlocks your own invite link."
+      : `Unlocks the ${unlock.face} face.`,
+  unlockDone: (unlock) =>
+    unlock.kind === "invite"
+      ? "Your own invite link is open to you."
+      : `The ${unlock.face} face is yours to wear.`,
+  levelUpTitle: (rankName) => `You reached ${rankName}`,
+  levelUpLine: (level, total, reason) =>
+    `Level ${level} · +${total.toLocaleString()} XP${reason ? ` ${reason}` : ""}`,
+  levelUpUnlock: (unlock) =>
+    unlock.kind === "invite"
+      ? "Your own invite link is ready in your account."
+      : `The ${unlock.face} face is now in your avatar picker.`,
+  avatarLockedLabel: (face, rankName) => `${face}, unlocks at ${rankName}`,
+  avatarUnlocksAt: (rankName) => `Unlocks at ${rankName}`,
   pickFace: (amount) => `Pick an avatar · +${amount} XP`,
   newFace: "Change avatar",
   addEmailTitle: "Add an email to your account",
@@ -842,6 +908,10 @@ export const COPY: Copy = {
   ledgerTitle: "Activity",
   ledgerLoading: "Loading…",
   ledgerEmpty: "Nothing yet. Your first trade will show here.",
+  ledgerHoldsTitle: "Coming ashore",
+  ledgerHoldReason: (name) =>
+    name === null ? REWARD_REASONS.held_30_days : `for holding ${name} thirty days`,
+  ledgerHoldDue: (date) => `on ${date}`,
 
   jevCuratedBy: "Live curation by Jev",
   jevCuration: (seen, accounts, read, kept) =>

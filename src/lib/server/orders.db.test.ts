@@ -24,6 +24,7 @@ const base: OrderRecord = {
   fillTx: null,
   direction: "buy",
   walletAddress: "0xwallet",
+  deliveredTo: null,
   listingSymbol: "SGOV",
   listingAddress: "0xlisting",
   quantity: null,
@@ -47,12 +48,19 @@ describe("saveOrder", () => {
       quantity: "0.01891",
       filledAt: new Date("2026-09-21T09:20:00Z"),
       usdValue: null,
+      deliveredTo: "0xhub",
     });
+    await saveOrder(null, { ...base, deliveredTo: "0xother" });
     const rows = (await sql.query(
-      `select fill_tx, quantity::text, usd_value::text from orders where intent_tx = '0xintent'`,
+      `select fill_tx, quantity::text, usd_value::text, delivered_to from orders where intent_tx = '0xintent'`,
       [],
-    )) as { fill_tx: string; quantity: string; usd_value: string }[];
+    )) as { fill_tx: string; quantity: string; usd_value: string; delivered_to: string }[];
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toEqual({ fill_tx: "0xfill", quantity: "0.01891", usd_value: "2" });
+    expect(rows[0]).toEqual({
+      fill_tx: "0xfill",
+      quantity: "0.01891",
+      usd_value: "2",
+      delivered_to: "0xhub",
+    });
   });
 });

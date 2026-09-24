@@ -6,6 +6,8 @@ import { useXAccount } from "@sodax/wallet-sdk-react";
 import { ChainKeys } from "@sodax/sdk";
 import type { AvatarId } from "@/lib/avatars";
 import type {
+  Hold,
+  HoldsResponse,
   Profile,
   ProfileResponse,
   ReferralPanel,
@@ -58,6 +60,11 @@ function useRewardsCall() {
   const call = async <T>(
     path: string,
     body: Record<string, unknown>,
+    /**
+     * What a 404 means for this route, when it means something other than a
+     * miss: a route that is not deployed yet reads as its empty answer.
+     */
+    notFound?: T,
   ): Promise<T | null> => {
     const auth = authenticated
       ? { token: await getAccessToken(), walletSession: null }
@@ -77,6 +84,7 @@ function useRewardsCall() {
       },
       body: JSON.stringify(body),
     });
+    if (response.status === 404 && notFound !== undefined) return notFound;
     if (!response.ok) return null;
     return response.json();
   };
@@ -98,6 +106,8 @@ function useRewardsQuery<TWire, TData = TWire>(
     body?: () => Record<string, unknown>;
     select?: (data: TWire) => TData;
     onData?: (data: TWire) => void;
+    /** The answer a 404 stands for; without it a 404 is a miss. */
+    notFound?: TWire;
   },
 ) {
   const { key, call } = useRewardsCall();
@@ -107,7 +117,11 @@ function useRewardsQuery<TWire, TData = TWire>(
     staleTime: options.staleTime,
     retry: 1,
     queryFn: async (): Promise<TData> => {
-      const data = await call<TWire>(path, options.body?.() ?? {});
+      const data = await call<TWire>(
+        path,
+        options.body?.() ?? {},
+        options.notFound,
+      );
       if (!data) throw new Error(`${name} failed`);
       options.onData?.(data);
       return options.select
@@ -171,6 +185,8 @@ function useProfileMutation<TVars>(
       // Every award moves the ledger, and a pour can move the referral
       // corner (steeping → poured); both are cheap refetches on next open.
       void queryClient.invalidateQueries({ queryKey: ["xp-history", key] });
+      // A buy is also a hold that will come ashore in thirty days.
+      void queryClient.invalidateQueries({ queryKey: ["xp-holds", key] });
       void queryClient.invalidateQueries({ queryKey: ["referral-panel", key] });
       // A pour is also a new order row (lib/server/orders).
       void queryClient.invalidateQueries({ queryKey: ["orders", key] });
@@ -239,6 +255,24 @@ export function useXpHistory(enabled: boolean) {
     "xp-history",
     "/api/xp/history",
     { enabled, staleTime: 60_000, select: (data) => data.events },
+  );
+}
+
+/**
+ * Buys still coming ashore, soonest first. Same core and auth as the ledger
+ * and, like it, fetched only while the ledger is unfolded. A 404 (the route
+ * not deployed yet) reads as nothing pending, not as an error.
+ */
+export function useXpHolds(enabled: boolean) {
+  return useRewardsQuery<HoldsResponse, Hold[]>(
+    "xp-holds",
+    "/api/xp/holds",
+    {
+      enabled,
+      staleTime: 60_000,
+      select: (data) => data.holds,
+      notFound: { holds: [] },
+    },
   );
 }
 

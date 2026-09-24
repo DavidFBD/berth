@@ -38,6 +38,8 @@
   --color-warn-soft: var(--warn-soft);
   --color-bad: var(--bad);
   --color-bad-soft: var(--bad-soft);
+  --color-avatar-disc: var(--avatar-disc);
+  --color-avatar-ink: var(--avatar-ink);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
@@ -103,6 +105,13 @@
   --warn-soft: #fbf0dc;
   --bad: #b3261e;
   --bad-soft: #fbe5e3;
+  /* The disc a face is drawn on, and the ink drawn over a face (the lock
+     on a locked one). The face SVGs are fixed brand ink on accent-soft with
+     no ground of their own, so their disc is light in BOTH appearances:
+     surface-2 from the light sheet, ink from the light sheet. Defined
+     identically in .dark on purpose. */
+  --avatar-disc: #eceeea;
+  --avatar-ink: #151b1a;
 
   /* Chart palette: accent plus the status colors, then ink-2. */
   --chart-1: #1f4ed8;
@@ -155,6 +164,13 @@
   --warn-soft: #2e2510;
   --bad: #f09189;
   --bad-soft: #301c1a;
+  /* The disc a face is drawn on, and the ink drawn over a face (the lock
+     on a locked one). The face SVGs are fixed brand ink on accent-soft with
+     no ground of their own, so their disc is light in BOTH appearances:
+     surface-2 from the light sheet, ink from the light sheet. Defined
+     identically in .dark on purpose. */
+  --avatar-disc: #eceeea;
+  --avatar-ink: #151b1a;
 
   --chart-1: #86a3ff;
   --chart-2: #7bd3a0;

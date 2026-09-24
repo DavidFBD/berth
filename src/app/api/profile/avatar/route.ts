@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isAvatarId } from "@/lib/avatars";
+import { canUseAvatar, isAvatarId } from "@/lib/avatars";
+import { rankForXp } from "@/lib/xp";
 import { setAvatar } from "@/lib/server/accounts";
 import {
   awardAndRespond,
@@ -23,6 +24,11 @@ export async function POST(request: NextRequest) {
 
   const resolved = await resolveRewardsUser(read.caller);
   if (!resolved.ok) return resolved.response;
+
+  // The rank-gated faces: the picker says why, the server makes it true.
+  if (!canUseAvatar(avatarId, rankForXp(resolved.user.xp).level)) {
+    return NextResponse.json({ error: "locked" }, { status: 403 });
+  }
 
   await setAvatar(resolved.user.id, avatarId);
   return awardAndRespond(resolved.user, "avatar_set", null, {

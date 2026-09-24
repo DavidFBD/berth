@@ -49,6 +49,22 @@ describe("readOrder", () => {
     });
   });
 
+  it("records where the buy was delivered, lowercased, and null when unknown", () => {
+    const hub = "0xAbCdEf0000000000000000000000000000000001";
+    const order = readOrder({
+      intentTx: "0x1",
+      direction: "buy",
+      intent: { ...CASH_BUY, dstAddress: hub },
+      listing: CASH,
+      pay: USDC_BSC,
+    });
+    expect(order.deliveredTo).toBe(hub.toLowerCase());
+    expect(
+      readOrder({ intentTx: "0x1", direction: "buy", intent: CASH_BUY, listing: CASH, pay: USDC_BSC })
+        .deliveredTo,
+    ).toBeNull();
+  });
+
   it("leaves the quantity unknown until the fill is found", () => {
     const order = readOrder({ intentTx: "0x1", direction: "buy", intent: CASH_BUY, listing: CASH, pay: USDC_BSC });
     expect(order.quantity).toBeNull();

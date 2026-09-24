@@ -116,9 +116,11 @@ for (const pour of pours) {
     `insert into orders (
        user_id, wallet_address, intent_tx, fill_tx, direction, listing_symbol,
        listing_address, quantity, min_quantity, pay_symbol, pay_chain,
-       pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source,
+       delivered_to
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      on conflict (intent_tx) do update set
+       delivered_to = coalesce(orders.delivered_to, excluded.delivered_to),
        usd_value = coalesce(orders.usd_value, excluded.usd_value),
        usd_source = coalesce(orders.usd_source, excluded.usd_source),
        fill_tx = coalesce(orders.fill_tx, excluded.fill_tx),
@@ -128,7 +130,7 @@ for (const pour of pours) {
       pour.user_id, order.walletAddress, order.intentTx, order.fillTx, order.direction,
       order.listingSymbol, order.listingAddress, order.quantity, order.minQuantity,
       order.paySymbol, order.payChain, order.payAmount, order.feeAmount, order.usdValue,
-      order.placedAt, order.filledAt, order.usdSource,
+      order.placedAt, order.filledAt, order.usdSource, order.deliveredTo,
     ],
   );
 }

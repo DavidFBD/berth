@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { RewardList } from "@/lib/profile-types";
-import { awardXp } from "@/lib/server/accounts";
+import { awardXp, flushUnannounced } from "@/lib/server/accounts";
 import { recordOrder } from "@/lib/server/orders";
 import { verifyPourTx } from "@/lib/server/pour-verify";
 import {
@@ -81,6 +81,10 @@ export async function POST(request: NextRequest) {
       announced: false,
     });
   }
+
+  // Anything parked for this account (a hold paid by the cron) rides along
+  // with this total, as in awardAndRespond.
+  rewards.push(...(await flushUnannounced(user.id)));
 
   return rewardsResponse(user, { xp }, rewards);
 }

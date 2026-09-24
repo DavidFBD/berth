@@ -63,3 +63,20 @@ export type ReferralPanel = {
 export type XpHistoryEntry = { kind: XpKind; amount: number; at: string };
 
 export type XpHistoryResponse = { events: XpHistoryEntry[] };
+
+/**
+ * A buy waiting on its thirty day hold check (/api/xp/holds). `ref` is the
+ * buy's intent tx, which is also the reward's dedup ref; `pouredAt` is when
+ * the thirty days started counting (the fill, else the placement); `dueAt`
+ * is the earliest the daily check can pay it. `name` is the listing's plain
+ * name, null when the house has none to give (never a ticker).
+ */
+export type Hold = {
+  ref: string;
+  pouredAt: string;
+  dueAt: string;
+  amount: number;
+  name: string | null;
+};
+
+export type HoldsResponse = { holds: Hold[] };

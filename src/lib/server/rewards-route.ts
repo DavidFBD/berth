@@ -3,6 +3,7 @@ import { fetchPrivyWallet, verifyPrivyAuth } from "@/lib/server/privy";
 import { verifyWalletSession } from "@/lib/server/wallet-session";
 import {
   awardXp,
+  flushUnannounced,
   getOrCreateUser,
   normalizeWallet,
   toProfile,
@@ -118,7 +119,14 @@ export function rewardsResponse(
   return NextResponse.json({ ...toProfile({ ...user, ...patch }), rewards });
 }
 
-/** Award one kind and respond. `patch` carries any extra route write (e.g. avatar_id). */
+/**
+ * Award one kind and respond. `patch` carries any extra route write (e.g.
+ * avatar_id). Every rewards response also carries the account's parked
+ * rewards (announced=false, e.g. a held_30_days paid by the cron): the new
+ * total already includes them, so a rank they crossed is announced with
+ * this total rather than slipping by between two totals. Flushing is a one
+ * shot flip, so the profile sync that follows reports nothing twice.
+ */
 export async function awardAndRespond(
   user: UserRow,
   kind: XpKind,
@@ -126,9 +134,7 @@ export async function awardAndRespond(
   patch: Partial<UserRow> = {},
 ): Promise<NextResponse> {
   const { awarded, xp } = await awardXp(user.id, kind, ref);
-  return rewardsResponse(
-    user,
-    { ...patch, xp },
-    awarded > 0 ? [{ kind, amount: awarded }] : [],
-  );
+  const rewards: RewardList = awarded > 0 ? [{ kind, amount: awarded }] : [];
+  rewards.push(...(await flushUnannounced(user.id)));
+  return rewardsResponse(user, { ...patch, xp }, rewards);
 }

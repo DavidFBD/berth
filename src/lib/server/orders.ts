@@ -143,10 +143,12 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
     `insert into orders (
        user_id, wallet_address, intent_tx, fill_tx, direction, listing_symbol,
        listing_address, quantity, min_quantity, pay_symbol, pay_chain,
-       pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source,
+       delivered_to
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      on conflict (intent_tx) do update set
        user_id = coalesce(orders.user_id, excluded.user_id),
+       delivered_to = coalesce(orders.delivered_to, excluded.delivered_to),
        wallet_address = coalesce(orders.wallet_address, excluded.wallet_address),
        fill_tx = coalesce(orders.fill_tx, excluded.fill_tx),
        quantity = coalesce(orders.quantity, excluded.quantity),
@@ -173,6 +175,7 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
       order.placedAt,
       order.filledAt,
       order.usdSource,
+      order.deliveredTo,
     ],
   );
 }

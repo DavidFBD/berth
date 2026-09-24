@@ -1,11 +1,14 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Medal, Sparkle } from "@phosphor-icons/react";
+import { Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { Reward, RewardList } from "@/lib/profile-types";
-import { levelUpRank, REWARD_REASONS, type RankInfo } from "@/lib/xp";
+import { levelUpRank, rankForXp, REWARD_REASONS, type RankInfo } from "@/lib/xp";
 import { SPRING_POP } from "@/lib/motion";
+import { unlocksBetween } from "@/lib/unlocks";
+import { RankGlyph } from "@/components/rank-glyph";
+import { useCopy } from "@/components/settings-provider";
 
 /**
  * The achievement announcer. Every XP payout gets a small ceremony instead
@@ -79,14 +82,16 @@ function present({ rewards, newXp }: Announcement) {
   // The rewards in one response are exactly the delta between the totals,
   // so the "before" needs no cache and no caller cooperation.
   const reached = levelUpRank(newXp - total, newXp);
+  const fromLevel = rankForXp(newXp - total).level;
 
   if (reached) {
     // A single reward folds its reason into the card; a batch gets the card
     // for the rank and a pill per reward for the attribution.
     const reason = rewards.length === 1 ? REWARD_REASONS[rewards[0].kind] : null;
-    toast.custom(() => <LevelUpCard rank={reached} total={total} reason={reason} />, {
-      duration: 5000,
-    });
+    toast.custom(
+      () => <LevelUpCard rank={reached} fromLevel={fromLevel} total={total} reason={reason} />,
+      { duration: 5000 },
+    );
     if (rewards.length === 1) return;
   }
   rewards.forEach((reward, index) => {
@@ -99,6 +104,7 @@ function present({ rewards, newXp }: Announcement) {
 
 /** "+100 XP for placing your first order", popped in with a spring and a late sparkle. */
 function XpPill({ reward }: { reward: Reward }) {
+  const copy = useCopy();
   return (
     <motion.div
       initial={{ scale: 0.85, y: 10, opacity: 0 }}
@@ -115,7 +121,7 @@ function XpPill({ reward }: { reward: Reward }) {
         <Sparkle className="size-5 text-primary" />
       </motion.span>
       <span className="money text-sm font-semibold text-foreground">
-        +{reward.amount} XP
+        {copy.xpPlus(reward.amount)}
       </span>
       <span className="text-xs text-muted-foreground">
         {REWARD_REASONS[reward.kind]}
@@ -126,24 +132,31 @@ function XpPill({ reward }: { reward: Reward }) {
 
 /**
  * Crossing a rank boundary earns a small flourish: three wisps rise off the
- * card while the new rank's name settles in. Deliberately quiet for what it
- * is: the app celebrates like a brokerage, not a casino.
+ * card while the new rank's glyph turns in and its name settles. When the
+ * rung opened something (lib/unlocks), a second line says what, once and
+ * plainly. Deliberately quiet for what it is: the app celebrates like a
+ * brokerage, not a casino. Exported for the dev gallery (/dev/account).
  */
-function LevelUpCard({
+export function LevelUpCard({
   rank,
+  fromLevel = rank.level - 1,
   total,
   reason,
 }: {
   rank: RankInfo;
+  /** The rung left behind; a jump of several rungs shows the latest opening passed. */
+  fromLevel?: number;
   total: number;
   reason: string | null;
 }) {
+  const copy = useCopy();
+  const unlock = unlocksBetween(fromLevel, rank.level).at(-1) ?? null;
   return (
     <motion.div
       initial={{ scale: 0.88, y: 14, opacity: 0 }}
       animate={{ scale: 1, y: 0, opacity: 1 }}
       transition={{ type: "spring", stiffness: 360, damping: 20 }}
-      className="relative flex w-fit items-center gap-3 rounded-2xl border border-primary/40 bg-card px-4 py-3 shadow-lg"
+      className="relative flex w-fit items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-lg"
     >
       <div aria-hidden className="absolute -top-2 left-5 flex gap-1.5">
         {[0, 1, 2].map((wisp) => (
@@ -167,9 +180,9 @@ function LevelUpCard({
         initial={{ rotate: -90, scale: 0.4, opacity: 0 }}
         animate={{ rotate: 0, scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 320, damping: 16, delay: 0.1 }}
-        className="leading-none"
+        className="flex leading-none"
       >
-        <Medal className="size-6 text-primary" />
+        <RankGlyph level={rank.level} className="size-6 text-foreground" />
       </motion.span>
       <div className="flex flex-col">
         <motion.span
@@ -178,7 +191,7 @@ function LevelUpCard({
           transition={{ type: "spring", stiffness: 300, damping: 24, delay: 0.18 }}
           className="text-sm font-semibold text-foreground"
         >
-          You reached {rank.name}
+          {copy.levelUpTitle(rank.name)}
         </motion.span>
         <motion.span
           initial={{ opacity: 0 }}
@@ -186,8 +199,18 @@ function LevelUpCard({
           transition={{ type: "spring", stiffness: 300, damping: 24, delay: 0.32 }}
           className="text-xs text-muted-foreground"
         >
-          Level {rank.level} · +{total} XP{reason ? ` ${reason}` : ""}
+          {copy.levelUpLine(rank.level, total, reason)}
         </motion.span>
+        {unlock && (
+          <motion.span
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ type: "spring", stiffness: 300, damping: 24, delay: 0.46 }}
+            className="text-xs text-foreground"
+          >
+            {copy.levelUpUnlock(unlock)}
+          </motion.span>
+        )}
       </div>
     </motion.div>
   );

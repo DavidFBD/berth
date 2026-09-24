@@ -1,7 +1,14 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { AVATARS, avatarSrc, isAvatarId, resolveAvatarId } from "./avatars";
+import {
+  AVATARS,
+  avatarSrc,
+  avatarUnlockLevel,
+  canUseAvatar,
+  isAvatarId,
+  resolveAvatarId,
+} from "./avatars";
 
 describe("isAvatarId", () => {
   it("accepts every face on the shelf", () => {
@@ -39,5 +46,27 @@ describe("AVATARS", () => {
       const filePath = path.join(process.cwd(), "public", avatar.src);
       expect(existsSync(filePath), `${avatar.src} is missing`).toBe(true);
     }
+  });
+});
+
+describe("rank-gated faces", () => {
+  it("keeps the first eight open from the first rung", () => {
+    const open = AVATARS.filter((avatar) => avatarUnlockLevel(avatar.id) === 1);
+    expect(open).toHaveLength(8);
+    for (const avatar of open) expect(canUseAvatar(avatar.id, 1)).toBe(true);
+  });
+
+  it("opens the Beacon at 7, the Bell at 8 and the Capstan at 10", () => {
+    expect(avatarUnlockLevel("beacon")).toBe(7);
+    expect(avatarUnlockLevel("bell")).toBe(8);
+    expect(avatarUnlockLevel("capstan")).toBe(10);
+  });
+
+  it("locks a face below its rung and opens it on the rung", () => {
+    expect(canUseAvatar("beacon", 6)).toBe(false);
+    expect(canUseAvatar("beacon", 7)).toBe(true);
+    expect(canUseAvatar("bell", 7)).toBe(false);
+    expect(canUseAvatar("capstan", 9)).toBe(false);
+    expect(canUseAvatar("capstan", 10)).toBe(true);
   });
 });

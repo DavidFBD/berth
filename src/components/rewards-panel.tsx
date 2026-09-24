@@ -10,6 +10,7 @@ import {
   Check,
   UserCircle,
   HandHeart,
+  Lock,
   LockSimple,
   Receipt,
   Ticket,
@@ -23,7 +24,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { SPRING_POP, SPRING_SHELF } from "@/lib/motion";
-import { AVATARS, avatarSrc, type AvatarId, resolveAvatarId } from "@/lib/avatars";
+import {
+  AVATARS,
+  avatarSrc,
+  avatarUnlockLevel,
+  type AvatarId,
+  canUseAvatar,
+  resolveAvatarId,
+} from "@/lib/avatars";
+import { unlockAt } from "@/lib/unlocks";
+import { AvatarWithRank, RankGlyph } from "@/components/rank-glyph";
 import { CODE_LENGTH, isInviteCode } from "@/lib/invite-code";
 import { inviteLink } from "@/lib/referral";
 import {
@@ -40,6 +50,7 @@ import {
   useReferralPanel,
   useSetAvatar,
   useXpHistory,
+  useXpHolds,
 } from "@/hooks/use-profile";
 import { useCopy } from "@/components/settings-provider";
 
@@ -49,7 +60,15 @@ import { useCopy } from "@/components/settings-provider";
  * Rendered inside both the account drawer (email users) and the external
  * account drawer. Its prose lives in lib/copy, one voice for the whole app.
  */
-export function RewardsPanel() {
+export function RewardsPanel({
+  initialGridOpen,
+  initialLedgerOpen = false,
+}: {
+  /** Dev gallery only: start with the avatar grid unfolded (or folded). */
+  initialGridOpen?: boolean;
+  /** Dev gallery only: start with the ledger unfolded. */
+  initialLedgerOpen?: boolean;
+} = {}) {
   const profile = useProfile();
   const privy = usePrivyEmbeddedWallet();
   // The account the email would attach to, by the one address rule. Its
@@ -64,12 +83,13 @@ export function RewardsPanel() {
    * default does the smart thing: open while the pick is still unmade (it
    * pays XP and deserves the space), folded away once a face is chosen.
    */
-  const [gridToggled, setGridToggled] = useState<boolean | null>(null);
+  const [gridToggled, setGridToggled] = useState<boolean | null>(
+    initialGridOpen ?? null,
+  );
 
   if (!profile.data) return null;
   const { xp, avatarId, hasEmail } = profile.data;
   const rank = rankForXp(xp);
-  const currentSrc = avatarSrc(avatarId);
   const gridOpen = gridToggled ?? avatarId == null;
 
   return (
@@ -83,22 +103,7 @@ export function RewardsPanel() {
         onClick={() => setGridToggled(!gridOpen)}
         className="-m-1 flex items-center gap-3 rounded-lg p-1 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted/60 active:scale-[0.99]"
       >
-        {currentSrc ? (
-          <Image
-            src={currentSrc}
-            alt=""
-            width={44}
-            height={44}
-            className="size-11 shrink-0 rounded-full bg-muted"
-          />
-        ) : (
-          <div
-            aria-hidden
-            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-muted"
-          >
-            <UserCircle className="size-6 text-primary" />
-          </div>
-        )}
+        <AvatarWithRank avatarId={avatarId} level={rank.level} size={44} />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium text-foreground">
             {rank.name}
@@ -120,8 +125,8 @@ export function RewardsPanel() {
         </span>
       </button>
 
-      {rank.nextName && (
-        <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
+        {rank.nextName && (
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             {/* Full-width bar slid left by the missing fraction: transform,
                 not width, so the fill glides off the layout thread. */}
@@ -132,11 +137,9 @@ export function RewardsPanel() {
               }}
             />
           </div>
-          <span className="text-[11px] text-muted-foreground">
-            {copy.xpToNext(String(rank.span - rank.into), rank.nextName)}
-          </span>
-        </div>
-      )}
+        )}
+        <Ladder xp={xp} />
+      </div>
 
       <AnimatePresence initial={false}>
         {gridOpen && (
@@ -149,39 +152,79 @@ export function RewardsPanel() {
             transition={SPRING_SHELF}
             className="overflow-hidden"
           >
-            <div className="grid grid-cols-4 gap-2 p-0.5">
-              {AVATARS.map((avatar) => (
-                <button
-                  key={avatar.id}
-                  type="button"
-                  aria-label={copy.avatarChooseLabel(avatar.label)}
-                  aria-pressed={resolveAvatarId(avatarId) === avatar.id}
-                  disabled={setAvatar.isPending}
-                  onClick={() =>
-                    setAvatar.mutate(avatar.id as AvatarId, {
-                      // Choice made: the grid folds itself away again.
-                      // (null = the post never landed; keep it open.)
-                      onSuccess: (data) => {
-                        if (data) setGridToggled(null);
-                      },
-                    })
-                  }
-                  className={cn(
-                    "rounded-full p-0.5 transition-[box-shadow,opacity,transform] duration-150 ease-lift",
-                    resolveAvatarId(avatarId) === avatar.id
-                      ? "ring-2 ring-primary"
-                      : "opacity-80 hover:opacity-100",
-                  )}
-                >
-                  <Image
-                    src={avatarSrc(avatar.id) ?? avatar.src}
-                    alt={avatar.label}
-                    width={56}
-                    height={56}
-                    className="size-full rounded-full bg-muted"
-                  />
-                </button>
-              ))}
+            <div className="grid grid-cols-4 items-start gap-2 p-0.5">
+              {AVATARS.map((avatar) => {
+                // Rank-gated faces show from the first rung, dimmed and
+                // locked, so the ladder has something to look forward to.
+                // The server checks the rung too; this only says it.
+                const locked = !canUseAvatar(avatar.id, rank.level);
+                const unlockName = RANKS[avatarUnlockLevel(avatar.id) - 1].name;
+                const chosen = !locked && resolveAvatarId(avatarId) === avatar.id;
+                return (
+                  <div key={avatar.id} className="flex flex-col items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label={
+                        locked
+                          ? copy.avatarLockedLabel(avatar.label, unlockName)
+                          : copy.avatarChooseLabel(avatar.label)
+                      }
+                      aria-pressed={locked ? undefined : chosen}
+                      // aria-disabled, not disabled: a locked face stays
+                      // focusable so its unlock line can be heard.
+                      aria-disabled={locked || undefined}
+                      disabled={!locked && setAvatar.isPending}
+                      onClick={() => {
+                        if (locked) return;
+                        setAvatar.mutate(avatar.id as AvatarId, {
+                          // Choice made: the grid folds itself away again.
+                          // (null = the post never landed; keep it open.)
+                          onSuccess: (data) => {
+                            if (data) setGridToggled(null);
+                          },
+                        });
+                      }}
+                      className={cn(
+                        "relative w-full rounded-full p-0.5 transition-[box-shadow,opacity,transform] duration-150 ease-lift",
+                        locked
+                          ? "cursor-default"
+                          : chosen
+                            ? "ring-2 ring-primary"
+                            : "opacity-80 hover:opacity-100",
+                      )}
+                    >
+                      {/* The disc stays solid under a locked face so the
+                          faded ink and the lock both read in dark mode. */}
+                      <span className="block rounded-full bg-avatar-disc">
+                        <Image
+                          src={avatarSrc(avatar.id) ?? avatar.src}
+                          alt=""
+                          width={56}
+                          height={56}
+                          className={cn(
+                            "size-full rounded-full",
+                            locked && "opacity-30 grayscale",
+                          )}
+                        />
+                      </span>
+                      {locked && (
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <Lock aria-hidden className="size-5 text-avatar-ink" />
+                        </span>
+                      )}
+                    </button>
+                    {locked && (
+                      // aria-hidden: the button's label already says it.
+                      <span
+                        aria-hidden
+                        className="text-center text-[10px] leading-tight text-balance text-muted-foreground"
+                      >
+                        {copy.avatarUnlocksAt(unlockName)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </motion.div>
         )}
@@ -189,7 +232,7 @@ export function RewardsPanel() {
 
       <InviteCorner xp={xp} code={profile.data.referralCode} />
 
-      <LedgerRow />
+      <LedgerRow initialOpen={initialLedgerOpen} />
 
       {/* The email is asked for BEFORE the signature, because being asked
           to sign for something you have not been told about yet is how the
@@ -360,6 +403,94 @@ export function RewardsPanel() {
 }
 
 /**
+ * The ladder, whole: all ten rungs in one row under the rank, reached ones
+ * in ink, the rest muted, the current one marked by a dot beneath it, and
+ * one caption line. Left alone the caption names the next rung, how far it
+ * is and what it opens; a tapped rung takes the caption over until it is
+ * tapped again. No accent here on purpose: the drawer's progress bar (and
+ * the chosen face's ring) already spend it, and the brand allows one.
+ */
+function Ladder({ xp }: { xp: number }) {
+  const copy = useCopy();
+  const rank = rankForXp(xp);
+  const [picked, setPicked] = useState<number | null>(null);
+
+  const stateOf = (level: number) =>
+    level < rank.level ? "reached" : level === rank.level ? "current" : "ahead";
+
+  const caption = (() => {
+    if (picked !== null) {
+      const rung = RANKS[picked - 1];
+      const state = stateOf(picked);
+      const unlock = unlockAt(picked);
+      return [
+        copy.ladderRung(rung.name, rung.xp.toLocaleString()),
+        state === "current" ? copy.ladderHere : null,
+        unlock
+          ? state === "ahead"
+            ? copy.unlockNext(unlock)
+            : copy.unlockDone(unlock)
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+    if (!rank.nextName) return copy.ladderTop;
+    const unlock = unlockAt(rank.level + 1);
+    return [
+      copy.ladderNext((rank.span - rank.into).toLocaleString(), rank.nextName),
+      unlock ? copy.unlockNext(unlock) : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  })();
+
+  return (
+    <div className="flex flex-col gap-1">
+      <ol aria-label={copy.ladderLabel} className="grid grid-cols-10">
+        {RANKS.map((rung) => {
+          const state = stateOf(rung.level);
+          const selected = picked === rung.level;
+          return (
+            <li key={rung.level} className="flex">
+              <button
+                type="button"
+                aria-label={copy.ladderRungAria(rung.name, rung.level, state)}
+                aria-pressed={selected}
+                aria-current={state === "current" ? "step" : undefined}
+                onClick={() => setPicked(selected ? null : rung.level)}
+                className={cn(
+                  "flex h-11 w-full flex-col items-center justify-center gap-1 rounded-md transition-[transform,background-color] duration-150 ease-lift active:scale-[0.94]",
+                  selected ? "bg-muted" : "hover:bg-muted/60",
+                )}
+              >
+                <RankGlyph
+                  level={rung.level}
+                  className={cn(
+                    "size-[18px]",
+                    state === "ahead" ? "text-muted-foreground" : "text-foreground",
+                  )}
+                />
+                <span
+                  aria-hidden
+                  className={cn(
+                    "size-1 rounded-full",
+                    state === "current" ? "bg-foreground" : "bg-transparent",
+                  )}
+                />
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <p aria-live="polite" className="text-[11px] text-muted-foreground">
+        {caption}
+      </p>
+    </div>
+  );
+}
+
+/**
  * The referral corner, both directions of the invitation (field feedback
  * round, 2026-08-07). Inbound: who invited you, and the hand-claim hatch
  * for codes that got lost in transit. Outbound: the invite link as a rank
@@ -422,7 +553,7 @@ function ThankYouRow({
           alt=""
           width={36}
           height={36}
-          className="size-9 shrink-0 rounded-full"
+          className="size-9 shrink-0 rounded-full bg-avatar-disc"
         />
       ) : (
         <HandHeart className="size-5 shrink-0 text-primary" />
@@ -666,9 +797,10 @@ const LEDGER_DATE = new Intl.DateTimeFormat(undefined, {
  * The full ledger: every award, attributable after the fact. Folded by
  * default; the list only fetches while it's open.
  */
-function LedgerRow() {
-  const [open, setOpen] = useState(false);
+function LedgerRow({ initialOpen = false }: { initialOpen?: boolean }) {
+  const [open, setOpen] = useState(initialOpen);
   const history = useXpHistory(open);
+  const holds = useXpHolds(open);
   const copy = useCopy();
 
   return (
@@ -702,6 +834,31 @@ function LedgerRow() {
             transition={SPRING_SHELF}
             className="overflow-hidden"
           >
+            {/* Coming ashore: buys that will pay for being held once their
+                thirty days are up, soonest first. Nothing pending, nothing
+                shown. */}
+            {holds.data && holds.data.length > 0 && (
+              <div className="flex flex-col gap-1 px-3 pb-2">
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {copy.ledgerHoldsTitle}
+                </span>
+                <ul className="flex flex-col gap-1">
+                  {holds.data.map((hold) => (
+                    <li key={hold.ref} className="flex items-baseline gap-2 py-0.5 text-xs">
+                      <span className="money shrink-0 font-medium text-muted-foreground">
+                        {copy.xpPlus(hold.amount)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                        {copy.ledgerHoldReason(hold.name)}
+                      </span>
+                      <span className="shrink-0 text-muted-foreground/70">
+                        {copy.ledgerHoldDue(LEDGER_DATE.format(new Date(hold.dueAt)))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <ul className="flex flex-col gap-1 px-3 pb-2.5">
               {history.isLoading && (
                 <li className="py-1 text-xs text-muted-foreground">
@@ -719,7 +876,7 @@ function LedgerRow() {
                   className="flex items-baseline gap-2 py-0.5 text-xs"
                 >
                   <span className="money shrink-0 font-medium text-foreground">
-                    +{entry.amount}
+                    {copy.xpPlus(entry.amount)}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-muted-foreground">
                     {REWARD_REASONS[entry.kind]}
@@ -766,7 +923,8 @@ export function RankChip({
   const profile = useProfile();
   if (!profile.data && placeholder === undefined) return null;
   const rank = profile.data ? rankForXp(profile.data.xp) : null;
-  const src = profile.data ? avatarSrc(profile.data.avatarId) : undefined;
+  const avatarId = profile.data?.avatarId ?? null;
+  const hasFace = avatarSrc(avatarId) !== undefined;
 
   const inner = (
     // Keyed on the LEVEL, not raw XP: the header chip pops when the rank
@@ -780,11 +938,17 @@ export function RankChip({
       transition={SPRING_POP}
       className="flex items-center gap-1.5"
     >
+      {/* At 20px a rank mark on the face would be a smudge, so the face
+          goes bare and the rank glyph stands beside it, before the level.
+          No face yet: the glyph leads alone. No profile yet: the plain
+          placeholder, since there is no rank to draw. */}
       <span className="relative flex size-5 shrink-0 items-center justify-center">
-        {src ? (
-          <Image src={src} alt="" width={20} height={20} className="size-5 rounded-full" />
+        {rank && hasFace ? (
+          <AvatarWithRank avatarId={avatarId} level={rank.level} size={20} />
+        ) : rank ? (
+          <RankGlyph level={rank.level} className="size-4 text-foreground" />
         ) : (
-          <UserCircle aria-hidden className="size-5 text-primary" />
+          <UserCircle aria-hidden className="size-5 text-muted-foreground" />
         )}
         {/* The signed-in dot lives on the avatar, presence-badge style. */}
         {presence && (
@@ -794,6 +958,9 @@ export function RankChip({
           />
         )}
       </span>
+      {rank && hasFace && (
+        <RankGlyph level={rank.level} className="-mr-0.5 size-3.5 text-foreground" />
+      )}
       <span className="text-xs font-medium text-foreground">
         {rank ? copy.rankLevelShort(rank.level) : placeholder}
       </span>

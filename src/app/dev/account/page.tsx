@@ -11,6 +11,7 @@ import { HOME_CHAIN } from "@/lib/account";
 import { getChainName } from "@/lib/chains";
 import { formatTokenAmount, shortenAddress } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { RewardsGallery } from "./rewards-gallery";
 
 /**
  * Dev-only account inspector: the hub wallet an address derives to on the
@@ -20,6 +21,9 @@ import { cn } from "@/lib/utils";
  *   /dev/account                      the signed-in Privy account
  *   /dev/account?address=0x…          any spoke address on the home chain
  *   /dev/account?hub=0x…              any hub wallet directly, no derivation
+ *   /dev/account?rewards=7            the rewards drawer at that rung, from
+ *                                     seeded data (1, 3, 7 and 10 are set
+ *                                     scenes; see rewards-gallery.tsx)
  */
 export default function AccountInspectorPage() {
   if (process.env.NODE_ENV === "production") notFound();
@@ -34,6 +38,15 @@ export default function AccountInspectorPage() {
 }
 
 function Inspector() {
+  const params = useSearchParams();
+  const rewardsLevel = Number(params.get("rewards"));
+  if (Number.isInteger(rewardsLevel) && rewardsLevel >= 1 && rewardsLevel <= 10) {
+    return <RewardsGallery level={rewardsLevel} />;
+  }
+  return <HubInspector />;
+}
+
+function HubInspector() {
   const params = useSearchParams();
   const addressParam = params.get("address") ?? undefined;
   const hubParam = params.get("hub") ?? undefined;
