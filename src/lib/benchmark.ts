@@ -46,24 +46,41 @@ export type HoldingComparison = {
 };
 
 /** How far the balance may drift from the orders before the answer is refused. */
-const QUANTITY_TOLERANCE = 0.005;
+export const QUANTITY_TOLERANCE = 0.005;
 
 /**
- * The benchmark's price as of `placedAt`. The daily marks are stamped around
- * 12:50 UTC (08:50 in New York), so a buy before that on a given day
- * is measured against the previous day's mark, never a later one.
+ * When in the UTC day the board's marks are taken, in minutes. The board
+ * reads DefiLlama live, and DefiLlama's daily points fall at the time of
+ * day the request was made; the board has been read around 12:50 UTC
+ * (08:50 in New York). The stored marks (lib/marks) are taken at a fixed
+ * time instead and pass their own.
  */
-export function markAt(marks: Marks, placedAt: string): number | undefined {
-  const index = markIndexAt(marks, placedAt);
+export const BOARD_MARK_MINUTES = 12 * 60 + 50;
+
+/**
+ * The benchmark's price as of `placedAt`. A mark belongs to its day at
+ * `markMinutes` UTC, so a buy before that on a given day is measured
+ * against the previous day's mark, never a later one.
+ */
+export function markAt(
+  marks: Marks,
+  placedAt: string,
+  markMinutes: number = BOARD_MARK_MINUTES,
+): number | undefined {
+  const index = markIndexAt(marks, placedAt, markMinutes);
   return index === undefined ? undefined : marks.values[index];
 }
 
 /** Which mark `markAt` would use, by position. */
-export function markIndexAt(marks: Marks, placedAt: string): number | undefined {
+export function markIndexAt(
+  marks: Marks,
+  placedAt: string,
+  markMinutes: number = BOARD_MARK_MINUTES,
+): number | undefined {
   const placed = new Date(placedAt);
   if (Number.isNaN(placed.getTime())) return undefined;
   const day = placed.toISOString().slice(0, 10);
-  const afterMark = placed.getUTCHours() * 60 + placed.getUTCMinutes() >= 12 * 60 + 50;
+  const afterMark = placed.getUTCHours() * 60 + placed.getUTCMinutes() >= markMinutes;
   let found: number | undefined;
   for (let index = 0; index < marks.dates.length; index += 1) {
     const date = marks.dates[index];

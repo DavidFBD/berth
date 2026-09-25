@@ -153,6 +153,11 @@ export type Copy = {
   /** Behind the (i): how the comparison is made, and what it is not. */
   holdingsBenchmarkNote: string;
   /**
+   * The benchmarks the portfolio can be set beside (lib/benchmarks), by id.
+   * Names, not tickers: a person reads these.
+   */
+  benchmarkNames: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
+  /**
    * Under a listing that moved a lot for it, naming the post Jev read as
    * related (lib/server/moves). "In the news", never "because": Berth does
    * not claim to know why a price moved. `source` is the author's name.
@@ -633,6 +638,14 @@ export const COPY: Copy = {
   moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
     "Each holding since your first buy, beside the same dollars put into the S&P 500 fund on the same days, both valued at today's prices. Your side includes the fee you paid; the fund side does not. Prices are one a day, so a few days mostly shows noise. It describes what happened, and says nothing about what to do.",
+
+  benchmarkNames: {
+    SPY: "S&P 500 fund",
+    QQQ: "Nasdaq 100 fund",
+    PAXG: "Gold",
+    BTC: "Bitcoin",
+    SGOV: "Treasury bills",
+  },
 
   newsTitle: "In the news",
   newsHint:

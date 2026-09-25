@@ -52,3 +52,28 @@ export const SYMBOL_BY_MARKET_ID: Readonly<Record<string, string>> =
   Object.fromEntries(
     Object.entries(MARKET_ID_BY_SYMBOL).map(([symbol, id]) => [id, symbol]),
   );
+
+/**
+ * Benchmark-only instruments: priced for comparison, never offered. They
+ * are not listings, so they stay out of the board's map above and out of
+ * TOKEN_LISTINGS; only the stored marks (lib/server/marks) fetch them.
+ * PAX Gold is one troy ounce of gold per token, which makes it the gold
+ * price; bitcoin is bitcoin. Verified 2026-09-25: both answer
+ * `coins.llama.fi/chart` with a full year of daily points.
+ */
+export const BENCHMARK_ONLY_MARKET_ID_BY_SYMBOL: Readonly<Record<string, string>> = {
+  PAXG: "pax-gold",
+  BTC: "bitcoin",
+};
+
+/** Everything the stored marks carry: every listing plus the benchmark-only ids. */
+export const MARKS_MARKET_ID_BY_SYMBOL: Readonly<Record<string, string>> = {
+  ...MARKET_ID_BY_SYMBOL,
+  ...BENCHMARK_ONLY_MARKET_ID_BY_SYMBOL,
+};
+
+/** CoinGecko id → symbol, across the stored marks. */
+export const SYMBOL_BY_MARKS_MARKET_ID: Readonly<Record<string, string>> =
+  Object.fromEntries(
+    Object.entries(MARKS_MARKET_ID_BY_SYMBOL).map(([symbol, id]) => [id, symbol]),
+  );
