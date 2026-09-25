@@ -9,6 +9,7 @@ import {
   type StoredMark,
 } from "@/lib/marks";
 import { chunkByPointBudget } from "@/lib/performance";
+import { repriceHolding, type Holding } from "@/lib/portfolio-days";
 import { getSql } from "@/lib/server/db";
 
 /**
@@ -77,12 +78,16 @@ export async function fetchMarkPoints(
   return { points, failures };
 }
 
-/** Upsert the kept marks and take out the ones the despike rejected. */
+/**
+ * Upsert the kept marks and take out the ones the despike rejected, then
+ * put right every stored portfolio day those days valued at the old mark
+ * (revalueDays). Returns how many portfolio days were re-valued.
+ */
 export async function writeMarks(
   symbol: string,
   keep: readonly StoredMark[],
   drop: readonly IsoDay[],
-): Promise<void> {
+): Promise<number> {
   const sql = getSql();
   if (keep.length > 0) {
     await sql.query(
@@ -99,12 +104,68 @@ export async function writeMarks(
       [symbol, drop],
     );
   }
+  return revalueDays(symbol, [...keep.map((mark) => mark.day), ...drop]);
+}
+
+/**
+ * Re-value the `portfolio_days` rows of `days` whose holdings valued
+ * `symbol` at a stored mark, now that the mark changed or was taken out:
+ * a snapshot's newest close has had no day after it to be despiked
+ * against, so a bad print can reach a row before tomorrow's run removes
+ * it. The quantities are the row's own (`holdings`); `as_of` and `source`
+ * are kept, only the price and the value change. A day whose mark is gone
+ * takes the close before it ('prior_mark'); with none the row is left.
+ */
+export async function revalueDays(symbol: string, days: readonly IsoDay[]): Promise<number> {
+  if (days.length === 0) return 0;
+  const sql = getSql();
+  const rows = (await sql.query(
+    `select user_id, to_char(day, 'YYYY-MM-DD') as day, holdings
+       from portfolio_days
+      where day = any($1::date[]) and holdings @> $2::jsonb`,
+    [days, JSON.stringify([{ symbol }])],
+  )) as { user_id: string; day: string; holdings: Holding[] | string }[];
+  if (rows.length === 0) return 0;
+
+  const closes = new Map<IsoDay, { price: number; source: "mark" | "prior_mark" } | null>();
+  const closeFor = async (day: IsoDay) => {
+    if (closes.has(day)) return closes.get(day)!;
+    const [found] = (await sql.query(
+      `select to_char(day, 'YYYY-MM-DD') as day, close::float8 as close
+         from marks where symbol = $1 and day <= $2::date
+        order by day desc limit 1`,
+      [symbol, day],
+    )) as { day: string; close: number }[];
+    const result = found
+      ? { price: Number(found.close), source: found.day === day ? ("mark" as const) : ("prior_mark" as const) }
+      : null;
+    closes.set(day, result);
+    return result;
+  };
+
+  let revalued = 0;
+  for (const row of rows) {
+    const close = await closeFor(row.day);
+    if (!close) continue;
+    const holdings = typeof row.holdings === "string" ? (JSON.parse(row.holdings) as Holding[]) : row.holdings;
+    const next = repriceHolding(holdings, symbol, close.price, close.source);
+    if (!next) continue;
+    await sql.query(
+      `update portfolio_days set value_usd = $3, holdings = $4::jsonb
+        where user_id = $1 and day = $2::date`,
+      [row.user_id, row.day, next.value, JSON.stringify(next.holdings)],
+    );
+    revalued += 1;
+  }
+  return revalued;
 }
 
 export type MarksRunSummary = {
   symbols: number;
   written: number;
   dropped: number;
+  /** Portfolio days put right because a mark they were valued at changed or went. */
+  revalued: number;
   /** Symbols with no points at all this run. */
   empty: string[];
   failures: string[];
@@ -130,7 +191,14 @@ export async function refreshMarks({
   const fromDay = addDays(today, -(writeDays + contextDays));
   const writeFrom = addDays(today, -writeDays);
   const { points, failures } = await fetchMarkPoints(symbols, fromDay, span);
-  const summary: MarksRunSummary = { symbols: symbols.length, written: 0, dropped: 0, empty: [], failures };
+  const summary: MarksRunSummary = {
+    symbols: symbols.length,
+    written: 0,
+    dropped: 0,
+    revalued: 0,
+    empty: [],
+    failures,
+  };
   for (const symbol of symbols) {
     const raw = points[symbol];
     if (!raw || raw.length === 0) {
@@ -139,7 +207,7 @@ export async function refreshMarks({
     }
     const { keep, drop } = settleMarks(onTheMark(raw), writeFrom);
     try {
-      await writeMarks(symbol, keep, drop);
+      summary.revalued += await writeMarks(symbol, keep, drop);
       summary.written += keep.length;
       summary.dropped += drop.length;
     } catch (error) {

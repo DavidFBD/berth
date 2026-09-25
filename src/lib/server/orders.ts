@@ -1,4 +1,5 @@
 import type { Intent, Sodax } from "@sodax/sdk";
+import { BENCHMARKS } from "@/lib/benchmarks";
 import { getSql } from "@/lib/server/db";
 import { COINGECKO_ID_BY_LOWER_SYMBOL } from "@/lib/coingecko-ids";
 import { listListings } from "@/lib/listings";
@@ -46,24 +47,93 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T | undefined>
   }
 }
 
+export type PriceAtMoment = { price: number; /** When DefiLlama's price was taken. */ pricedAt: Date };
+
 /**
- * A coin's dollar price at a moment, from DefiLlama's historical endpoint
- * (keyless, the same source as the app's other prices). Undefined when it
- * has none, which leaves the order's dollars unknown rather than guessed.
+ * Several coins' dollar prices at a moment, in one request to DefiLlama's
+ * historical endpoint (keyless, the same source as the app's other
+ * prices), keyed by CoinGecko id. A coin it has no price for is absent,
+ * which leaves that figure unknown rather than guessed. Never throws.
  */
-export async function priceAt(id: string, at: Date): Promise<number | undefined> {
+export async function pricesAt(
+  ids: readonly string[],
+  at: Date,
+  /** How far from `at` DefiLlama may look, e.g. "4h"; its own default when absent. */
+  searchWidth?: string,
+): Promise<Record<string, PriceAtMoment>> {
+  const out: Record<string, PriceAtMoment> = {};
+  if (ids.length === 0 || Number.isNaN(at.getTime())) return out;
   try {
     const seconds = Math.floor(at.getTime() / 1000);
-    const response = await fetch(
-      `https://coins.llama.fi/prices/historical/${seconds}/coingecko:${id}`,
-      { cache: "no-store", signal: AbortSignal.timeout(8_000) },
-    );
-    if (!response.ok) return undefined;
-    const payload = (await response.json()) as { coins?: Record<string, { price?: number }> };
-    const price = payload.coins?.[`coingecko:${id}`]?.price;
-    return typeof price === "number" && price > 0 ? price : undefined;
+    const coins = ids.map((id) => `coingecko:${id}`).join(",");
+    const query = searchWidth ? `?searchWidth=${searchWidth}` : "";
+    const response = await fetch(`https://coins.llama.fi/prices/historical/${seconds}/${coins}${query}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return out;
+    const payload = (await response.json()) as {
+      coins?: Record<string, { price?: number; timestamp?: number }>;
+    };
+    for (const id of ids) {
+      const coin = payload.coins?.[`coingecko:${id}`];
+      if (typeof coin?.price === "number" && coin.price > 0) {
+        const stamp = typeof coin.timestamp === "number" ? coin.timestamp * 1000 : at.getTime();
+        out[id] = { price: coin.price, pricedAt: new Date(stamp) };
+      }
+    }
   } catch {
-    return undefined;
+    // unknown stays unknown
+  }
+  return out;
+}
+
+/** One coin's dollar price at a moment (pricesAt for one id). */
+export async function priceAt(id: string, at: Date): Promise<number | undefined> {
+  return (await pricesAt([id], at))[id]?.price;
+}
+
+/**
+ * Every benchmark's price at an order's minute, into table `order_marks`,
+ * so the benchmark is bought when the order was, never at an earlier close
+ * that hands it a session (a weekend, for Gold and Bitcoin) the order did
+ * not live through. One request for all five. Idempotent: a price already
+ * stored is kept. Returns how many were written; never throws, the same
+ * rule as the order itself.
+ */
+/**
+ * How far from the order a benchmark price may be and still be its
+ * minute's. DefiLlama prints these every few minutes, weekends included
+ * (checked 2026-09-25: within two minutes on a Sunday).
+ */
+const ORDER_MARK_SEARCH_WIDTH = "4h";
+
+export async function recordOrderMarks(orderId: string, placedAt: Date): Promise<number> {
+  try {
+    const prices = await pricesAt(
+      BENCHMARKS.map((benchmark) => benchmark.marketId),
+      placedAt,
+      ORDER_MARK_SEARCH_WIDTH,
+    );
+    const found = BENCHMARKS.filter((benchmark) => prices[benchmark.marketId]);
+    if (found.length === 0) return 0;
+    const rows = (await getSql().query(
+      `insert into order_marks (order_id, symbol, price, priced_at, source)
+       select $1::uuid, s, p, t, 'defillama'
+         from unnest($2::text[], $3::numeric[], $4::timestamptz[]) as x(s, p, t)
+       on conflict (order_id, symbol) do nothing
+       returning symbol`,
+      [
+        orderId,
+        found.map((benchmark) => benchmark.symbol),
+        found.map((benchmark) => prices[benchmark.marketId].price),
+        found.map((benchmark) => prices[benchmark.marketId].pricedAt.toISOString()),
+      ],
+    )) as unknown[];
+    return rows.length;
+  } catch (error) {
+    console.warn("[orders] benchmark prices not recorded", orderId, error instanceof Error ? error.message : error);
+    return 0;
   }
 }
 
@@ -137,9 +207,9 @@ export async function buildOrder({
   });
 }
 
-/** Insert or complete. Known values are never overwritten with unknowns. */
-export async function saveOrder(userId: string | null, order: OrderRecord): Promise<void> {
-  await getSql().query(
+/** Insert or complete, returning the row's id. Known values are never overwritten with unknowns. */
+export async function saveOrder(userId: string | null, order: OrderRecord): Promise<string | undefined> {
+  const rows = (await getSql().query(
     `insert into orders (
        user_id, wallet_address, intent_tx, fill_tx, direction, listing_symbol,
        listing_address, quantity, min_quantity, pay_symbol, pay_chain,
@@ -156,7 +226,8 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
        usd_value = coalesce(orders.usd_value, excluded.usd_value),
        usd_source = coalesce(orders.usd_source, excluded.usd_source),
        placed_at = coalesce(orders.placed_at, excluded.placed_at),
-       filled_at = coalesce(orders.filled_at, excluded.filled_at)`,
+       filled_at = coalesce(orders.filled_at, excluded.filled_at)
+     returning id`,
     [
       userId,
       order.walletAddress,
@@ -177,10 +248,15 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
       order.usdSource,
       order.deliveredTo,
     ],
-  );
+  )) as { id: string }[];
+  return rows[0]?.id;
 }
 
-/** The pour route's call: build and save, never throw. */
+/**
+ * The pour route's call: build and save, then the benchmarks' prices at
+ * the order's minute (lib/server/order-marks), never throw. A price that
+ * does not arrive now is filled in by the evening marks cron.
+ */
 export async function recordOrder(args: {
   sodax: Sodax;
   userId: string | null;
@@ -191,7 +267,9 @@ export async function recordOrder(args: {
 }): Promise<void> {
   try {
     const order = await buildOrder(args);
-    if (order) await saveOrder(args.userId, order);
+    if (!order) return;
+    const id = await saveOrder(args.userId, order);
+    if (id && order.placedAt) await recordOrderMarks(id, order.placedAt);
   } catch (error) {
     console.warn("[orders] not recorded", args.intentTx, error instanceof Error ? error.message : error);
   }

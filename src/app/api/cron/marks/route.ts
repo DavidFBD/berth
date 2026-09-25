@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkCronAuth } from "@/lib/server/cron-auth";
 import { refreshMarks } from "@/lib/server/marks";
+import { fillOrderMarks, type OrderMarksSummary } from "@/lib/server/order-marks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -12,7 +13,13 @@ export const maxDuration = 60;
  * point. It writes the last seven days for every listing and benchmark,
  * reading three more behind them for the despike, so a missed day is
  * mended by the next run and a bad mark stored yesterday is taken out
- * today. Idempotent: running it twice writes the same rows.
+ * today; a portfolio day valued at a mark that changed or went is re-valued
+ * (lib/server/marks revalueDays). Then it fills in the benchmark prices at
+ * the order's minute (table `order_marks`) for up to fifty orders still
+ * missing one. Idempotent: running it twice writes the same rows.
+ *
+ * 500 when nothing at all was written and something failed, so a run that
+ * did nothing but fail shows as failed; 200 with the counts otherwise.
  */
 export async function GET(request: NextRequest) {
   const auth = checkCronAuth(request.headers.get("authorization"));
@@ -22,7 +29,17 @@ export async function GET(request: NextRequest) {
       { status: auth.status },
     );
   }
-  const summary = await refreshMarks();
+  const marks = await refreshMarks();
+  let orderMarks: OrderMarksSummary | { error: string };
+  try {
+    orderMarks = await fillOrderMarks();
+  } catch (error) {
+    orderMarks = { error: error instanceof Error ? error.message : "order marks failed" };
+  }
+  const summary = { ...marks, orderMarks };
   console.log("[cron/marks]", JSON.stringify(summary));
-  return NextResponse.json(summary);
+  const wrote = marks.written + marks.dropped + ("written" in orderMarks ? orderMarks.written : 0);
+  const failed =
+    marks.failures.length > 0 || "error" in orderMarks || orderMarks.failed > 0;
+  return NextResponse.json(summary, { status: wrote === 0 && failed ? 500 : 200 });
 }

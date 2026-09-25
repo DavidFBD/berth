@@ -143,7 +143,8 @@ create table if not exists marks (
 -- a transfer the orders never saw is still counted; 'ledger' rows are past
 -- days rebuilt from the orders by `pnpm portfolio:backfill`, only for an
 -- account whose balance the orders fully explain. `holdings` is
--- [{symbol, quantity, price, source}], source 'mark' or 'oracle'. `as_of`
+-- [{symbol, quantity, price, source}], source 'mark', 'oracle' or
+-- 'prior_mark' (the day's mark was taken out after, lib/server/marks). `as_of`
 -- is when the holdings were read (a ledger day: its close).
 create table if not exists portfolio_days (
   user_id uuid not null references users(id) on delete cascade,
@@ -154,4 +155,21 @@ create table if not exists portfolio_days (
   as_of timestamptz not null,
   created_at timestamptz not null default now(),
   primary key (user_id, day)
+);
+
+-- Each benchmark's price at an order's minute (lib/portfolio-history,
+-- lib/benchmark), so the benchmark is bought when the order was rather
+-- than at the close before it, which would hand it a session (a weekend,
+-- for Gold and Bitcoin) the order never lived through. Written at fill
+-- time by the pour route, filled in by /api/cron/marks for any order still
+-- missing one, and by `pnpm order-marks:backfill`. `priced_at` is the
+-- moment of DefiLlama's price, which may sit a few minutes from the order.
+create table if not exists order_marks (
+  order_id uuid not null references orders(id) on delete cascade,
+  symbol text not null,
+  price numeric not null check (price > 0),
+  priced_at timestamptz,
+  source text not null default 'defillama',
+  created_at timestamptz not null default now(),
+  primary key (order_id, symbol)
 );

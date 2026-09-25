@@ -5,6 +5,7 @@ import {
   ledgerDays,
   ledgerExplains,
   ledgerQuantities,
+  repriceHolding,
   snapshotDay,
   valueHoldings,
 } from "@/lib/portfolio-days";
@@ -93,5 +94,25 @@ describe("snapshotDay", () => {
     expect(snapshotDay(new Date("2026-09-25T15:00:00Z"))).toBeUndefined();
     expect(snapshotDay(new Date("2026-09-26T05:00:00Z"))).toBeUndefined();
     expect(snapshotDay(new Date("2026-09-26T23:10:00Z"))).toBeUndefined();
+  });
+});
+
+describe("repriceHolding", () => {
+  const holdings = [
+    { symbol: "NVDA", quantity: 2, price: 500, source: "mark" as const },
+    { symbol: "SGOV", quantity: 1, price: 100, source: "oracle" as const },
+  ];
+
+  it("puts a changed close right and recomputes the value", () => {
+    expect(repriceHolding(holdings, "NVDA", 101, "mark")).toEqual({
+      value: 302,
+      holdings: [{ ...holdings[0], price: 101 }, holdings[1]],
+    });
+  });
+
+  it("leaves an oracle price and an unchanged close alone", () => {
+    expect(repriceHolding(holdings, "SGOV", 90, "mark")).toBeUndefined();
+    expect(repriceHolding(holdings, "NVDA", 500, "mark")).toBeUndefined();
+    expect(repriceHolding(holdings, "AAPL", 1, "mark")).toBeUndefined();
   });
 });

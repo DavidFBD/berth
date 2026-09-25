@@ -29,6 +29,21 @@ export function markAsOf(day: IsoDay): string {
   return `${day}T${hours}:${minutes}:00.000Z`;
 }
 
+const NEW_YORK_DAY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/**
+ * The New York calendar date at `now`, the market's own. Between midnight
+ * UTC and midnight in New York it is still the UTC date before.
+ */
+export function newYorkDay(now: Date): IsoDay {
+  return NEW_YORK_DAY.format(now);
+}
+
 /** `day` plus `days` calendar days. */
 export function addDays(day: IsoDay, days: number): IsoDay {
   const date = new Date(`${day}T00:00:00Z`);

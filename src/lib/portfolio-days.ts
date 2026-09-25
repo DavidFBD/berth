@@ -24,8 +24,12 @@ export type Holding = {
   symbol: string;
   quantity: number;
   price: number;
-  /** 'mark' for the day's stored close, 'oracle' for the solver's live price. */
-  source: "mark" | "oracle";
+  /**
+   * 'mark' for the day's stored close, 'oracle' for the solver's live
+   * price, 'prior_mark' for the close before the day when the day's own
+   * was taken out after the row was written (repriceHolding).
+   */
+  source: "mark" | "oracle" | "prior_mark";
 };
 
 export type ValuedDay = { value: number; holdings: Holding[] };
@@ -58,6 +62,30 @@ export function valueHoldings(
   if (unpriced.length > 0) return { ok: false, unpriced };
   const value = holdings.reduce((sum, holding) => sum + holding.quantity * holding.price, 0);
   return { ok: true, day: { value, holdings } };
+}
+
+/**
+ * A stored day with one listing's close put right: the day's mark changed
+ * or was taken out after the row was written (lib/server/marks). Only
+ * holdings that were valued at a mark are touched; an oracle price was the
+ * snapshot's own judgement and stands. Undefined when nothing changes.
+ */
+export function repriceHolding(
+  holdings: readonly Holding[],
+  symbol: string,
+  price: number,
+  source: "mark" | "prior_mark",
+): ValuedDay | undefined {
+  let changed = false;
+  const next = holdings.map((holding) => {
+    if (holding.symbol !== symbol || holding.source === "oracle") return holding;
+    if (Math.abs(holding.price - price) <= 1e-9 * price && holding.source === source) return holding;
+    changed = true;
+    return { ...holding, price, source };
+  });
+  if (!changed) return undefined;
+  const value = next.reduce((sum, holding) => sum + holding.quantity * holding.price, 0);
+  return { value, holdings: next };
 }
 
 /**

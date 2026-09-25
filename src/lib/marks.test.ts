@@ -4,6 +4,7 @@ import {
   closeUtcMinutes,
   markAsOf,
   markStartSeconds,
+  newYorkDay,
   onTheMark,
   settleMarks,
   subtractMonths,
@@ -15,6 +16,15 @@ describe("mark time", () => {
   it("takes a stored mark at 21:30 UTC, after the New York close in either season", () => {
     expect(markAsOf("2026-09-24")).toBe("2026-09-24T21:30:00.000Z");
     expect(markStartSeconds("2026-09-24")).toBe(at("2026-09-24"));
+  });
+});
+
+describe("the New York date", () => {
+  it("is still Monday in New York between midnight UTC and midnight there", () => {
+    expect(newYorkDay(new Date("2026-09-22T02:00:00Z"))).toBe("2026-09-21");
+    expect(newYorkDay(new Date("2026-09-22T04:30:00Z"))).toBe("2026-09-22");
+    // Winter: five hours behind.
+    expect(newYorkDay(new Date("2026-12-15T04:30:00Z"))).toBe("2026-12-14");
   });
 });
 
