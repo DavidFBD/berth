@@ -136,6 +136,8 @@ export function IntentTracking({
   phase,
   fillTxHash,
   hubTxHash,
+  spokeTxHash,
+  spokeTxUrl,
   successTitle,
   successBody,
   onDone,
@@ -146,6 +148,10 @@ export function IntentTracking({
   fillTxHash?: string;
   /** The intent's hub transaction, the reference an unsettled order shows. */
   hubTxHash?: string;
+  /** The payment on its own chain, while it has not reached Sonic (Bitcoin). */
+  spokeTxHash?: string;
+  /** Where that payment can be followed (mempool.space for Bitcoin). */
+  spokeTxUrl?: string;
   successTitle: string;
   successBody: string;
   onDone: () => void;
@@ -190,6 +196,51 @@ export function IntentTracking({
             {copy.fillFailedScreenBody}
           </p>
           {reportState === "filed" && (
+            <p className="text-xs text-muted-foreground opacity-75">
+              {copy.teamTold}
+            </p>
+          )}
+        </div>
+        <Button variant="outline" className="h-12 w-full text-base" onClick={onDone}>
+          {copy.closeLabel}
+        </Button>
+      </div>
+    );
+  }
+
+  if (phase === "confirming" || phase === "notArrived") {
+    // Not a failure: the payment left the wallet and is on its way to Sonic.
+    // The drawer is free to close; the machine keeps the relay wait going.
+    const confirming = phase === "confirming";
+    return (
+      <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
+        <div className="flex flex-col items-center">
+          <div style={{ height: 40 }} />
+          <LoadingMark className="size-16" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="font-display text-lg text-foreground">
+            {confirming ? copy.confirmingTitle : copy.unsettledTitle}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {confirming ? copy.confirmingBody : copy.notArrivedBody}
+          </p>
+          {(confirming || spokeTxUrl) && (
+            <p className="text-xs text-muted-foreground">
+              {confirming ? copy.confirmingClose : copy.notArrivedWatching}
+            </p>
+          )}
+          {spokeTxUrl && spokeTxHash && (
+            <a
+              href={spokeTxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="money text-xs text-muted-foreground underline underline-offset-2"
+            >
+              {copy.followPayment} ({shortenAddress(spokeTxHash)})
+            </a>
+          )}
+          {!confirming && reportState === "filed" && (
             <p className="text-xs text-muted-foreground opacity-75">
               {copy.teamTold}
             </p>

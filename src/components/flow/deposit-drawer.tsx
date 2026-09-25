@@ -403,6 +403,8 @@ export function DepositDrawer({
                 phase={action.fillPhase}
                 fillTxHash={action.fillTxHash}
                 hubTxHash={action.hubTxHash}
+                spokeTxHash={action.spokeTxHash}
+                spokeTxUrl={action.spokeTxUrl}
                 successTitle={copy.buyFilledTitle}
                 successBody={copy.settledBody(
                   isBuy ? listing.name : (meta?.title ?? listing.name),

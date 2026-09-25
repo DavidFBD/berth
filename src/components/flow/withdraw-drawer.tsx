@@ -411,6 +411,8 @@ export function WithdrawDrawer({
                 phase={action.fillPhase}
                 fillTxHash={action.fillTxHash}
                 hubTxHash={action.hubTxHash}
+                spokeTxHash={action.spokeTxHash}
+                spokeTxUrl={action.spokeTxUrl}
                 successTitle={copy.onItsWayTitle}
                 successBody={
                   dstChainKey && outputToken

@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { SolverIntentStatusCode } from "@sodax/sdk";
+import { ChainKeys, SolverIntentStatusCode } from "@sodax/sdk";
 import { fingerprintOf, type ErrorReportContext } from "./error-report";
 import {
+  BITCOIN_INTENT_DEADLINE_SECONDS,
+  BITCOIN_RELAY_WAIT_MS,
   dueOneShot,
   fillPhase,
   isPipelineStep,
   isPourLocked,
   releaseTracking,
   resolveTracking,
+  sendFailureStep,
   settledFollowUp,
+  slowSource,
   unsettledReport,
   type PourStep,
 } from "./pour-lifecycle";
@@ -287,5 +291,111 @@ describe("settledFollowUp", () => {
     expect(failed.followUp).toMatch(/^Failed after 200s, intent 0x/);
     expect(fingerprintOf(settled)).toBe(fingerprintOf(sent));
     expect(fingerprintOf(failed)).toBe(fingerprintOf(sent));
+  });
+});
+
+describe("a payment from Bitcoin", () => {
+  const BTC = ChainKeys.BITCOIN_MAINNET;
+  const btcContext = { ...context, srcChainKey: BTC, tokenSymbol: "BTC" } as const;
+  const txid = "f".repeat(64);
+
+  it("gets a Bitcoin sized relay wait and intent window", () => {
+    const slow = slowSource(BTC);
+    expect(slow).toEqual({
+      relayWaitMs: BITCOIN_RELAY_WAIT_MS,
+      intentDeadlineSeconds: BITCOIN_INTENT_DEADLINE_SECONDS,
+    });
+    // Longer than the SDK's 120s relay wait and five minute intent window,
+    // either of which a single Bitcoin block (ten minutes on average) beats.
+    expect(slow!.relayWaitMs).toBeGreaterThan(120_000);
+    expect(slow!.intentDeadlineSeconds).toBeGreaterThan(300);
+    expect(slow!.intentDeadlineSeconds * 1000).toBeGreaterThan(slow!.relayWaitMs);
+  });
+
+  it("is unsettled, not failed, when the relay wait runs out after broadcast", () => {
+    expect(sendFailureStep(BTC, true)).toBe("unsettled");
+  });
+
+  it("is an ordinary failure before anything left the wallet", () => {
+    // A rejected signature or too little for the fee: nothing is in flight.
+    expect(sendFailureStep(BTC, false)).toBe("error");
+  });
+
+  it("lets the drawer close while the payment confirms", () => {
+    expect(isPourLocked("confirming")).toBe(false);
+    expect(isPipelineStep("confirming")).toBe(false);
+    expect(fillPhase("confirming", undefined)).toBe("confirming");
+  });
+
+  it("does not resolve or time out as a solver fill while it confirms", () => {
+    expect(resolveTracking("confirming", SOLVED)).toBeNull();
+    expect(resolveTracking("confirming", FAILED)).toBeNull();
+    expect(releaseTracking("confirming")).toBe("confirming");
+    expect(dueOneShot("confirming", null)).toBeNull();
+  });
+
+  it("shows a payment that never reached Sonic apart from an order the solver holds", () => {
+    expect(fillPhase("unsettled", undefined, false)).toBe("notArrived");
+    expect(fillPhase("unsettled", undefined, true)).toBe("unsettled");
+  });
+
+  it("reports a relay stall with the payment's hash and link, as its own issue", () => {
+    const stalled = unsettledReport(btcContext, {
+      intentId: "7",
+      spokeTxHash: txid,
+      spokeTxUrl: `https://mempool.space/tx/${txid}`,
+      trackedMs: BITCOIN_RELAY_WAIT_MS,
+      relayError: "RELAY_TIMEOUT",
+    });
+    expect(stalled.step).toBe("settling");
+    expect(stalled.errorCode).toBe("RELAY_UNSETTLED");
+    expect(stalled.txHashes).toEqual([txid]);
+    expect(stalled.diagnostics).toEqual({
+      intentId: "7",
+      spokeTxHash: txid,
+      spokeTx: `https://mempool.space/tx/${txid}`,
+      relay: "RELAY_TIMEOUT",
+      relayWaitedFor: "5400s",
+    });
+    expect(stalled.rawMessage).toContain("RELAY_TIMEOUT");
+    expect(stalled.rawMessage).not.toContain(txid);
+
+    // Two payments slow the same way share an issue; a solver stall does not.
+    const another = unsettledReport(btcContext, {
+      intentId: "8",
+      spokeTxHash: "e".repeat(64),
+      trackedMs: BITCOIN_RELAY_WAIT_MS,
+      relayError: "RELAY_TIMEOUT",
+    });
+    expect(fingerprintOf(another)).toBe(fingerprintOf(stalled));
+    expect(fingerprintOf(unsettledReport(btcContext, facts()))).not.toBe(
+      fingerprintOf(stalled),
+    );
+  });
+});
+
+describe("a payment from an EVM chain", () => {
+  const EVM_SOURCES = [
+    ChainKeys.BASE_MAINNET,
+    ChainKeys.ETHEREUM_MAINNET,
+    ChainKeys.ARBITRUM_MAINNET,
+    ChainKeys.SONIC_MAINNET,
+  ];
+
+  it("keeps the SDK's relay path and the failure it had", () => {
+    for (const chain of EVM_SOURCES) {
+      expect(slowSource(chain)).toBeNull();
+      // The machine sends these through vaultSwap as before, and a relay
+      // timeout there is still the failure it always was.
+      expect(sendFailureStep(chain, true)).toBe("error");
+      expect(sendFailureStep(chain, false)).toBe("error");
+    }
+  });
+
+  it("keeps the unsettled report it always filed", () => {
+    const report = unsettledReport(context, facts());
+    expect(report.errorCode).toBe("SOLVER_FILL_UNSETTLED");
+    expect(report.diagnostics).not.toHaveProperty("relay");
+    expect(report.diagnostics).not.toHaveProperty("spokeTx");
   });
 });
