@@ -4,8 +4,8 @@
  * is asked anything here.
  *
  * The comparison is "the same dollars, the same days": each buy's cost is
- * put, on paper, into the S&P 500 fund at that fund's price on the day of
- * the buy, and both are valued now at the same live prices. That handles
+ * put, on paper, into the S&P 500 fund at that fund's price at the order's
+ * minute (`order.benchmarkMarks`, else the last mark before the order), and both are valued now at the same live prices. That handles
  * money added over several buys without a time-weighted return, and it is
  * the question a person actually asks: would I have been better off in the
  * index. It is not a recommendation and the copy never says it is one.
@@ -27,6 +27,13 @@ export type OrderFacts = {
   usd: number | null;
   /** ISO timestamp of the order. */
   placedAt: string;
+  /**
+   * Each benchmark's price at the order's minute, by benchmark symbol (table
+   * `order_marks`). Absent for an order not yet priced; lib/portfolio-history
+   * then refuses the benchmark ('no_marks'), compareHolding falls back to
+   * the close before the order (`markAt`).
+   */
+  benchmarkMarks?: Readonly<Record<string, number>>;
 };
 
 export type Marks = { dates: readonly string[]; values: readonly number[] };
@@ -46,24 +53,41 @@ export type HoldingComparison = {
 };
 
 /** How far the balance may drift from the orders before the answer is refused. */
-const QUANTITY_TOLERANCE = 0.005;
+export const QUANTITY_TOLERANCE = 0.005;
 
 /**
- * The benchmark's price as of `placedAt`. The daily marks are stamped around
- * 12:50 UTC (08:50 in New York), so a buy before that on a given day
- * is measured against the previous day's mark, never a later one.
+ * When in the UTC day the board's marks are taken, in minutes. The board
+ * reads DefiLlama live, and DefiLlama's daily points fall at the time of
+ * day the request was made; the board has been read around 12:50 UTC
+ * (08:50 in New York). The stored marks (lib/marks) are taken at a fixed
+ * time instead and pass their own.
  */
-export function markAt(marks: Marks, placedAt: string): number | undefined {
-  const index = markIndexAt(marks, placedAt);
+export const BOARD_MARK_MINUTES = 12 * 60 + 50;
+
+/**
+ * The benchmark's price as of `placedAt`. A mark belongs to its day at
+ * `markMinutes` UTC, so a buy before that on a given day is measured
+ * against the previous day's mark, never a later one.
+ */
+export function markAt(
+  marks: Marks,
+  placedAt: string,
+  markMinutes: number = BOARD_MARK_MINUTES,
+): number | undefined {
+  const index = markIndexAt(marks, placedAt, markMinutes);
   return index === undefined ? undefined : marks.values[index];
 }
 
 /** Which mark `markAt` would use, by position. */
-export function markIndexAt(marks: Marks, placedAt: string): number | undefined {
+export function markIndexAt(
+  marks: Marks,
+  placedAt: string,
+  markMinutes: number = BOARD_MARK_MINUTES,
+): number | undefined {
   const placed = new Date(placedAt);
   if (Number.isNaN(placed.getTime())) return undefined;
   const day = placed.toISOString().slice(0, 10);
-  const afterMark = placed.getUTCHours() * 60 + placed.getUTCMinutes() >= 12 * 60 + 50;
+  const afterMark = placed.getUTCHours() * 60 + placed.getUTCMinutes() >= markMinutes;
   let found: number | undefined;
   for (let index = 0; index < marks.dates.length; index += 1) {
     const date = marks.dates[index];
@@ -89,6 +113,7 @@ export function compareHolding({
   priceNow,
   benchmarkNow,
   benchmarkMarks,
+  benchmarkSymbol = "SPY",
 }: {
   /** This listing's orders only. */
   orders: readonly OrderFacts[];
@@ -97,6 +122,8 @@ export function compareHolding({
   priceNow: number | undefined;
   benchmarkNow: number | undefined;
   benchmarkMarks: Marks | undefined;
+  /** Which of `order.benchmarkMarks` to buy at; the S&P 500 fund by default. */
+  benchmarkSymbol?: string;
 }): HoldingComparison | undefined {
   if (orders.length === 0 || !priceNow || !benchmarkNow || !benchmarkMarks) return undefined;
   if (orders.some((order) => order.direction === "sell")) return undefined;
@@ -108,7 +135,7 @@ export function compareHolding({
   let paid = 0;
   let benchmarkUnits = 0;
   for (const order of orders) {
-    const mark = markAt(benchmarkMarks, order.placedAt);
+    const mark = order.benchmarkMarks?.[benchmarkSymbol] ?? markAt(benchmarkMarks, order.placedAt);
     if (!mark) return undefined;
     paid += order.usd ?? 0;
     benchmarkUnits += (order.usd ?? 0) / mark;

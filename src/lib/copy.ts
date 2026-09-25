@@ -148,10 +148,41 @@ export type Copy = {
    */
   holdingSince: (date: string) => string;
   holdingBenchmark: string;
-  holdingsTogether: (date: string) => string;
   holdingsMarketDays: (days: number) => string;
-  /** Behind the (i): how the comparison is made, and what it is not. */
+  /** Behind the (i): how the chart and the lines are made, and what they are not. */
   holdingsBenchmarkNote: string;
+  /**
+   * The portfolio line at the top of "What you own" (lib/portfolio-history).
+   * The headline reads "Since Sep 21, 4 market days. You +0.6%, the same
+   * dollars in [the S&P 500 fund] -0.6%." with the name as the chooser.
+   * `date` arrives formatted: "Sep 21".
+   */
+  portfolioSince: (date: string, days: number) => string;
+  portfolioYou: string;
+  /** Before the benchmark's name, by id: "the same dollars in the" S&P 500 fund, "in" Gold. */
+  portfolioSameDollarsIn: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
+  /** The chooser's menu heading, and the description its button carries. */
+  portfolioCompareWith: string;
+  portfolioChooserHint: string;
+  /** One day stored and nothing to draw yet. */
+  portfolioFirstDay: string;
+  /**
+   * Why the benchmark line is not drawn, one sentence each. `name` is the
+   * chooser with its article ("the S&P 500 fund", "Gold").
+   */
+  portfolioNoBenchmark: Record<"unpriced_orders" | "unexplained_balance", (name: string) => string>;
+  /** The article a benchmark's name takes mid sentence, by id: "the " or nothing. */
+  benchmarkArticle: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
+  /** `name` is the chooser, so another benchmark is one tap away. */
+  portfolioNoMarks: (name: string) => string;
+  /** The range control, by range id, and its accessible name. */
+  portfolioRanges: Record<"1w" | "1m" | "3m" | "6m" | "1y" | "since" | "all", string>;
+  portfolioRangeLabel: string;
+  /**
+   * The benchmarks the portfolio can be set beside (lib/benchmarks), by id.
+   * Names, not tickers: a person reads these.
+   */
+  benchmarkNames: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
   /**
    * Under a listing that moved a lot for it, naming the post Jev read as
    * related (lib/server/moves). "In the news", never "because": Berth does
@@ -542,6 +573,12 @@ export type Copy = {
   nudgeDismissLabel: string;
 };
 
+/** "first day", "1 market day", "4 market days". */
+function marketDays(days: number): string {
+  if (days <= 0) return "first day";
+  return days === 1 ? "1 market day" : `${days} market days`;
+}
+
 export const COPY: Copy = {
   brand: "Berth",
   tagline: "A place to tie up.",
@@ -640,12 +677,49 @@ export const COPY: Copy = {
   holdingsEmpty: "Nothing yet. Your first buy lands here.",
   holdingSince: (date) => `Since ${date}`,
   holdingBenchmark: "S&P 500 fund",
-  holdingsTogether: (date) => `All of it since ${date}`,
-  holdingsMarketDays: (days) => (days === 1 ? "1 market day" : `${days} market days`),
+  holdingsMarketDays: (days) => marketDays(days),
   moveInTheNews: (source) => `In the news: ${source}`,
   moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
-    "Each holding since your first buy, beside the same dollars put into the S&P 500 fund on the same days, both valued at today's prices. Your side includes the fee you paid; the fund side does not. Prices are one a day, so a few days mostly shows noise. It describes what happened, and says nothing about what to do.",
+    "The line is your money each day at the close, and today at the live price, beside the same dollars put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 fund. It describes what happened, and says nothing about what to do.",
+  portfolioSince: (date, days) => `Since ${date}, ${marketDays(days)}.`,
+  portfolioYou: "You",
+  portfolioSameDollarsIn: {
+    SPY: "the same dollars in the",
+    QQQ: "the same dollars in the",
+    PAXG: "the same dollars in",
+    BTC: "the same dollars in",
+    SGOV: "the same dollars in",
+  },
+  portfolioCompareWith: "Compare with",
+  portfolioChooserHint: "What your money is compared with. Choose another.",
+  portfolioFirstDay: "Your first day. The line starts once the next market day's prices are in.",
+  portfolioNoBenchmark: {
+    unpriced_orders: (name) =>
+      `A buy was paid in a coin we could not price, so ${name} cannot be set beside it.`,
+    unexplained_balance: (name) =>
+      `Your balance and your orders here do not agree, so ${name} cannot be set beside it.`,
+  },
+  benchmarkArticle: { SPY: "the ", QQQ: "the ", PAXG: "", BTC: "", SGOV: "" },
+  portfolioNoMarks: (name) => `No prices for ${name} yet.`,
+  portfolioRanges: {
+    "1w": "1W",
+    "1m": "1M",
+    "3m": "3M",
+    "6m": "6M",
+    "1y": "1Y",
+    since: "First buy",
+    all: "All",
+  },
+  portfolioRangeLabel: "Time range",
+
+  benchmarkNames: {
+    SPY: "S&P 500 fund",
+    QQQ: "Nasdaq 100 fund",
+    PAXG: "Gold",
+    BTC: "Bitcoin",
+    SGOV: "Treasury bills",
+  },
 
   newsTitle: "In the news",
   newsHint:

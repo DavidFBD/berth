@@ -21,6 +21,7 @@ import { VaultPositions } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useStoredChoice } from "@/hooks/use-stored-choice";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { HOME_CHAIN } from "@/lib/account";
@@ -54,6 +55,25 @@ export function Home() {
   const [accountOpen, setAccountOpen] = useState(false);
   const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
+  // Once the account owns something, what it owns leads the panel, since
+  // that is what a returning person comes to see; before the first buy
+  // the funds lead, since pouring in is the first thing to do.
+  const account = useHubAccount();
+  const holdings = useHubHoldings(account.hubWallet);
+  // The answer is remembered per account, so a returning holder's panel
+  // opens in its settled order instead of reordering when holdings land.
+  const [rememberedOwns, rememberOwns] = useStoredChoice(
+    account.spokeAddress ? `berth.owns-listings.${account.spokeAddress.toLowerCase()}` : null,
+  );
+  const liveOwns = holdings.settled
+    ? holdings.held.some((holding) => holding.listing.kind === "stock")
+    : undefined;
+  const ownsListings = liveOwns ?? rememberedOwns === "1";
+  useEffect(() => {
+    if (liveOwns === undefined) return;
+    const next = liveOwns ? "1" : "0";
+    if (rememberedOwns !== next) rememberOwns(next);
+  }, [liveOwns, rememberedOwns, rememberOwns]);
 
   // Email login is the primary path; the external wallet drawer is the
   // fallback for signed-in users reaching for a non-EVM source chain.
@@ -123,8 +143,17 @@ export function Home() {
             panel say the same thing and leave the page with a first read.
           */}
           <Panel className="divide-y divide-border lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
-            <FundsModule onTopUp={() => setAccountOpen(true)} />
-            <HoldingsList onSell={openSell} />
+            {ownsListings ? (
+              <>
+                <HoldingsList key="holdings" onSell={openSell} />
+                <FundsModule key="funds" quiet onTopUp={() => setAccountOpen(true)} />
+              </>
+            ) : (
+              <>
+                <FundsModule key="funds" onTopUp={() => setAccountOpen(true)} />
+                <HoldingsList key="holdings" onSell={openSell} />
+              </>
+            )}
             <CashShelf
               onPark={() => openBuy(CASH_LISTING)}
               onTakeOut={() => openSell(CASH_LISTING)}

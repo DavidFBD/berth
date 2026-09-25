@@ -28,7 +28,18 @@ import { useCopy, useMoney } from "@/components/settings-provider";
  * it sits on, and whether that network has enough native gas to actually
  * move it. Everyone else gets the account-state copy.
  */
-export function FundsModule({ onTopUp }: { onTopUp: () => void }) {
+export function FundsModule({
+  onTopUp,
+  quiet = false,
+}: {
+  onTopUp: () => void;
+  /**
+   * The glyph goes muted when something else in the panel holds the accent
+   * (the portfolio line, once anything is held). Before the first buy this
+   * is the one action, and keeps it.
+   */
+  quiet?: boolean;
+}) {
   const privy = usePrivyEmbeddedWallet();
   const signedIn = privy.enabled && privy.authenticated;
   const embedded = useEmbeddedHoldings();
@@ -46,7 +57,7 @@ export function FundsModule({ onTopUp }: { onTopUp: () => void }) {
   return (
     <div className="flex items-center gap-3.5 px-4 py-3.5">
       <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted">
-        <Wallet className="size-6 text-primary" />
+        <Wallet className={quiet ? "size-6 text-muted-foreground" : "size-6 text-primary"} />
       </div>
       <div className="min-w-0 flex-1">
         <h2 className="font-display text-[15px] leading-tight font-semibold tracking-[-0.012em] text-foreground">

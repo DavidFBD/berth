@@ -14,6 +14,8 @@ import type {
   XpHistoryResponse,
 } from "@/lib/profile-types";
 import type { OrdersResponse } from "@/app/api/orders/route";
+import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route";
+import type { BenchmarkSymbol } from "@/lib/benchmarks";
 import { announceRewards } from "@/components/xp-toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -108,11 +110,19 @@ function useRewardsQuery<TWire, TData = TWire>(
     onData?: (data: TWire) => void;
     /** The answer a 404 stands for; without it a 404 is a miss. */
     notFound?: TWire;
+    /** More of the query's identity, after the account: a parameter of the read. */
+    keyParts?: readonly string[];
+    /** Keep showing the last answer while a new parameter loads. */
+    keepPrevious?: boolean;
   },
 ) {
   const { key, call } = useRewardsCall();
   return useQuery({
-    queryKey: [name, key],
+    queryKey: [name, key, ...(options.keyParts ?? [])],
+    // Only the same account's last answer: never another person's.
+    placeholderData: options.keepPrevious
+      ? (previous, previousQuery) => (previousQuery?.queryKey[1] === key ? previous : undefined)
+      : undefined,
     enabled: (options.enabled ?? true) && key !== null,
     staleTime: options.staleTime,
     retry: 1,
@@ -188,8 +198,10 @@ function useProfileMutation<TVars>(
       // A buy is also a hold that will come ashore in thirty days.
       void queryClient.invalidateQueries({ queryKey: ["xp-holds", key] });
       void queryClient.invalidateQueries({ queryKey: ["referral-panel", key] });
-      // A pour is also a new order row (lib/server/orders).
+      // A pour is also a new order row (lib/server/orders), and a new
+      // flow in the portfolio's line.
       void queryClient.invalidateQueries({ queryKey: ["orders", key] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolio-history", key] });
     },
   });
 }
@@ -247,6 +259,21 @@ export function useOrders(enabled = true) {
     "orders",
     "/api/orders",
     { enabled, staleTime: 5 * 60_000, select: (data) => data.orders },
+  );
+}
+
+/**
+ * The account's money over time beside the same money in `benchmark`
+ * (lib/portfolio-history, /api/portfolio/history). Keyed by benchmark; the
+ * last answer stays on screen while another benchmark loads, so the chart
+ * never empties under a person choosing. Pass `enabled` false while the
+ * account holds nothing: there is no line to draw.
+ */
+export function usePortfolioHistory(benchmark: BenchmarkSymbol, enabled = true) {
+  return useRewardsQuery<PortfolioHistoryResponse>(
+    "portfolio-history",
+    `/api/portfolio/history?benchmark=${benchmark}`,
+    { enabled, staleTime: 60_000, keyParts: [benchmark], keepPrevious: true },
   );
 }
 

@@ -1,6 +1,6 @@
 export { AccountTotal } from "./account-total";
 export { CashShelf } from "./cash-shelf";
-export { ComparisonLine, HoldingsList } from "./holdings-list";
+export { ComparisonLine, HoldingsList, HoldingsView, type HoldingRow } from "./holdings-list";
 export { ListingBoard } from "./listing-board";
 export { MarketPreview } from "./market-preview";
 export { NewsFeed } from "./news-feed";

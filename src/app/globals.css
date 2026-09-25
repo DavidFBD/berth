@@ -229,7 +229,26 @@
   }
 }
 
+/* The portfolio chart's lines draw in from the left once, on first render
+   and on a new range or benchmark. Never idle; off for reduced motion. */
+@keyframes chart-draw {
+  from {
+    clip-path: inset(-8px 100% -8px -8px);
+  }
+  to {
+    clip-path: inset(-8px);
+  }
+}
+
+[data-chart-draw] {
+  clip-path: inset(-8px);
+  animation: chart-draw 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  [data-chart-draw] {
+    animation: none !important;
+  }
   [data-jev-ping],
   [data-step-ring],
   [data-slot="spinner"] circle {

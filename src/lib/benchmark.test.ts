@@ -41,6 +41,16 @@ describe("compareHolding", () => {
     expect(result?.tradingDays).toBe(1);
   });
 
+  it("buys the fund at the order's minute when that price was recorded", () => {
+    const result = compareHolding({ ...base, orders: [buy({ benchmarkMarks: { SPY: 792 / 1.05, BTC: 1 } })] });
+    // 100 dollars at 754.29 is 0.1326 units, worth 105 at 792: +5%, not the +10% the close before gave.
+    expect(result?.benchmarkChangePct).toBeCloseTo(5);
+    expect(result?.benchmarkWorth).toBeCloseTo(105);
+    const other = compareHolding({ ...base, benchmarkSymbol: "QQQ", orders: [buy({ benchmarkMarks: { SPY: 1 } })] });
+    // No QQQ price at the order: the close before it (720) is used.
+    expect(other?.benchmarkChangePct).toBeCloseTo(10);
+  });
+
   it("counts the session a pre-mark buy lived through", () => {
     const early = compareHolding({ ...base, orders: [buy({ placedAt: "2026-09-21T09:19:00Z" })] });
     // Measured from Friday's mark, so Monday's and Tuesday's marks both count.
