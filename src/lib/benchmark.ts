@@ -4,8 +4,8 @@
  * is asked anything here.
  *
  * The comparison is "the same dollars, the same days": each buy's cost is
- * put, on paper, into the S&P 500 fund at that fund's price on the day of
- * the buy, and both are valued now at the same live prices. That handles
+ * put, on paper, into the S&P 500 fund at that fund's price at the order's
+ * minute (`order.benchmarkMarks`, else the last mark before the order), and both are valued now at the same live prices. That handles
  * money added over several buys without a time-weighted return, and it is
  * the question a person actually asks: would I have been better off in the
  * index. It is not a recommendation and the copy never says it is one.
@@ -27,6 +27,13 @@ export type OrderFacts = {
   usd: number | null;
   /** ISO timestamp of the order. */
   placedAt: string;
+  /**
+   * Each benchmark's price at the order's minute, by benchmark symbol (table
+   * `order_marks`). Absent for an order not yet priced; lib/portfolio-history
+   * then refuses the benchmark ('no_marks'), compareHolding falls back to
+   * the close before the order (`markAt`).
+   */
+  benchmarkMarks?: Readonly<Record<string, number>>;
 };
 
 export type Marks = { dates: readonly string[]; values: readonly number[] };
@@ -106,6 +113,7 @@ export function compareHolding({
   priceNow,
   benchmarkNow,
   benchmarkMarks,
+  benchmarkSymbol = "SPY",
 }: {
   /** This listing's orders only. */
   orders: readonly OrderFacts[];
@@ -114,6 +122,8 @@ export function compareHolding({
   priceNow: number | undefined;
   benchmarkNow: number | undefined;
   benchmarkMarks: Marks | undefined;
+  /** Which of `order.benchmarkMarks` to buy at; the S&P 500 fund by default. */
+  benchmarkSymbol?: string;
 }): HoldingComparison | undefined {
   if (orders.length === 0 || !priceNow || !benchmarkNow || !benchmarkMarks) return undefined;
   if (orders.some((order) => order.direction === "sell")) return undefined;
@@ -125,7 +135,7 @@ export function compareHolding({
   let paid = 0;
   let benchmarkUnits = 0;
   for (const order of orders) {
-    const mark = markAt(benchmarkMarks, order.placedAt);
+    const mark = order.benchmarkMarks?.[benchmarkSymbol] ?? markAt(benchmarkMarks, order.placedAt);
     if (!mark) return undefined;
     paid += order.usd ?? 0;
     benchmarkUnits += (order.usd ?? 0) / mark;

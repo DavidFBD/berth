@@ -1,6 +1,6 @@
-import { markAt, type Marks, type OrderFacts } from "@/lib/benchmark";
+import type { Marks, OrderFacts } from "@/lib/benchmark";
 import { isTradingDay } from "@/lib/market-calendar";
-import { MARK_MINUTES, addDays, markAsOf, subtractMonths, type IsoDay } from "@/lib/marks";
+import { addDays, markAsOf, subtractMonths, type IsoDay } from "@/lib/marks";
 
 /**
  * A person's money over time, beside the same money placed in a benchmark.
@@ -11,8 +11,9 @@ import { MARK_MINUTES, addDays, markAsOf, subtractMonths, type IsoDay } from "@/
  * - Yours: what the account was worth at each day's close (table
  *   `portfolio_days`), ending on today's live value.
  * - The benchmark: a shadow portfolio. Every buy's dollars (fee included,
- *   as paid) buy benchmark units at the benchmark's last close before the
- *   order (`markAt`, with the stored marks' time of day); every sell sells
+ *   as paid) buy benchmark units at the benchmark's price at the order's
+ *   minute (`order.benchmarkMarks`, table `order_marks`), so the shadow
+ *   never earns a session the order did not live through; every sell sells
  *   the same share of the shadow units bought for that listing as the share
  *   of the listing's held quantity it sold. The shadow is valued at each
  *   day's close. So a deposit moves both lines together, and the gap
@@ -23,26 +24,32 @@ import { MARK_MINUTES, addDays, markAsOf, subtractMonths, type IsoDay } from "@/
  * the latest of the range's start and the first day with a value.
  *
  * TWO PERCENTAGES, COMPARABLE.
- * - `changePct`: the time-weighted return of your money over the window.
- *   Daily returns are chained from the window's first day, each day's net
- *   dollars in or out (from the orders) set aside:
- *     r = value / (yesterday's value + today's net flow) - 1
- *   The flow counts from the start of the day it lands in, which keeps a
- *   large first deposit from being read as a return. A buy flows its
- *   dollars; a sell flows its quantity at that day's close for the listing
- *   (a sell's proceeds are paid on another chain and not read).
- * - `benchmarkPct`: the benchmark's own price change over the same days.
+ * - `changePct`: the time-weighted return of your money over the window,
+ *   daily returns chained with each day's money in and out set aside:
+ *     r = (value + out) / (yesterday's value + in) - 1
+ *   `in` is the dollars paid for the day's buys, counted from the start of
+ *   the day (so a large deposit is never read as a return); `out` is the
+ *   day's sells at that day's close for the listing, counted at its end (a
+ *   sell's proceeds are paid on another chain and not read). A fixed range
+ *   starts from its first close; since first buy starts from nothing, so
+ *   the first day's buys are its base and the move from the order to that
+ *   close (fee included) counts, as in lib/benchmark compareHolding.
+ * - `benchmarkPct`: the benchmark's own price change over the same days;
+ *   since first buy, from its price at the first order's minute.
  *
  * REFUSALS. The benchmark line is null, never guessed, when the balance
  * held is not what the orders add up to ('unexplained_balance': a sell or a
  * transfer the ledger never saw, so the shadow would be buying for money
- * that is not there); when a buy in or
- * before the window has no dollar cost, a sell has no quantity, or a sell
- * is larger than the orders say was held ('unpriced_orders'); or when the
- * benchmark has no close to buy at ('no_marks'). A day the benchmark has
- * no close for is a gap in its line, not a copy of the day before.
- * `changePct` is null when money moved on a day it cannot value. Under two
- * days there is no line and no change ('too_short').
+ * that is not there); when a buy has no dollar cost, a sell has no
+ * quantity, or a sell is larger than the orders say was held
+ * ('unpriced_orders'); or when a buy has no benchmark price at its minute,
+ * or the benchmark no closes ('no_marks'). With the first two `changePct`
+ * is null as well: money came or went that no order prices, so the
+ * time-weighted figure cannot be told either. `benchmarkPct` is null
+ * whenever the status is not 'ok'. A day the benchmark has no close for is
+ * a gap in its line, not a copy of the day before. `changePct` is also null
+ * when a sell lands on a day its listing has no close. Under two days
+ * there is no line and no change ('too_short').
  *
  * Only listings count here: callers pass the token listing orders, not the
  * old vault positions, which `portfolio_days` does not value either.
@@ -67,7 +74,11 @@ export type PortfolioDay = {
 };
 
 export type LivePoint = {
-  /** Today, UTC. */
+  /**
+   * Today in New York, the market's calendar: between midnight UTC and the
+   * New York open it is still yesterday's date, and the live value replaces
+   * that day's stored close rather than adding a day.
+   */
   day: IsoDay;
   /** When the live value was read. */
   asOf: string;
@@ -84,6 +95,12 @@ export type HistoryInput = {
   days: readonly PortfolioDay[];
   /** The account's listing orders, any order. */
   orders: readonly OrderFacts[];
+  /**
+   * The benchmark's symbol, the key read from each order's `benchmarkMarks`.
+   * Without it no buy has a price at its minute and the benchmark is
+   * refused ('no_marks').
+   */
+  benchmarkSymbol?: string;
   /** The benchmark's stored closes, oldest first. */
   benchmarkMarks: Marks;
   /** Stored closes per listing symbol: what values a flow the order does not price. */
@@ -111,9 +128,12 @@ export type HistoryResult = {
   days: HistoryPoint[];
   /** The window's first day, or null when it is empty. */
   since: IsoDay | null;
-  /** Time-weighted percent, e.g. -1.4; null when it cannot be told. */
+  /**
+   * Time-weighted percent, e.g. -1.4; null when it cannot be told, and
+   * always with 'unexplained_balance' and 'unpriced_orders'.
+   */
   changePct: number | null;
-  /** The benchmark's price change over the same window, percent. */
+  /** The benchmark's price change over the same window, percent; null unless the status is 'ok'. */
   benchmarkPct: number | null;
   /** Market days the window lived through after its first day. */
   tradingDays: number;
@@ -196,6 +216,7 @@ function sortedOrders(orders: readonly OrderFacts[]): Order[] {
 function shadowLine(
   series: readonly SeriesPoint[],
   orders: readonly Order[],
+  symbol: string | undefined,
   marks: Marks,
   livePrice: number | null,
   balanceExplained: boolean,
@@ -230,8 +251,8 @@ function shadowLine(
       const order = counted[next];
       const heldBefore = quantity.get(order.symbol) ?? 0;
       if (order.direction === "buy") {
-        const mark = markAt(marks, order.placedAt, MARK_MINUTES);
-        if (!mark) return { values: none(), status: "no_marks" };
+        const mark = symbol === undefined ? undefined : order.benchmarkMarks?.[symbol];
+        if (!(mark && mark > 0)) return { values: none(), status: "no_marks" };
         units.set(order.symbol, (units.get(order.symbol) ?? 0) + (order.usd ?? 0) / mark);
         quantity.set(order.symbol, heldBefore + (order.quantity ?? 0));
       } else {
@@ -303,6 +324,7 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
   const shadow = shadowLine(
     series,
     orders,
+    input.benchmarkSymbol,
     input.benchmarkMarks,
     livePrice,
     input.balanceExplained ?? true,
@@ -318,44 +340,52 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
   if (window.length < 2) {
     return { ...empty, days, since, tradingDays, benchmarkStatus: "too_short" };
   }
+  const refused = shadow.status === "unexplained_balance" || shadow.status === "unpriced_orders";
 
-  // Net dollars into each point of the window after its first.
-  const flows = window.map(() => 0);
-  let changeKnown = true;
+  // Money in and out at each point of the window. Since first buy counts
+  // the first point's own flows (its base is what came before, nothing);
+  // a fixed range starts from its first close, so its first point's flows
+  // are already inside that value.
+  const fromZero = range === "since";
+  const flowIn = window.map(() => 0);
+  const flowOut = window.map(() => 0);
+  let changeKnown = !refused;
   for (const order of orders) {
+    if (!changeKnown) break;
     const index = flowIndex(series, order.at);
-    if (index === undefined || index <= from) continue;
+    if (index === undefined || index < from || (index === from && !fromZero)) continue;
     const point = series[index];
-    let dollars = order.usd;
-    if (dollars === null) {
-      const price =
-        (point.live ? input.live?.prices?.[order.symbol] : undefined) ??
-        (point.live
-          ? input.listingCloses?.[order.symbol] &&
-            closeOnOrBefore(input.listingCloses[order.symbol], point.day)
-          : closeOn(input.listingCloses?.[order.symbol], point.day));
-      dollars = order.quantity !== null && price ? order.quantity * price : null;
+    if (order.direction === "buy") {
+      if (order.usd === null) changeKnown = false;
+      else flowIn[index - from] += order.usd;
+      continue;
     }
-    if (dollars === null) {
-      changeKnown = false;
-      break;
-    }
-    flows[index - from] += order.direction === "buy" ? dollars : -dollars;
+    const closes = input.listingCloses?.[order.symbol];
+    const price = point.live
+      ? (input.live?.prices?.[order.symbol] ?? (closes && closeOnOrBefore(closes, point.day)))
+      : closeOn(closes, point.day);
+    if (order.quantity === null || !price) changeKnown = false;
+    else flowOut[index - from] += order.quantity * price;
   }
 
   let growth = 1;
-  for (let index = 1; changeKnown && index < window.length; index += 1) {
-    const base = window[index - 1].value + flows[index];
-    growth *= base > DUST_USD ? window[index].value / base : 1;
+  for (let index = fromZero ? 0 : 1; changeKnown && index < window.length; index += 1) {
+    const before = index === 0 ? (from > 0 ? series[from - 1].value : 0) : window[index - 1].value;
+    const base = before + flowIn[index];
+    growth *= base > DUST_USD ? (window[index].value + flowOut[index]) / base : 1;
   }
 
   let benchmarkPct: number | null = null;
-  const marks = input.benchmarkMarks;
-  const startMark = closeOnOrBefore(marks, since);
-  const lastPoint = window.at(-1)!;
-  const endMark =
-    (lastPoint.live ? livePrice ?? undefined : undefined) ?? closeOnOrBefore(marks, lastPoint.day);
-  if (startMark && endMark) benchmarkPct = (endMark / startMark - 1) * 100;
+  if (shadow.status === "ok") {
+    const marks = input.benchmarkMarks;
+    const lastPoint = window.at(-1)!;
+    const endMark =
+      (lastPoint.live ? livePrice ?? undefined : undefined) ?? closeOnOrBefore(marks, lastPoint.day);
+    const startMark = fromZero
+      ? input.benchmarkSymbol && orders[0]?.benchmarkMarks?.[input.benchmarkSymbol]
+      : closeOnOrBefore(marks, since);
+    if (startMark && endMark) benchmarkPct = (endMark / startMark - 1) * 100;
+  }
 
   return {
     range,
