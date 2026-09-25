@@ -74,8 +74,10 @@ export const BITCOIN_RELAY_WAIT_MS = 90 * 60_000;
 
 /**
  * Three hours of hub time: the relay wait, the fill, and room for a relay
- * that lands after the machine stopped watching. The minimum output still
- * guards the price, so a longer window cannot fill at a worse one.
+ * that lands after the machine stopped watching. A fill can never pay less
+ * than the minimum output, but that minimum comes from the quote taken at
+ * signing, so a fill late in the window can land anywhere between it and
+ * what the market would give by then.
  */
 export const BITCOIN_INTENT_DEADLINE_SECONDS = 3 * 60 * 60;
 
@@ -91,18 +93,12 @@ export function slowSource(chainKey: SpokeChainKey): SlowSource | null {
 }
 
 /**
- * Where an order goes when sending it fails. Before the signed payment
- * leaves the wallet (a rejected signature, too little to pay the fee), it is
- * an ordinary failure the user can retry. After it, on a slow source chain,
- * the money is in flight and the relay may still carry it to Sonic: that is
- * an unsettled order, never a failure. Fast chains keep their failure path.
+ * How long a slow order's own watch follows the solver after the intent
+ * reaches the hub. It releases the order as unsettled after
+ * TRACKING_RELEASE_MS like any other, then keeps watching, slower, for a
+ * late fill, whether or not the drawer is open.
  */
-export function sendFailureStep(
-  chainKey: SpokeChainKey,
-  leftWallet: boolean,
-): "unsettled" | "error" {
-  return leftWallet && slowSource(chainKey) ? "unsettled" : "error";
-}
+export const FILL_WATCH_MS = 30 * 60_000;
 
 /** Steps that hand an intent to the solver and wait on its status. */
 function isAwaitingFill(step: PourStep): boolean {
@@ -183,10 +179,14 @@ export function fillPhase(
  * or until the bounded wait moves the pour to "unsettled", because
  * dismissing mid-tracking would drop the intent hash and the only progress
  * view. "confirming" never locks: a Bitcoin payment can take an hour to
- * reach Sonic, and the relay wait carries on without the drawer.
+ * reach Sonic, and the relay wait carries on without the drawer. An order
+ * that was `closable` there stays closable through tracking: its machine
+ * watches the solver in the background, and a drawer free to close for an
+ * hour must not lock for ninety seconds at the end.
  */
-export function isPourLocked(step: PourStep): boolean {
-  return isPipelineStep(step) || step === "tracking";
+export function isPourLocked(step: PourStep, closable = false): boolean {
+  if (isPipelineStep(step)) return true;
+  return step === "tracking" && !closable;
 }
 
 /** Solver status codes by name, for reports that a person reads. */
@@ -297,6 +297,41 @@ function definedOnly(
       (entry): entry is [string, string] => entry[1] !== undefined,
     ),
   );
+}
+
+/**
+ * The intent reached the hub, and telling the solver about it failed every
+ * time. Not a failure to the user (the solver may still find the intent),
+ * and filed per order like an unsettled one, so each intent's hash reaches
+ * the one issue for this cause.
+ */
+export function solverNotNotifiedReport(
+  context: PourReportContext,
+  facts: {
+    intentId: string;
+    spokeTxHash?: string;
+    spokeTxUrl?: string;
+    hubTxHash: string;
+    notifyError: string;
+  },
+): ErrorReportContext {
+  return {
+    ...context,
+    step: "settling",
+    errorCode: "SOLVER_NOT_NOTIFIED",
+    friendlyMessage: COPY.unsettledTitle,
+    rawMessage: `The solver could not be told about the ${context.action} intent on the hub after three tries.`,
+    txHashes: [facts.spokeTxHash, facts.hubTxHash].filter(
+      (hash): hash is string => !!hash,
+    ),
+    diagnostics: definedOnly({
+      intentId: facts.intentId,
+      spokeTxHash: facts.spokeTxHash,
+      spokeTx: facts.spokeTxUrl,
+      hubTxHash: facts.hubTxHash,
+      notifyError: facts.notifyError,
+    }),
+  };
 }
 
 /**

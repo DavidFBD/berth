@@ -366,6 +366,8 @@ export type Copy = {
   notArrivedBody: string;
   /** Shown only beside a link that follows the payment on mempool.space. */
   notArrivedWatching: string;
+  /** A reopened drawer, while an earlier order is still on its way. */
+  earlierOrderOnItsWay: string;
   /** Accessible names that never render visibly. */
   ariaAmount: string;
   ariaAmountIn: (currency: string) => string;
@@ -800,8 +802,10 @@ export const COPY: Copy = {
     "You can close this. Leave Berth open in a tab and the order carries on by itself. Once it settles, it shows in what you own.",
   followPayment: "Follow it on mempool.space",
   notArrivedBody:
-    "Your payment left your wallet but has not reached Sonic yet, which is slower than usual. Your funds are not lost.",
+    "Your order was sent but has not reached Sonic yet, which is slower than usual. Your funds are not lost.",
   notArrivedWatching: "The link below follows the payment on mempool.space.",
+  earlierOrderOnItsWay:
+    "An earlier order is still on its way. Let it settle before placing the same one again.",
   ariaAmount: "Amount",
   ariaAmountIn: (currency) => `Amount in ${currency}`,
   ariaSharesToWithdraw: "Shares to withdraw",

@@ -10,9 +10,9 @@ import {
   isPourLocked,
   releaseTracking,
   resolveTracking,
-  sendFailureStep,
   settledFollowUp,
   slowSource,
+  solverNotNotifiedReport,
   unsettledReport,
   type PourStep,
 } from "./pour-lifecycle";
@@ -312,17 +312,9 @@ describe("a payment from Bitcoin", () => {
     expect(slow!.intentDeadlineSeconds * 1000).toBeGreaterThan(slow!.relayWaitMs);
   });
 
-  it("is unsettled, not failed, when the relay wait runs out after broadcast", () => {
-    expect(sendFailureStep(BTC, true)).toBe("unsettled");
-  });
-
-  it("is an ordinary failure before anything left the wallet", () => {
-    // A rejected signature or too little for the fee: nothing is in flight.
-    expect(sendFailureStep(BTC, false)).toBe("error");
-  });
-
   it("lets the drawer close while the payment confirms", () => {
     expect(isPourLocked("confirming")).toBe(false);
+    expect(isPourLocked("confirming", true)).toBe(false);
     expect(isPipelineStep("confirming")).toBe(false);
     expect(fillPhase("confirming", undefined)).toBe("confirming");
   });
@@ -332,6 +324,27 @@ describe("a payment from Bitcoin", () => {
     expect(resolveTracking("confirming", FAILED)).toBeNull();
     expect(releaseTracking("confirming")).toBe("confirming");
     expect(dueOneShot("confirming", null)).toBeNull();
+  });
+
+  it("keeps a drawer that was free to close free through tracking", () => {
+    // An hour closable, then ninety locked seconds at the end, is a trap.
+    expect(isPourLocked("tracking", true)).toBe(false);
+    // But never through the wallet prompt, closable or not.
+    expect(isPourLocked("signing", true)).toBe(true);
+  });
+
+  it("files a solver that was never told as its own per-order issue", () => {
+    const untold = solverNotNotifiedReport(btcContext, {
+      intentId: "7",
+      spokeTxHash: txid,
+      hubTxHash: "0x" + "c".repeat(64),
+      notifyError: "Error: 503",
+    });
+    expect(untold.step).toBe("settling");
+    expect(untold.errorCode).toBe("SOLVER_NOT_NOTIFIED");
+    expect(untold.txHashes).toEqual([txid, "0x" + "c".repeat(64)]);
+    expect(untold.diagnostics?.notifyError).toBe("Error: 503");
+    expect(untold.rawMessage).not.toContain("503");
   });
 
   it("shows a payment that never reached Sonic apart from an order the solver holds", () => {
@@ -382,14 +395,13 @@ describe("a payment from an EVM chain", () => {
     ChainKeys.SONIC_MAINNET,
   ];
 
-  it("keeps the SDK's relay path and the failure it had", () => {
+  it("keeps the SDK's relay path, and the tracking lock it had", () => {
     for (const chain of EVM_SOURCES) {
+      // Not slow: the machine sends these through vaultSwap as before, and
+      // a relay timeout there is still the failure it always was.
       expect(slowSource(chain)).toBeNull();
-      // The machine sends these through vaultSwap as before, and a relay
-      // timeout there is still the failure it always was.
-      expect(sendFailureStep(chain, true)).toBe("error");
-      expect(sendFailureStep(chain, false)).toBe("error");
     }
+    expect(isPourLocked("tracking")).toBe(true);
   });
 
   it("keeps the unsettled report it always filed", () => {

@@ -64,7 +64,18 @@ Questions for the SDK team:
   `notifySolver` call? If not, a user who closes the tab during the relay
   wait leaves an intent nobody fills.
 
-### 3. `vaultSwap` relays a Bitcoin on-demand payload under the wrong id
+### 3. One relayer error ends the whole wait
+
+`waitUntilIntentExecuted` (4813) stops at the first packet poll that fails
+with anything but a 404 (`pollForExecutedPacket`, 4792 to 4799; the loop
+breaks at 4825) and returns `RELAY_POLLING_FAILED`. A single 502 or 429, or
+a Safari tab resuming from the background, ends a wait that for Bitcoin has
+to last most of an hour, and `notifySolver` then never runs.
+
+Ask: back off and keep polling on transient relayer errors until the
+timeout, and only then report.
+
+### 4. `vaultSwap` relays a Bitcoin on-demand payload under the wrong id
 
 For a vault withdraw from a Bitcoin derived hub wallet (`hubWalletSwap:
 true`), `createVaultIntent` returns the signed on-demand payload JSON from
@@ -80,8 +91,9 @@ Ask: use `getOnDemandRelayIdentity` in `vaultSwap` (and any other
 
 ## What Berth does meanwhile
 
-For Bitcoin sources the app calls `createVaultIntent`, `relayTxAndWaitPacket`
-and `notifySolver` itself (src/hooks/use-vault-action.ts `sendSlow`): it
+For Bitcoin sources the app calls `createVaultIntent`, `submitTransaction`,
+`waitUntilIntentExecuted` (in its own loop that rides out relayer errors,
+src/lib/slow-order.ts) and `notifySolver` itself (src/hooks/use-vault-action.ts `sendSlow`): it
 moves to a waiting state the moment the payment is broadcast, waits up to 90
 minutes for the relay, builds the intent with a three hour deadline, uses the
 on-demand relay identity for Bitcoin withdraws, and treats a relay wait that

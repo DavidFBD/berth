@@ -312,6 +312,35 @@ export function IntentTracking({
 }
 
 /**
+ * A quiet line on the order form while an earlier order from a slow chain
+ * is still travelling after its drawer closed, so nobody pays twice
+ * thinking the first one was lost.
+ */
+export function EarlierOrderNote({
+  order,
+}: {
+  order: { spokeTxHash: string; spokeTxUrl?: string } | null;
+}) {
+  const copy = useCopy();
+  if (!order) return null;
+  return (
+    <div className="rounded-xl bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
+      <p>{copy.earlierOrderOnItsWay}</p>
+      {order.spokeTxUrl && (
+        <a
+          href={order.spokeTxUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="money mt-1.5 inline-block text-xs underline underline-offset-2"
+        >
+          {copy.followPayment} ({shortenAddress(order.spokeTxHash)})
+        </a>
+      )}
+    </div>
+  );
+}
+
+/**
  * The failure message, plus a quiet note when the failure has already been
  * handed to the team. A cancelled order is styled gently and never reported:
  * the user chose it, so there is nothing to look into. The message itself

@@ -48,7 +48,12 @@ import { useHubAccount } from "@/hooks/use-hub-account";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
-import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
+import {
+  ActionError,
+  ActionStepper,
+  EarlierOrderNote,
+  IntentTracking,
+} from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
 /**
@@ -603,6 +608,8 @@ export function DepositDrawer({
                     )}
                   </div>
                 ) : null}
+
+                <EarlierOrderNote order={action.earlierOrder} />
 
                 {action.step === "error" && action.error && (
                   <ActionError
