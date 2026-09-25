@@ -128,3 +128,36 @@ describe("buildIssueBody diagnostics", () => {
     expect(buildIssueBody(payload(), undefined)).not.toContain("### Diagnostics");
   });
 });
+
+describe("issue-body redaction", () => {
+  it("strips RPC keys a stale client left in, from every free-text field", () => {
+    const key = "Xk3vQ9pLm2RtY7uW8zA1bC4dE";
+    const body = buildIssueBody(
+      payload({
+        rawMessage: `HTTP request failed. URL: https://base-mainnet.g.alchemy.com/v2/${key}`,
+        diagnostics: { statusEndpoint: "erroring: https://x.io/rpc?apikey=SECRET123" },
+        logs: [
+          {
+            at: "2026-09-25T10:00:00.000Z",
+            level: "error",
+            text: "fetch https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161 failed",
+          },
+        ],
+      }),
+      undefined,
+    );
+    expect(body).not.toContain(key);
+    expect(body).not.toContain("SECRET123");
+    expect(body).not.toContain("9aa3d95b3bc440fa88ea12eaa4456161");
+    expect(body).toContain("/v2/[redacted]");
+  });
+});
+
+describe("issueTitle for an unsettled order", () => {
+  it("says unsettled, not failed at settling", () => {
+    const p = payload({ step: "settling", errorCode: "SOLVER_FILL_UNSETTLED" });
+    expect(issueTitle(p)).toBe(
+      "deposit unsettled on 0x2105.base: SOLVER_FILL_UNSETTLED",
+    );
+  });
+});
