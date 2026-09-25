@@ -42,7 +42,12 @@ import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultAddress, useVaultWallet } from "@/hooks/use-vault-wallet";
-import { ActionError, ActionStepper, IntentTracking } from "./action-stepper";
+import {
+  ActionError,
+  ActionStepper,
+  EarlierOrderNote,
+  IntentTracking,
+} from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 
 /** One vault share (18 decimals) — reads the price-per-share via previewRedeem. */
@@ -411,6 +416,8 @@ export function WithdrawDrawer({
                 phase={action.fillPhase}
                 fillTxHash={action.fillTxHash}
                 hubTxHash={action.hubTxHash}
+                spokeTxHash={action.spokeTxHash}
+                spokeTxUrl={action.spokeTxUrl}
                 successTitle={copy.onItsWayTitle}
                 successBody={
                   dstChainKey && outputToken
@@ -645,6 +652,8 @@ export function WithdrawDrawer({
                     )}
                   </div>
                 ) : null}
+
+                <EarlierOrderNote order={action.earlierOrder} />
 
                 {action.step === "error" && action.error && (
                   <ActionError

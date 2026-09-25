@@ -11,13 +11,18 @@ import {
   useStatus,
   useSwapApprove,
 } from "@sodax/dapp-kit";
-import type {
-  Address,
-  CreateIntentParams,
-  GetWalletProviderType,
-  SpokeChainKey,
-  VaultSwapResponse,
-  XToken,
+import {
+  DEFAULT_RELAY_TX_TIMEOUT,
+  getIntentRelayChainId,
+  isBitcoinChainKeyType,
+  submitTransaction,
+  waitUntilIntentExecuted,
+  type Address,
+  type CreateIntentParams,
+  type GetWalletProviderType,
+  type LeverageYieldSwapPayload,
+  type SpokeChainKey,
+  type XToken,
 } from "@sodax/sdk";
 import {
   addressHint,
@@ -35,9 +40,10 @@ import {
   rawErrorMessage,
   type GasContext,
 } from "@/lib/error-copy";
-import { getChainName, getNativeGasToken } from "@/lib/chains";
+import { getChainName, getNativeGasToken, spokeTxUrl } from "@/lib/chains";
 import { COPY } from "@/lib/copy";
 import {
+  FILL_WATCH_MS,
   TRACKING_RELEASE_MS,
   dueOneShot,
   fillPhase,
@@ -46,10 +52,18 @@ import {
   releaseTracking,
   resolveTracking,
   settledFollowUp,
+  slowSource,
+  solverNotNotifiedReport,
   unsettledReport,
   type FillPhase,
   type PourStep,
 } from "@/lib/pour-lifecycle";
+import {
+  runSlowOrder,
+  waitForRelay,
+  type FillStatus,
+  type SlowOrderEvent,
+} from "@/lib/slow-order";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 import type { PourReadiness } from "@/hooks/use-privy-evm-wallet";
@@ -185,6 +199,18 @@ export interface UseVaultActionResult {
    * an unsettled order points the user at.
    */
   hubTxHash: string | undefined;
+  /**
+   * Where the payment can be followed on its own chain while it travels to
+   * Sonic: set for a Bitcoin payment (mempool.space), undefined elsewhere.
+   */
+  spokeTxUrl: string | undefined;
+  /** The payment's transaction on its own chain, shown beside that link. */
+  spokeTxHash: string | undefined;
+  /**
+   * An earlier order from a slow chain still on its way after its drawer
+   * closed, so a reopened drawer can say so before the user pays twice.
+   */
+  earlierOrder: { spokeTxHash: string; spokeTxUrl?: string } | null;
   /** True mid-pipeline: between first tap and signature. */
   pending: boolean;
   /** True while the drawer must refuse dismissal. */
@@ -199,6 +225,36 @@ type ActivePour = {
   context: PourReportContext;
   fillToasts: FillToastCopy;
 };
+
+/** What the machine knows about the order once it has left the wallet. */
+type SentOrder = {
+  /** The source-chain transaction, or the relay's id for an unbroadcast payload. */
+  spokeTxHash: string;
+  spokeTxUrl?: string;
+  intentId: string;
+  /** The intent's transaction on the hub, once there: the status poll keys on it. */
+  hubTxHash?: string;
+  /** The solver's intent hash, from its answer when told about the intent. */
+  intentHash?: string;
+  /**
+   * Sent by `sendSlow`, which owns the whole order: its status watch, toast,
+   * award and reports. The screen only mirrors it.
+   */
+  slow?: boolean;
+  /** The drawer may close at every step from here on. */
+  closable?: boolean;
+};
+
+/** A slow order still travelling, and which run sent it. */
+type InFlight = { run: number; spokeTxHash: string; spokeTxUrl?: string };
+
+/** A relay or solver error as one line, for reports. */
+function errorLine(error: unknown): string {
+  return rawErrorMessage(error) ?? String(error);
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
  * The whole order, one machine: build → allowance → approve → sign, then the
@@ -224,10 +280,22 @@ export function useVaultAction(options?: {
 
   const [step, setStep] = useState<PourStep>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [response, setResponse] = useState<VaultSwapResponse | null>(null);
+  const [sent, setSent] = useState<SentOrder | null>(null);
+  /** The solver's latest answer for a slow order, as its own watch saw it. */
+  const [slowStatus, setSlowStatus] = useState<FillStatus>({});
+  const [earlierOrder, setEarlierOrder] = useState<InFlight | null>(null);
+  /** The slow order still travelling, if any, whatever the screen shows. */
+  const inFlightRef = useRef<InFlight | null>(null);
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
   const runningRef = useRef(false);
   const { reportState, report, resetReport } = useErrorReporter();
+  /** Read by slow orders, which outlive the render that started them. */
+  const reportRef = useRef(report);
+  const awardRef = useRef(awardPour);
+  useEffect(() => {
+    reportRef.current = report;
+    awardRef.current = awardPour;
+  });
   /**
    * The order being run, so a failure anywhere — pipeline or solver fill —
    * can be reported with the order that caused it. A ref because `fail` is
@@ -251,10 +319,20 @@ export function useVaultAction(options?: {
    */
   const lastStatusRef = useRef<number | undefined>(undefined);
 
+  /**
+   * Which run the screen belongs to. Bumped by every run and by reset, so a
+   * relay wait that outlives its drawer (a Bitcoin payment can take an hour)
+   * still finishes its work, telling the solver and the team, without
+   * writing into a screen that has moved on.
+   */
+  const runRef = useRef(0);
+
   /** Advance the pipeline, keeping the report's "failed at" in step. */
   const advance = useCallback((next: PourStep) => {
     if (pourRef.current) pourRef.current.context.step = next;
-    if (next === "tracking") trackingStartedRef.current = Date.now();
+    if (next === "tracking" || next === "confirming") {
+      trackingStartedRef.current = Date.now();
+    }
     setStep(next);
   }, []);
 
@@ -286,19 +364,26 @@ export function useVaultAction(options?: {
   // Fill tracking after the intent lands on the hub. The cast is the one
   // place the raw response shape is reached into, and it stays inside the
   // machine.
+  // A slow order watches the solver itself, from its own closure, so its
+  // bookkeeping survives the drawer; this poll is for every other order.
+  const slow = sent?.slow === true;
   const statusQuery = useStatus({
     params: {
-      intentTxHash: response
-        ? (response.intentDeliveryInfo.dstTxHash as `0x${string}`)
-        : undefined,
+      intentTxHash: slow
+        ? undefined
+        : (sent?.hubTxHash as `0x${string}` | undefined),
     },
   });
-  const statusCode = statusQuery.data?.ok
-    ? statusQuery.data.value.status
-    : undefined;
-  const fillTxHash = statusQuery.data?.ok
-    ? statusQuery.data.value.fill_tx_hash
-    : undefined;
+  const statusCode = slow
+    ? slowStatus.code
+    : statusQuery.data?.ok
+      ? statusQuery.data.value.status
+      : undefined;
+  const fillTxHash = slow
+    ? slowStatus.fillTxHash
+    : statusQuery.data?.ok
+      ? statusQuery.data.value.fill_tx_hash
+      : undefined;
   // What the status endpoint said when it could not answer: an error result
   // from the solver, or the request itself failing.
   const statusError =
@@ -314,8 +399,61 @@ export function useVaultAction(options?: {
   // Terminal resolution, applied during render (house pattern: render-time
   // state adjustment, not an effect). Only the "tracking" step resolves, and
   // resolving leaves it, so continued polling can't re-resolve.
-  const resolution = resolveTracking(step, statusCode);
+  const resolution = slow ? null : resolveTracking(step, statusCode);
   if (resolution) setStep(resolution);
+
+  /** A filled order's one-shots: the deposit callback, the toast, the award. */
+  const settleFilled = useCallback(
+    (pour: ActivePour | null, intentTxHash?: string, fillTx?: string) => {
+      if (pour?.context.action === "deposit") onPouredRef.current?.();
+      if (pour) {
+        toast.success(pour.fillToasts.successTitle, {
+          description: pour.fillToasts.successDescription,
+        });
+      }
+      // Rewards ride the same handle the failure report does: the intent's
+      // hub tx hash is the ledger's dedup key.
+      if (intentTxHash) {
+        awardRef.current({
+          direction: pour?.context.action === "withdraw" ? "out" : "in",
+          intentTxHash,
+          // Helps the order record tell two quick fills of one listing apart.
+          fillTxHash: fillTx,
+        });
+      }
+    },
+    [],
+  );
+
+  /** A failed fill's one-shots: the toast and the report. */
+  const settleFailed = useCallback(
+    (
+      pour: ActivePour | null,
+      intentTxHash: string | undefined,
+      fillTx: string | undefined,
+      file: (context: ErrorReportContext) => void,
+    ) => {
+      if (!pour) return;
+      toast.error(FILL_FAILED_MESSAGE, {
+        description: pour.fillToasts.failureDescription,
+      });
+      // The signature went through and the intent reached the hub, then the
+      // solver failed to fill it. A failed transaction with the user's funds
+      // already in motion, so it matters more than a build-time error, not
+      // less — and nothing else in this flow reports it.
+      file({
+        ...pour.context,
+        step: "filling",
+        txHashes: [intentTxHash, fillTx].filter(
+          (hash): hash is string => !!hash,
+        ),
+        errorCode: "SOLVER_FILL_FAILED",
+        friendlyMessage: FILL_FAILED_MESSAGE,
+        rawMessage: `Solver reported status 4 (failed) for the ${pour.context.action} intent.`,
+      });
+    },
+    [],
+  );
 
   // The one-shots: the unsettled report, then (possibly later) the terminal
   // toast, XP award, or solver-fill failure report. The step transition is
@@ -329,6 +467,8 @@ export function useVaultAction(options?: {
     const due = dueOneShot(step, firedRef.current);
     if (!due) return;
     firedRef.current = due;
+    // A slow order fires its own one-shots, once, drawer or no drawer.
+    if (sent?.slow) return;
 
     // A late ending of an order already reported as unsettled: say how it
     // ended on that same issue, so triage does not chase an order that
@@ -345,80 +485,50 @@ export function useVaultAction(options?: {
       unsettledSentRef.current = null;
     }
     const pour = pourRef.current;
-    const intentTxHash = response?.intentDeliveryInfo.dstTxHash;
+    const intentTxHash = sent?.hubTxHash;
 
     if (due === "unsettled") {
       // Signed and sent, and the solver never said filled or failed inside
       // the wait. Funds may still arrive, so this is not a failure to the
       // user, but it is a stalled order to the team, and until now nothing
       // told anyone.
-      if (pour && response) {
-        const sent = unsettledReport(pour.context, {
-            intentHash: response.solverExecutionResponse.intent_hash,
-            intentId: response.intent.intentId.toString(),
-            spokeTxHash: response.intentDeliveryInfo.srcTxHash,
-            hubTxHash: intentTxHash,
-            fillTxHash,
-            lastStatusCode: lastStatusRef.current,
-            trackedMs: Date.now() - trackingStartedRef.current,
-            statusError,
-          });
-        unsettledSentRef.current = sent;
-        report(sent);
+      if (pour && sent) {
+        const filed = unsettledReport(pour.context, {
+          intentHash: sent.intentHash,
+          intentId: sent.intentId,
+          spokeTxHash: sent.spokeTxHash,
+          hubTxHash: intentTxHash,
+          fillTxHash,
+          lastStatusCode: lastStatusRef.current,
+          trackedMs: Date.now() - trackingStartedRef.current,
+          statusError,
+        });
+        unsettledSentRef.current = filed;
+        report(filed);
       }
       return;
     }
 
     if (due === "filled") {
-      if (pour?.context.action === "deposit") onPouredRef.current?.();
-      if (pour) {
-        toast.success(pour.fillToasts.successTitle, {
-          description: pour.fillToasts.successDescription,
-        });
-      }
-      // Rewards ride the same handle the failure report does: the intent's
-      // hub tx hash is the ledger's dedup key.
-      if (intentTxHash) {
-        awardPour({
-          direction: pour?.context.action === "withdraw" ? "out" : "in",
-          intentTxHash,
-          // Helps the order record tell two quick fills of one listing apart.
-          fillTxHash,
-        });
-      }
-    } else if (pour) {
-      toast.error(FILL_FAILED_MESSAGE, {
-        description: pour.fillToasts.failureDescription,
-      });
-      // The signature went through and the intent reached the hub, then the
-      // solver failed to fill it. A failed transaction with the user's funds
-      // already in motion, so it matters more than a build-time error, not
-      // less — and nothing else in this flow reports it.
-      report({
-        ...pour.context,
-        step: "filling",
-        txHashes: [intentTxHash, fillTxHash].filter(
-          (hash): hash is string => !!hash,
-        ),
-        errorCode: "SOLVER_FILL_FAILED",
-        friendlyMessage: FILL_FAILED_MESSAGE,
-        rawMessage: `Solver reported status 4 (failed) for the ${pour.context.action} intent.`,
-      });
+      settleFilled(pour, intentTxHash, fillTxHash);
+    } else {
+      settleFailed(pour, intentTxHash, fillTxHash, report);
     }
-  }, [step, response, fillTxHash, statusError, awardPour, report]);
+  }, [step, sent, fillTxHash, statusError, report, settleFailed, settleFilled]);
 
   // The status poll can legitimately never turn terminal (NOT_FOUND / a
   // failing endpoint), so after a bounded wait the pour becomes unsettled:
   // the drawer lets go, the user is told the order is still out, and the
   // team is told. The poll keeps running while the drawer is open.
   useEffect(() => {
-    if (step !== "tracking") return;
+    // A slow order's own watch releases it, on its own clock.
+    if (step !== "tracking" || slow) return;
     const timer = setTimeout(
       () => setStep(releaseTracking),
       TRACKING_RELEASE_MS,
     );
     return () => clearTimeout(timer);
-  }, [step]);
+  }, [step, slow]);
 
   /**
    * Approvals return once the tx is submitted; poll the allowance until the
@@ -442,17 +552,314 @@ export function useVaultAction(options?: {
     [sodax],
   );
 
+  /**
+   * Send an order from a slow source chain (Bitcoin): the SDK's `vaultSwap`
+   * split open, so the machine learns the payment's hash the moment it is
+   * broadcast instead of after the relay. `vaultSwap` waits 120s for the
+   * relay and then reports RELAY_TIMEOUT without the hash, so a Bitcoin
+   * payment already on its way surfaced as a signing failure.
+   *
+   * Here a broadcast payment moves to "confirming" (the drawer may close),
+   * the relay gets a Bitcoin sized wait that rides out relayer errors, the
+   * solver is told once the intent is on the hub, and the fill is watched
+   * to its end. The whole order lives in this closure, not in the screen:
+   * the toast, the award and every report fire from here exactly once,
+   * whether or not the drawer is still open, and an open drawer only
+   * mirrors it. A wait that runs out is an unsettled order, reported with
+   * the payment's hash, never a failure.
+   *
+   * Resolves once the payment has left the wallet (for a Bitcoin withdraw,
+   * once the relay has it). The rest carries on while the page is open;
+   * closing the tab ends it, though the relayer already holds the payment.
+   */
+  const sendSlow = useCallback(
+    async (input: {
+      payload: LeverageYieldSwapPayload;
+      walletProvider: AnyWalletProvider;
+      srcChainKey: SpokeChainKey;
+      relayWaitMs: number;
+    }): Promise<boolean> => {
+      const { payload, walletProvider, srcChainKey } = input;
+      const { params } = payload;
+      const run = runRef.current;
+      const current = () => runRef.current === run;
+      const pour = pourRef.current;
+      if (!pour) return false;
+      /** File with the screen's reporter while it shows this order, else directly. */
+      const file = (context: ErrorReportContext) => {
+        if (current()) reportRef.current(context);
+        else void submitErrorReport(context);
+      };
+      const analytics = sodax.config.analytics;
+      analytics.emit("leverageYield", "vaultSwap", "start", () => ({
+        srcChainKey,
+        dstChainKey: params.dstChainKey,
+        srcAddress: params.srcAddress,
+        dstAddress: params.dstAddress,
+        inputToken: params.inputToken,
+        outputToken: params.outputToken,
+        inputAmount: params.inputAmount,
+      }));
+
+      // Signs, and for a deposit broadcasts. Nothing has left the wallet if
+      // this fails, so it stays an ordinary, retryable failure.
+      const created = await sodax.leverageYield.createVaultIntent({
+        ...payload,
+        walletProvider,
+        raw: false,
+      });
+      if (!created.ok) {
+        analytics.emit("leverageYield", "vaultSwap", "failure", () => ({
+          code: created.error.code,
+        }));
+        fail(
+          friendlyError(created.error, COPY.errOrderFailed, gasContextFor(srcChainKey)),
+          created.error,
+        );
+        return false;
+      }
+      const { intent, relayData } = created.value;
+      const tx = String(created.value.tx);
+      // What dapp-kit's vaultSwap hook refreshes: the balance that just paid.
+      void queryClient.invalidateQueries({
+        queryKey: ["shared", "xBalances", srcChainKey],
+      });
+
+      // A withdraw from Bitcoin broadcasts nothing: the signed payload goes
+      // to the relay, which tracks it under a derived id. `vaultSwap` relays
+      // it under the payload itself, so it could never be found.
+      const onDemand =
+        payload.hubWalletSwap === true && isBitcoinChainKeyType(srcChainKey);
+      const identity = onDemand
+        ? sodax.spoke.bitcoin.getOnDemandRelayIdentity(tx)
+        : { srcTxHash: tx, data: relayData, pollTxHash: undefined };
+      const order: SentOrder = {
+        spokeTxHash: identity.pollTxHash ?? tx,
+        spokeTxUrl: onDemand ? undefined : spokeTxUrl(srcChainKey, tx),
+        intentId: intent.intentId.toString(),
+        slow: true,
+        // A broadcast payment may take an hour: the drawer is free to close
+        // from here to the end. The on-demand payload relays in seconds and
+        // keeps the signing screen for that wait, as every other chain does.
+        closable: !onDemand,
+      };
+      if (current()) {
+        setSent(order);
+        setSlowStatus({});
+        if (!onDemand) advance("confirming");
+      }
+      inFlightRef.current = {
+        run,
+        spokeTxHash: order.spokeTxHash,
+        spokeTxUrl: order.spokeTxUrl,
+      };
+      const settle = () => {
+        if (inFlightRef.current?.run === run) inFlightRef.current = null;
+        setEarlierOrder((earlier) => (earlier?.run === run ? null : earlier));
+      };
+
+      const relayerApiEndpoint = sodax.swaps.relayerApiEndpoint;
+      const intentRelayChainId = getIntentRelayChainId(srcChainKey).toString();
+      const relay = () =>
+        waitForRelay(
+          {
+            submit: () =>
+              submitTransaction(
+                {
+                  action: "submit",
+                  params: {
+                    chain_id: intentRelayChainId,
+                    tx_hash: identity.srcTxHash,
+                    data: identity.data,
+                  },
+                },
+                relayerApiEndpoint,
+              ),
+            poll: (windowMs) =>
+              waitUntilIntentExecuted({
+                intentRelayChainId,
+                srcTxHash: identity.pollTxHash ?? identity.srcTxHash,
+                timeout: windowMs,
+                apiUrl: relayerApiEndpoint,
+              }),
+            sleep,
+            now: Date.now,
+          },
+          {
+            budgetMs: onDemand ? DEFAULT_RELAY_TX_TIMEOUT : input.relayWaitMs,
+            broadcast: !onDemand,
+          },
+        );
+
+      // For a Bitcoin withdraw the run resolves once the relay has answered,
+      // so a payload the relayer never took returns false like any failure.
+      let relayAnswered!: (accepted: boolean) => void;
+      const answered = new Promise<boolean>((resolve) => {
+        relayAnswered = resolve;
+      });
+
+      let onHub: SentOrder = order;
+      let notifyError: string | undefined;
+      let unsettledFiled: ErrorReportContext | null = null;
+      // Every event lands here. Reports, toasts and the award happen
+      // whatever the screen shows; the screen follows only while it shows
+      // this order.
+      const on = (event: SlowOrderEvent) => {
+        switch (event.type) {
+          case "notAccepted":
+            relayAnswered(false);
+            console.error("[vault-action] relay", event.relayError);
+            analytics.emit("leverageYield", "vaultSwap", "failure", () => ({
+              code: event.relayError,
+            }));
+            // Nothing moved, and trying again is the right answer. The
+            // signing screen still holds this order: its drawer is locked.
+            if (current()) fail(COPY.errOrderFailed, new Error(event.relayError));
+            return;
+          case "stalled":
+            relayAnswered(true);
+            console.error("[vault-action] relay", event.relayError);
+            analytics.emit("leverageYield", "vaultSwap", "failure", () => ({
+              code: event.relayError,
+            }));
+            file(
+              unsettledReport(pour.context, {
+                ...order,
+                trackedMs: event.trackedMs,
+                relayError: event.relayError,
+              }),
+            );
+            if (current()) advance("unsettled");
+            return;
+          case "onHub": {
+            relayAnswered(true);
+            analytics.emit("leverageYield", "vaultSwap", "success", () => ({
+              intentId: intent.intentId,
+              srcTxHash: tx,
+              dstTxHash: event.hubTxHash,
+            }));
+            void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
+            void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
+            // The other half of what dapp-kit's vaultSwap hook refreshes.
+            void queryClient.invalidateQueries({
+              queryKey: ["shared", "xBalances", params.dstChainKey],
+            });
+            onHub = { ...order, hubTxHash: event.hubTxHash, intentHash: event.intentHash };
+            notifyError = event.notifyError;
+            if (notifyError) {
+              console.error("[vault-action] notify solver", notifyError);
+              // The solver may still find the intent; the watch decides,
+              // and the team knows now rather than never.
+              file(
+                solverNotNotifiedReport(pour.context, {
+                  ...order,
+                  hubTxHash: event.hubTxHash,
+                  notifyError,
+                }),
+              );
+            }
+            if (current()) {
+              setSent(onHub);
+              advance("tracking");
+            }
+            return;
+          }
+          case "status":
+            if (current()) setSlowStatus(event.status);
+            return;
+          case "released":
+            unsettledFiled = unsettledReport(pour.context, {
+              ...onHub,
+              hubTxHash: onHub.hubTxHash,
+              fillTxHash: event.last.fillTxHash,
+              lastStatusCode: event.last.code,
+              trackedMs: event.trackedMs,
+              statusError: event.last.error,
+              notifyError,
+            });
+            file(unsettledFiled);
+            if (current()) advance("unsettled");
+            return;
+          case "filled":
+          case "fillFailed":
+            if (event.released && unsettledFiled) {
+              void submitErrorReport(
+                settledFollowUp(unsettledFiled, event.type, event.trackedMs),
+              );
+            }
+            void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
+            if (event.type === "filled") {
+              settleFilled(pour, onHub.hubTxHash, event.fillTxHash);
+            } else {
+              settleFailed(pour, onHub.hubTxHash, event.fillTxHash, file);
+            }
+            if (current()) advance(event.type);
+            return;
+          case "gaveUp":
+            return;
+        }
+      };
+
+      const done = runSlowOrder(
+        {
+          relay,
+          notify: async (hubTxHash) => {
+            const notified = await sodax.leverageYield.notifySolver({
+              intent_tx_hash: hubTxHash as `0x${string}`,
+            });
+            return notified.ok
+              ? { ok: true, intentHash: notified.value.intent_hash }
+              : { ok: false, error: errorLine(notified.error) };
+          },
+          status: async (hubTxHash) => {
+            try {
+              const answer = await sodax.swaps.getStatus({
+                intent_tx_hash: hubTxHash as `0x${string}`,
+              });
+              return answer.ok
+                ? { code: answer.value.status, fillTxHash: answer.value.fill_tx_hash }
+                : { error: errorLine(answer.error) };
+            } catch (e) {
+              return { error: errorLine(e) };
+            }
+          },
+          sleep,
+          now: Date.now,
+          emit: on,
+        },
+        {
+          releaseMs: TRACKING_RELEASE_MS,
+          budgetMs: FILL_WATCH_MS,
+          intervalMs: 3_000,
+          lateIntervalMs: 10_000,
+        },
+      )
+        .catch((e) => console.error("[vault-action] slow order", e))
+        .finally(() => {
+          relayAnswered(true);
+          settle();
+        });
+
+      if (onDemand) return answered;
+      void done;
+      return true;
+    },
+    [advance, fail, queryClient, settleFailed, settleFilled, sodax],
+  );
+
   const runDeposit = useCallback(
     async (args: RunDepositArgs): Promise<boolean> => {
       if (runningRef.current) return false;
       runningRef.current = true;
+      runRef.current += 1;
       setError(null);
       resetReport();
-      setResponse(null);
+      setSent(null);
       setApproveRequired(null);
       firedRef.current = null;
       unsettledSentRef.current = null;
       lastStatusRef.current = undefined;
+      setSlowStatus({});
       pourRef.current = {
         context: {
           action: "deposit",
@@ -482,9 +889,25 @@ export function useVaultAction(options?: {
         );
         return false;
       };
+      const slow = slowSource(args.srcChainKey);
       try {
         // 1. Build right before executing — the payload deadline is hub time + 5 min.
         advance("building");
+        // A slow source chain's payment can take an hour to reach Sonic, far
+        // past the SDK's five minute default, and an intent that arrives
+        // expired cannot be filled. Its window is set from hub time here.
+        let deadline: bigint | undefined;
+        if (slow) {
+          try {
+            const block = await sodax.hubProvider.publicClient.getBlock({
+              blockTag: "latest",
+            });
+            deadline = block.timestamp + BigInt(slow.intentDeadlineSeconds);
+          } catch (e) {
+            fail(COPY.errCouldNotPrepare, e);
+            return false;
+          }
+        }
         const buildArgs = {
           vault: args.vault,
           srcChainKey: args.srcChainKey,
@@ -492,6 +915,7 @@ export function useVaultAction(options?: {
           inputToken: args.token.address,
           inputAmount: args.inputAmount,
           minOutputAmount: args.minOutputAmount,
+          ...(deadline !== undefined && { deadline }),
         };
         let built = await buildDeposit.mutateAsyncSafe(buildArgs);
         if (!built.ok) {
@@ -583,6 +1007,14 @@ export function useVaultAction(options?: {
               params: { ...built.value.params, dstAddress: args.deliverTo },
             }
           : built.value;
+        if (slow) {
+          return await sendSlow({
+            payload,
+            walletProvider: args.walletProvider,
+            srcChainKey: args.srcChainKey,
+            relayWaitMs: slow.relayWaitMs,
+          });
+        }
         const swapped = await vaultSwap.mutateAsyncSafe({
           ...payload,
           walletProvider: args.walletProvider,
@@ -595,7 +1027,12 @@ export function useVaultAction(options?: {
           return false;
         }
 
-        setResponse(swapped.value);
+        setSent({
+          spokeTxHash: swapped.value.intentDeliveryInfo.srcTxHash,
+          intentId: swapped.value.intent.intentId.toString(),
+          hubTxHash: swapped.value.intentDeliveryInfo.dstTxHash,
+          intentHash: swapped.value.solverExecutionResponse.intent_hash,
+        });
         advance("tracking");
         void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
         void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
@@ -604,19 +1041,21 @@ export function useVaultAction(options?: {
         runningRef.current = false;
       }
     },
-    [advance, approve, buildDeposit, fail, queryClient, resetReport, sodax, vaultSwap, waitForAllowance],
+    [advance, approve, buildDeposit, fail, queryClient, resetReport, sendSlow, sodax, vaultSwap, waitForAllowance],
   );
 
   const runWithdraw = useCallback(
     async (args: RunWithdrawArgs): Promise<boolean> => {
       if (runningRef.current) return false;
       runningRef.current = true;
+      runRef.current += 1;
       setError(null);
       resetReport();
-      setResponse(null);
+      setSent(null);
       firedRef.current = null;
       unsettledSentRef.current = null;
       lastStatusRef.current = undefined;
+      setSlowStatus({});
       pourRef.current = {
         context: {
           action: "withdraw",
@@ -672,6 +1111,15 @@ export function useVaultAction(options?: {
         // hub wallet is authorised via the single sendMessage signature below.
         advance("signing");
         if (!(await onRightChain())) return false;
+        const slow = slowSource(args.srcChainKey);
+        if (slow) {
+          return await sendSlow({
+            payload: built.value,
+            walletProvider: args.walletProvider,
+            srcChainKey: args.srcChainKey,
+            relayWaitMs: slow.relayWaitMs,
+          });
+        }
         const swapped = await vaultSwap.mutateAsyncSafe({
           ...built.value,
           walletProvider: args.walletProvider,
@@ -688,7 +1136,12 @@ export function useVaultAction(options?: {
           return false;
         }
 
-        setResponse(swapped.value);
+        setSent({
+          spokeTxHash: swapped.value.intentDeliveryInfo.srcTxHash,
+          intentId: swapped.value.intent.intentId.toString(),
+          hubTxHash: swapped.value.intentDeliveryInfo.dstTxHash,
+          intentHash: swapped.value.solverExecutionResponse.intent_hash,
+        });
         advance("tracking");
         void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
         void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
@@ -697,18 +1150,27 @@ export function useVaultAction(options?: {
         runningRef.current = false;
       }
     },
-    [advance, buildWithdraw, fail, queryClient, resetReport, vaultSwap],
+    [advance, buildWithdraw, fail, queryClient, resetReport, sendSlow, vaultSwap],
   );
 
   const reset = useCallback(() => {
+    // A slow order still running belongs to the run being left: it finishes
+    // its work, award and reports included, but no longer writes here. A
+    // reopened drawer says it is still on its way.
+    const travelling = inFlightRef.current;
+    if (travelling && travelling.run === runRef.current) {
+      setEarlierOrder(travelling);
+    }
+    runRef.current += 1;
     setStep("idle");
     setError(null);
     resetReport();
-    setResponse(null);
+    setSent(null);
     setApproveRequired(null);
     firedRef.current = null;
     unsettledSentRef.current = null;
     lastStatusRef.current = undefined;
+    setSlowStatus({});
     pourRef.current = null;
   }, [resetReport]);
 
@@ -717,11 +1179,16 @@ export function useVaultAction(options?: {
     error,
     reportState,
     approveRequired,
-    fillPhase: fillPhase(step, statusCode),
+    fillPhase: fillPhase(step, statusCode, sent?.hubTxHash !== undefined),
     fillTxHash,
-    hubTxHash: response?.intentDeliveryInfo.dstTxHash,
+    hubTxHash: sent?.hubTxHash,
+    spokeTxUrl: sent?.spokeTxUrl,
+    spokeTxHash: sent?.spokeTxUrl ? sent.spokeTxHash : undefined,
+    earlierOrder: earlierOrder
+      ? { spokeTxHash: earlierOrder.spokeTxHash, spokeTxUrl: earlierOrder.spokeTxUrl }
+      : null,
     pending: isPipelineStep(step),
-    locked: isPourLocked(step),
+    locked: isPourLocked(step, sent?.closable === true),
     runDeposit,
     runWithdraw,
     reset,

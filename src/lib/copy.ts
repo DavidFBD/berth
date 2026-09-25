@@ -386,6 +386,19 @@ export type Copy = {
   unsettledBody: string;
   /** Said while the screen keeps watching the order. */
   unsettledWatching: string;
+  /** A Bitcoin payment broadcast and on its way to Sonic. Not a failure. */
+  confirmingTitle: string;
+  confirmingBody: string;
+  /** Said while the drawer may close and the order carries on without it. */
+  confirmingClose: string;
+  /** The link that follows the payment on its own chain. */
+  followPayment: string;
+  /** A payment that did not reach Sonic inside the relay wait. */
+  notArrivedBody: string;
+  /** Shown only beside a link that follows the payment on mempool.space. */
+  notArrivedWatching: string;
+  /** A reopened drawer, while an earlier order is still on its way. */
+  earlierOrderOnItsWay: string;
   /** Accessible names that never render visibly. */
   ariaAmount: string;
   ariaAmountIn: (currency: string) => string;
@@ -856,6 +869,17 @@ export const COPY: Copy = {
     "Your order left your wallet and is taking longer than usual. Your funds are not lost, and it may still complete on its own.",
   unsettledWatching:
     "This screen updates if it settles while it stays open. The reference below follows it on the Sonic explorer.",
+  confirmingTitle: "Bitcoin sent. Waiting for it to confirm.",
+  confirmingBody:
+    "Bitcoin usually confirms in 10 to 30 minutes, and now and then takes an hour. Your funds are not lost while it does.",
+  confirmingClose:
+    "You can close this. Leave Berth open in a tab and the order carries on by itself. Once it settles, it shows in what you own.",
+  followPayment: "Follow it on mempool.space",
+  notArrivedBody:
+    "Your order was sent but has not reached Sonic yet, which is slower than usual. Your funds are not lost.",
+  notArrivedWatching: "The link below follows the payment on mempool.space.",
+  earlierOrderOnItsWay:
+    "An earlier order is still on its way. Let it settle before placing the same one again.",
   ariaAmount: "Amount",
   ariaAmountIn: (currency) => `Amount in ${currency}`,
   ariaSharesToWithdraw: "Shares to withdraw",

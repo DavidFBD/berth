@@ -1,6 +1,7 @@
 import {
   ChainKeys,
   getSupportedSolverTokens,
+  isBitcoinChainKeyType,
   spokeChainConfig,
   type SpokeChainKey,
   type XToken,
@@ -92,4 +93,18 @@ export function toBalanceReadToken(token: XToken): XToken {
 /** A transaction on the Sonic hub, on the explorer viem knows for Sonic. */
 export function hubTxUrl(txHash: string): string {
   return `${sonic.blockExplorers.default.url}/tx/${txHash}`;
+}
+
+/**
+ * A transaction on a source chain, where the order machine has a reason to
+ * point someone at it: today only Bitcoin, whose payment can take an hour to
+ * reach Sonic and is followed on mempool.space meanwhile.
+ */
+export function spokeTxUrl(
+  chainKey: SpokeChainKey,
+  txHash: string,
+): string | undefined {
+  return isBitcoinChainKeyType(chainKey)
+    ? `https://mempool.space/tx/${txHash}`
+    : undefined;
 }
