@@ -224,7 +224,11 @@ function shadowLine(
         quantity.set(order.symbol, Math.max(heldBefore - (order.quantity ?? 0), 0));
       }
     }
-    const price = point.live ? (livePrice ?? closeOn(marks, point.day)) : closeOn(marks, point.day);
+    // Today's point takes the live price, or the latest close when there
+    // is none; a stored day takes its own close or nothing.
+    const price = point.live
+      ? (livePrice ?? closeOnOrBefore(marks, point.day))
+      : closeOn(marks, point.day);
     const total = [...units.values()].reduce((sum, value) => sum + value, 0);
     values.push(price === undefined ? null : total * price);
   }
@@ -366,4 +370,20 @@ export function availableRanges(input: HistoryInput): Range[] {
     available.push("all");
   }
   return available;
+}
+
+/**
+ * Every range worth offering, computed. Since first buy is always present,
+ * even when too short to draw, so a first day still has something to say.
+ */
+export function historyRanges(input: HistoryInput): {
+  ranges: Partial<Record<Range, HistoryResult>>;
+  available: Range[];
+} {
+  const available = availableRanges(input);
+  const ranges: Partial<Record<Range, HistoryResult>> = {};
+  for (const range of new Set<Range>([...available, "since"])) {
+    ranges[range] = portfolioHistory(input, range);
+  }
+  return { ranges, available };
 }

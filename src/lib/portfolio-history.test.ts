@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Marks, OrderFacts } from "@/lib/benchmark";
 import {
   availableRanges,
+  historyRanges,
   portfolioHistory,
   type HistoryInput,
   type PortfolioDay,
@@ -328,5 +329,18 @@ describe("today, live", () => {
     expect(result.days.at(-1)?.benchmark).toBeCloseTo(units * 54, 10);
     // 110, then 165 on 160 invested.
     expect(result.changePct).toBeCloseTo(((110 / 100) * (165 / 160) - 1) * 100, 10);
+  });
+});
+
+describe("historyRanges", () => {
+  it("computes what is offered, and since first buy even on the first day", () => {
+    const first = historyRanges({
+      days: days({ "2026-09-24": 100 }),
+      orders: [buy("2026-09-24T15:00:00Z", 100)],
+      benchmarkMarks: SPY,
+    });
+    expect(first.available).toEqual([]);
+    expect(Object.keys(first.ranges)).toEqual(["since"]);
+    expect(first.ranges.since?.benchmarkStatus).toBe("too_short");
   });
 });

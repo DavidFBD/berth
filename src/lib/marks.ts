@@ -57,6 +57,26 @@ export function markStartSeconds(day: IsoDay): number {
 
 export type StoredMark = { day: IsoDay; close: number };
 
+/** How far from the mark time a point may fall and still be that day's mark. */
+export const MARK_TOLERANCE_MINUTES = 30;
+
+/**
+ * Only the points taken at the mark time. DefiLlama answers each slot with
+ * the nearest price it has, so a slot it has no data near (or one still in
+ * the future when the request is made) comes back at another time of day;
+ * that is a different price, not the close, and is not stored.
+ */
+export function onTheMark<T extends { timestamp: number }>(
+  points: readonly T[],
+  toleranceMinutes = MARK_TOLERANCE_MINUTES,
+): T[] {
+  return points.filter((point) => {
+    const day = new Date(point.timestamp * 1000).toISOString().slice(0, 10);
+    const offset = Math.abs(point.timestamp * 1000 - Date.parse(markAsOf(day)));
+    return offset <= toleranceMinutes * 60_000;
+  });
+}
+
 /**
  * What a fetch of raw points means for the table, from `writeFrom` on.
  *

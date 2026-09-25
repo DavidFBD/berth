@@ -123,3 +123,35 @@ alter table orders add column if not exists hold_attempted_at timestamptz;
 create index if not exists orders_hold_due_idx
   on orders ((coalesce(filled_at, placed_at, created_at)))
   where direction = 'buy' and hold_checked_at is null;
+
+-- Daily closes per listing and benchmark (lib/marks), kept past DefiLlama's
+-- ninety day reach so a portfolio can be drawn for as long as it existed.
+-- One row per market day, taken at 21:30 UTC, after the New York close;
+-- written by /api/cron/marks and `pnpm marks:backfill`. A day the despike
+-- rejected has no row; a missing mark stays missing.
+create table if not exists marks (
+  symbol text not null,
+  day date not null,
+  close numeric not null check (close > 0),
+  source text not null default 'defillama',
+  created_at timestamptz not null default now(),
+  primary key (symbol, day)
+);
+
+-- An account's value at each day's close (lib/portfolio-days). 'snapshot'
+-- rows come from the balances read on chain by /api/cron/portfolio-days, so
+-- a transfer the orders never saw is still counted; 'ledger' rows are past
+-- days rebuilt from the orders by `pnpm portfolio:backfill`, only for an
+-- account whose balance the orders fully explain. `holdings` is
+-- [{symbol, quantity, price, source}], source 'mark' or 'oracle'. `as_of`
+-- is when the holdings were read (a ledger day: its close).
+create table if not exists portfolio_days (
+  user_id uuid not null references users(id) on delete cascade,
+  day date not null,
+  value_usd numeric not null check (value_usd >= 0),
+  holdings jsonb not null default '[]'::jsonb,
+  source text not null check (source in ('snapshot', 'ledger')),
+  as_of timestamptz not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, day)
+);

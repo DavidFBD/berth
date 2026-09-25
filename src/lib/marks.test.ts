@@ -3,6 +3,7 @@ import {
   addDays,
   markAsOf,
   markStartSeconds,
+  onTheMark,
   settleMarks,
   subtractMonths,
 } from "@/lib/marks";
@@ -58,5 +59,16 @@ describe("settleMarks", () => {
     const { keep, drop } = settleMarks(points, "2026-09-17");
     expect(keep.map((mark) => mark.day)).toEqual(["2026-09-17", "2026-09-21"]);
     expect(drop).toEqual(["2026-09-18"]);
+  });
+});
+
+describe("onTheMark", () => {
+  it("keeps points within half an hour of 21:30 UTC and nothing else", () => {
+    const points = [
+      { timestamp: at("2026-09-22", "21:28:51"), price: 1 },
+      { timestamp: at("2026-09-23", "22:05:00"), price: 2 },
+      { timestamp: at("2026-09-24", "12:13:17"), price: 3 },
+    ];
+    expect(onTheMark(points).map((point) => point.price)).toEqual([1]);
   });
 });
