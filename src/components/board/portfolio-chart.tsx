@@ -177,7 +177,7 @@ export function PortfolioChart({
         <>
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 w-px -translate-x-1/2 bg-muted-foreground/45"
+            className="pointer-events-none absolute inset-y-0 w-px -translate-x-1/2 bg-muted-foreground/90"
             style={{ left: `${xAt(scrubIndex, count)}%` }}
           />
           {withBenchmark && benchmarkValues[scrubIndex] !== null && (

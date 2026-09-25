@@ -20,6 +20,7 @@ import MARKS_JSON from "./portfolio-marks.json";
  *
  *   /dev/account?portfolio=three-months   the whole stored stretch, four buys and a sell
  *   /dev/account?portfolio=four-days      a first buy four market days ago
+ *   /dev/account?portfolio=large          the same stretch at four-digit dollars
  *   /dev/account?portfolio=value-only     a buy paid in a coin with no price
  *   /dev/account?portfolio=first-day      bought today, nothing to draw yet
  *   /dev/account?portfolio=empty          nothing held
@@ -38,6 +39,7 @@ import MARKS_JSON from "./portfolio-marks.json";
 
 export const PORTFOLIO_STATES = [
   "three-months",
+  "large",
   "four-days",
   "value-only",
   "first-day",
@@ -61,6 +63,16 @@ const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
       { symbol: "AAPL", day: "2026-07-15", usd: 25 },
       { symbol: "TSLA", day: "2026-08-05", usd: 20 },
       { symbol: "NVDA", day: "2026-08-20", usd: 15 },
+    ],
+    sells: [{ symbol: "AAPL", day: "2026-09-02", share: 0.5 }],
+  },
+  large: {
+    from: "2026-07-01",
+    buys: [
+      { symbol: "NVDA", day: "2026-07-01", usd: 510 },
+      { symbol: "AAPL", day: "2026-07-15", usd: 320 },
+      { symbol: "TSLA", day: "2026-08-05", usd: 255 },
+      { symbol: "NVDA", day: "2026-08-20", usd: 190 },
     ],
     sells: [{ symbol: "AAPL", day: "2026-09-02", share: 0.5 }],
   },
@@ -121,6 +133,11 @@ function build(scene: Scene) {
           quantity,
           usd: event.unpriced ? null : event.usd,
           placedAt: placed(event.day),
+          // What each benchmark stood at when the buy was placed, as the
+          // server stores it per order (order_marks); here, that day's close.
+          benchmarkMarks: Object.fromEntries(
+            BENCHMARKS.map(({ symbol }) => [symbol, closeOnOrBefore(MARKS[symbol], event.day)]),
+          ),
         });
       } else {
         const quantity = (held.get(event.symbol) ?? 0) * event.share;
@@ -177,9 +194,23 @@ function seededClient(state: PortfolioState): { client: QueryClient; rows: Holdi
     const { ranges, available } = historyRanges({
       days,
       orders,
+      benchmarkSymbol: benchmark.symbol,
       benchmarkMarks: MARKS[benchmark.symbol],
       listingCloses: MARKS,
     });
+    // The contract: when the orders cannot be squared (a coin with no
+    // price, a balance they do not explain) there is no percentage either,
+    // only the dollar line. Held here too, whatever the arithmetic gives.
+    for (const result of Object.values(ranges)) {
+      if (
+        result &&
+        (result.benchmarkStatus === "unpriced_orders" ||
+          result.benchmarkStatus === "unexplained_balance")
+      ) {
+        result.changePct = null;
+        result.benchmarkPct = null;
+      }
+    }
     const response: PortfolioHistoryResponse = {
       benchmark: { symbol: benchmark.symbol, name: benchmark.name },
       benchmarks: BENCHMARKS.map(({ symbol, name }) => ({ symbol, name })),

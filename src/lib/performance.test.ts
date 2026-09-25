@@ -30,7 +30,7 @@ describe("changeDirection", () => {
 describe("formatPercentChange", () => {
   it("signs a gain and a loss, but never a zero", () => {
     expect(formatPercentChange(2.14)).toBe("+2.14%");
-    expect(formatPercentChange(-3.7)).toBe("-3.70%");
+    expect(formatPercentChange(-3.7)).toBe("\u22123.70%");
     expect(formatPercentChange(0)).toBe("0.00%");
   });
 

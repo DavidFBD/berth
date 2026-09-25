@@ -161,12 +161,18 @@ export type Copy = {
   portfolioYou: string;
   /** Before the benchmark's name, by id: "the same dollars in the" S&P 500 fund, "in" Gold. */
   portfolioSameDollarsIn: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
-  /** The chooser's menu: its accessible name and its heading. */
+  /** The chooser's menu heading, and the description its button carries. */
   portfolioCompareWith: string;
+  portfolioChooserHint: string;
   /** One day stored and nothing to draw yet. */
   portfolioFirstDay: string;
-  /** Why the benchmark line is not drawn, one sentence each. */
-  portfolioNoBenchmark: Record<"unpriced_orders" | "unexplained_balance", string>;
+  /**
+   * Why the benchmark line is not drawn, one sentence each. `name` is the
+   * chooser with its article ("the S&P 500 fund", "Gold").
+   */
+  portfolioNoBenchmark: Record<"unpriced_orders" | "unexplained_balance", (name: string) => string>;
+  /** The article a benchmark's name takes mid sentence, by id: "the " or nothing. */
+  benchmarkArticle: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
   /** `name` is the chooser, so another benchmark is one tap away. */
   portfolioNoMarks: (name: string) => string;
   /** The range control, by range id, and its accessible name. */
@@ -554,6 +560,12 @@ export type Copy = {
   nudgeDismissLabel: string;
 };
 
+/** "first day", "1 market day", "4 market days". */
+function marketDays(days: number): string {
+  if (days <= 0) return "first day";
+  return days === 1 ? "1 market day" : `${days} market days`;
+}
+
 export const COPY: Copy = {
   brand: "Berth",
   tagline: "A place to tie up.",
@@ -652,13 +664,12 @@ export const COPY: Copy = {
   holdingsEmpty: "Nothing yet. Your first buy lands here.",
   holdingSince: (date) => `Since ${date}`,
   holdingBenchmark: "S&P 500 fund",
-  holdingsMarketDays: (days) => (days === 1 ? "1 market day" : `${days} market days`),
+  holdingsMarketDays: (days) => marketDays(days),
   moveInTheNews: (source) => `In the news: ${source}`,
   moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
-    "The line is your money at each day's close, beside the same dollars put on the same days into what you compare it with, both at that day's prices. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 fund. It describes what happened, and says nothing about what to do.",
-  portfolioSince: (date, days) =>
-    `Since ${date}, ${days === 1 ? "1 market day" : `${days} market days`}.`,
+    "The line is your money each day at the close, and today at the live price, beside the same dollars put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 fund. It describes what happened, and says nothing about what to do.",
+  portfolioSince: (date, days) => `Since ${date}, ${marketDays(days)}.`,
   portfolioYou: "You",
   portfolioSameDollarsIn: {
     SPY: "the same dollars in the",
@@ -668,13 +679,15 @@ export const COPY: Copy = {
     SGOV: "the same dollars in",
   },
   portfolioCompareWith: "Compare with",
-  portfolioFirstDay: "Your first day. The line starts once tomorrow's prices are in.",
+  portfolioChooserHint: "What your money is compared with. Choose another.",
+  portfolioFirstDay: "Your first day. The line starts once the next market day's prices are in.",
   portfolioNoBenchmark: {
-    unpriced_orders:
-      "A buy was paid in a coin we could not price, so there is no fund to compare with.",
-    unexplained_balance:
-      "Your balance does not match your orders here, so there is no fund to compare with.",
+    unpriced_orders: (name) =>
+      `A buy was paid in a coin we could not price, so ${name} cannot be set beside it.`,
+    unexplained_balance: (name) =>
+      `Your balance and your orders here do not agree, so ${name} cannot be set beside it.`,
   },
+  benchmarkArticle: { SPY: "the ", QQQ: "the ", PAXG: "", BTC: "", SGOV: "" },
   portfolioNoMarks: (name) => `No prices for ${name} yet.`,
   portfolioRanges: {
     "1w": "1W",

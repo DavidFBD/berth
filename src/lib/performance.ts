@@ -28,8 +28,10 @@ export function changeDirection(
 }
 
 /**
- * A change as a person reads it: "+2.14%", "-3.70%", "0.00%". Zero carries
+ * A change as a person reads it: "+2.14%", "−3.70%", "0.00%". Zero carries
  * no sign, because a plus on nothing reads as a gain that did not happen.
+ * A loss takes a true minus sign (U+2212), not a hyphen, so it is as wide
+ * as the plus and reads as a sign. Display only: nothing parses this.
  */
 export function formatPercentChange(changePct: number, digits = 2): string {
   if (!Number.isFinite(changePct)) return "";
@@ -38,7 +40,9 @@ export function formatPercentChange(changePct: number, digits = 2): string {
     signDisplay: "exceptZero",
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(changePct / 100);
+  })
+    .format(changePct / 100)
+    .replace("-", "\u2212");
 }
 
 /**

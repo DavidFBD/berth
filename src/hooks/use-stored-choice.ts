@@ -31,14 +31,19 @@ function read(key: string): string | null {
   return memory.get(key) ?? null;
 }
 
-export function useStoredChoice(key: string): [string | null, (next: string) => void] {
+/**
+ * `key` may be null while it is not yet known (a per-account key before the
+ * account is): the value is then null and setting it does nothing.
+ */
+export function useStoredChoice(key: string | null): [string | null, (next: string) => void] {
   const value = useSyncExternalStore(
-    useCallback((listener: () => void) => subscribe(key, listener), [key]),
-    () => read(key),
+    useCallback((listener: () => void) => (key ? subscribe(key, listener) : () => {}), [key]),
+    () => (key ? read(key) : null),
     () => null,
   );
   const set = useCallback(
     (next: string) => {
+      if (!key) return;
       memory.set(key, next);
       try {
         window.localStorage.setItem(key, next);

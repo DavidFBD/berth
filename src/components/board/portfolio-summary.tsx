@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { CaretDown, Check } from "@phosphor-icons/react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +15,9 @@ import { cn } from "@/lib/utils";
 
 const BENCHMARK_KEY = "berth.portfolio.benchmark";
 const RANGE_KEY = "berth.portfolio.range";
+
+/** Range labels that are words, set in the body font. */
+const WORD_RANGES: ReadonlySet<Range> = new Set<Range>(["since", "all"]);
 
 const TONE: Record<ChangeDirection, string> = {
   up: "text-good",
@@ -53,22 +56,33 @@ function defaultRange(available: readonly Range[], ranges: Partial<Record<Range,
 /**
  * The benchmark's name in the headline, and the way to change it: a button
  * that opens a small menu of the five. The choice is kept per viewer.
+ *
+ * `shown` is the benchmark the numbers beside it belong to, so the name and
+ * the figure never disagree while a new choice loads; `value` is the choice
+ * itself, which the menu checks. The button's name is just the visible name,
+ * so the sentence reads on naturally; its purpose is its description.
  */
 function BenchmarkChooser({
   value,
+  shown,
   onChange,
 }: {
   value: BenchmarkSymbol;
+  shown: BenchmarkSymbol;
   onChange: (symbol: BenchmarkSymbol) => void;
 }) {
   const copy = useCopy();
+  const hintId = useId();
   return (
     <Menu.Root>
+      <span id={hintId} hidden>
+        {copy.portfolioChooserHint}
+      </span>
       <Menu.Trigger
-        aria-label={`${copy.portfolioCompareWith}: ${copy.benchmarkNames[value]}`}
+        aria-describedby={hintId}
         className="inline-flex items-baseline gap-0.5 rounded-sm font-medium text-foreground underline decoration-border decoration-1 underline-offset-[3px] outline-none transition-colors duration-150 ease-lift hover:decoration-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:decoration-foreground"
       >
-        {copy.benchmarkNames[value]}
+        {copy.benchmarkNames[shown]}
         <CaretDown weight="duotone" className="size-3 self-center" aria-hidden />
       </Menu.Trigger>
       <Menu.Portal>
@@ -119,7 +133,9 @@ function RangeControl({
 }) {
   const copy = useCopy();
   return (
-    <div role="group" aria-label={copy.portfolioRangeLabel} className="mt-1.5 flex flex-wrap gap-1">
+    // The first button's label sits flush with the text column: the row is
+    // pulled left by exactly one button's padding.
+    <div role="group" aria-label={copy.portfolioRangeLabel} className="mt-1 -ml-2.5 flex flex-wrap gap-1">
       {RANGES.filter((range) => available.includes(range)).map((range) => (
         <button
           key={range}
@@ -127,7 +143,9 @@ function RangeControl({
           aria-pressed={range === value}
           onClick={() => onChange(range)}
           className={cn(
-            "money rounded-md px-2 py-1 text-[11px] leading-none tabular-nums outline-none transition-colors duration-150 ease-lift focus-visible:ring-3 focus-visible:ring-ring/50",
+            // Numbers in the money font; "First buy" and "All" are words.
+            WORD_RANGES.has(range) ? "" : "money tabular-nums",
+            "inline-flex min-h-8 items-center rounded-md px-2.5 text-[11px] leading-none outline-none transition-colors duration-150 ease-lift focus-visible:ring-3 focus-visible:ring-ring/50",
             range === value
               ? "bg-muted font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -187,7 +205,7 @@ export function PortfolioSummary({
           <Skeleton className="h-3.5 w-40" />
         </div>
         <div className="mt-2 h-28 sm:h-36" />
-        <div className="mt-1.5 h-[19px]" />
+        <div className="mt-1 h-8" />
       </div>
     );
   }
@@ -210,57 +228,75 @@ export function PortfolioSummary({
   const stale = query.isPlaceholderData;
   const status = result.benchmarkStatus;
   const withBenchmark = status === "ok" && result.benchmarkPct !== null;
+  const chooser = (
+    <BenchmarkChooser value={benchmark} shown={shownBenchmark} onChange={setBenchmark} />
+  );
+  // The chooser with the article its name takes mid sentence.
+  const named = (
+    <>
+      {copy.benchmarkArticle[shownBenchmark]}
+      {chooser}
+    </>
+  );
 
-  let headline: ReactNode;
-  if (scrub !== null && result.days[scrub]) {
-    const day = result.days[scrub];
-    headline = (
-      <p className="money text-xs leading-5 whitespace-nowrap text-muted-foreground tabular-nums">
-        {shortDate(day.day)} <span aria-hidden="true">·</span>{" "}
-        <span className="text-foreground">
-          {copy.portfolioYou} {money.format(day.value)}
-        </span>
-        {withBenchmark && day.benchmark !== null && (
-          <>
-            {" "}
-            <span aria-hidden="true">·</span> {copy.benchmarkNames[shownBenchmark]}{" "}
-            {money.format(day.benchmark)}
-          </>
-        )}
-      </p>
-    );
-  } else {
-    headline = (
-      <p className="text-xs leading-5 text-muted-foreground">
-        {copy.portfolioSince(shortDate(result.since ?? result.days[0].day), result.tradingDays)}{" "}
-        {result.changePct !== null && (
+  const scrubbed = scrub !== null ? result.days[scrub] : undefined;
+  const readout = scrubbed && (
+    // Over the sentence, never instead of it: the sentence keeps its
+    // height, hidden, so nothing below moves, and this may wrap.
+    <p className="absolute inset-0 flex flex-wrap content-center items-baseline gap-x-1.5 text-xs leading-5 text-muted-foreground">
+      <span className="whitespace-nowrap">{shortDate(scrubbed.day)}</span>
+      <span aria-hidden="true">·</span>
+      <span className="whitespace-nowrap text-foreground">
+        {copy.portfolioYou}{" "}
+        <span className="money tabular-nums">{money.format(scrubbed.value)}</span>
+      </span>
+      {withBenchmark && scrubbed.benchmark !== null && (
+        <>
+          <span aria-hidden="true">·</span>
           <span className="whitespace-nowrap">
-            {copy.portfolioYou} <Pct value={result.changePct} dim={stale} />
-            {withBenchmark ? "," : "."}
+            {copy.benchmarkNames[shownBenchmark]}{" "}
+            <span className="money tabular-nums">{money.format(scrubbed.benchmark)}</span>
           </span>
-        )}{" "}
-        {withBenchmark && (
-          <>
-            {copy.portfolioSameDollarsIn[benchmark]}{" "}
-            <BenchmarkChooser value={benchmark} onChange={setBenchmark} />{" "}
-            <Pct value={result.benchmarkPct!} dim={stale} />.
-          </>
-        )}
-        {status === "unpriced_orders" || status === "unexplained_balance" ? (
-          copy.portfolioNoBenchmark[status]
-        ) : status === "no_marks" ? (
-          <NoMarks benchmark={benchmark} onChange={setBenchmark} />
-        ) : null}
-      </p>
-    );
+        </>
+      )}
+    </p>
+  );
+
+  let reason: ReactNode = null;
+  if (status === "unpriced_orders" || status === "unexplained_balance") {
+    reason = <WithChooser sentence={copy.portfolioNoBenchmark[status]} name={named} />;
+  } else if (status === "no_marks") {
+    reason = <WithChooser sentence={copy.portfolioNoMarks} name={chooser} />;
   }
+
+  const headline = (
+    <p className={cn("text-xs leading-5 text-muted-foreground", readout && "invisible")}>
+      {copy.portfolioSince(shortDate(result.since ?? result.days[0].day), result.tradingDays)}{" "}
+      {result.changePct !== null && (
+        <span className="whitespace-nowrap">
+          {copy.portfolioYou} <Pct value={result.changePct} dim={stale} />
+          {withBenchmark ? "," : "."}
+        </span>
+      )}{" "}
+      {withBenchmark && (
+        <>
+          {copy.portfolioSameDollarsIn[shownBenchmark]} {chooser}{" "}
+          <Pct value={result.benchmarkPct!} dim={stale} />.
+        </>
+      )}
+      {reason}
+    </p>
+  );
 
   return (
     <div className="px-4 pb-3">
       {totalLine}
-      {/* Two lines tall on a phone either way, so the readout replacing the
-          sentence never moves the chart. */}
-      <div className="mt-1.5 flex min-h-10 items-center">{headline}</div>
+      {/* At least two lines tall, and never a different height while
+          scrubbing: the readout is laid over the sentence, not swapped in. */}
+      <div className="relative mt-1.5 flex min-h-10 items-center">
+        {headline}
+        {readout}
+      </div>
       <div className="mt-2">
         <PortfolioChart
           days={result.days}
@@ -282,21 +318,16 @@ export function PortfolioSummary({
   );
 }
 
-/** "No prices for [Gold] yet.", the name still the chooser so another is one tap away. */
-function NoMarks({
-  benchmark,
-  onChange,
-}: {
-  benchmark: BenchmarkSymbol;
-  onChange: (symbol: BenchmarkSymbol) => void;
-}) {
-  const copy = useCopy();
-  // The sentence is copy's; the name inside it becomes the chooser.
-  const [before, after = ""] = copy.portfolioNoMarks("\u0000").split("\u0000");
+/**
+ * A sentence from copy with the benchmark's name inside it, where the name
+ * becomes the chooser, so another benchmark is one tap away in every state.
+ */
+function WithChooser({ sentence, name }: { sentence: (name: string) => string; name: ReactNode }) {
+  const [before, after = ""] = sentence("\u0000").split("\u0000");
   return (
     <>
       {before}
-      <BenchmarkChooser value={benchmark} onChange={onChange} />
+      {name}
       {after}
     </>
   );
