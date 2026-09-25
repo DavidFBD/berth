@@ -43,6 +43,10 @@ function Pct({ value, dim }: { value: number; dim?: boolean }) {
   );
 }
 
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /** Which range opens: a month when there is one, else the longest there is. */
 function defaultRange(available: readonly Range[], ranges: Partial<Record<Range, HistoryResult>>): Range {
   if (available.includes("1m")) return "1m";
@@ -280,7 +284,11 @@ export function PortfolioSummary({
       )}{" "}
       {withBenchmark && (
         <>
-          {copy.portfolioSameDollarsIn[shownBenchmark]} {chooser}{" "}
+          {/* Without your percentage before it, this starts the sentence. */}
+          {result.changePct === null
+            ? capitalize(copy.portfolioSameDollarsIn[shownBenchmark])
+            : copy.portfolioSameDollarsIn[shownBenchmark]}{" "}
+          {chooser}{" "}
           <Pct value={result.benchmarkPct!} dim={stale} />.
         </>
       )}

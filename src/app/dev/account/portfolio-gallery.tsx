@@ -198,19 +198,6 @@ function seededClient(state: PortfolioState): { client: QueryClient; rows: Holdi
       benchmarkMarks: MARKS[benchmark.symbol],
       listingCloses: MARKS,
     });
-    // The contract: when the orders cannot be squared (a coin with no
-    // price, a balance they do not explain) there is no percentage either,
-    // only the dollar line. Held here too, whatever the arithmetic gives.
-    for (const result of Object.values(ranges)) {
-      if (
-        result &&
-        (result.benchmarkStatus === "unpriced_orders" ||
-          result.benchmarkStatus === "unexplained_balance")
-      ) {
-        result.changePct = null;
-        result.benchmarkPct = null;
-      }
-    }
     const response: PortfolioHistoryResponse = {
       benchmark: { symbol: benchmark.symbol, name: benchmark.name },
       benchmarks: BENCHMARKS.map(({ symbol, name }) => ({ symbol, name })),
