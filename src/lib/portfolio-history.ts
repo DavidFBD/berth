@@ -33,7 +33,10 @@ import { MARK_MINUTES, addDays, markAsOf, subtractMonths, type IsoDay } from "@/
  *   (a sell's proceeds are paid on another chain and not read).
  * - `benchmarkPct`: the benchmark's own price change over the same days.
  *
- * REFUSALS. The benchmark line is null, never guessed, when a buy in or
+ * REFUSALS. The benchmark line is null, never guessed, when the balance
+ * held is not what the orders add up to ('unexplained_balance': a sell or a
+ * transfer the ledger never saw, so the shadow would be buying for money
+ * that is not there); when a buy in or
  * before the window has no dollar cost, a sell has no quantity, or a sell
  * is larger than the orders say was held ('unpriced_orders'); or when the
  * benchmark has no close to buy at ('no_marks'). A day the benchmark has
@@ -86,11 +89,22 @@ export type HistoryInput = {
   /** Stored closes per listing symbol: what values a flow the order does not price. */
   listingCloses?: Readonly<Record<string, Marks>>;
   live?: LivePoint;
+  /**
+   * Whether the orders account for the balance held (lib/portfolio-days
+   * ledgerExplains), judged by the caller against the freshest balances it
+   * has. Absent means yes.
+   */
+  balanceExplained?: boolean;
 };
 
 export type HistoryPoint = { day: IsoDay; value: number; benchmark: number | null };
 
-export type BenchmarkStatus = "ok" | "unpriced_orders" | "no_marks" | "too_short";
+export type BenchmarkStatus =
+  | "ok"
+  | "unexplained_balance"
+  | "unpriced_orders"
+  | "no_marks"
+  | "too_short";
 
 export type HistoryResult = {
   range: Range;
@@ -184,8 +198,10 @@ function shadowLine(
   orders: readonly Order[],
   marks: Marks,
   livePrice: number | null,
-): { values: (number | null)[]; status: "ok" | "unpriced_orders" | "no_marks" } {
+  balanceExplained: boolean,
+): { values: (number | null)[]; status: Exclude<BenchmarkStatus, "too_short"> } {
   const none = () => series.map(() => null);
+  if (!balanceExplained) return { values: none(), status: "unexplained_balance" };
   const lastAsOf = series.at(-1)?.asOf ?? -Infinity;
   const counted = orders.filter((order) => order.at <= lastAsOf);
 
@@ -284,7 +300,13 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
   if (from === -1) return empty;
 
   const livePrice = input.live?.benchmarkPrice ?? null;
-  const shadow = shadowLine(series, orders, input.benchmarkMarks, livePrice);
+  const shadow = shadowLine(
+    series,
+    orders,
+    input.benchmarkMarks,
+    livePrice,
+    input.balanceExplained ?? true,
+  );
   const window = series.slice(from);
   const days: HistoryPoint[] = window.map((point, index) => ({
     day: point.day,

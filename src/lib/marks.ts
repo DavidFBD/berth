@@ -57,23 +57,50 @@ export function markStartSeconds(day: IsoDay): number {
 
 export type StoredMark = { day: IsoDay; close: number };
 
-/** How far from the mark time a point may fall and still be that day's mark. */
+/** How far past the mark time a point may fall and still be that day's mark. */
 export const MARK_TOLERANCE_MINUTES = 30;
 
+/** The nth Sunday of a month (1 based), as a day of the month. */
+function nthSunday(year: number, month: number, n: number): number {
+  const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  return 1 + ((7 - first) % 7) + (n - 1) * 7;
+}
+
 /**
- * Only the points taken at the mark time. DefiLlama answers each slot with
- * the nearest price it has, so a slot it has no data near (or one still in
- * the future when the request is made) comes back at another time of day;
- * that is a different price, not the close, and is not stored.
+ * The New York close on `day`, in minutes past midnight UTC: 16:00 in New
+ * York is 20:00 UTC under daylight saving (second Sunday of March to first
+ * Sunday of November) and 21:00 UTC otherwise. Early closes (13:00) come
+ * sooner, which only widens what counts as after the close.
+ */
+export function closeUtcMinutes(day: IsoDay): number {
+  const [year, month, date] = day.split("-").map(Number);
+  const start = `${year}-03-${String(nthSunday(year, 3, 2)).padStart(2, "0")}`;
+  const end = `${year}-11-${String(nthSunday(year, 11, 1)).padStart(2, "0")}`;
+  const iso = `${year}-${String(month).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+  return iso >= start && iso < end ? 20 * 60 : 21 * 60;
+}
+
+/**
+ * Only the points that are that day's close: taken after the New York
+ * close and no later than half an hour past the mark time. DefiLlama
+ * answers each slot with the nearest price it has; where it has one near
+ * 21:30 it is used, and in its first weeks (late June to mid July 2026)
+ * its daily prints for these tokens fall around 20:55 UTC, still after the
+ * summer close. A point from before the close (or a slot still in the
+ * future when the request is made, answered with a price from earlier in
+ * the day) is a different price, not the close, and is not stored.
  */
 export function onTheMark<T extends { timestamp: number }>(
   points: readonly T[],
   toleranceMinutes = MARK_TOLERANCE_MINUTES,
 ): T[] {
   return points.filter((point) => {
-    const day = new Date(point.timestamp * 1000).toISOString().slice(0, 10);
-    const offset = Math.abs(point.timestamp * 1000 - Date.parse(markAsOf(day)));
-    return offset <= toleranceMinutes * 60_000;
+    const ms = point.timestamp * 1000;
+    const day = new Date(ms).toISOString().slice(0, 10);
+    const midnight = Date.parse(`${day}T00:00:00Z`);
+    const afterClose = ms >= midnight + closeUtcMinutes(day) * 60_000;
+    const notLate = ms <= Date.parse(markAsOf(day)) + toleranceMinutes * 60_000;
+    return afterClose && notLate;
   });
 }
 

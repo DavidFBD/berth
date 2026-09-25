@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { BENCHMARKS, DEFAULT_BENCHMARK, findBenchmark, type Benchmark } from "@/lib/benchmarks";
 import { isTradingDay } from "@/lib/market-calendar";
 import { MARKS_MARKET_ID_BY_SYMBOL } from "@/lib/market-ids";
-import { valueHoldings } from "@/lib/portfolio-days";
+import { ledgerExplains, valueHoldings } from "@/lib/portfolio-days";
 import {
   historyRanges,
   type HistoryResult,
@@ -158,12 +158,28 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Do the orders add up to what is held? Judged on today's balances when
+  // they were read, else on the newest stored day's holdings and the orders
+  // placed before it. With neither there is nothing to contradict them.
+  const lastDay = days.at(-1);
+  let balanceExplained = true;
+  if (liveInputs) {
+    balanceExplained = ledgerExplains(orders, liveInputs.balances);
+  } else if (lastDay) {
+    const asOf = Date.parse(lastDay.asOf);
+    balanceExplained = ledgerExplains(
+      orders.filter((order) => Date.parse(order.placedAt) <= asOf),
+      Object.fromEntries(lastDay.holdings.map((holding) => [holding.symbol, holding.quantity])),
+    );
+  }
+
   const { ranges, available } = historyRanges({
     days,
     orders,
     benchmarkMarks: marks[benchmark.symbol],
     listingCloses: marks,
     live,
+    balanceExplained,
   });
 
   const response: PortfolioHistoryResponse = {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  closeUtcMinutes,
   markAsOf,
   markStartSeconds,
   onTheMark,
@@ -63,12 +64,23 @@ describe("settleMarks", () => {
 });
 
 describe("onTheMark", () => {
-  it("keeps points within half an hour of 21:30 UTC and nothing else", () => {
+  it("keeps points after the New York close and no later than 22:00 UTC", () => {
     const points = [
       { timestamp: at("2026-09-22", "21:28:51"), price: 1 },
       { timestamp: at("2026-09-23", "22:05:00"), price: 2 },
       { timestamp: at("2026-09-24", "12:13:17"), price: 3 },
+      { timestamp: at("2026-07-06", "20:55:26"), price: 4 },
+      { timestamp: at("2026-12-07", "20:55:00"), price: 5 },
     ];
-    expect(onTheMark(points).map((point) => point.price)).toEqual([1]);
+    // Summer closes at 20:00 UTC, so 20:55 in July is after it; December
+    // closes at 21:00 UTC, so 20:55 is still the session.
+    expect(onTheMark(points).map((point) => point.price)).toEqual([1, 4]);
+  });
+
+  it("knows when New York is on daylight time", () => {
+    expect(closeUtcMinutes("2026-03-06")).toBe(21 * 60);
+    expect(closeUtcMinutes("2026-03-09")).toBe(20 * 60);
+    expect(closeUtcMinutes("2026-10-30")).toBe(20 * 60);
+    expect(closeUtcMinutes("2026-11-02")).toBe(21 * 60);
   });
 });

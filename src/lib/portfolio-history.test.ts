@@ -128,6 +128,22 @@ describe("money added and taken out", () => {
 });
 
 describe("refusing rather than guessing", () => {
+  it("draws no benchmark when the orders do not explain what is held", () => {
+    const result = portfolioHistory(
+      {
+        days: days({ "2026-09-15": 100, "2026-09-16": 110 }),
+        orders: [buy("2026-09-15T15:00:00Z", 100)],
+        benchmarkMarks: SPY,
+        balanceExplained: false,
+      },
+      "since",
+    );
+    expect(result.benchmarkStatus).toBe("unexplained_balance");
+    expect(result.days.map((point) => point.benchmark)).toEqual([null, null]);
+    expect(result.changePct).toBeCloseTo(10, 10);
+    expect(result.benchmarkPct).toBeCloseTo((52 / 51 - 1) * 100, 10);
+  });
+
   it("draws no benchmark when a buy has no dollar cost", () => {
     const result = portfolioHistory(
       {
