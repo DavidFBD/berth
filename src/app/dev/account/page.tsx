@@ -11,6 +11,7 @@ import { HOME_CHAIN } from "@/lib/account";
 import { getChainName } from "@/lib/chains";
 import { formatTokenAmount, shortenAddress } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { PORTFOLIO_STATES, PortfolioGallery, type PortfolioState } from "./portfolio-gallery";
 import { RewardsGallery } from "./rewards-gallery";
 
 /**
@@ -24,6 +25,9 @@ import { RewardsGallery } from "./rewards-gallery";
  *   /dev/account?rewards=7            the rewards drawer at that rung, from
  *                                     seeded data (1, 3, 7 and 10 are set
  *                                     scenes; see rewards-gallery.tsx)
+ *   /dev/account?portfolio=four-days  the top of "What you own" in one of
+ *                                     its states, from fixtures (see
+ *                                     portfolio-gallery.tsx)
  */
 export default function AccountInspectorPage() {
   if (process.env.NODE_ENV === "production") notFound();
@@ -39,6 +43,10 @@ export default function AccountInspectorPage() {
 
 function Inspector() {
   const params = useSearchParams();
+  const portfolio = params.get("portfolio");
+  if (portfolio && (PORTFOLIO_STATES as readonly string[]).includes(portfolio)) {
+    return <PortfolioGallery key={portfolio} state={portfolio as PortfolioState} />;
+  }
   const rewardsLevel = Number(params.get("rewards"));
   if (Number.isInteger(rewardsLevel) && rewardsLevel >= 1 && rewardsLevel <= 10) {
     return <RewardsGallery level={rewardsLevel} />;

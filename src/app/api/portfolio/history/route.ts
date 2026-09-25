@@ -27,6 +27,8 @@ export const dynamic = "force-dynamic";
  * says what each field means). Same proof of identity as /api/orders.
  *
  *   GET /api/portfolio/history?benchmark=SPY
+ *   POST /api/portfolio/history?benchmark=SPY   (the same; the client's
+ *        rewards request core only speaks POST, see hooks/use-profile)
  *
  * Stored days come from `portfolio_days`, closes from `marks`. Today's
  * point is read live on a market day: the account's balances on chain at
@@ -194,3 +196,6 @@ export async function GET(request: NextRequest) {
     headers: { "Cache-Control": "private, max-age=60" },
   });
 }
+
+/** The same read for the client's rewards request core, which always POSTs. */
+export const POST = GET;

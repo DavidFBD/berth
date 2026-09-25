@@ -148,10 +148,30 @@ export type Copy = {
    */
   holdingSince: (date: string) => string;
   holdingBenchmark: string;
-  holdingsTogether: (date: string) => string;
   holdingsMarketDays: (days: number) => string;
-  /** Behind the (i): how the comparison is made, and what it is not. */
+  /** Behind the (i): how the chart and the lines are made, and what they are not. */
   holdingsBenchmarkNote: string;
+  /**
+   * The portfolio line at the top of "What you own" (lib/portfolio-history).
+   * The headline reads "Since Sep 21, 4 market days. You +0.6%, the same
+   * dollars in [the S&P 500 fund] -0.6%." with the name as the chooser.
+   * `date` arrives formatted: "Sep 21".
+   */
+  portfolioSince: (date: string, days: number) => string;
+  portfolioYou: string;
+  /** Before the benchmark's name, by id: "the same dollars in the" S&P 500 fund, "in" Gold. */
+  portfolioSameDollarsIn: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
+  /** The chooser's menu: its accessible name and its heading. */
+  portfolioCompareWith: string;
+  /** One day stored and nothing to draw yet. */
+  portfolioFirstDay: string;
+  /** Why the benchmark line is not drawn, one sentence each. */
+  portfolioNoBenchmark: Record<"unpriced_orders" | "unexplained_balance", string>;
+  /** `name` is the chooser, so another benchmark is one tap away. */
+  portfolioNoMarks: (name: string) => string;
+  /** The range control, by range id, and its accessible name. */
+  portfolioRanges: Record<"1w" | "1m" | "3m" | "6m" | "1y" | "since" | "all", string>;
+  portfolioRangeLabel: string;
   /**
    * The benchmarks the portfolio can be set beside (lib/benchmarks), by id.
    * Names, not tickers: a person reads these.
@@ -632,12 +652,40 @@ export const COPY: Copy = {
   holdingsEmpty: "Nothing yet. Your first buy lands here.",
   holdingSince: (date) => `Since ${date}`,
   holdingBenchmark: "S&P 500 fund",
-  holdingsTogether: (date) => `All of it since ${date}`,
   holdingsMarketDays: (days) => (days === 1 ? "1 market day" : `${days} market days`),
   moveInTheNews: (source) => `In the news: ${source}`,
   moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
-    "Each holding since your first buy, beside the same dollars put into the S&P 500 fund on the same days, both valued at today's prices. Your side includes the fee you paid; the fund side does not. Prices are one a day, so a few days mostly shows noise. It describes what happened, and says nothing about what to do.",
+    "The line is your money at each day's close, beside the same dollars put on the same days into what you compare it with, both at that day's prices. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 fund. It describes what happened, and says nothing about what to do.",
+  portfolioSince: (date, days) =>
+    `Since ${date}, ${days === 1 ? "1 market day" : `${days} market days`}.`,
+  portfolioYou: "You",
+  portfolioSameDollarsIn: {
+    SPY: "the same dollars in the",
+    QQQ: "the same dollars in the",
+    PAXG: "the same dollars in",
+    BTC: "the same dollars in",
+    SGOV: "the same dollars in",
+  },
+  portfolioCompareWith: "Compare with",
+  portfolioFirstDay: "Your first day. The line starts once tomorrow's prices are in.",
+  portfolioNoBenchmark: {
+    unpriced_orders:
+      "A buy was paid in a coin we could not price, so there is no fund to compare with.",
+    unexplained_balance:
+      "Your balance does not match your orders here, so there is no fund to compare with.",
+  },
+  portfolioNoMarks: (name) => `No prices for ${name} yet.`,
+  portfolioRanges: {
+    "1w": "1W",
+    "1m": "1M",
+    "3m": "3M",
+    "6m": "6M",
+    "1y": "1Y",
+    since: "First buy",
+    all: "All",
+  },
+  portfolioRangeLabel: "Time range",
 
   benchmarkNames: {
     SPY: "S&P 500 fund",

@@ -54,6 +54,12 @@ export function Home() {
   const [accountOpen, setAccountOpen] = useState(false);
   const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
+  // Once the account owns something, what it owns leads the panel, since
+  // that is what a returning person comes to see; before the first buy
+  // the funds lead, since pouring in is the first thing to do.
+  const account = useHubAccount();
+  const holdings = useHubHoldings(account.hubWallet);
+  const ownsListings = holdings.held.some((holding) => holding.listing.kind === "stock");
 
   // Email login is the primary path; the external wallet drawer is the
   // fallback for signed-in users reaching for a non-EVM source chain.
@@ -123,8 +129,17 @@ export function Home() {
             panel say the same thing and leave the page with a first read.
           */}
           <Panel className="divide-y divide-border lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
-            <FundsModule onTopUp={() => setAccountOpen(true)} />
-            <HoldingsList onSell={openSell} />
+            {ownsListings ? (
+              <>
+                <HoldingsList key="holdings" onSell={openSell} />
+                <FundsModule key="funds" onTopUp={() => setAccountOpen(true)} />
+              </>
+            ) : (
+              <>
+                <FundsModule key="funds" onTopUp={() => setAccountOpen(true)} />
+                <HoldingsList key="holdings" onSell={openSell} />
+              </>
+            )}
             <CashShelf
               onPark={() => openBuy(CASH_LISTING)}
               onTakeOut={() => openSell(CASH_LISTING)}
