@@ -4,6 +4,7 @@ import { Check } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
+import { hubTxUrl } from "@/lib/chains";
 import { LoadingMark } from "@/components/loading-mark";
 import { CANCELLED_MESSAGE } from "@/lib/error-copy";
 import type { ReportState } from "@/lib/error-report";
@@ -134,6 +135,7 @@ export function ActionStepper({
 export function IntentTracking({
   phase,
   fillTxHash,
+  hubTxHash,
   successTitle,
   successBody,
   onDone,
@@ -142,6 +144,8 @@ export function IntentTracking({
 }: {
   phase: FillPhase;
   fillTxHash?: string;
+  /** The intent's hub transaction, the reference an unsettled order shows. */
+  hubTxHash?: string;
   successTitle: string;
   successBody: string;
   onDone: () => void;
@@ -185,6 +189,46 @@ export function IntentTracking({
           <p className="text-sm text-muted-foreground">
             {copy.fillFailedScreenBody}
           </p>
+          {reportState === "filed" && (
+            <p className="text-xs text-muted-foreground opacity-75">
+              {copy.teamTold}
+            </p>
+          )}
+        </div>
+        <Button variant="outline" className="h-12 w-full text-base" onClick={onDone}>
+          {copy.closeLabel}
+        </Button>
+      </div>
+    );
+  }
+
+  if (phase === "unsettled") {
+    // Not a failure: the order is out and may still settle. The machine keeps
+    // polling while this is open and replaces this screen if it does.
+    return (
+      <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
+        <div className="flex flex-col items-center">
+          <div style={{ height: 40 }} />
+          <LoadingMark className="size-16" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="font-display text-lg text-foreground">
+            {copy.unsettledTitle}
+          </p>
+          <p className="text-sm text-muted-foreground">{copy.unsettledBody}</p>
+          <p className="text-xs text-muted-foreground">
+            {copy.unsettledWatching}
+          </p>
+          {hubTxHash && (
+            <a
+              href={hubTxUrl(hubTxHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="money text-xs text-muted-foreground underline underline-offset-2"
+            >
+              {copy.referenceLabel} {shortenAddress(hubTxHash)}
+            </a>
+          )}
           {reportState === "filed" && (
             <p className="text-xs text-muted-foreground opacity-75">
               {copy.teamTold}

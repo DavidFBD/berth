@@ -9,6 +9,8 @@ import { recentLogs, type CapturedLog } from "@/lib/error-log-buffer";
  * actually needs. No email address is ever collected, and the wallet address
  * is truncated to a correlation hint. Transaction hashes go in whole — they're
  * public on-chain data and the single most useful thing for tracing a pour.
+ * RPC keys are not: node errors often quote the URL they called, key and
+ * all, so raw text is passed through `redactSecrets` before it leaves.
  */
 
 /** Whether a failure has reached the tracker, for the error UI to say so. */
@@ -17,8 +19,9 @@ export type ReportState = "idle" | "sending" | "filed" | "unsent";
 export type ErrorReportContext = {
   action: "deposit" | "withdraw";
   /**
-   * Where it failed. The build/approve/sign pipeline steps, or `filling` for a
-   * pour that was signed and submitted and then failed at the solver.
+   * Where it failed. The build/approve/sign pipeline steps, `filling` for a
+   * pour that was signed and submitted and then failed at the solver, or
+   * `settling` for one the solver never reported as done inside the wait.
    */
   step: string;
   /** Vault share-token symbol, e.g. lsodaWEETH. */
@@ -40,6 +43,12 @@ export type ErrorReportContext = {
   rawMessage?: string;
   /** Any tx hashes involved (spoke / hub / intent). */
   txHashes?: string[];
+  /**
+   * Per-occurrence facts for triage (hashes, timings, last status). Rendered
+   * in the issue, never fingerprinted, so two intents stuck the same way land
+   * on one issue with each one's details in its own comment.
+   */
+  diagnostics?: Record<string, string>;
 };
 
 /**
@@ -76,6 +85,50 @@ export function addressHint(address: string | undefined): string | undefined {
   if (!address) return undefined;
   if (address.length <= 12) return address;
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+/**
+ * Keys that ride inside RPC URLs, in the shapes node errors quote them:
+ * Alchemy `/v2/<key>`, Infura `/v3/<project id>`, QuickNode's path token,
+ * Ankr's `/<chain>/<key>`, query parameters like `?apikey=` or Helius's
+ * `?api-key=`, and bearer tokens.
+ */
+const SECRET_PATTERNS: [RegExp, string][] = [
+  [/(\/v[23]\/)[A-Za-z0-9_-]{16,}/g, "$1[redacted]"],
+  [/(\.quiknode\.pro\/)[A-Za-z0-9_-]+/gi, "$1[redacted]"],
+  [/(rpc\.ankr\.com\/[a-z0-9_]+\/)[A-Za-z0-9]{16,}/gi, "$1[redacted]"],
+  [
+    /([?&](?:api[-_]?key|key|token|access[-_]?token|auth|secret)=)[^&\s"'#)]+/gi,
+    "$1[redacted]",
+  ],
+  [/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/g, "$1[redacted]"],
+];
+
+/** Strip RPC keys and tokens out of text bound for the tracker. */
+export function redactSecrets(text: string): string {
+  return SECRET_PATTERNS.reduce(
+    (out, [pattern, replacement]) => out.replace(pattern, replacement),
+    text,
+  );
+}
+
+/** The context with every free-text field redacted. */
+function redactContext(context: ErrorReportContext): ErrorReportContext {
+  return {
+    ...context,
+    rawMessage:
+      context.rawMessage === undefined
+        ? undefined
+        : redactSecrets(context.rawMessage),
+    diagnostics: context.diagnostics
+      ? Object.fromEntries(
+          Object.entries(context.diagnostics).map(([key, value]) => [
+            key,
+            redactSecrets(value),
+          ]),
+        )
+      : undefined,
+  };
 }
 
 /**
@@ -143,8 +196,9 @@ export function isReportable(friendlyMessage: string, cancelledCopy: string) {
 }
 
 export async function submitErrorReport(
-  context: ErrorReportContext,
+  unredacted: ErrorReportContext,
 ): Promise<ErrorReportResult> {
+  const context = redactContext(unredacted);
   const fingerprint = fingerprintOf(context);
   const earlier = reportedThisSession.get(fingerprint);
   if (earlier) {
@@ -169,7 +223,7 @@ async function sendReport(
   const payload: ErrorReportPayload = {
     ...context,
     fingerprint,
-    logs: recentLogs(),
+    logs: recentLogs().map((log) => ({ ...log, text: redactSecrets(log.text) })),
     page: {
       url: typeof window !== "undefined" ? window.location.href : "",
       userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",

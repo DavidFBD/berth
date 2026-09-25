@@ -6,6 +6,7 @@ import {
   type XToken,
 } from "@sodax/sdk";
 import { getAddress, isAddress } from "viem";
+import { sonic } from "viem/chains";
 import { isTokenListingAddress } from "@/lib/listings";
 
 /**
@@ -86,4 +87,9 @@ export function toBalanceReadToken(token: XToken): XToken {
   if (!token.address.startsWith("0x") || isAddress(token.address))
     return token;
   return { ...token, address: getAddress(token.address.toLowerCase()) };
+}
+
+/** A transaction on the Sonic hub, on the explorer viem knows for Sonic. */
+export function hubTxUrl(txHash: string): string {
+  return `${sonic.blockExplorers.default.url}/tx/${txHash}`;
 }

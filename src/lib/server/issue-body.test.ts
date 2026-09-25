@@ -110,3 +110,21 @@ describe("buildIssueBody", () => {
     expect(body).toContain("- `0xbbb`");
   });
 });
+
+describe("buildIssueBody diagnostics", () => {
+  it("fences per-occurrence diagnostics so their values cannot break the body", () => {
+    const body = buildIssueBody(
+      payload({
+        diagnostics: { hubTxHash: "0xabc", statusEndpoint: "erroring: ```boom" },
+      }),
+      undefined,
+    );
+    expect(body).toContain("### Diagnostics");
+    expect(body).toContain("hubTxHash: 0xabc");
+    expect(body).not.toContain("erroring: ```boom");
+  });
+
+  it("leaves the section out when there is nothing to say", () => {
+    expect(buildIssueBody(payload(), undefined)).not.toContain("### Diagnostics");
+  });
+});

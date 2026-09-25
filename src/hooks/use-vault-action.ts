@@ -37,10 +37,13 @@ import { getChainName, getNativeGasToken } from "@/lib/chains";
 import { COPY } from "@/lib/copy";
 import {
   TRACKING_RELEASE_MS,
+  dueOneShot,
   fillPhase,
   isPipelineStep,
   isPourLocked,
+  releaseTracking,
   resolveTracking,
+  unsettledReport,
   type FillPhase,
   type PourStep,
 } from "@/lib/pour-lifecycle";
@@ -174,6 +177,11 @@ export interface UseVaultActionResult {
   fillPhase: FillPhase | null;
   /** The fill's spoke-side tx hash, once the solver reports one. */
   fillTxHash: string | undefined;
+  /**
+   * The intent's transaction on the Sonic hub, once the order is sent: what
+   * an unsettled order points the user at.
+   */
+  hubTxHash: string | undefined;
   /** True mid-pipeline: between first tap and signature. */
   pending: boolean;
   /** True while the drawer must refuse dismissal. */
@@ -215,7 +223,6 @@ export function useVaultAction(options?: {
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<VaultSwapResponse | null>(null);
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
-  const [trackingTimedOut, setTrackingTimedOut] = useState(false);
   const runningRef = useRef(false);
   const { reportState, report, resetReport } = useErrorReporter();
   /**
@@ -232,9 +239,19 @@ export function useVaultAction(options?: {
     onPouredRef.current = options?.onPoured;
   });
 
+  /** When tracking began, for the unsettled report's "tracked for". */
+  const trackingStartedRef = useRef(0);
+  /**
+   * The last status the solver answered with. A ref because an erroring
+   * poll replaces the answer with an error, and the report wants the last
+   * thing the solver actually said.
+   */
+  const lastStatusRef = useRef<number | undefined>(undefined);
+
   /** Advance the pipeline, keeping the report's "failed at" in step. */
   const advance = useCallback((next: PourStep) => {
     if (pourRef.current) pourRef.current.context.step = next;
+    if (next === "tracking") trackingStartedRef.current = Date.now();
     setStep(next);
   }, []);
 
@@ -279,6 +296,17 @@ export function useVaultAction(options?: {
   const fillTxHash = statusQuery.data?.ok
     ? statusQuery.data.value.fill_tx_hash
     : undefined;
+  // What the status endpoint said when it could not answer: an error result
+  // from the solver, or the request itself failing.
+  const statusError =
+    statusQuery.data && !statusQuery.data.ok
+      ? (rawErrorMessage(statusQuery.data.error) ?? "error result")
+      : statusQuery.isError
+        ? rawErrorMessage(statusQuery.error)
+        : undefined;
+  useEffect(() => {
+    if (statusCode !== undefined) lastStatusRef.current = statusCode;
+  }, [statusCode]);
 
   // Terminal resolution, applied during render (house pattern: render-time
   // state adjustment, not an effect). Only the "tracking" step resolves, and
@@ -286,18 +314,42 @@ export function useVaultAction(options?: {
   const resolution = resolveTracking(step, statusCode);
   if (resolution) setStep(resolution);
 
-  // The terminal one-shots: toast, XP award, solver-fill failure report.
-  // The step transition is the trigger; the ref guards against dependency
-  // identity changes re-running the effect after it has fired.
-  const terminalFiredRef = useRef(false);
+  // The one-shots: the unsettled report, then (possibly later) the terminal
+  // toast, XP award, or solver-fill failure report. The step transition is
+  // the trigger; the ref records which step already fired, so dependency
+  // identity changes cannot re-run a one-shot, while a late fill after an
+  // unsettled report still gets its own.
+  const firedRef = useRef<PourStep | null>(null);
   useEffect(() => {
-    if (step !== "filled" && step !== "fillFailed") return;
-    if (terminalFiredRef.current) return;
-    terminalFiredRef.current = true;
+    const due = dueOneShot(step, firedRef.current);
+    if (!due) return;
+    firedRef.current = due;
     const pour = pourRef.current;
     const intentTxHash = response?.intentDeliveryInfo.dstTxHash;
 
-    if (step === "filled") {
+    if (due === "unsettled") {
+      // Signed and sent, and the solver never said filled or failed inside
+      // the wait. Funds may still arrive, so this is not a failure to the
+      // user, but it is a stalled order to the team, and until now nothing
+      // told anyone.
+      if (pour && response) {
+        report(
+          unsettledReport(pour.context, {
+            intentHash: response.solverExecutionResponse.intent_hash,
+            intentId: response.intent.intentId.toString(),
+            spokeTxHash: response.intentDeliveryInfo.srcTxHash,
+            hubTxHash: intentTxHash,
+            fillTxHash,
+            lastStatusCode: lastStatusRef.current,
+            trackedMs: Date.now() - trackingStartedRef.current,
+            statusError,
+          }),
+        );
+      }
+      return;
+    }
+
+    if (due === "filled") {
       if (pour?.context.action === "deposit") onPouredRef.current?.();
       if (pour) {
         toast.success(pour.fillToasts.successTitle, {
@@ -333,15 +385,16 @@ export function useVaultAction(options?: {
         rawMessage: `Solver reported status 4 (failed) for the ${pour.context.action} intent.`,
       });
     }
-  }, [step, response, fillTxHash, awardPour, report]);
+  }, [step, response, fillTxHash, statusError, awardPour, report]);
 
   // The status poll can legitimately never turn terminal (NOT_FOUND / a
-  // failing endpoint) — release the dismissal lock after a bounded wait
-  // rather than trapping the user forever.
+  // failing endpoint), so after a bounded wait the pour becomes unsettled:
+  // the drawer lets go, the user is told the order is still out, and the
+  // team is told. The poll keeps running while the drawer is open.
   useEffect(() => {
     if (step !== "tracking") return;
     const timer = setTimeout(
-      () => setTrackingTimedOut(true),
+      () => setStep(releaseTracking),
       TRACKING_RELEASE_MS,
     );
     return () => clearTimeout(timer);
@@ -377,8 +430,8 @@ export function useVaultAction(options?: {
       resetReport();
       setResponse(null);
       setApproveRequired(null);
-      setTrackingTimedOut(false);
-      terminalFiredRef.current = false;
+      firedRef.current = null;
+      lastStatusRef.current = undefined;
       pourRef.current = {
         context: {
           action: "deposit",
@@ -540,8 +593,8 @@ export function useVaultAction(options?: {
       setError(null);
       resetReport();
       setResponse(null);
-      setTrackingTimedOut(false);
-      terminalFiredRef.current = false;
+      firedRef.current = null;
+      lastStatusRef.current = undefined;
       pourRef.current = {
         context: {
           action: "withdraw",
@@ -631,8 +684,8 @@ export function useVaultAction(options?: {
     resetReport();
     setResponse(null);
     setApproveRequired(null);
-    setTrackingTimedOut(false);
-    terminalFiredRef.current = false;
+    firedRef.current = null;
+    lastStatusRef.current = undefined;
     pourRef.current = null;
   }, [resetReport]);
 
@@ -643,8 +696,9 @@ export function useVaultAction(options?: {
     approveRequired,
     fillPhase: fillPhase(step, statusCode),
     fillTxHash,
+    hubTxHash: response?.intentDeliveryInfo.dstTxHash,
     pending: isPipelineStep(step),
-    locked: isPourLocked(step, trackingTimedOut),
+    locked: isPourLocked(step),
     runDeposit,
     runWithdraw,
     reset,

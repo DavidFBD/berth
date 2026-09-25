@@ -402,6 +402,7 @@ export function DepositDrawer({
                 reportState={action.reportState}
                 phase={action.fillPhase}
                 fillTxHash={action.fillTxHash}
+                hubTxHash={action.hubTxHash}
                 successTitle={copy.buyFilledTitle}
                 successBody={copy.settledBody(
                   isBuy ? listing.name : (meta?.title ?? listing.name),

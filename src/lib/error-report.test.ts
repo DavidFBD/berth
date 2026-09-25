@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { fingerprintOf, type ErrorReportContext } from "./error-report";
+import { describe, expect, it, vi } from "vitest";
+import {
+  fingerprintOf,
+  redactSecrets,
+  submitErrorReport,
+  type ErrorReportContext,
+} from "./error-report";
 
 /**
  * The fingerprint groups failures by cause so one bug is one issue. Issues
@@ -51,5 +56,68 @@ describe("fingerprintOf", () => {
     const solana = context("Access forbidden");
     const base = { ...context("Access forbidden"), srcChainKey: "0x2105.base" };
     expect(fingerprintOf(solana)).not.toBe(fingerprintOf(base));
+  });
+});
+
+describe("redactSecrets", () => {
+  it("takes the key out of an Alchemy URL", () => {
+    const text =
+      'HTTP request failed. URL: https://base-mainnet.g.alchemy.com/v2/Xk3vQ9pLm2RtY7uW8zA1bC4dE Status: 429';
+    const out = redactSecrets(text);
+    expect(out).not.toContain("Xk3vQ9pLm2RtY7uW8zA1bC4dE");
+    expect(out).toContain("https://base-mainnet.g.alchemy.com/v2/[redacted]");
+    expect(out).toContain("Status: 429");
+  });
+
+  it("takes the project id out of an Infura URL", () => {
+    const out = redactSecrets("fetch https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161 failed");
+    expect(out).toBe("fetch https://mainnet.infura.io/v3/[redacted] failed");
+  });
+
+  it("takes keys out of query strings", () => {
+    const out = redactSecrets(
+      "https://mainnet.helius-rpc.com/?api-key=1f2e3d4c-aaaa-bbbb-cccc-123456789abc&commitment=confirmed and https://api.example.io/rpc?apikey=SECRET123",
+    );
+    expect(out).toBe(
+      "https://mainnet.helius-rpc.com/?api-key=[redacted]&commitment=confirmed and https://api.example.io/rpc?apikey=[redacted]",
+    );
+  });
+
+  it("takes the token out of QuickNode and Ankr URLs", () => {
+    expect(redactSecrets("https://x-y.base-mainnet.quiknode.pro/abc123def456/")).toBe(
+      "https://x-y.base-mainnet.quiknode.pro/[redacted]/",
+    );
+    expect(
+      redactSecrets("https://rpc.ankr.com/eth/0123456789abcdef0123456789abcdef"),
+    ).toBe("https://rpc.ankr.com/eth/[redacted]");
+  });
+
+  it("leaves hashes, addresses and plain errors alone", () => {
+    const text =
+      "execution reverted for 0x5f4e3d2c1b0a99887766554433221100aabbccddeeff00112233445566778899 at 0xcFCd8a9b0c1d2e3f40516273849506a7b8c94165";
+    expect(redactSecrets(text)).toBe(text);
+    expect(redactSecrets("Access forbidden")).toBe("Access forbidden");
+  });
+});
+
+describe("submitErrorReport", () => {
+  it("sends raw text and diagnostics with the keys taken out", async () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
+      async () => Response.json({ status: "filed", issueNumber: 1 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await submitErrorReport({
+        ...context("https://base-mainnet.g.alchemy.com/v2/Xk3vQ9pLm2RtY7uW8zA1bC4dE 429"),
+        step: "redaction-wiring",
+        diagnostics: { statusEndpoint: "erroring: https://x.io/?apikey=SECRET123" },
+      });
+      const body = String(fetchMock.mock.calls[0][1]?.body);
+      expect(body).not.toContain("Xk3vQ9pLm2RtY7uW8zA1bC4dE");
+      expect(body).not.toContain("SECRET123");
+      expect(body).toContain("[redacted]");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

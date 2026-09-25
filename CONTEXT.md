@@ -55,7 +55,9 @@ a round that changes behaviour.
 
 - **Order** — a buy or a sell: one intent-based cross-chain swap between a
   spoke chain asset and a listing on Sonic. Lifecycle `idle → building →
-  approving → signing → tracking → filled | fillFailed | error`, owned end
+  approving → signing → tracking → filled | fillFailed | error`, with
+  `tracking → unsettled` when the solver says nothing terminal inside the
+  bounded wait (sent, not failed; a late fill still resolves it), owned end
   to end by `hooks/use-vault-action` (the order machine; transitions in
   `lib/pour-lifecycle`). Solver status codes and the raw swap response never
   leave the machine. A buy is a deposit build with a listing as the

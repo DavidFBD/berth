@@ -350,6 +350,11 @@ export type Copy = {
   teamToldNoReport: string;
   /** The fill's transaction reference shown on the tracker. */
   referenceLabel: string;
+  /** An order sent but not settled inside the tracker's wait. Not a failure. */
+  unsettledTitle: string;
+  unsettledBody: string;
+  /** Said while the screen keeps watching the order. */
+  unsettledWatching: string;
   /** Accessible names that never render visibly. */
   ariaAmount: string;
   ariaAmountIn: (currency: string) => string;
@@ -772,6 +777,11 @@ export const COPY: Copy = {
   teamToldNoReport:
     "The team has been told, so someone can look into it. No need to report it.",
   referenceLabel: "Reference",
+  unsettledTitle: "Sent, but not settled yet.",
+  unsettledBody:
+    "Your order left your wallet and is taking longer than usual. Your funds are not lost, and it may still complete on its own.",
+  unsettledWatching:
+    "This screen updates if it settles while it stays open. The reference below follows it on the Sonic explorer.",
   ariaAmount: "Amount",
   ariaAmountIn: (currency) => `Amount in ${currency}`,
   ariaSharesToWithdraw: "Shares to withdraw",

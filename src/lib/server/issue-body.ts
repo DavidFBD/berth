@@ -49,6 +49,12 @@ export function buildIssueBody(
     ["Deploy", sha],
   ];
 
+  // Fenced rather than tabled: the values are browser input, and a fence is
+  // the one shape they cannot break out of.
+  const diagnostics = Object.entries(payload.diagnostics ?? {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+
   const logs = payload.logs
     .slice(-MAX_LOGS)
     .map((log) => `${log.at} [${log.level}] ${log.text}`)
@@ -66,6 +72,7 @@ export function buildIssueBody(
     payload.rawMessage
       ? `### Raw error\n${codeBlock(payload.rawMessage)}`
       : "",
+    diagnostics ? `### Diagnostics\n${codeBlock(diagnostics)}` : "",
     payload.txHashes?.length
       ? `### Transactions\n${payload.txHashes.map((h) => `- \`${h}\``).join("\n")}`
       : "",
