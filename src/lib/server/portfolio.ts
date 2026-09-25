@@ -137,17 +137,26 @@ export async function snapshotAccounts(): Promise<{ id: string; wallet: string }
   return rows.map((row) => ({ id: row.id, wallet: row.wallet_address }));
 }
 
-/** Run `task` over `items`, at most `limit` at once. */
-export async function inPool<T>(items: readonly T[], limit: number, task: (item: T) => Promise<void>) {
+/**
+ * Run `task` over `items`, at most `limit` at once, starting none after
+ * `deadline` (epoch ms). Returns how many were never started.
+ */
+export async function inPool<T>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+  deadline = Infinity,
+): Promise<number> {
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
+    while (next < items.length && Date.now() < deadline) {
       const item = items[next];
       next += 1;
       await task(item);
     }
   });
   await Promise.all(workers);
+  return items.length - next;
 }
 
 export type SnapshotSummary = {
@@ -164,6 +173,8 @@ export type SnapshotSummary = {
   oraclePriced: number;
   /** Includes accounts whose read passed ACCOUNT_TIMEOUT_MS. */
   failed: number;
+  /** Accounts not started before the run's deadline; tomorrow's run reads them. */
+  unreached: number;
 };
 
 /** Accounts read at once; each is a derivation and one multicall. */
@@ -209,8 +220,11 @@ export async function runPortfolioSnapshot({
   livePrices = liveListingPrices,
   accounts,
   accountTimeoutMs = ACCOUNT_TIMEOUT_MS,
+  deadline = Infinity,
 }: {
   accountTimeoutMs?: number;
+  /** Epoch ms after which no further account is started. */
+  deadline?: number;
   now?: Date;
   readBalances?: ListingBalanceReader;
   deriveHubWallet?: (spokeAddress: string) => Promise<string>;
@@ -218,7 +232,15 @@ export async function runPortfolioSnapshot({
   accounts?: { id: string; wallet: string }[];
 } = {}): Promise<SnapshotSummary> {
   const day = snapshotDay(now);
-  const summary: SnapshotSummary = { day: day ?? null, accounts: 0, written: 0, empty: 0, oraclePriced: 0, failed: 0 };
+  const summary: SnapshotSummary = {
+    day: day ?? null,
+    accounts: 0,
+    written: 0,
+    empty: 0,
+    oraclePriced: 0,
+    failed: 0,
+    unreached: 0,
+  };
   if (!day) return { ...summary, skipped: "not within a market day's snapshot hours" };
 
   const list = accounts ?? (await snapshotAccounts());
@@ -265,7 +287,7 @@ export async function runPortfolioSnapshot({
     summary.oraclePriced += valued.day.holdings.filter((holding) => holding.source === "oracle").length;
   };
 
-  await inPool(list, SNAPSHOT_CONCURRENCY, async (account) => {
+  summary.unreached = await inPool(list, SNAPSHOT_CONCURRENCY, async (account) => {
     let expired = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -284,7 +306,7 @@ export async function runPortfolioSnapshot({
     } finally {
       clearTimeout(timer);
     }
-  });
+  }, deadline);
   return summary;
 }
 

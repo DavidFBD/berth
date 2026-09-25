@@ -1,8 +1,8 @@
 /**
  * Fill table `order_marks` for every order still missing a benchmark's
  * price at its minute: one DefiLlama historical request per order for all
- * five benchmarks (lib/server/orders recordOrderMarks). The evening marks
- * cron does the same fifty at a time; this catches up the whole book.
+ * five benchmarks (lib/server/orders recordOrderMarks). The evening cron
+ * does the same ten at a time; this catches up the whole book.
  * Safe to run again: a stored price is kept. Dry run by default (it reads
  * the prices and writes nothing); --write to save.
  *
@@ -49,11 +49,7 @@ for (const order of missing) {
 
 if (WRITE) {
   const [{ rows }] = await getSql().query("select count(*)::int as rows from order_marks");
-  const [{ left }] = await getSql().query(
-    `select count(*)::int as left from orders o
-      where (select count(*) from order_marks m where m.order_id = o.id) < $1`,
-    [BENCHMARKS.length],
-  );
+  const left = (await ordersMissingMarks(100_000)).length;
   console.log(`wrote ${prices} prices; ${unpriced} orders got none; order_marks now holds ${rows} rows; ${left} orders still short`);
 } else {
   console.log(`dry run: would write up to ${prices} prices; ${unpriced} orders have none; add --write to save`);

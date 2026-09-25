@@ -60,6 +60,7 @@ export async function pricesAt(
   at: Date,
   /** How far from `at` DefiLlama may look, e.g. "4h"; its own default when absent. */
   searchWidth?: string,
+  timeoutMs = 8_000,
 ): Promise<Record<string, PriceAtMoment>> {
   const out: Record<string, PriceAtMoment> = {};
   if (ids.length === 0 || Number.isNaN(at.getTime())) return out;
@@ -69,7 +70,7 @@ export async function pricesAt(
     const query = searchWidth ? `?searchWidth=${searchWidth}` : "";
     const response = await fetch(`https://coins.llama.fi/prices/historical/${seconds}/${coins}${query}`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return out;
     const payload = (await response.json()) as {
@@ -108,12 +109,24 @@ export async function priceAt(id: string, at: Date): Promise<number | undefined>
  */
 const ORDER_MARK_SEARCH_WIDTH = "4h";
 
-export async function recordOrderMarks(orderId: string, placedAt: Date): Promise<number> {
+/**
+ * How long the pour route waits for the prices before answering; what
+ * does not arrive in time the evening cron fills in.
+ */
+export const POUR_ORDER_MARKS_MS = 3_000;
+
+export async function recordOrderMarks(
+  orderId: string,
+  placedAt: Date,
+  /** How long DefiLlama may take; the pour route passes POUR_ORDER_MARKS_MS. */
+  timeoutMs = 8_000,
+): Promise<number> {
   try {
     const prices = await pricesAt(
       BENCHMARKS.map((benchmark) => benchmark.marketId),
       placedAt,
       ORDER_MARK_SEARCH_WIDTH,
+      timeoutMs,
     );
     const found = BENCHMARKS.filter((benchmark) => prices[benchmark.marketId]);
     if (found.length === 0) return 0;
@@ -255,7 +268,8 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
 /**
  * The pour route's call: build and save, then the benchmarks' prices at
  * the order's minute (lib/server/order-marks), never throw. A price that
- * does not arrive now is filled in by the evening marks cron.
+ * does not arrive within POUR_ORDER_MARKS_MS is filled in by the evening
+ * cron, so a slow DefiLlama never holds up the pour's answer.
  */
 export async function recordOrder(args: {
   sodax: Sodax;
@@ -269,7 +283,7 @@ export async function recordOrder(args: {
     const order = await buildOrder(args);
     if (!order) return;
     const id = await saveOrder(args.userId, order);
-    if (id && order.placedAt) await recordOrderMarks(id, order.placedAt);
+    if (id && order.placedAt) await recordOrderMarks(id, order.placedAt, POUR_ORDER_MARKS_MS);
   } catch (error) {
     console.warn("[orders] not recorded", args.intentTx, error instanceof Error ? error.message : error);
   }

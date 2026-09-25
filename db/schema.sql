@@ -127,7 +127,7 @@ create index if not exists orders_hold_due_idx
 -- Daily closes per listing and benchmark (lib/marks), kept past DefiLlama's
 -- ninety day reach so a portfolio can be drawn for as long as it existed.
 -- One row per market day, taken at 21:30 UTC, after the New York close;
--- written by /api/cron/marks and `pnpm marks:backfill`. A day the despike
+-- written by /api/cron/evening and `pnpm marks:backfill`. A day the despike
 -- rejected has no row; a missing mark stays missing.
 create table if not exists marks (
   symbol text not null,
@@ -139,7 +139,7 @@ create table if not exists marks (
 );
 
 -- An account's value at each day's close (lib/portfolio-days). 'snapshot'
--- rows come from the balances read on chain by /api/cron/portfolio-days, so
+-- rows come from the balances read on chain by /api/cron/evening, so
 -- a transfer the orders never saw is still counted; 'ledger' rows are past
 -- days rebuilt from the orders by `pnpm portfolio:backfill`, only for an
 -- account whose balance the orders fully explain. `holdings` is
@@ -161,7 +161,7 @@ create table if not exists portfolio_days (
 -- lib/benchmark), so the benchmark is bought when the order was rather
 -- than at the close before it, which would hand it a session (a weekend,
 -- for Gold and Bitcoin) the order never lived through. Written at fill
--- time by the pour route, filled in by /api/cron/marks for any order still
+-- time by the pour route, filled in by /api/cron/evening for any order still
 -- missing one, and by `pnpm order-marks:backfill`. `priced_at` is the
 -- moment of DefiLlama's price, which may sit a few minutes from the order.
 create table if not exists order_marks (

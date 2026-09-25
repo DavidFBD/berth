@@ -6,34 +6,45 @@ import { recordOrderMarks } from "@/lib/server/orders";
 /**
  * Table `order_marks` read and mended: each benchmark's price at an
  * order's minute, written at fill time by lib/server/orders
- * recordOrderMarks. What a fill-time fetch missed, the evening marks cron
+ * recordOrderMarks. What a fill-time fetch missed, the evening cron
  * and `pnpm order-marks:backfill` fill in here.
  */
 
-/** Orders mended per cron run: five prices each in one request, well inside maxDuration. */
-export const ORDER_MARKS_PER_RUN = 50;
+/**
+ * Orders mended per evening run: five prices each in one request, all at
+ * once, so the stage costs one request's timeout (lib/server/evening).
+ */
+export const ORDER_MARKS_PER_RUN = 10;
 
 /**
- * Orders missing a price for any benchmark, at most `limit`. Chosen at
- * random, so an order DefiLlama can never price does not keep the same
- * place at the head of the queue night after night.
+ * Orders missing a price for a benchmark that could have one, newest
+ * first, at most `limit`. A benchmark could have one when its earliest
+ * stored mark (table `marks`) is on or before the order's day: an order
+ * placed before a benchmark existed can never be priced for it, and must
+ * not hold a place in the queue night after night.
  */
 export async function ordersMissingMarks(limit: number): Promise<{ id: string; placedAt: Date }[]> {
   const rows = (await getSql().query(
-    `select o.id, coalesce(o.placed_at, o.filled_at, o.created_at) as placed_at
+    `with firsts as (
+       select symbol, min(day) as first_day from marks
+        where symbol = any($1::text[]) group by symbol
+     )
+     select o.id, coalesce(o.placed_at, o.filled_at, o.created_at) as placed_at
        from orders o
-      where (select count(*) from order_marks m
-              where m.order_id = o.id and m.symbol = any($1::text[])) < $2
-      order by random()
-      limit $3`,
-    [BENCHMARKS.map((benchmark) => benchmark.symbol), BENCHMARKS.length, limit],
+      where exists (
+        select 1 from firsts f
+         where f.first_day <= coalesce(o.placed_at, o.filled_at, o.created_at)::date
+           and not exists (select 1 from order_marks m where m.order_id = o.id and m.symbol = f.symbol))
+      order by coalesce(o.placed_at, o.filled_at, o.created_at) desc
+      limit $2`,
+    [BENCHMARKS.map((benchmark) => benchmark.symbol), limit],
   )) as { id: string; placed_at: string | Date }[];
   return rows.map((row) => ({ id: row.id, placedAt: new Date(row.placed_at) }));
 }
 
 export type OrderMarksSummary = { orders: number; written: number; failed: number };
 
-/** Fill in the missing prices for up to `limit` orders. Never throws past a failed read of the queue. */
+/** Fill in the missing prices for up to `limit` orders, at once. Never throws past a failed read of the queue. */
 export async function fillOrderMarks({
   limit = ORDER_MARKS_PER_RUN,
   record = recordOrderMarks,
@@ -43,8 +54,8 @@ export async function fillOrderMarks({
 } = {}): Promise<OrderMarksSummary> {
   const missing = await ordersMissingMarks(limit);
   const summary: OrderMarksSummary = { orders: missing.length, written: 0, failed: 0 };
-  for (const order of missing) {
-    const written = await record(order.id, order.placedAt);
+  const results = await Promise.all(missing.map((order) => record(order.id, order.placedAt)));
+  for (const written of results) {
     summary.written += written;
     if (written === 0) summary.failed += 1;
   }

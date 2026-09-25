@@ -3,6 +3,7 @@ import { setSqlClient, type SqlClient } from "./db";
 import { makeTestDb } from "./pglite-test-db";
 import { getOrCreateUser } from "./accounts";
 import { readMarks, writeMarks } from "./marks";
+import { runEvening } from "./evening";
 import { fillOrderMarks, loadOrderFacts, ordersMissingMarks } from "./order-marks";
 import { recordOrderMarks } from "./orders";
 import {
@@ -223,6 +224,13 @@ describe("order marks", () => {
     vi.unstubAllGlobals();
   });
 
+  // Every benchmark has closes from before the orders, so each could be priced.
+  beforeEach(async () => {
+    for (const symbol of ["SPY", "QQQ", "PAXG", "BTC", "SGOV"]) {
+      await writeMarks(symbol, [{ day: "2026-07-08", close: 1 }], []);
+    }
+  });
+
   const llama = (prices: Record<string, number>) =>
     vi.fn(async (url: string) => {
       const coins: Record<string, { price: number; timestamp: number }> = {};
@@ -264,5 +272,84 @@ describe("order marks", () => {
     const [facts] = await loadOrderFacts(user.id);
     expect(facts.benchmarkMarks).toBeUndefined();
     expect(await fillOrderMarks()).toEqual({ orders: 1, written: 0, failed: 1 });
+  });
+});
+
+describe("the order marks queue", () => {
+  it("takes the newest first, and skips a benchmark that had no mark yet on the order's day", async () => {
+    const user = await account(1);
+    await writeMarks("SPY", [{ day: "2026-07-01", close: 1 }], []);
+    await writeMarks("SGOV", [{ day: "2026-07-08", close: 1 }], []);
+    const early = await placeOrder(user.id, "2026-07-02T15:00:00Z");
+    const later = await placeOrder(user.id, "2026-08-02T15:00:00Z");
+    expect((await ordersMissingMarks(10)).map((order) => order.id)).toEqual([later, early]);
+    // Once SPY is priced, the July 2 order only lacks SGOV, which did not exist yet: out of the queue.
+    await sql.query(`insert into order_marks (order_id, symbol, price) values ($1, 'SPY', 1)`, [early]);
+    expect((await ordersMissingMarks(10)).map((order) => order.id)).toEqual([later]);
+  });
+});
+
+describe("the evening run", () => {
+  const marksOk = { symbols: 15, written: 105, dropped: 0, revalued: 0, empty: [], failures: [] };
+  const ordersOk = { orders: 0, written: 0, failed: 0 };
+  const snapshotOk = { day: "2026-09-25", accounts: 1, written: 1, empty: 0, oraclePriced: 0, failed: 0, unreached: 0 };
+
+  it("runs every stage in order, each whatever the one before did", async () => {
+    const order: string[] = [];
+    const summary = await runEvening({
+      marks: async () => {
+        order.push("marks");
+        throw new Error("DefiLlama down");
+      },
+      orderMarks: async () => {
+        order.push("orderMarks");
+        return ordersOk;
+      },
+      snapshot: async () => {
+        order.push("snapshot");
+        return snapshotOk;
+      },
+    });
+    expect(order).toEqual(["marks", "orderMarks", "snapshot"]);
+    expect(summary.marks).toEqual({ ok: false, error: "DefiLlama down" });
+    expect(summary).toMatchObject({ written: 1, failed: true });
+  });
+
+  it("gives a stage that runs past its budget up and goes on", async () => {
+    const summary = await runEvening({
+      marks: () => new Promise(() => {}),
+      orderMarks: async () => ordersOk,
+      snapshot: async () => snapshotOk,
+      budgets: { marks: 30, orderMarks: 30, snapshotDeadline: 100 },
+    });
+    expect(summary.marks.ok).toBe(false);
+    expect(summary.snapshot).toEqual({ ok: true, result: snapshotOk });
+  });
+
+  it("counts nothing written with a failure as failed, and a quiet weekend as fine", async () => {
+    const failing = await runEvening({
+      marks: async () => ({ ...marksOk, written: 0, failures: ["all: 502"] }),
+      orderMarks: async () => ordersOk,
+      snapshot: async () => ({ ...snapshotOk, day: null, accounts: 0, written: 0 }),
+    });
+    expect(failing).toMatchObject({ written: 0, failed: true });
+    const quiet = await runEvening({
+      marks: async () => ({ ...marksOk, written: 0 }),
+      orderMarks: async () => ordersOk,
+      snapshot: async () => ({ ...snapshotOk, day: null, accounts: 0, written: 0 }),
+    });
+    expect(quiet).toMatchObject({ written: 0, failed: false });
+  });
+
+  it("starts no account after the snapshot's deadline, and says how many it left", async () => {
+    for (let n = 1; n <= 3; n += 1) await placeOrder((await account(n)).id);
+    const summary = await runPortfolioSnapshot({
+      now: FRIDAY_EVENING,
+      deadline: Date.now() - 1,
+      deriveHubWallet: async (spoke) => spoke,
+      readBalances: async () => ({ SGOV: 1 }),
+      livePrices: async () => ({ SGOV: 100 }),
+    });
+    expect(summary).toMatchObject({ accounts: 3, written: 0, unreached: 3 });
   });
 });
