@@ -189,3 +189,24 @@ export function unsettledReport(
     ),
   };
 }
+
+/**
+ * How an unsettled order ended, as a follow-up to its report. The same
+ * context as the report (so the same fingerprint, so the same issue), with a
+ * one-line note the server posts as a comment rather than a new issue.
+ */
+export function settledFollowUp(
+  unsettled: ErrorReportContext,
+  outcome: "filled" | "fillFailed",
+  trackedMs: number,
+): ErrorReportContext {
+  const verb = outcome === "filled" ? "Settled" : "Failed";
+  const intent =
+    unsettled.diagnostics?.intentHash ?? unsettled.diagnostics?.hubTxHash;
+  return {
+    ...unsettled,
+    followUp: `${verb} after ${Math.round(trackedMs / 1000)}s${
+      intent ? `, intent ${intent}` : ""
+    }.`,
+  };
+}

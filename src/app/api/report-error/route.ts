@@ -2,6 +2,7 @@ import type { ErrorReportPayload, ErrorReportResult } from "@/lib/error-report";
 import {
   buildIssueBody,
   fingerprintMarker,
+  followUpComment,
   issueTitle,
 } from "@/lib/server/issue-body";
 
@@ -129,6 +130,17 @@ export async function POST(request: Request) {
         body: string | null;
       }>;
       const match = existing.find((issue) => issue.body?.includes(marker));
+      // A follow-up only ever annotates the issue it follows. With no open
+      // issue to land on (closed, or the report never filed) it is dropped
+      // rather than opening an issue about an order that has now ended.
+      if (payload.followUp) {
+        if (!match) return ok({ status: "skipped", reason: "no issue to follow up" });
+        await gh(`/repos/${REPO}/issues/${match.number}/comments`, {
+          method: "POST",
+          body: JSON.stringify({ body: followUpComment(payload) }),
+        });
+        return ok({ status: "duplicate", issueNumber: match.number });
+      }
       if (match) {
         await gh(`/repos/${REPO}/issues/${match.number}/comments`, {
           method: "POST",
@@ -142,6 +154,10 @@ export async function POST(request: Request) {
         });
         return ok({ status: "duplicate", issueNumber: match.number });
       }
+    }
+
+    if (payload.followUp) {
+      return ok({ status: "skipped", reason: "no issue to follow up" });
     }
 
     await ensureLabel();

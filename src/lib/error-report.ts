@@ -49,6 +49,13 @@ export type ErrorReportContext = {
    * on one issue with each one's details in its own comment.
    */
   diagnostics?: Record<string, string>;
+  /**
+   * A note on an issue that already exists, never a new one: how an
+   * unsettled order ended ("Settled after 143s"). Sent with the context of
+   * the report it follows, so it carries the same fingerprint and the server
+   * posts it as a comment on that issue.
+   */
+  followUp?: string;
 };
 
 /**
@@ -91,14 +98,20 @@ export function addressHint(address: string | undefined): string | undefined {
  * Keys that ride inside RPC URLs, in the shapes node errors quote them:
  * Alchemy `/v2/<key>`, Infura `/v3/<project id>`, QuickNode's path token,
  * Ankr's `/<chain>/<key>`, query parameters like `?apikey=` or Helius's
- * `?api-key=`, and bearer tokens.
+ * `?api-key=`, dRPC's `?dkey=`, a bare hex key as the first path segment
+ * (Chainstack, GetBlock), and bearer tokens. The bare hex rule refuses a
+ * 0x prefix, so an EVM hash or address in a URL is never mistaken for a key.
  */
 const SECRET_PATTERNS: [RegExp, string][] = [
   [/(\/v[23]\/)[A-Za-z0-9_-]{16,}/g, "$1[redacted]"],
   [/(\.quiknode\.pro\/)[A-Za-z0-9_-]+/gi, "$1[redacted]"],
   [/(rpc\.ankr\.com\/[a-z0-9_]+\/)[A-Za-z0-9]{16,}/gi, "$1[redacted]"],
   [
-    /([?&](?:api[-_]?key|key|token|access[-_]?token|auth|secret)=)[^&\s"'#)]+/gi,
+    /(https?:\/\/[^/\s"'?#]+\/)(?!0x)[0-9a-f]{32,}(?=[/?#\s"')]|$)/gi,
+    "$1[redacted]",
+  ],
+  [
+    /([?&](?:api[-_]?key|dkey|key|token|access[-_]?token|auth|secret)=)[^&\s"'#)]+/gi,
     "$1[redacted]",
   ],
   [/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/g, "$1[redacted]"],
@@ -120,6 +133,10 @@ function redactContext(context: ErrorReportContext): ErrorReportContext {
       context.rawMessage === undefined
         ? undefined
         : redactSecrets(context.rawMessage),
+    followUp:
+      context.followUp === undefined
+        ? undefined
+        : redactSecrets(context.followUp),
     diagnostics: context.diagnostics
       ? Object.fromEntries(
           Object.entries(context.diagnostics).map(([key, value]) => [
@@ -200,6 +217,10 @@ export async function submitErrorReport(
 ): Promise<ErrorReportResult> {
   const context = redactContext(unredacted);
   const fingerprint = fingerprintOf(context);
+  // A stuck order is reported per order, and so is how it ended: each one's
+  // hashes and timings are the point, and the server already folds repeats
+  // into one issue as comments. Every other step keeps the session dedup.
+  if (context.step === "settling") return sendReport(context, fingerprint);
   const earlier = reportedThisSession.get(fingerprint);
   if (earlier) {
     // Whatever became of the first attempt is the truth about this one, down

@@ -92,6 +92,33 @@ describe("redactSecrets", () => {
     ).toBe("https://rpc.ankr.com/eth/[redacted]");
   });
 
+  it("takes dRPC's dkey out of a query string", () => {
+    expect(
+      redactSecrets("https://lb.drpc.org/ogrpc?network=base&dkey=AsdF123qwerty456zxcv"),
+    ).toBe("https://lb.drpc.org/ogrpc?network=base&dkey=[redacted]");
+  });
+
+  it("takes a bare hex key out of the first path segment", () => {
+    expect(
+      redactSecrets("https://nd-123-456-789.p2pify.com/0123456789abcdef0123456789abcdef failed"),
+    ).toBe("https://nd-123-456-789.p2pify.com/[redacted] failed");
+    expect(
+      redactSecrets("POST https://go.getblock.io/abcdef0123456789abcdef0123456789/ 403"),
+    ).toBe("POST https://go.getblock.io/[redacted]/ 403");
+  });
+
+  it("never mistakes a 0x hash or address in a URL for a key", () => {
+    const hash = "0x5f4e3d2c1b0a99887766554433221100aabbccddeeff00112233445566778899";
+    const address = "0xcFCd8a9b0c1d2e3f40516273849506a7b8c94165";
+    for (const text of [
+      `https://sonicscan.org/tx/${hash}`,
+      `https://example.org/${hash}`,
+      `https://example.org/${address}`,
+    ]) {
+      expect(redactSecrets(text)).toBe(text);
+    }
+  });
+
   it("leaves hashes, addresses and plain errors alone", () => {
     const text =
       "execution reverted for 0x5f4e3d2c1b0a99887766554433221100aabbccddeeff00112233445566778899 at 0xcFCd8a9b0c1d2e3f40516273849506a7b8c94165";
@@ -116,6 +143,44 @@ describe("submitErrorReport", () => {
       expect(body).not.toContain("Xk3vQ9pLm2RtY7uW8zA1bC4dE");
       expect(body).not.toContain("SECRET123");
       expect(body).toContain("[redacted]");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("submitErrorReport session dedup", () => {
+  const stubFetch = () => {
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
+      async () => Response.json({ status: "filed", issueNumber: 1 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+
+  it("sends every settling report, so each stuck order reaches the issue", async () => {
+    const fetchMock = stubFetch();
+    try {
+      const stuck = (hash: string): ErrorReportContext => ({
+        ...context("Solver status never turned terminal"),
+        step: "settling",
+        diagnostics: { hubTxHash: hash },
+      });
+      await submitErrorReport(stuck("0x" + "1".repeat(64)));
+      await submitErrorReport(stuck("0x" + "2".repeat(64)));
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("still sends a repeated failure at any other step only once", async () => {
+    const fetchMock = stubFetch();
+    try {
+      const failure = { ...context("dedup-check boom"), step: "dedup-check" };
+      await submitErrorReport(failure);
+      await submitErrorReport(failure);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }

@@ -21,6 +21,8 @@ import type {
 } from "@sodax/sdk";
 import {
   addressHint,
+  submitErrorReport,
+  type ErrorReportContext,
   type PourReportContext,
   type ReportState,
 } from "@/lib/error-report";
@@ -43,6 +45,7 @@ import {
   isPourLocked,
   releaseTracking,
   resolveTracking,
+  settledFollowUp,
   unsettledReport,
   type FillPhase,
   type PourStep,
@@ -320,10 +323,27 @@ export function useVaultAction(options?: {
   // identity changes cannot re-run a one-shot, while a late fill after an
   // unsettled report still gets its own.
   const firedRef = useRef<PourStep | null>(null);
+  /** The unsettled report as sent, so a late ending can follow it up. */
+  const unsettledSentRef = useRef<ErrorReportContext | null>(null);
   useEffect(() => {
     const due = dueOneShot(step, firedRef.current);
     if (!due) return;
     firedRef.current = due;
+
+    // A late ending of an order already reported as unsettled: say how it
+    // ended on that same issue, so triage does not chase an order that
+    // settled after all. Sent past the reporter so the settling screen's
+    // report note is not disturbed.
+    if (due !== "unsettled" && unsettledSentRef.current) {
+      void submitErrorReport(
+        settledFollowUp(
+          unsettledSentRef.current,
+          due,
+          Date.now() - trackingStartedRef.current,
+        ),
+      );
+      unsettledSentRef.current = null;
+    }
     const pour = pourRef.current;
     const intentTxHash = response?.intentDeliveryInfo.dstTxHash;
 
@@ -333,8 +353,7 @@ export function useVaultAction(options?: {
       // user, but it is a stalled order to the team, and until now nothing
       // told anyone.
       if (pour && response) {
-        report(
-          unsettledReport(pour.context, {
+        const sent = unsettledReport(pour.context, {
             intentHash: response.solverExecutionResponse.intent_hash,
             intentId: response.intent.intentId.toString(),
             spokeTxHash: response.intentDeliveryInfo.srcTxHash,
@@ -343,8 +362,9 @@ export function useVaultAction(options?: {
             lastStatusCode: lastStatusRef.current,
             trackedMs: Date.now() - trackingStartedRef.current,
             statusError,
-          }),
-        );
+          });
+        unsettledSentRef.current = sent;
+        report(sent);
       }
       return;
     }
@@ -431,6 +451,7 @@ export function useVaultAction(options?: {
       setResponse(null);
       setApproveRequired(null);
       firedRef.current = null;
+      unsettledSentRef.current = null;
       lastStatusRef.current = undefined;
       pourRef.current = {
         context: {
@@ -594,6 +615,7 @@ export function useVaultAction(options?: {
       resetReport();
       setResponse(null);
       firedRef.current = null;
+      unsettledSentRef.current = null;
       lastStatusRef.current = undefined;
       pourRef.current = {
         context: {
@@ -685,6 +707,7 @@ export function useVaultAction(options?: {
     setResponse(null);
     setApproveRequired(null);
     firedRef.current = null;
+    unsettledSentRef.current = null;
     lastStatusRef.current = undefined;
     pourRef.current = null;
   }, [resetReport]);

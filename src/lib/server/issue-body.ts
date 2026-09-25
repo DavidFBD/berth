@@ -107,6 +107,15 @@ export function buildIssueBody(
     .join("\n");
 }
 
+/**
+ * The comment for a follow-up: how an order already on an issue ended. The
+ * note is browser input, so it is redacted, capped and fenced like the rest.
+ */
+export function followUpComment(payload: ErrorReportPayload): string {
+  const note = redactSecrets(String(payload.followUp ?? "")).slice(0, 500);
+  return [`**Follow up at ${payload.page.at}**`, codeBlock(note)].join("\n");
+}
+
 /** Every free-text field of the payload, with RPC keys and tokens removed. */
 function redactPayload(payload: ErrorReportPayload): ErrorReportPayload {
   return {

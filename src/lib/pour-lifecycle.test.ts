@@ -8,6 +8,7 @@ import {
   isPourLocked,
   releaseTracking,
   resolveTracking,
+  settledFollowUp,
   unsettledReport,
   type PourStep,
 } from "./pour-lifecycle";
@@ -274,5 +275,17 @@ describe("unsettledReport", () => {
     };
     const prints = [started, notFound, erroring, failedFill].map(fingerprintOf);
     expect(new Set(prints).size).toBe(4);
+  });
+});
+
+describe("settledFollowUp", () => {
+  it("says how the order ended, on the same issue as its report", () => {
+    const sent = unsettledReport(context, facts());
+    const settled = settledFollowUp(sent, "filled", 143_200);
+    const failed = settledFollowUp(sent, "fillFailed", 200_000);
+    expect(settled.followUp).toBe(`Settled after 143s, intent ${"0x" + "a".repeat(64)}.`);
+    expect(failed.followUp).toMatch(/^Failed after 200s, intent 0x/);
+    expect(fingerprintOf(settled)).toBe(fingerprintOf(sent));
+    expect(fingerprintOf(failed)).toBe(fingerprintOf(sent));
   });
 });
