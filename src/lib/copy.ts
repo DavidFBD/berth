@@ -598,6 +598,8 @@ export type Copy = {
   authorizeDecline: string;
   authorizeReturning: (party: ConsentParty) => string;
   authorizeFailed: string;
+  authorizeNeedsWallet: string;
+  authorizeConnectWallet: string;
   authorizeExpired: string;
   authorizeErrorTitle: string;
   authorizeErrorUnknownClient: string;
@@ -1168,6 +1170,8 @@ export const COPY: Copy = {
         ? "Done. Taking you back to the app."
         : `Done. Taking you back to ${party.host}.`,
   authorizeFailed: "That did not go through. Please try again.",
+  authorizeNeedsWallet: "To allow it, connect the wallet you use for Berth in this window. Berth asks it for a free signature to know it is you.",
+  authorizeConnectWallet: "Connect your wallet",
   authorizeExpired: "This request has expired. Start again from your assistant.",
   authorizeErrorTitle: "This link cannot be used",
   authorizeErrorUnknownClient: "Berth does not recognise the app that sent you here. Start again from your assistant.",

@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useCopy } from "@/components/settings-provider";
 import { AuthGate } from "@/components/welcome-screen";
-import { useAuthorizeDecision, useIdentityLabel } from "@/hooks/use-profile";
+import { useAuthorizeDecision, useCanProveAccount, useIdentityLabel } from "@/hooks/use-profile";
+import { WalletDrawer } from "@/components/wallet/wallet-drawer";
 import { shortenAddress } from "@/lib/format";
 import type { ConsentParty } from "@/lib/assistant-party";
 import { CONSENT_TTL_SECONDS } from "@/lib/server/oauth/config";
@@ -56,6 +57,8 @@ export function ConsentCard({
   const copy = useCopy();
   const identity = useIdentityLabel();
   const decide = useAuthorizeDecision();
+  const canProve = useCanProveAccount();
+  const [walletsOpen, setWalletsOpen] = useState(false);
   const [pressed, setPressed] = useState<"approve" | "decline" | null>(null);
   const [leaving, setLeaving] = useState(false);
   // "expired" when the answer failed after the signed request's life, so
@@ -115,9 +118,22 @@ export function ConsentCard({
 
       <div className="flex flex-col gap-2">
         <p className="text-center text-sm text-muted-foreground">{copy.authorizeReturnTo(redirectHost)}</p>
-        <Button className="h-12 w-full rounded-full text-base font-semibold" disabled={busy} onClick={() => void answer("approve")}>
-          {busy && pressed === "approve" ? <Spinner className="size-5" /> : copy.authorizeApprove}
-        </Button>
+        {canProve ? (
+          <Button className="h-12 w-full rounded-full text-base font-semibold" disabled={busy} onClick={() => void answer("approve")}>
+            {busy && pressed === "approve" ? <Spinner className="size-5" /> : copy.authorizeApprove}
+          </Button>
+        ) : (
+          <>
+            {/* Only a wallet the server cannot check reconnected in this
+                window (a popup often brings back Solana and not EVM), so
+                Allow would have nothing to sign with. */}
+            <p className="text-center text-sm text-foreground">{copy.authorizeNeedsWallet}</p>
+            <Button className="h-12 w-full rounded-full text-base font-semibold" onClick={() => setWalletsOpen(true)}>
+              {copy.authorizeConnectWallet}
+            </Button>
+            <WalletDrawer open={walletsOpen} onOpenChange={setWalletsOpen} />
+          </>
+        )}
         <Button
           variant="outline"
           className="h-12 w-full rounded-full text-base font-semibold"

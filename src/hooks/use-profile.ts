@@ -331,6 +331,17 @@ export function useClaimInvite() {
  * either exists. The consent screen says it, so nobody connects the wrong
  * account to an assistant.
  */
+/**
+ * Whether this window holds something the server accepts as proof of the
+ * account: a Privy session, or an EVM wallet that can sign in. The welcome
+ * gate lets anyone with ANY connected wallet through, so a window where
+ * only a Solana wallet reconnected passes the gate but cannot approve.
+ */
+export function useCanProveAccount(): boolean {
+  const { authenticated, wallet } = useIdentity();
+  return authenticated || wallet !== null;
+}
+
 export function useIdentityLabel(): { email: string | null; wallet: string | null } {
   const privy = usePrivyEmbeddedWallet();
   const { authenticated, wallet } = useIdentity();
