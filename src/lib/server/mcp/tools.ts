@@ -420,7 +420,12 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
         }
         const last = result.days.at(-1)!;
         const out = [
-          `${wanted.words[0].toUpperCase()}${wanted.words.slice(1)}, from ${day(result.since ?? result.days[0].day)}, ${result.tradingDays} market day${result.tradingDays === 1 ? "" : "s"}.`,
+          // Since the first buy reads from the first day on record, which can
+          // be later than the first buy itself (the daily record began with
+          // the evening cron), so the date is named as the record's start.
+          period === "since_first_buy"
+            ? `Since the first buy. Daily values are on record from ${day(result.days[0].day)}, ${result.tradingDays} market day${result.tradingDays === 1 ? "" : "s"}.`
+            : `${wanted.words[0].toUpperCase()}${wanted.words.slice(1)}, from ${day(result.since ?? result.days[0].day)}, ${result.tradingDays} market day${result.tradingDays === 1 ? "" : "s"}.`,
           `The account: ${pct(result.changePct)}. The same dollars in ${benchmark.name}: ${pct(result.benchmarkPct)}.`,
           `Value now ${usd(last.value)}${last.benchmark !== null ? `, the ${benchmark.name} line ${usd(last.benchmark)}` : ""}.`,
         ];

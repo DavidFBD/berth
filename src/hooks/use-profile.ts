@@ -56,17 +56,6 @@ function useIdentity() {
  * no session materializes or the server says no — public hooks decide
  * whether null is an error (queries throw) or a quiet miss (mutations).
  */
-/** What the last rewards call did, for the consent screen's diagnosis. */
-let lastCall: { authenticated: boolean; wallet: boolean; stage: string; error?: string; status?: number } = {
-  authenticated: false,
-  wallet: false,
-  stage: "none",
-};
-
-function diagnose() {
-  return { ...lastCall, ua: typeof navigator === "undefined" ? "" : navigator.userAgent.slice(0, 160) };
-}
-
 function useRewardsCall() {
   const { authenticated, wallet, key, getAccessToken } = useIdentity();
   const ensureWalletSession = useEnsureWalletSession();
@@ -80,26 +69,13 @@ function useRewardsCall() {
      */
     notFound?: T,
   ): Promise<T | null> => {
-    lastCall = { authenticated, wallet: !!wallet, stage: "auth" };
     const auth = authenticated
-      ? { token: await getAccessToken().catch((error: unknown) => {
-          lastCall.error = String(error).slice(0, 200);
-          return null;
-        }), walletSession: null }
+      ? { token: await getAccessToken(), walletSession: null }
       : {
           token: null,
-          walletSession: wallet
-            ? await ensureWalletSession(wallet).catch((error: unknown) => {
-                lastCall.error = String(error).slice(0, 200);
-                return null;
-              })
-            : null,
+          walletSession: wallet ? await ensureWalletSession(wallet) : null,
         };
-    if (!auth.token && !auth.walletSession) {
-      lastCall.stage = "no-session";
-      return null;
-    }
-    lastCall.stage = "fetch";
+    if (!auth.token && !auth.walletSession) return null;
     const response = await fetch(path, {
       method: "POST",
       headers: {
@@ -111,7 +87,6 @@ function useRewardsCall() {
       },
       body: JSON.stringify(body),
     });
-    lastCall.status = response.status;
     if (response.status === 404 && notFound !== undefined) return notFound;
     if (!response.ok) return null;
     return response.json();
@@ -382,16 +357,7 @@ export function useAuthorizeDecision() {
         return ((await response.json()) as { redirect?: string }).redirect ?? null;
       }
       const data = await call<{ redirect?: string }>("/api/oauth/decision", vars);
-      if (data?.redirect) return data.redirect;
-      // No session materialised, or the server said no. Tell the server
-      // which, so a failure inside an assistant's own browser can be read
-      // from the logs; it answers 401 and changes nothing.
-      await fetch("/api/oauth/decision", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...vars, decision: "diagnose", diag: diagnose() }),
-      }).catch(() => undefined);
-      return null;
+      return data?.redirect ?? null;
     },
   });
 }
