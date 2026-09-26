@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowSquareOut, Check, CheckCircle, Copy } from "@phosphor-icons/react";
+import { ArrowSquareOut, Check, CheckCircle, Copy, DownloadSimple } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
@@ -170,6 +170,19 @@ export function AssistantSection({
                   <li key={step}>{step}</li>
                 ))}
               </ol>
+
+              {/* ChatGPT's Create MCP App form takes an icon (PNG, 10 KB at
+                  most); Berth's app icon is 180 pixels and under 8 KB. */}
+              {chosen.id === "chatgpt" && (
+                <a
+                  href="/berth-app-icon.png"
+                  download="Berth.png"
+                  className="flex items-center gap-2 self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  <DownloadSimple className="size-4" aria-hidden />
+                  {copy.assistantIconDownload}
+                </a>
+              )}
 
               <Button
                 variant="outline"

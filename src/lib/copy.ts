@@ -629,6 +629,8 @@ export type Copy = {
   assistantStepsClaude: readonly string[];
   assistantStepsChatGpt: readonly string[];
   assistantStepsGrok: readonly string[];
+  /** Under ChatGPT's steps: the icon its app form asks for. */
+  assistantIconDownload: string;
   /** The primary action in a sheet: "Open Claude". */
   assistantOpen: (name: string) => string;
   assistantConnectedTitle: string;
@@ -1201,11 +1203,12 @@ export const COPY: Copy = {
   ],
   assistantStepsChatGpt: [
     "Open ChatGPT's plugins with the button below. This needs a Plus plan or higher, with Developer mode turned on.",
-    "Choose Add, then Create MCP App. Name it Berth, paste the address above as the Server URL, and leave Authentication on OAuth.",
+    "Choose Add, then Create MCP App. Name it Berth, add Berth's icon from the link below if you like, paste the address above as the Server URL, and leave Authentication on OAuth.",
     "ChatGPT marks every app it has not reviewed itself as elevated risk, with a warning. That is its standard notice, not a finding about Berth. Berth can read your account and suggest orders, and it can never move your money. Tick the box and choose Create.",
     "Sign in to Berth when ChatGPT asks, and allow it.",
     "In a chat, turn on Berth from the plus menu, then ask about your account.",
   ],
+  assistantIconDownload: "Download Berth's icon for the app",
   assistantStepsGrok: [
     "Open Grok's connectors with the button below and choose New connector, then Custom. It needs SuperGrok or X Premium+.",
     "Name it Berth and paste the address above.",
