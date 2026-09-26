@@ -37,7 +37,7 @@ function openUrl(id: AssistantId, mcpUrl: string): string {
     case "claude":
       return `https://claude.ai/customize/connectors?modal=add-custom-connector&mcpName=Berth&mcpServerUrl=${encodeURIComponent(mcpUrl)}`;
     case "chatgpt":
-      return "https://chatgpt.com/";
+      return "https://chatgpt.com/plugins";
     case "grok":
       return "https://grok.com/connectors";
   }

@@ -1200,7 +1200,7 @@ export const COPY: Copy = {
     "On the free plan Claude allows one custom connector.",
   ],
   assistantStepsChatGpt: [
-    "In ChatGPT's settings, turn on Developer mode (Plus plan or higher), then create an app named Berth with the address above.",
+    "Open ChatGPT's plugins with the button below. Turn on Developer mode (Plus plan or higher), then create a plugin named Berth with the address above.",
     "Sign in to Berth when ChatGPT asks, and allow it.",
   ],
   assistantStepsGrok: [
