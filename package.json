@@ -10,6 +10,7 @@
     "test": "vitest run",
     "shot": "node scripts/screenshot.mjs",
     "db:push": "node scripts/db-push.mjs",
+    "mcp:usage": "node scripts/mcp-usage.mjs",
     "listings:verify": "node --no-warnings --experimental-strip-types scripts/verify-listings.mjs",
     "privy:config": "node scripts/privy-config.mjs",
     "orders:backfill": "node --no-warnings --experimental-strip-types scripts/orders-backfill.mjs",

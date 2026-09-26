@@ -52,7 +52,7 @@ async function verifyToken(request: Request, bearer?: string): Promise<AuthInfo 
     clientId: access.clientId,
     scopes: access.scopes,
     expiresAt: access.expiresAt,
-    extra: { userId: access.userId, grantId: access.grantId },
+    extra: { userId: access.userId, grantId: access.grantId, clientName: access.clientName },
   };
 }
 

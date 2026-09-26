@@ -264,3 +264,22 @@ create table if not exists oauth_rate_limits (
   n integer not null default 0,
   primary key (bucket, window_start)
 );
+
+-- One row per MCP tool call (lib/server/mcp/usage), written after the
+-- answer is sent. Which tool, for whom, through which assistant, whether it
+-- worked and how long it took. Never the arguments or the output. The
+-- evening cron deletes rows older than 90 days.
+create table if not exists mcp_calls (
+  id bigserial primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  grant_id uuid not null,
+  assistant text,
+  tool text not null,
+  ok boolean not null,
+  error text,
+  duration_ms integer not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists mcp_calls_created_idx on mcp_calls (created_at);
+create index if not exists mcp_calls_user_idx on mcp_calls (user_id, created_at);

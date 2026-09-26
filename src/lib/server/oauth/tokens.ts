@@ -8,7 +8,7 @@ import {
 import { randomToken, sha256Hex, verifyPkce } from "@/lib/server/oauth/crypto";
 import type { ConsentRequest } from "@/lib/server/oauth/authorize";
 import { resolveScope, scopeList } from "@/lib/server/oauth/validation";
-import { ASSISTANT_NAMES, describeParty, type AssistantId } from "@/lib/assistant-party";
+import { assistantForGrantName, describeParty, type AssistantId } from "@/lib/assistant-party";
 import { COPY } from "@/lib/copy";
 
 /**
@@ -335,6 +335,8 @@ export async function refreshTokens(input: RefreshInput, now = new Date(), attem
 export type VerifiedAccess = {
   userId: string;
   clientId: string;
+  /** The grant's saved name, "Claude", "ChatGPT" or "Grok" only for those products' own hosts. */
+  clientName: string | null;
   grantId: string;
   scopes: string[];
   /** Seconds since the epoch. */
@@ -355,7 +357,7 @@ export async function verifyAccessToken(
   if (!token || token.length > 200) return null;
   const sql = getSql();
   const rows = (await sql.query(
-    `select t.grant_id, t.expires_at, g.user_id, g.client_id, coalesce(t.scope, g.scope) as scope, g.resource, g.last_used_at
+    `select t.grant_id, t.expires_at, g.user_id, g.client_id, g.client_name, coalesce(t.scope, g.scope) as scope, g.resource, g.last_used_at
        from oauth_tokens t join oauth_grants g on g.id = t.grant_id
       where t.token_hash = $1 and t.kind = 'access' and t.revoked_at is null and g.revoked_at is null`,
     [sha256Hex(token)],
@@ -364,6 +366,7 @@ export async function verifyAccessToken(
     expires_at: string | Date;
     user_id: string;
     client_id: string;
+    client_name: string | null;
     scope: string;
     resource: string | null;
     last_used_at: string | Date | null;
@@ -379,6 +382,7 @@ export async function verifyAccessToken(
   return {
     userId: row.user_id,
     clientId: row.client_id,
+    clientName: row.client_name,
     grantId: row.grant_id,
     scopes: scopeList(row.scope),
     expiresAt: Math.floor(expiresAt / 1000),
@@ -425,8 +429,7 @@ export async function listGrants(userId: string): Promise<GrantSummary[]> {
   return rows.map((row) => ({
     id: row.id,
     clientName: row.client_name ?? row.client_id,
-    assistant:
-      (Object.entries(ASSISTANT_NAMES) as [AssistantId, string][]).find(([, name]) => name === row.client_name)?.[0] ?? null,
+    assistant: assistantForGrantName(row.client_name),
     scope: scopeList(row.scope),
     createdAt: new Date(row.created_at).toISOString(),
     lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,

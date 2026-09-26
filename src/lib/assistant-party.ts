@@ -45,6 +45,22 @@ const KNOWN_HOSTS: readonly (readonly [string, AssistantId])[] = [
   ["x.ai", "grok"],
 ];
 
+/**
+ * The assistant a grant belongs to, from the name it was saved under. A
+ * grant's name is the consent screen's headline, which is the product's
+ * own name only when the redirect host is that product's (grantLabel in
+ * lib/server/oauth/tokens), so the name is as trustworthy as the host.
+ */
+export function assistantForGrantName(name: string | null | undefined): AssistantId | null {
+  if (!name) return null;
+  return (Object.entries(ASSISTANT_NAMES) as [AssistantId, string][]).find(([, known]) => known === name)?.[0] ?? null;
+}
+
+/** The same, for usage logs: every unknown or local client counts as "other". */
+export function usageAssistant(name: string | null | undefined): AssistantId | "other" {
+  return assistantForGrantName(name) ?? "other";
+}
+
 export type ConsentParty =
   | { kind: "known"; assistant: AssistantId; name: string }
   | { kind: "unknown"; host: string; selfName: string | null }

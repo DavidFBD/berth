@@ -18,6 +18,7 @@ import { SCOPE_DRAFT, SCOPE_READ } from "@/lib/server/oauth/config";
 import { loadOrderLog } from "@/lib/server/order-marks";
 import { hubWalletFor, liveListingPrices, readListingBalances } from "@/lib/server/portfolio";
 import { loadPortfolioHistory } from "@/lib/server/portfolio-view";
+import { authOf, guarded, refuse, text, type BerthAuth, type ToolResult } from "@/lib/server/mcp/guard";
 import { ago, clip, day, moment, named, pct, units, usd } from "@/lib/server/mcp/text";
 
 /**
@@ -32,35 +33,7 @@ import { ago, clip, day, moment, named, pct, units, usd } from "@/lib/server/mcp
  * and a plain line when something could not be read rather than a guess.
  */
 
-/** Who the token speaks for, set by the route's verifyToken (app/mcp). */
-export type BerthAuth = { userId: string; grantId: string };
-
-export function authOf(ctx: ServerContext): (BerthAuth & { scopes: string[] }) | null {
-  const info = ctx.http?.authInfo;
-  const extra = info?.extra as Partial<BerthAuth> | undefined;
-  if (!info || !extra?.userId || !extra.grantId) return null;
-  return { userId: extra.userId, grantId: extra.grantId, scopes: info.scopes };
-}
-
-type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
-
-function text(body: string): ToolResult {
-  return { content: [{ type: "text", text: body }] };
-}
-
-function refuse(body: string): ToolResult {
-  return { content: [{ type: "text", text: body }], isError: true };
-}
-
-/** Run a tool body; anything thrown becomes a calm error the assistant can relay. */
-async function guarded(name: string, run: () => Promise<ToolResult>): Promise<ToolResult> {
-  try {
-    return await run();
-  } catch (error) {
-    console.warn(`[mcp] ${name} failed`, error instanceof Error ? error.message : error);
-    return refuse("Berth could not answer that just now. Try again in a minute.");
-  }
-}
+export { authOf, type BerthAuth } from "@/lib/server/mcp/guard";
 
 function needScope(ctx: ServerContext, scope: string): (BerthAuth & { scopes: string[] }) | ToolResult {
   const auth = authOf(ctx);
@@ -184,8 +157,8 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       inputSchema: z.object({}),
       annotations: { title: "List what Berth offers", ...READ_ONLY },
     },
-    async () =>
-      guarded("list_listings", async () => {
+    async (_args, ctx) =>
+      guarded("list_listings", ctx, async () => {
         const [prices, performance] = await Promise.all([
           liveListingPrices().catch(() => ({}) as Record<string, number>),
           loadPerformance().catch(() => ({ performance: {} }) as Awaited<ReturnType<typeof loadPerformance>>),
@@ -210,8 +183,8 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       inputSchema: z.object({ listing: LISTING_ARG }),
       annotations: { title: "Look at one listing", ...READ_ONLY, openWorldHint: true },
     },
-    async ({ listing: query }) =>
-      guarded("get_listing", async () => {
+    async ({ listing: query }, ctx) =>
+      guarded("get_listing", ctx, async () => {
         const listing = findTokenListing(query);
         if (!listing) return refuse(`Berth does not offer "${query}". Call list_listings for what is on the board.`);
         // One X gathering and one performance read, shared by the moves and the column.
@@ -268,8 +241,8 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       inputSchema: z.object({}),
       annotations: { title: "What moved", ...READ_ONLY, openWorldHint: true },
     },
-    async () =>
-      guarded("get_moves", async () => {
+    async (_args, ctx) =>
+      guarded("get_moves", ctx, async () => {
         const [performance, moves] = await Promise.all([loadPerformance(), loadMoves().catch(() => ({ moves: [] }))]);
         const rows = TOKEN_LISTINGS.map((listing) => ({ listing, entry: performance.performance[listing.symbol] }))
           .filter((row) => row.entry?.changePct !== undefined)
@@ -299,8 +272,8 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       inputSchema: z.object({ listing: LISTING_ARG.optional() }),
       annotations: { title: "What is being said", ...READ_ONLY, openWorldHint: true },
     },
-    async ({ listing: query }) =>
-      guarded("get_market_feed", async () => {
+    async ({ listing: query }, ctx) =>
+      guarded("get_market_feed", ctx, async () => {
         const listing = query ? findTokenListing(query) : undefined;
         if (query && !listing) return refuse(`Berth does not offer "${query}". Call list_listings for what is on the board.`);
         const feed = await loadListingX(listing?.symbol);
@@ -328,7 +301,7 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       scopeChallenge: requireScopes(SCOPE_READ),
     },
     async (_args, ctx) =>
-      guarded("get_account", async () => {
+      guarded("get_account", ctx, async () => {
         const auth = needScope(ctx, SCOPE_READ);
         if ("content" in auth) return auth;
         const row = await loadAccountRow(auth.userId);
@@ -370,7 +343,7 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       scopeChallenge: requireScopes(SCOPE_READ),
     },
     async (_args, ctx) =>
-      guarded("get_holdings", async () => {
+      guarded("get_holdings", ctx, async () => {
         const auth = needScope(ctx, SCOPE_READ);
         if ("content" in auth) return auth;
         const row = await loadAccountRow(auth.userId);
@@ -409,7 +382,7 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       scopeChallenge: requireScopes(SCOPE_READ),
     },
     async ({ period, benchmark: choice }, ctx) =>
-      guarded("get_performance", async () => {
+      guarded("get_performance", ctx, async () => {
         const auth = needScope(ctx, SCOPE_READ);
         if ("content" in auth) return auth;
         const row = await loadAccountRow(auth.userId);
@@ -458,7 +431,7 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       scopeChallenge: requireScopes(SCOPE_READ),
     },
     async ({ limit }, ctx) =>
-      guarded("get_orders", async () => {
+      guarded("get_orders", ctx, async () => {
         const auth = needScope(ctx, SCOPE_READ);
         if ("content" in auth) return auth;
         const { total, entries } = await loadOrderLog(auth.userId, limit);
@@ -502,7 +475,7 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
       scopeChallenge: requireScopes(SCOPE_DRAFT),
     },
     async ({ listing: query, side, usd_amount, quantity }, ctx) =>
-      guarded("draft_order", async () => {
+      guarded("draft_order", ctx, async () => {
         const auth = needScope(ctx, SCOPE_DRAFT);
         if ("content" in auth) return auth;
         const listing = findTokenListing(query);

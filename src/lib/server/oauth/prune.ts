@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/server/db";
+import { MCP_CALLS_KEEP_DAYS } from "@/lib/server/mcp/usage";
 
 /**
  * The authorization server's housekeeping, run by the evening cron
@@ -9,7 +10,8 @@ import { getSql } from "@/lib/server/db";
  *   expiry is still recognised as one);
  * - tokens expired, or revoked, more than a week ago;
  * - clients registered more than a week ago that no grant ever named;
- * - rate limit windows older than a day.
+ * - rate limit windows older than a day;
+ * - MCP usage rows (mcp_calls) older than 90 days.
  *
  * A refresh token deleted this way, if ever presented again, is simply
  * unknown rather than a detected reuse; a week past its end, that is fine.
@@ -17,7 +19,7 @@ import { getSql } from "@/lib/server/db";
 
 export const PRUNE_AFTER_DAYS = 7;
 
-export type OAuthPruneSummary = { codes: number; tokens: number; clients: number; rateWindows: number };
+export type OAuthPruneSummary = { codes: number; tokens: number; clients: number; rateWindows: number; mcpCalls: number };
 
 export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
   const sql = getSql();
@@ -37,5 +39,10 @@ export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
         and not exists (select 1 from oauth_codes k where k.client_id = c.client_id and k.expires_at > $1::timestamptz)`,
   );
   const rateWindows = await count(`delete from oauth_rate_limits where window_start < $1::timestamptz - interval '1 day'`, [at]);
-  return { codes, tokens, clients, rateWindows };
+  // Before db:push the table may not exist yet; the rest of the prune still counts.
+  const mcpCalls = await count(`delete from mcp_calls where created_at < $1::timestamptz - make_interval(days => $2::int)`, [
+    at,
+    MCP_CALLS_KEEP_DAYS,
+  ]).catch(() => 0);
+  return { codes, tokens, clients, rateWindows, mcpCalls };
 }
