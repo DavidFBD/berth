@@ -144,6 +144,10 @@ describe("percentChange", () => {
 });
 
 describe("withoutSpikes", () => {
+  it("drops the Silver Trust token's one day print that came straight back", () => {
+    expect(withoutSpikes(["a", "b", "c", "d"], [60.77, 59.08, 68.775, 57.64]).values).toEqual([60.77, 59.08, 57.64]);
+  });
+
   it("drops the Sandisk mark that printed four times the share price", () => {
     const { dates, values } = withoutSpikes(
       ["2026-07-15", "2026-07-16", "2026-07-17"],

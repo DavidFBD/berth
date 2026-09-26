@@ -150,13 +150,15 @@ export function percentChange(
 }
 
 /**
- * How far a close may sit from the midpoint of the days either side of it
- * before it is treated as a bad mark rather than a move. Twenty percent
- * keeps every real gap: an earnings jump is a STEP, so the day after it
- * stays at the new level and the midpoint moves with it. Only a price that
- * goes there and comes straight back trips this.
+ * How far a close may sit from the median of itself and the days either
+ * side before it is treated as a bad mark rather than a move. A real gap
+ * is a STEP, so the day after it stays at the new level and the median
+ * moves with it; only a price that goes there and comes straight back trips
+ * this, so the tolerance can be tight. Twenty percent let the Silver Trust
+ * token's $68.78 print on 2026-09-24 through (16% off a $59.08 median, the
+ * ETF itself never left $57 to $61), and the fall back read as -16%.
  */
-export const SPIKE_TOLERANCE = 0.2;
+export const SPIKE_TOLERANCE = 0.12;
 
 /**
  * Drop marks the underlying share never made.
