@@ -57,6 +57,12 @@ export type ListingPerformance = {
    * previous session plus the night's thin trading.
    */
   changePct?: number;
+  /**
+   * The previous market day's mark was a bad print the despike dropped, so
+   * there is no clean close to measure the last day against. `changePct` is
+   * then absent rather than a two day change dressed as one.
+   */
+  noCleanClose?: boolean;
   /** Daily marks on days the market was open, oldest first. */
   series?: number[];
   /** ISO date of the first close in `series`. */
@@ -122,11 +128,14 @@ async function readChunk(
     const { dates, values } = withoutSpikes(open.dates, open.values);
     // One close draws no line and measures no change.
     if (values.length < 2) continue;
+    const previousDropped = dates[dates.length - 2] !== open.dates[open.dates.length - 2];
     found[symbol] = {
       series: values,
       seriesFrom: dates[0],
       seriesDates: dates,
-      changePct: percentChange(values[values.length - 2], values[values.length - 1]),
+      ...(previousDropped
+        ? { noCleanClose: true }
+        : { changePct: percentChange(values[values.length - 2], values[values.length - 1]) }),
     };
   }
   return found;

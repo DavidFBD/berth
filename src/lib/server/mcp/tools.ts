@@ -236,7 +236,9 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
           const first = entry.series[0];
           const last = entry.series.at(-1)!;
           out.push(
-            `Last trading day: ${pct(entry.changePct)}${isNotableMove(entry.series, entry.changePct) ? ", a large move for it" : ""}.`,
+            entry.noCleanClose
+              ? "Last trading day: no clean close the day before to measure against, so no change is given."
+              : `Last trading day: ${pct(entry.changePct)}${isNotableMove(entry.series, entry.changePct) ? ", a large move for it" : ""}.`,
             `Recent closes: ${closes.join(", ")}.`,
             `Since ${day(entry.seriesFrom ?? entry.seriesDates[0])}: ${pct(((last - first) / first) * 100)}.`,
           );
@@ -282,6 +284,8 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
             `${named(listing)}: ${pct(entry!.changePct)}${notable ? ", large for it" : ""}${move ? `. In the news: ${move.post.name}, ${move.post.url}` : ""}`,
           );
         }
+        const unclean = TOKEN_LISTINGS.filter((listing) => performance.performance[listing.symbol]?.noCleanClose);
+        for (const listing of unclean) out.push(`${named(listing)}: no clean close the day before, so no change is given.`);
         return text(out.join("\n"));
       }),
   );
