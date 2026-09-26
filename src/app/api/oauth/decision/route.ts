@@ -27,6 +27,11 @@ export async function POST(request: NextRequest) {
   const issuer = publicOrigin(request.headers, request.url);
   // Read the body once: readRewardsCaller consumes it, so a decline reads a clone.
   const peek = (await request.clone().json().catch(() => ({}))) as Record<string, unknown>;
+  if (peek.decision === "diagnose") {
+    // The consent page could not approve; it says why (hooks/use-profile).
+    console.warn("[oauth] approval failed in the browser", JSON.stringify(peek.diag ?? null).slice(0, 600));
+    return NextResponse.json({ error: "not signed in" }, { status: 401 });
+  }
   const consent = await readConsent(peek.request, issuer);
   if (!consent) return NextResponse.json({ error: "consent request expired" }, { status: 400 });
 
