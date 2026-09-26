@@ -90,6 +90,13 @@ describe("takeMcpPlace", () => {
     expect(await takeMcpPlace(GRANT, new Date("2026-09-27T00:00:05Z"))).toBe(true);
   });
 
+  it("does not spend the day on calls the minute refused", async () => {
+    const now = new Date("2026-09-26T15:30:10Z");
+    await Promise.all(Array.from({ length: MCP_LIMITS.perMinute + 20 }, () => takeMcpPlace("retry-loop", now)));
+    const rows = (await sql.query(`select n from oauth_rate_limits where bucket = $1`, ["mcp:day:retry-loop"])) as { n: number }[];
+    expect(Number(rows[0].n)).toBe(MCP_LIMITS.perMinute);
+  });
+
   it("fails open when the query errors", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     setSqlClient({ query: async () => Promise.reject(new Error("connection refused")) });

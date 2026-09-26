@@ -43,6 +43,10 @@ export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
   const mcpCalls = await count(`delete from mcp_calls where created_at < $1::timestamptz - make_interval(days => $2::int)`, [
     at,
     MCP_CALLS_KEEP_DAYS,
-  ]).catch(() => 0);
+  ]).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/mcp_calls/.test(message) || !/does not exist/.test(message)) console.warn("[prune] mcp_calls:", message);
+    return 0;
+  });
   return { codes, tokens, clients, rateWindows, mcpCalls };
 }

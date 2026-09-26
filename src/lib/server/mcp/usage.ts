@@ -55,22 +55,36 @@ export function withinMcpLimits(counts: { minute: number; day: number }): boolea
 }
 
 /**
- * Take one place for a grant in its minute and its day, in one statement
- * (the oauth_rate_limits upsert, so racing calls cannot both take the last
- * place). True when the call may go ahead, including when the query fails.
+ * Take one place for a grant in its minute and, only if the minute allows
+ * the call, its day, in one statement (the oauth_rate_limits upsert, so
+ * racing calls cannot both take the last place). A call refused by the
+ * minute does not spend the day: an assistant retrying in a loop is held
+ * to the minute's pace instead of locked out until midnight. True when the
+ * call may go ahead, including when the query fails.
  */
 export async function takeMcpPlace(grantId: string, now = new Date()): Promise<boolean> {
   const { minute, day } = mcpWindows(grantId, now);
   try {
     const rows = (await getSql().query(
-      `insert into oauth_rate_limits (bucket, window_start, n)
-       values ($1, $2::timestamptz, 1), ($3, $4::timestamptz, 1)
-       on conflict (bucket, window_start) do update set n = oauth_rate_limits.n + 1
-       returning bucket, n`,
-      [minute[0], minute[1], day[0], day[1]],
-    )) as { bucket: string; n: number }[];
-    const count = (bucket: string) => rows.find((row) => row.bucket === bucket)?.n ?? 0;
-    return withinMcpLimits({ minute: count(minute[0]), day: count(day[0]) });
+      `with m as (
+         insert into oauth_rate_limits (bucket, window_start, n)
+         values ($1, $2::timestamptz, 1)
+         on conflict (bucket, window_start) do update set n = oauth_rate_limits.n + 1
+         returning n
+       ), d as (
+         insert into oauth_rate_limits (bucket, window_start, n)
+         select $3, $4::timestamptz, 1 from m where m.n <= $5
+         on conflict (bucket, window_start) do update set n = oauth_rate_limits.n + 1
+         returning n
+       )
+       select (select n from m) as minute, (select n from d) as day`,
+      [minute[0], minute[1], day[0], day[1], MCP_LIMITS.perMinute],
+    )) as { minute: number | null; day: number | null }[];
+    const row = rows[0];
+    if (!row || row.minute === null) return true;
+    // No day count means the minute refused the call before the day was spent.
+    if (row.day === null) return false;
+    return withinMcpLimits({ minute: Number(row.minute), day: Number(row.day) });
   } catch (error) {
     console.warn("[mcp] rate limit unavailable, letting the call through:", error instanceof Error ? error.message : error);
     return true;

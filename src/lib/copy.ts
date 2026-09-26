@@ -1209,7 +1209,7 @@ export const COPY: Copy = {
   ],
   assistantPromptLabel: (name, prompt) => `Ask ${name}: ${prompt}`,
   assistantPromptHintChatGpt: "Switch Berth on in the chat's + menu first.",
-  assistantSetupAgain: "Connect again",
+  assistantSetupAgain: "Connect another account",
   assistantAddressLabel: "Berth's address for assistants",
   assistantCopyLabel: "Copy the address",
   assistantCopied: "Address copied",
