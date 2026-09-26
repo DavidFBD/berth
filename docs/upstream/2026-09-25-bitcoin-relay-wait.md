@@ -1,6 +1,6 @@
 # Draft upstream issue: Bitcoin sourced vault swaps report a relay timeout as a failure, and lose the payment hash
 
-Status: draft, not filed. For the SODAX SDK repo (`@sodax/sdk` 2.0.0,
+Status: filed as https://github.com/icon-project/sodax-sdks/issues/489 on 2026-09-26. For the SODAX SDK repo (`@sodax/sdk` 2.0.0,
 `@sodax/dapp-kit` 2.0.0). Line numbers are `dist/index.mjs` of 2.0.0.
 
 ## Summary
