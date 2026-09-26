@@ -65,8 +65,14 @@ export function parseRegistration(body: Record<string, unknown>, clientId?: stri
       description: "redirect_uris must be https, or http on a loopback address",
     };
   }
+  // Public clients only. A client that prefers another method but lists
+  // "none" among those it supports (ChatGPT's published document prefers
+  // private_key_jwt) is taken as public: Berth advertises only "none", so
+  // that is what it will use, and PKCE is the proof either way.
   const method = body.token_endpoint_auth_method;
-  if (method !== undefined && method !== "none") {
+  const supported = body.token_endpoint_auth_methods_supported;
+  const canBePublic = Array.isArray(supported) && supported.includes("none");
+  if (method !== undefined && method !== "none" && !canBePublic) {
     return { ok: false, error: "invalid_client_metadata", description: "only public clients (token_endpoint_auth_method none)" };
   }
   // A client may list grants Berth does not offer (Claude's published

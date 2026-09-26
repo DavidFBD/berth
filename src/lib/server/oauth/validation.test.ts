@@ -104,6 +104,23 @@ describe("client metadata", () => {
     expect(parseRegistration({ ...doc, grant_types: ["refresh_token"] }, doc.client_id).ok).toBe(false);
   });
 
+  it("takes ChatGPT's published document, which prefers a signed key but supports none", () => {
+    const doc = {
+      client_id: "https://chatgpt.com/oauth/client.json",
+      client_uri: "https://chatgpt.com/",
+      redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+      token_endpoint_auth_method: "private_key_jwt",
+      token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      client_name: "ChatGPT",
+    };
+    expect(parseRegistration(doc, doc.client_id).ok).toBe(true);
+    const { token_endpoint_auth_methods_supported: _dropped, ...confidentialOnly } = doc;
+    void _dropped;
+    expect(parseRegistration(confidentialOnly, doc.client_id).ok).toBe(false);
+  });
+
   it("knows a metadata document URL when it sees one", () => {
     expect(isCimdClientId("https://claude.ai/oauth/mcp-oauth-client-metadata")).toBe(true);
     expect(isCimdClientId("https://example.com/")).toBe(false);
