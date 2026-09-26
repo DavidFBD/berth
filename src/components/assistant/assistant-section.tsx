@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowSquareOut, CheckCircle, Copy } from "@phosphor-icons/react";
+import { ArrowSquareOut, Check, CheckCircle, Copy } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
@@ -69,9 +69,16 @@ export function AssistantSection({
   const chosen = assistants.find((assistant) => assistant.id === open);
   const isConnected = (id: AssistantId) => connected.some((grant) => grant.assistant === id);
 
+  // Copied shows on the button itself for a moment: a toast would sit over
+  // Open Claude, the very next thing the person reaches for.
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1800);
+    return () => clearTimeout(timer);
+  }, [copied]);
   const copyAddress = () => {
-    void navigator.clipboard.writeText(mcpUrl);
-    toast.success(copy.assistantCopied, { description: mcpUrl });
+    void navigator.clipboard.writeText(mcpUrl).then(() => setCopied(true));
   };
 
   // Disconnect takes a second tap: the first turns the button into the
@@ -146,12 +153,15 @@ export function AssistantSection({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={copy.assistantCopyLabel}
+                    aria-label={copied ? copy.assistantCopied : copy.assistantCopyLabel}
                     className="shrink-0 text-muted-foreground hover:text-foreground"
                     onClick={copyAddress}
                   >
-                    <Copy className="size-4.5" />
+                    {copied ? <Check className="size-4.5 text-foreground" /> : <Copy className="size-4.5" />}
                   </Button>
+                  <span className="sr-only" aria-live="polite">
+                    {copied ? copy.assistantCopied : ""}
+                  </span>
                 </div>
               </div>
 
