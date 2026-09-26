@@ -90,6 +90,20 @@ describe("client metadata", () => {
     expect(parseRegistration({ redirect_uris: Array.from({ length: 11 }, (_, i) => `https://a.example/${i}`) }).ok).toBe(false);
   });
 
+  it("takes Claude's published document, extra grant types and all", () => {
+    const doc = {
+      client_id: "https://claude.ai/oauth/mcp-oauth-client-metadata",
+      client_name: "Claude",
+      client_uri: "https://claude.ai",
+      redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
+      grant_types: ["authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:jwt-bearer"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+    };
+    expect(parseRegistration(doc, doc.client_id).ok).toBe(true);
+    expect(parseRegistration({ ...doc, grant_types: ["refresh_token"] }, doc.client_id).ok).toBe(false);
+  });
+
   it("knows a metadata document URL when it sees one", () => {
     expect(isCimdClientId("https://claude.ai/oauth/mcp-oauth-client-metadata")).toBe(true);
     expect(isCimdClientId("https://example.com/")).toBe(false);

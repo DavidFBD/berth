@@ -69,17 +69,26 @@ export function parseRegistration(body: Record<string, unknown>, clientId?: stri
   if (method !== undefined && method !== "none") {
     return { ok: false, error: "invalid_client_metadata", description: "only public clients (token_endpoint_auth_method none)" };
   }
+  // A client may list grants Berth does not offer (Claude's published
+  // document adds jwt-bearer); only code and refresh are ever issued, so the
+  // extras are ignored rather than refused. Code must be among them.
   const grantTypes = body.grant_types;
   if (
     grantTypes !== undefined &&
     (!Array.isArray(grantTypes) ||
-      !grantTypes.every((grant) => grant === "authorization_code" || grant === "refresh_token"))
+      !grantTypes.every((grant) => typeof grant === "string") ||
+      !grantTypes.includes("authorization_code"))
   ) {
-    return { ok: false, error: "invalid_client_metadata", description: "grant_types may be authorization_code and refresh_token" };
+    return { ok: false, error: "invalid_client_metadata", description: "grant_types must include authorization_code" };
   }
   const responseTypes = body.response_types;
-  if (responseTypes !== undefined && (!Array.isArray(responseTypes) || !responseTypes.every((type) => type === "code"))) {
-    return { ok: false, error: "invalid_client_metadata", description: "response_types may only be code" };
+  if (
+    responseTypes !== undefined &&
+    (!Array.isArray(responseTypes) ||
+      !responseTypes.every((type) => typeof type === "string") ||
+      !responseTypes.includes("code"))
+  ) {
+    return { ok: false, error: "invalid_client_metadata", description: "response_types must include code" };
   }
   const redirectUris = [...new Set(uris as string[])];
   let name = cleanClientName(body.client_name);

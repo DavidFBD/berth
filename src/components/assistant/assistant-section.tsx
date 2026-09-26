@@ -35,7 +35,7 @@ type Grant = { id: string; clientName: string; lastUsedAt: string | null; assist
 function openUrl(id: AssistantId, mcpUrl: string): string {
   switch (id) {
     case "claude":
-      return `https://claude.ai/settings/connectors?modal=add-custom-connector&mcpName=Berth&mcpServerUrl=${encodeURIComponent(mcpUrl)}`;
+      return `https://claude.ai/customize/connectors?modal=add-custom-connector&mcpName=Berth&mcpServerUrl=${encodeURIComponent(mcpUrl)}`;
     case "chatgpt":
       return "https://chatgpt.com/";
     case "grok":

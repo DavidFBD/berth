@@ -1187,7 +1187,7 @@ export const COPY: Copy = {
   assistantCopyLabel: "Copy the address",
   assistantCopied: "Address copied",
   assistantStepsClaude: [
-    "Open Claude with the button below. It goes straight to adding a connector. You can also find it under Settings, then Connectors, then Add custom connector.",
+    "Open Claude with the button below. It goes straight to adding a connector. You can also find it under Customize, then Connectors, then Add custom connector.",
     "Name it Berth and paste the address above, if Claude has not filled it in.",
     "Choose Connect, sign in to Berth, and allow it.",
     "On the free plan Claude allows one custom connector.",
