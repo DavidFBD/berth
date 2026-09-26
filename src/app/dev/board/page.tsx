@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { ChainKeys } from "@sodax/sdk";
 import { notFound, useSearchParams } from "next/navigation";
 import { isAddress, type Address } from "viem";
 import {
@@ -18,6 +19,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useMounted } from "@/hooks/use-mounted";
 import { HOME_CHAIN } from "@/lib/account";
+import { getDepositTokens } from "@/lib/chains";
+import type { EmbeddedHoldingsResult } from "@/hooks/use-embedded-holdings";
 import { NUDGE_KINDS, type Nudge } from "@/lib/nudge";
 import {
   CASH_LISTING,
@@ -35,6 +38,12 @@ import {
  *   /dev/board?open=NVDA                the buy drawer open on NVDA
  *   /dev/board?open=NVDA&usd=50         the same, prefilled as an assistant's
  *                                       draft would (lib/draft-order)
+ *   /dev/board?open=NVDA&usd=50&pay=slow
+ *                                       the wallet sweep stood in for: still
+ *                                       loading for `delay` ms (default
+ *                                       6000), then holding 10 POL on
+ *                                       Polygon. pay=empty settles with
+ *                                       nothing, pay=stuck never settles
  *   /dev/board?sell=QQQ&hub=0x…         the sell drawer open on QQQ, with
  *                                       what that hub wallet holds of it
  *   /dev/board?news=NVDA                the news column already filtered, so
@@ -80,6 +89,8 @@ function Gallery() {
         (listing) => listing.symbol === params.get("news")?.toUpperCase(),
       ) ?? null,
   );
+
+  const devHoldings = useDevHoldings(params.get("pay"), Number(params.get("delay") ?? 6000));
 
   // ?nudge=kind previews one line; none of them needs a session here.
   const nudgeWanted = params.get("nudge") ?? "heldNews";
@@ -183,6 +194,7 @@ function Gallery() {
           <DepositDrawer
             listing={buyListing}
             prefill={buyPrefill}
+            devHoldings={devHoldings}
             open={buyOpen}
             onOpenChange={setBuyOpen}
           />
@@ -197,4 +209,26 @@ function Gallery() {
       )}
     </>
   );
+}
+
+type DevHoldings = Pick<
+  EmbeddedHoldingsResult,
+  "connected" | "holdings" | "gasShortChains" | "isLoading"
+>;
+
+/** A stand-in wallet sweep for ?pay=slow|empty|stuck, so the drawer's waiting states can be seen. */
+function useDevHoldings(mode: string | null, delayMs: number): DevHoldings | undefined {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (mode !== "slow" && mode !== "empty") return;
+    const timer = setTimeout(() => setSettled(true), Number.isFinite(delayMs) ? delayMs : 6000);
+    return () => clearTimeout(timer);
+  }, [mode, delayMs]);
+  if (mode !== "slow" && mode !== "empty" && mode !== "stuck") return undefined;
+  const pol = getDepositTokens(ChainKeys.POLYGON_MAINNET).find((token) => token.symbol === "POL");
+  const holdings =
+    settled && mode === "slow" && pol
+      ? [{ chainKey: ChainKeys.POLYGON_MAINNET, token: pol, balance: 10n * 10n ** 18n, usdValue: undefined }]
+      : [];
+  return { connected: true, holdings, gasShortChains: [], isLoading: !settled };
 }

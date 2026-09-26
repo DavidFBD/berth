@@ -277,6 +277,8 @@ export type Copy = {
   /** Title while no listing is chosen yet (defensive; never expected). */
   orderTitleFallback: string;
   whatPayingWith: string;
+  /** The buy drawer's pay slot while the wallet balances are still coming in. */
+  findingPayWith: string;
   gasShortWarning: (chainName: string, symbol: string) => string;
   gasShortCta: (symbol: string) => string;
   /** `amount` arrives pre-formatted: "≈ €130 (142 USDC)" or "142 USDC". */
@@ -838,6 +840,7 @@ export const COPY: Copy = {
   buySub: "Pay from any wallet, on any network. It lands in your account.",
   orderTitleFallback: "Place an order",
   whatPayingWith: "What are you paying with?",
+  findingPayWith: "Finding what you can pay with",
   gasShortWarning: (chainName, symbol) =>
     `Your ${chainName} wallet holds no ${symbol} for the network fee. This order pays its fee in ${symbol}, so it cannot start until some arrives.`,
   gasShortCta: (symbol) => `Send a little ${symbol} to your address`,

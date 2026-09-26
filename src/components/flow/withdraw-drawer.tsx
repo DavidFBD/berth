@@ -489,7 +489,11 @@ export function WithdrawDrawer({
                     )}
                     <input
                       value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
+                      onChange={(event) => {
+                        // Typing consumes a draft, so it never lands over the person's number.
+                        setPrefilled(true);
+                        setAmount(event.target.value);
+                      }}
                       inputMode="decimal"
                       autoComplete="off"
                       autoCorrect="off"

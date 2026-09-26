@@ -45,7 +45,18 @@ import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useHubAccount } from "@/hooks/use-hub-account";
-import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
+import {
+  useEmbeddedHoldings,
+  type EmbeddedHoldingsResult,
+} from "@/hooks/use-embedded-holdings";
+import { useOpenFor } from "@/hooks/use-open-for";
+import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import {
+  FIND_TIMEOUT_MS,
+  PICK_WAIT_MS,
+  payTokenState,
+  shouldPrefillUsd,
+} from "@/lib/pay-token-pick";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import {
@@ -75,6 +86,7 @@ export function DepositDrawer({
   onTopUp,
   onPoured,
   prefill,
+  devHoldings,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -93,6 +105,14 @@ export function DepositDrawer({
    * priced, so it is always read as money; never submitted.
    */
   prefill?: { usd?: number } | null;
+  /**
+   * Dev galleries only: stands in for the wallet sweep, so the drawer's
+   * waiting and picked states can be reviewed without a session.
+   */
+  devHoldings?: Pick<
+    EmbeddedHoldingsResult,
+    "connected" | "holdings" | "gasShortChains" | "isLoading"
+  >;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
     DEPOSIT_SOURCE_CHAINS[0],
@@ -128,21 +148,45 @@ export function DepositDrawer({
   const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureReady } =
     useVaultWallet(srcChainKey);
 
-  // Email mode is balance-first: land the user on what they already hold so
-  // the drawer opens showing a balance and an amount field, not a chain
-  // picker. Waits for the oracle prices so "first" means largest USD value,
-  // not first in chain order. Render-time state adjustment (not an effect),
-  // per house pattern.
+  // Balance-first: land the person on what they already hold so the drawer
+  // opens showing a balance and an amount field, not a chain picker. The
+  // sweep is sorted by oracle value, so the pick waits for it to settle,
+  // but only for PICK_WAIT_MS once something is found: one slow chain on a
+  // fresh page load used to hold the pick back so long the drawer read as
+  // empty. Balances that arrive later still get picked, whenever they come,
+  // and never over a token already in the slot (lib/pay-token-pick).
+  // Render-time state adjustment (not an effect), per house pattern.
+  const sweep = useEmbeddedHoldings();
   const {
     connected,
     holdings,
     gasShortChains,
     isLoading: holdingsLoading,
-  } = useEmbeddedHoldings();
-  if (open && connected && !token && !holdingsLoading && holdings.length > 0) {
+  } = devHoldings ?? sweep;
+  const privy = usePrivyEmbeddedWallet();
+  // Signed in but the embedded wallet not yet in hand: no address to sweep
+  // yet, which is waiting, not having nothing.
+  const sessionPending =
+    !devHoldings &&
+    privy.enabled &&
+    (!privy.ready ||
+      (privy.authenticated && !privy.embedded && !privy.walletAccountSession));
+  const pickWaitOver = useOpenFor(open, PICK_WAIT_MS);
+  const findTimedOut = useOpenFor(open, FIND_TIMEOUT_MS);
+  const payState = payTokenState({
+    hasToken: !!token,
+    connected,
+    sessionPending,
+    sweepLoading: holdingsLoading,
+    holdingsCount: holdings.length,
+    pickWaitOver,
+    findTimedOut,
+  });
+  if (open && payState === "pick") {
     setSrcChainKey(holdings[0].chainKey);
     setToken(holdings[0].token);
   }
+  const finding = open && payState === "finding";
 
   const prices = useUsdPrices();
 
@@ -184,10 +228,22 @@ export function DepositDrawer({
 
   // A drafted amount goes in once per opening, and only as money: until
   // the pay token has a price the field would read "50" as fifty tokens.
+  // It waits as long as the pay token does, and typing in the field
+  // consumes it, so it never lands over the person's own number.
   // Render-time adjustment, per house pattern.
   const [prefilled, setPrefilled] = useState(false);
   if (!open && prefilled) setPrefilled(false);
-  if (open && !prefilled && prefill?.usd && token && entryPrice !== undefined && amount === "") {
+  if (
+    open &&
+    prefill?.usd &&
+    shouldPrefillUsd({
+      consumed: prefilled,
+      draftUsd: prefill.usd,
+      hasToken: !!token,
+      priced: entryPrice !== undefined,
+      amount,
+    })
+  ) {
     setPrefilled(true);
     setDenom("money");
     setAmount((prefill.usd * money.rate).toFixed(money.fractionDigits));
@@ -335,6 +391,9 @@ export function DepositDrawer({
       case "accountPending":
         return { label: copy.ctaOpeningAccount, disabled: true, busy: true };
       case "pickToken":
+        if (finding) {
+          return { label: copy.findingPayWith, disabled: true, busy: true };
+        }
         return {
           label: copy.whatPayingWith,
           disabled: false,
@@ -482,6 +541,11 @@ export function DepositDrawer({
                         </div>
                       )}
                     </>
+                  ) : finding ? (
+                    <span className="flex flex-1 items-center gap-2 text-sm text-muted-foreground">
+                      <Spinner className="size-4" />
+                      {copy.findingPayWith}
+                    </span>
                   ) : (
                     <span className="flex-1 text-sm text-muted-foreground">
                       {copy.whatPayingWith}
@@ -541,7 +605,10 @@ export function DepositDrawer({
                     )}
                     <input
                       value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
+                      onChange={(event) => {
+                        setPrefilled(true);
+                        setAmount(event.target.value);
+                      }}
                       inputMode="decimal"
                       autoComplete="off"
                       autoCorrect="off"
