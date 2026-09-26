@@ -31,3 +31,9 @@ Recommended: 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008.
 - PourScene keeps its teapot-righting transition and tea creep under reduced
   motion — they explain state.
 - Silk shader stays in the shelf cups (throttled by 003, not removed).
+
+## Other plans
+
+| Plan | Status |
+| --- | --- |
+| [In-app chat: your assistant, inside Berth](in-app-chat.md) | PLAN (2026-09-26) |
