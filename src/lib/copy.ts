@@ -623,6 +623,15 @@ export type Copy = {
   assistantSheetConnected: (name: string) => string;
   /** A button's accessible name when that assistant is connected. */
   assistantButtonConnected: (name: string) => string;
+  /** Once connected: prompts that open a new chat with the words filled in. Each names Berth, so the assistant reaches for it. */
+  assistantPromptsTitle: string;
+  assistantPrompts: readonly string[];
+  /** A prompt row's accessible name; it opens in a new tab. */
+  assistantPromptLabel: (name: string, prompt: string) => string;
+  /** Under ChatGPT's prompts: its Developer mode apps are off in a chat until chosen. */
+  assistantPromptHintChatGpt: string;
+  /** Once connected, the setup steps fold away behind this. */
+  assistantSetupAgain: string;
   assistantAddressLabel: string;
   assistantCopyLabel: string;
   assistantCopied: string;
@@ -1190,8 +1199,17 @@ export const COPY: Copy = {
   assistantGrok: "Grok",
   assistantSheetTitle: (name) => `Connect ${name}`,
   assistantSheetBody: "Berth is added to your assistant as a connector. You sign in here once, and can disconnect it whenever you like.",
-  assistantSheetConnected: (name) => `${name} is connected to this account. The steps below connect it again, for example on another ${name} account.`,
+  assistantSheetConnected: (name) => `${name} is connected to this account.`,
   assistantButtonConnected: (name) => `${name}, connected`,
+  assistantPromptsTitle: "Try asking",
+  assistantPrompts: [
+    "How is my Berth account doing against the S&P 500 fund?",
+    "What moved on Berth today, and why?",
+    "Draft a $20 buy of NVIDIA on Berth.",
+  ],
+  assistantPromptLabel: (name, prompt) => `Ask ${name}: ${prompt}`,
+  assistantPromptHintChatGpt: "Switch Berth on in the chat's + menu first.",
+  assistantSetupAgain: "Connect again",
   assistantAddressLabel: "Berth's address for assistants",
   assistantCopyLabel: "Copy the address",
   assistantCopied: "Address copied",
