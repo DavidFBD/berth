@@ -102,7 +102,7 @@ export function AccountButton({
             </DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <RewardsPanel />
             {/*
               One panel with ruled rows, not five cards stacked inside a
@@ -216,7 +216,7 @@ function ExternalAccountEntry({
             <DrawerTitle>{copy.walletAccountDrawerTitle}</DrawerTitle>
             <DrawerDescription>{copy.walletAccountDrawerSub}</DrawerDescription>
           </DrawerHeader>
-          <div className="flex flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <RewardsPanel />
             <Panel>
               <AssistantSection />
