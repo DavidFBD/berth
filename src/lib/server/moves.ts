@@ -2,7 +2,7 @@ import { LISTING_BRIEFS, substanceToWeight } from "@/lib/news-judge";
 import { candidatePosts, isNotableMove, moveWords, newsWindow } from "@/lib/moves";
 import { cachedVerdict, type ChoiceQuestion } from "@/lib/server/jev";
 import { loadPerformance } from "@/lib/server/listing-performance";
-import { gatherPosts } from "@/lib/server/x-column";
+import { gatherPosts, type GatheredPosts } from "@/lib/server/x-column";
 import type { XPost } from "@/lib/x-feed";
 
 /**
@@ -36,8 +36,11 @@ export type MoveNews = {
 
 export type MovesResponse = { moves: MoveNews[] };
 
-export async function loadMoves(): Promise<MovesResponse> {
-  const [performance, feed] = await Promise.all([loadPerformance(), gatherPosts()]);
+/** `inputs` reuses a performance read and an X gathering the caller already has (get_listing). */
+export async function loadMoves(
+  inputs: { performance?: ReturnType<typeof loadPerformance>; feed?: Promise<GatheredPosts> } = {},
+): Promise<MovesResponse> {
+  const [performance, feed] = await Promise.all([inputs.performance ?? loadPerformance(), inputs.feed ?? gatherPosts()]);
   if (!feed.substance) return { moves: [] };
 
   const moves: MoveNews[] = [];

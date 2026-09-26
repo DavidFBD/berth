@@ -30,7 +30,17 @@ import { pendingReferralCode } from "@/lib/referral";
  * account renders only once the user is in, so "Sign in" and "Connect"
  * never compete for the first action.
  */
-export function AuthGate({ children }: { children: ReactNode }) {
+export function AuthGate({
+  children,
+  lead,
+}: {
+  children: ReactNode;
+  /**
+   * Said instead of the usual welcome line when the visitor came for one
+   * thing, such as connecting an assistant (app/oauth/authorize).
+   */
+  lead?: string;
+}) {
   const privy = usePrivyEmbeddedWallet();
   const connected = useConnectedChains();
   const linking = useLinkInProgress();
@@ -63,7 +73,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     connected.total > 0;
 
   if (settling) return <Splash />;
-  if (!isIn) return <WelcomeScreen />;
+  if (!isIn) return <WelcomeScreen lead={lead} />;
   return <>{children}</>;
 }
 
@@ -77,7 +87,7 @@ function Splash() {
   );
 }
 
-function WelcomeScreen() {
+function WelcomeScreen({ lead }: { lead?: string }) {
   const privy = usePrivyEmbeddedWallet();
   const [walletsOpen, setWalletsOpen] = useState(false);
   const copy = useCopy();
@@ -104,7 +114,7 @@ function WelcomeScreen() {
           {copy.tagline}
         </p>
         <p className="max-w-80 text-sm leading-relaxed text-muted-foreground">
-          {copy.welcomeLede}
+          {lead ?? copy.welcomeLede}
         </p>
       </div>
 

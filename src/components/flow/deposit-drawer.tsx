@@ -74,6 +74,7 @@ export function DepositDrawer({
   onSignIn,
   onTopUp,
   onPoured,
+  prefill,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -86,6 +87,12 @@ export function DepositDrawer({
   onTopUp?: () => void;
   /** Optional: fired once when the order fills. */
   onPoured?: () => void;
+  /**
+   * Optional: an amount to start from, in dollars, from a draft an
+   * assistant made (lib/draft-order). Filled in once the pay token is
+   * priced, so it is always read as money; never submitted.
+   */
+  prefill?: { usd?: number } | null;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
     DEPOSIT_SOURCE_CHAINS[0],
@@ -174,6 +181,17 @@ export function DepositDrawer({
     priceUsd,
     balance,
   });
+
+  // A drafted amount goes in once per opening, and only as money: until
+  // the pay token has a price the field would read "50" as fifty tokens.
+  // Render-time adjustment, per house pattern.
+  const [prefilled, setPrefilled] = useState(false);
+  if (!open && prefilled) setPrefilled(false);
+  if (open && !prefilled && prefill?.usd && token && entryPrice !== undefined && amount === "") {
+    setPrefilled(true);
+    setDenom("money");
+    setAmount((prefill.usd * money.rate).toFixed(money.fractionDigits));
+  }
 
   // The amount pipeline: what the text means, what the quote is asked for
   // (post-fee), and the slippage floor all live in the pour-amount module.

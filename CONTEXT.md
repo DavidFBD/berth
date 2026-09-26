@@ -82,6 +82,14 @@ a round that changes behaviour.
   referral code is; its server sibling is `CLAIMABLE_SQL`.
 - **Rewards request core** — `useRewardsCall` (`hooks/use-profile`) and its
   two flavours; every public rewards hook is configuration on top.
+- **Assistant** — Claude, ChatGPT or Grok connected to an account through
+  Berth's MCP server (`app/mcp`, tools in `lib/server/mcp/tools`) after the
+  person approves it on Berth's own OAuth consent screen
+  (`lib/server/oauth`, `app/oauth/authorize`). It reads the account and the
+  market (scope `berth.read`) and drafts orders (`berth.draft`): a draft is
+  a link (`lib/draft-order`) that opens the order drawer prefilled, and
+  nothing happens until the person signs. Grants are listed and revoked
+  under "Your assistant" in the account drawer.
 - **Appearance** — light, dark or system (`lib/appearance`), stamped by
   next-themes before hydration. The `useCopy()` seam returns the one voice.
 
@@ -95,4 +103,7 @@ edge is accepted; SIWE and order-ownership proof are done. The
 `useVaultAction` pipeline body, the Privy EVM provider bridge and the gas
 buffer model were reviewed (2026-08-07) and confirmed deep — leave them whole.
 Cut, do not build: cross-wrapper best execution, recurring DCA, any money
-market supply, leaderboard, agent as wallet.
+market supply, leaderboard, agent as wallet. Agents read and draft, the
+person signs (2026-09-26): an assistant never holds a key, never signs and
+never moves money; its most is a draft the person opens, checks and signs
+in Berth.

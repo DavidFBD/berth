@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import { localPostgres } from "@/lib/server/db-local";
 
 /**
  * The till's one seam to the database. Everything server-side speaks this
@@ -19,7 +20,11 @@ export type SqlClient = {
 let _sql: SqlClient | null = null;
 
 export function getSql(): SqlClient {
-  if (!_sql) _sql = neon(process.env.DATABASE_URL!) as unknown as SqlClient;
+  if (!_sql) {
+    // Development may aim at a local Postgres instead (db-local); production never does.
+    const local = process.env.NODE_ENV !== "production" ? process.env.LOCAL_DATABASE_URL : undefined;
+    _sql = local ? localPostgres(local) : (neon(process.env.DATABASE_URL!) as unknown as SqlClient);
+  }
   return _sql;
 }
 

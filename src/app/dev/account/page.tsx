@@ -13,6 +13,10 @@ import { formatTokenAmount, shortenAddress } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PORTFOLIO_STATES, PortfolioGallery, type PortfolioState } from "./portfolio-gallery";
 import { RewardsGallery } from "./rewards-gallery";
+import { AssistantSection } from "@/components/assistant/assistant-section";
+import { ConsentCard } from "@/components/assistant/authorize-consent";
+import type { ConsentParty } from "@/lib/assistant-party";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * Dev-only account inspector: the hub wallet an address derives to on the
@@ -28,7 +32,19 @@ import { RewardsGallery } from "./rewards-gallery";
  *   /dev/account?portfolio=four-days  the top of "What you own" in one of
  *                                     its states, from fixtures (see
  *                                     portfolio-gallery.tsx)
+ *   /dev/account?consent              the assistant consent screen as a
+ *                                     signed in person sees it (its answer
+ *                                     goes nowhere: the request is fake);
+ *                                     =unknown or =loopback for the other
+ *                                     two kinds of party
+ *   /dev/account?assistant=claude     the "Your assistant" section with two
+ *                                     connected assistants from fixtures,
+ *                                     that one's steps unfolded (claude,
+ *                                     chatgpt, grok, or none)
  */
+/** The assistant fixture's "last used", fixed when the module loads (render stays pure). */
+const DEMO_TWO_HOURS_AGO = new Date(Date.now() - 2 * 3600_000).toISOString();
+
 export default function AccountInspectorPage() {
   if (process.env.NODE_ENV === "production") notFound();
   return (
@@ -46,6 +62,32 @@ function Inspector() {
   const portfolio = params.get("portfolio");
   if (portfolio && (PORTFOLIO_STATES as readonly string[]).includes(portfolio)) {
     return <PortfolioGallery key={portfolio} state={portfolio as PortfolioState} />;
+  }
+  if (params.has("consent")) {
+    const kind = params.get("consent");
+    const [party, host]: [ConsentParty, string] =
+      kind === "unknown"
+        ? [{ kind: "unknown", host: "helper.example", selfName: "Portfolio Helper" }, "helper.example"]
+        : kind === "loopback"
+          ? [{ kind: "loopback", selfName: null }, "localhost:33418"]
+          : [{ kind: "known", assistant: "claude", name: "Claude" }, "claude.ai"];
+    return <ConsentCard key={kind} request="dev-gallery" party={party} redirectHost={host} scopes={["berth.read", "berth.draft"]} />;
+  }
+  const assistant = params.get("assistant");
+  if (assistant) {
+    const open = assistant === "claude" || assistant === "chatgpt" || assistant === "grok" ? assistant : null;
+    return (
+      <Panel>
+        <AssistantSection
+          key={assistant}
+          initialOpen={open}
+          demoGrants={[
+            { id: "demo-1", clientName: "Claude", assistant: "claude", lastUsedAt: DEMO_TWO_HOURS_AGO },
+            { id: "demo-2", clientName: "ChatGPT", assistant: "chatgpt", lastUsedAt: null },
+          ]}
+        />
+      </Panel>
+    );
   }
   const rewardsLevel = Number(params.get("rewards"));
   if (Number.isInteger(rewardsLevel) && rewardsLevel >= 1 && rewardsLevel <= 10) {

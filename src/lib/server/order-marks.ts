@@ -105,3 +105,49 @@ export async function loadOrderFacts(userId: string): Promise<OrderFacts[]> {
     return facts;
   });
 }
+
+export type OrderLogEntry = {
+  symbol: string;
+  direction: "buy" | "sell";
+  quantity: number | null;
+  usd: number | null;
+  /** When it filled, or when it was placed if it has not. */
+  at: string;
+  /** Whether the fill is recorded (fill_tx or filled_at), so it really was bought or sold. */
+  filled: boolean;
+};
+
+/**
+ * An account's orders newest first, each saying whether it filled, for the
+ * assistant's get_orders (lib/server/mcp/tools). A placed order that never
+ * filled must not read as bought or sold. The app's own callers keep
+ * loadOrderFacts, whose shape and rows are unchanged.
+ */
+export async function loadOrderLog(userId: string, limit: number): Promise<{ total: number; entries: OrderLogEntry[] }> {
+  const sql = getSql();
+  const [rows, counts] = await Promise.all([
+    sql.query(
+      `select listing_symbol, direction, quantity::float8 as quantity, usd_value::float8 as usd,
+              coalesce(filled_at, placed_at, created_at) as at,
+              (fill_tx is not null or filled_at is not null) as filled
+         from orders where user_id = $1
+        order by coalesce(filled_at, placed_at, created_at) desc
+        limit $2`,
+      [userId, limit],
+    ) as Promise<
+      { listing_symbol: string; direction: "buy" | "sell"; quantity: number | string | null; usd: number | string | null; at: string | Date; filled: boolean }[]
+    >,
+    sql.query(`select count(*)::int as n from orders where user_id = $1`, [userId]) as Promise<{ n: number }[]>,
+  ]);
+  return {
+    total: counts[0]?.n ?? 0,
+    entries: rows.map((row) => ({
+      symbol: row.listing_symbol,
+      direction: row.direction,
+      quantity: row.quantity === null ? null : Number(row.quantity),
+      usd: row.usd === null ? null : Number(row.usd),
+      at: new Date(row.at).toISOString(),
+      filled: row.filled === true,
+    })),
+  };
+}

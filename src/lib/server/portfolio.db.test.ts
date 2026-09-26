@@ -4,7 +4,7 @@ import { makeTestDb } from "./pglite-test-db";
 import { getOrCreateUser } from "./accounts";
 import { readMarks, writeMarks } from "./marks";
 import { runEvening } from "./evening";
-import { fillOrderMarks, loadOrderFacts, ordersMissingMarks } from "./order-marks";
+import { fillOrderMarks, loadOrderFacts, loadOrderLog, ordersMissingMarks } from "./order-marks";
 import { recordOrderMarks } from "./orders";
 import {
   loadPortfolioDays,
@@ -351,5 +351,21 @@ describe("the evening run", () => {
       livePrices: async () => ({ SGOV: 100 }),
     });
     expect(summary).toMatchObject({ accounts: 3, written: 0, unreached: 3 });
+  });
+});
+
+describe("the order log an assistant reads", () => {
+  it("says which orders filled, newest first, and leaves loadOrderFacts as it was", async () => {
+    const user = await account(71);
+    const placed = await placeOrder(user.id, "2026-09-20T15:00:00Z");
+    const filled = await placeOrder(user.id, "2026-09-21T15:00:00Z");
+    await sql.query(`update orders set fill_tx = '0xfill', filled_at = '2026-09-21T15:01:00Z' where id = $1`, [filled]);
+    const log = await loadOrderLog(user.id, 10);
+    expect(log.total).toBe(2);
+    expect(log.entries.map((entry) => entry.filled)).toEqual([true, false]);
+    expect(log.entries[1].at).toBe("2026-09-20T15:00:00.000Z");
+    expect((await loadOrderLog(user.id, 1)).entries).toHaveLength(1);
+    expect(await loadOrderFacts(user.id)).toHaveLength(2);
+    expect(placed).toBeTruthy();
   });
 });

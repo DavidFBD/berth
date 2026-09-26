@@ -1,6 +1,7 @@
 import { refreshMarks, type MarksRunSummary } from "@/lib/server/marks";
 import { fillOrderMarks, type OrderMarksSummary } from "@/lib/server/order-marks";
 import { runPortfolioSnapshot, type SnapshotSummary } from "@/lib/server/portfolio";
+import { pruneOAuth, type OAuthPruneSummary } from "@/lib/server/oauth/prune";
 
 /**
  * The one evening cron (vercel.json, 22:00 UTC on weekdays; the Hobby plan
@@ -19,6 +20,11 @@ import { runPortfolioSnapshot, type SnapshotSummary } from "@/lib/server/portfol
  *    run up to six hours past the 21:30 UTC mark as that evening's. It
  *    starts no account after its deadline.
  *
+ * Alongside the marks, and within their budget, the authorization server's
+ * housekeeping (lib/server/oauth/prune): expired codes, long dead tokens,
+ * clients nobody ever granted. It is reported but never counts as a
+ * failure of the run.
+ *
  * A stage that throws or runs out of budget is reported as that and the
  * next one runs. The route answers 500 only when nothing at all was
  * written and something failed.
@@ -35,6 +41,7 @@ export type EveningSummary = {
   marks: Stage<MarksRunSummary>;
   orderMarks: Stage<OrderMarksSummary>;
   snapshot: Stage<SnapshotSummary>;
+  oauthPrune: Stage<OAuthPruneSummary>;
   /** Marks written or dropped, order prices written, portfolio days written. */
   written: number;
   failed: boolean;
@@ -62,16 +69,18 @@ export async function runEvening({
   marks = () => refreshMarks(),
   orderMarks = () => fillOrderMarks(),
   snapshot = (deadline: number) => runPortfolioSnapshot({ now, deadline }),
+  prune = () => pruneOAuth(now),
   budgets = { marks: MARKS_BUDGET_MS, orderMarks: ORDER_MARKS_BUDGET_MS, snapshotDeadline: SNAPSHOT_DEADLINE_MS },
 }: {
   now?: Date;
   marks?: () => Promise<MarksRunSummary>;
   orderMarks?: () => Promise<OrderMarksSummary>;
   snapshot?: (deadline: number) => Promise<SnapshotSummary>;
+  prune?: () => Promise<OAuthPruneSummary>;
   budgets?: { marks: number; orderMarks: number; snapshotDeadline: number };
 } = {}): Promise<EveningSummary> {
   const started = Date.now();
-  const marksStage = await stage(marks, budgets.marks);
+  const [marksStage, pruneStage] = await Promise.all([stage(marks, budgets.marks), stage(prune, budgets.marks)]);
   const orderStage = await stage(orderMarks, budgets.orderMarks);
   const deadline = started + budgets.snapshotDeadline;
   // The snapshot's own deadline stops new accounts; the budget is the
@@ -95,5 +104,6 @@ export async function runEvening({
     orderStage.result.failed > 0 ||
     !snapshotStage.ok ||
     snapshotStage.result.failed > 0;
-  return { marks: marksStage, orderMarks: orderStage, snapshot: snapshotStage, written, failed };
+  if (!pruneStage.ok) console.warn("[cron/evening] oauth prune failed:", pruneStage.error);
+  return { marks: marksStage, orderMarks: orderStage, snapshot: snapshotStage, oauthPrune: pruneStage, written, failed };
 }

@@ -173,3 +173,94 @@ create table if not exists order_marks (
   created_at timestamptz not null default now(),
   primary key (order_id, symbol)
 );
+
+-- Agent access (lib/server/oauth): Berth's own OAuth authorization server,
+-- so an assistant (Claude, ChatGPT, Grok) can read an account and draft
+-- orders through the MCP server at /mcp. The assistant never signs: a draft
+-- is a link the person opens, approves and signs in Berth. Every secret is
+-- an opaque random value stored only as its SHA-256 hash (hex).
+
+-- A registered client: 'dcr' rows come from POST /oauth/register (RFC 7591,
+-- public clients only); 'cimd' rows cache a Client ID Metadata Document,
+-- where client_id is the https URL the document lives at.
+create table if not exists oauth_clients (
+  client_id text primary key,
+  kind text not null check (kind in ('dcr', 'cimd')),
+  name text,
+  redirect_uris text[] not null,
+  created_at timestamptz not null default now()
+);
+
+alter table oauth_clients add column if not exists fetched_at timestamptz;
+
+-- One authorization code, single use, a couple of minutes long. PKCE S256
+-- only; `resource` is the RFC 8707 resource it was asked for, if any.
+create table if not exists oauth_codes (
+  code_hash text primary key,
+  client_id text not null,
+  user_id uuid not null references users(id) on delete cascade,
+  grant_id uuid,
+  redirect_uri text not null,
+  code_challenge text not null,
+  scope text not null,
+  resource text,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- Set when a used code is presented again. The exchange that links the code
+-- to its grant reads it in the same statement, so a replay racing the first
+-- exchange still revokes what that exchange made.
+alter table oauth_codes add column if not exists replayed_at timestamptz;
+
+-- Whether the authorization request named its redirect_uri. Only then must
+-- the token request repeat it (RFC 6749 section 4.1.3).
+alter table oauth_codes add column if not exists redirect_uri_sent boolean not null default true;
+
+-- What a person allowed one client to do. Revoking it revokes every token
+-- minted under it; the account drawer lists the live ones.
+create table if not exists oauth_grants (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  client_id text not null,
+  client_name text,
+  scope text not null,
+  resource text,
+  created_at timestamptz not null default now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+
+create index if not exists oauth_grants_user_idx on oauth_grants (user_id) where revoked_at is null;
+
+-- Access and refresh tokens. A refresh token is rotated on every use:
+-- replaced_by points at its successor, and presenting a rotated one again
+-- is taken as theft and revokes the whole grant.
+create table if not exists oauth_tokens (
+  token_hash text primary key,
+  grant_id uuid not null references oauth_grants(id) on delete cascade,
+  kind text not null check (kind in ('access', 'refresh')),
+  expires_at timestamptz not null,
+  revoked_at timestamptz,
+  replaced_by text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists oauth_tokens_grant_idx on oauth_tokens (grant_id);
+
+-- What this token may do: the grant's scope, or less when a refresh asked
+-- to narrow it. Null reads as the grant's.
+alter table oauth_tokens add column if not exists scope text;
+
+-- Fixed hour windows for the authorization server's rate limits
+-- (lib/server/oauth/rate-limit): registrations per caller and in all,
+-- metadata document fetches per caller. One row per bucket and hour,
+-- counted up by an upsert, so two racing requests can never both take the
+-- last place. The evening cron prunes old windows.
+create table if not exists oauth_rate_limits (
+  bucket text not null,
+  window_start timestamptz not null,
+  n integer not null default 0,
+  primary key (bucket, window_start)
+);

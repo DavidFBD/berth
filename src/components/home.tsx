@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
 import { AccountButton } from "@/components/account-button";
@@ -32,6 +32,7 @@ import {
   type TokenListing,
 } from "@/lib/listings";
 import { AuthGate } from "@/components/welcome-screen";
+import { DraftLinkOpener } from "@/components/assistant/draft-link-opener";
 
 /**
  * The one screen: what the account is worth, the funds that can pay, what
@@ -45,6 +46,10 @@ export function Home() {
   const [buyOpen, setBuyOpen] = useState(false);
   const [sellListing, setSellListing] = useState<TokenListing | null>(null);
   const [sellOpen, setSellOpen] = useState(false);
+  // An amount from an assistant's draft (DraftLinkOpener), for the next
+  // opening only; any other way of opening a drawer starts empty.
+  const [buyPrefill, setBuyPrefill] = useState<{ usd?: number } | null>(null);
+  const [sellPrefill, setSellPrefill] = useState<{ usd?: number; quantity?: number } | null>(null);
   const [withdrawVault, setWithdrawVault] =
     useState<LeverageYieldVault | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -86,13 +91,25 @@ export function Home() {
   };
 
   const openBuy = (listing: Listing) => {
+    setBuyPrefill(null);
     setBuyListing(listing);
     setBuyOpen(true);
   };
   const openSell = (listing: TokenListing) => {
+    setSellPrefill(null);
     setSellListing(listing);
     setSellOpen(true);
   };
+  const openDraftBuy = useCallback((listing: TokenListing, prefill: { usd?: number }) => {
+    setBuyPrefill(prefill);
+    setBuyListing(listing);
+    setBuyOpen(true);
+  }, []);
+  const openDraftSell = useCallback((listing: TokenListing, prefill: { usd?: number; quantity?: number }) => {
+    setSellPrefill(prefill);
+    setSellListing(listing);
+    setSellOpen(true);
+  }, []);
 
   return (
     <AuthGate>
@@ -193,8 +210,10 @@ export function Home() {
           </div>
         </div>
 
+        <DraftLinkOpener onBuy={openDraftBuy} onSell={openDraftSell} />
         <DepositDrawer
           listing={buyListing}
+          prefill={buyPrefill}
           open={buyOpen}
           onOpenChange={setBuyOpen}
           onConnectWallet={openWallet}
@@ -206,6 +225,7 @@ export function Home() {
         />
         <SellHost
           listing={sellListing}
+          prefill={sellPrefill}
           open={sellOpen}
           onOpenChange={setSellOpen}
           onConnectWallet={openWallet}
@@ -236,11 +256,13 @@ export function Home() {
  */
 function SellHost({
   listing,
+  prefill,
   open,
   onOpenChange,
   onConnectWallet,
 }: {
   listing: TokenListing | null;
+  prefill?: { usd?: number; quantity?: number } | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConnectWallet?: () => void;
@@ -271,6 +293,7 @@ function SellHost({
       availableShares={snapshot}
       srcChainKey={HOME_CHAIN}
       onConnectWallet={onConnectWallet}
+      prefill={prefill}
     />
   );
 }

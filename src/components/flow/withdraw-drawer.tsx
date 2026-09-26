@@ -26,7 +26,7 @@ import { EASE_LIFT } from "@/lib/motion";
 import { getChainName } from "@/lib/chains";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
-import { formatTokenAmount } from "@/lib/format";
+import { formatTokenAmount, parseAmount } from "@/lib/format";
 import {
   SHARE_DECIMALS,
   amountText,
@@ -73,6 +73,7 @@ export function WithdrawDrawer({
   srcChainKey,
   totalShares,
   onConnectWallet,
+  prefill,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -92,6 +93,12 @@ export function WithdrawDrawer({
   totalShares?: bigint;
   /** Optional: lets the CTA open the app's wallet drawer when disconnected. */
   onConnectWallet?: () => void;
+  /**
+   * Optional: where to start, from a draft an assistant made
+   * (lib/draft-order): dollars to take out, or units to sell, never more
+   * than `availableShares`. Filled in once; never submitted.
+   */
+  prefill?: { usd?: number; quantity?: number } | null;
 }) {
   const [dstChainKey, setDstChainKey] = useState<SpokeChainKey | null>(null);
   const [outputToken, setOutputToken] = useState<XToken | null>(null);
@@ -163,6 +170,30 @@ export function WithdrawDrawer({
     sharePriceUsd !== undefined
       ? Number(formatUnits(shares, SHARE_DECIMALS)) * sharePriceUsd
       : undefined;
+
+  // A drafted amount goes in once per opening: units as units, dollars
+  // only once the listing has a price to read them by, either capped at
+  // what can be sold. Render-time adjustment, per house pattern.
+  const [prefilled, setPrefilled] = useState(false);
+  if (!open && prefilled) setPrefilled(false);
+  if (open && !prefilled && prefill && amount === "") {
+    if (prefill.quantity) {
+      const asked = parseAmount(String(prefill.quantity), SHARE_DECIMALS);
+      if (asked !== undefined && availableShares > 0n) {
+        setPrefilled(true);
+        setDenom("token");
+        setAmount(formatUnits(asked > availableShares ? availableShares : asked, SHARE_DECIMALS));
+      }
+    } else if (prefill.usd && entryPrice !== undefined && sharePriceUsd !== undefined && availableShares > 0n) {
+      // Never more dollars than the shares that can be sold are worth,
+      // rounded down so the cap itself never tips over them.
+      const worthUsd = Number(formatUnits(availableShares, SHARE_DECIMALS)) * sharePriceUsd;
+      const step = 10 ** money.fractionDigits;
+      setPrefilled(true);
+      setDenom("money");
+      setAmount((Math.floor(Math.min(prefill.usd, worthUsd) * money.rate * step) / step).toFixed(money.fractionDigits));
+    }
+  }
 
   // The amount pipeline: money or shares in, shares (18dp) out; the quote is
   // asked for the post-fee amount and the slippage floor applied — all in

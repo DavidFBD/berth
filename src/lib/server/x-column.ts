@@ -287,12 +287,15 @@ async function judge(
  */
 export type Curation = { seen: number; accounts: number; read: number; kept: number };
 
-export async function gatherPosts(): Promise<{
+/** What one gathering of the X column returns; callers that need it twice pass it along. */
+export type GatheredPosts = {
   posts: XPost[];
   substance: Map<string, number> | undefined;
   failures: string[];
   curation: Curation | undefined;
-}> {
+};
+
+export async function gatherPosts(): Promise<GatheredPosts> {
   const jobs: { tier: "company" | "press"; query: string }[] = [
     { tier: "company", query: buildCompanyQuery() },
     ...buildPressQueries().map((query) => ({ tier: "press" as const, query })),

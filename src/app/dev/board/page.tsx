@@ -33,6 +33,8 @@ import {
  *
  *   /dev/board                          the board
  *   /dev/board?open=NVDA                the buy drawer open on NVDA
+ *   /dev/board?open=NVDA&usd=50         the same, prefilled as an assistant's
+ *                                       draft would (lib/draft-order)
  *   /dev/board?sell=QQQ&hub=0x…         the sell drawer open on QQQ, with
  *                                       what that hub wallet holds of it
  *   /dev/board?news=NVDA                the news column already filtered, so
@@ -66,6 +68,8 @@ function Gallery() {
 
   const [buyListing, setBuyListing] = useState<Listing | null>(initialBuy);
   const [buyOpen, setBuyOpen] = useState(initialBuy !== null);
+  const draftUsd = Number(params.get("usd"));
+  const buyPrefill = Number.isFinite(draftUsd) && draftUsd > 0 ? { usd: draftUsd } : null;
   const [sellListing, setSellListing] = useState<TokenListing | null>(
     initialSell,
   );
@@ -178,6 +182,7 @@ function Gallery() {
         <>
           <DepositDrawer
             listing={buyListing}
+            prefill={buyPrefill}
             open={buyOpen}
             onOpenChange={setBuyOpen}
           />

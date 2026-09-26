@@ -14,6 +14,7 @@ import type {
   XpHistoryResponse,
 } from "@/lib/profile-types";
 import type { OrdersResponse } from "@/app/api/orders/route";
+import type { AssistantsResponse } from "@/app/api/assistants/route";
 import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
 import { announceRewards } from "@/components/xp-toast";
@@ -320,6 +321,69 @@ export function useClaimInvite() {
     onSuccess: (data) => {
       if (!data) return;
       queryClient.setQueryData<ReferralPanel>(["referral-panel", key], data);
+    },
+  });
+}
+
+/**
+ * Which account this browser speaks for, as a person reads it: the email
+ * of a Privy session, else the connected wallet's address. Null before
+ * either exists. The consent screen says it, so nobody connects the wrong
+ * account to an assistant.
+ */
+export function useIdentityLabel(): { email: string | null; wallet: string | null } {
+  const privy = usePrivyEmbeddedWallet();
+  const { authenticated, wallet } = useIdentity();
+  return { email: authenticated ? (privy.user?.email?.address ?? null) : null, wallet };
+}
+
+/**
+ * The person's answer on the consent screen (app/oauth/authorize). Resolves
+ * to the redirect the server built, or null when it refused or there was
+ * no session to prove who is approving. A decline needs no identity, but
+ * goes through the same core so it is one code path.
+ */
+export function useAuthorizeDecision() {
+  const { call } = useRewardsCall();
+  return useMutation({
+    mutationFn: async (vars: { request: string; decision: "approve" | "decline" }) => {
+      if (vars.decision === "decline") {
+        const response = await fetch("/api/oauth/decision", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(vars),
+        });
+        if (!response.ok) return null;
+        return ((await response.json()) as { redirect?: string }).redirect ?? null;
+      }
+      const data = await call<{ redirect?: string }>("/api/oauth/decision", vars);
+      return data?.redirect ?? null;
+    },
+  });
+}
+
+/** The assistants connected to this account. Fetched only while the section is on screen. */
+export function useAssistantGrants(enabled: boolean) {
+  return useRewardsQuery<AssistantsResponse, AssistantsResponse["grants"]>(
+    "assistant-grants",
+    "/api/assistants",
+    { enabled, staleTime: 30_000, select: (data) => data.grants, notFound: { grants: [] } },
+  );
+}
+
+/** Disconnect one assistant; the cached list is replaced with what remains. */
+export function useDisconnectAssistant() {
+  const queryClient = useQueryClient();
+  const { key, call } = useRewardsCall();
+  return useMutation({
+    mutationFn: async (grantId: string) => {
+      if (!key) return null;
+      return call<AssistantsResponse>("/api/assistants/disconnect", { grantId });
+    },
+    onSuccess: (data) => {
+      if (!data) return;
+      // useRewardsQuery caches the selected shape: the list itself.
+      queryClient.setQueryData(["assistant-grants", key], data.grants);
     },
   });
 }

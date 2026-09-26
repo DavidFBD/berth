@@ -14,6 +14,7 @@
 
 import type { Unlock } from "@/lib/unlocks";
 import { REWARD_REASONS } from "@/lib/xp";
+import type { ConsentParty } from "@/lib/assistant-party";
 
 export type Copy = {
   /* — brand and shell — */
@@ -450,8 +451,9 @@ export type Copy = {
   infoDocsCta: string;
 
   /* — rewards: ranks, avatars, invites, the ledger — */
-  rewardsTitle: string;
-  rewardsDrawerSub: string;
+  /** A wallet account's drawer, which holds the rewards and the assistant section. */
+  walletAccountDrawerTitle: string;
+  walletAccountDrawerSub: string;
   /** Toast after Privy's add-funds flow completes. */
   fundsAddedTitle: string;
   fundsAddedBody: string;
@@ -571,6 +573,81 @@ export type Copy = {
   nudgeInvite: string;
   nudgeInviteAction: string;
   nudgeDismissLabel: string;
+
+  /* — agent access: an assistant reads the account and drafts orders, the person signs — */
+  /**
+   * The consent screen's heading. The party is derived from where the answer
+   * goes (lib/assistant-party), never from the name an app gives itself.
+   */
+  authorizeTitle: (party: ConsentParty) => string;
+  /** Under the heading for an app Berth does not recognise, or one on this computer; null for a known assistant. */
+  authorizeUnverified: (party: ConsentParty) => string | null;
+  /** Over the sign in buttons when someone arrives from an assistant signed out. */
+  authorizeSignInLead: (party: ConsentParty) => string;
+  authorizeCanLead: string;
+  authorizeScopeRead: string;
+  authorizeScopeDraft: string;
+  authorizeCannot: string;
+  /** Where the browser goes afterwards, so a look alike app shows its real address. */
+  authorizeReturnTo: (host: string) => string;
+  /** Which Berth account is being connected. `who` is an email or a short address. */
+  authorizeAccount: (who: string) => string;
+  authorizeApprove: string;
+  authorizeDecline: string;
+  authorizeReturning: (party: ConsentParty) => string;
+  authorizeFailed: string;
+  authorizeExpired: string;
+  authorizeErrorTitle: string;
+  authorizeErrorUnknownClient: string;
+  authorizeErrorRedirect: string;
+  /** When the request could not be judged at all (a hiccup on Berth's side). */
+  authorizeTroubleTitle: string;
+  authorizeTroubleBody: string;
+  authorizeTryAgain: string;
+
+  /** The account drawer section. */
+  assistantTitle: string;
+  assistantBody: string;
+  /** The three buttons; names are the products' own. */
+  assistantClaude: string;
+  assistantChatGpt: string;
+  assistantGrok: string;
+  /** The sheet each button opens. `name` is the product's own name. */
+  assistantSheetTitle: (name: string) => string;
+  assistantSheetBody: string;
+  /** The sheet's line when that assistant already holds a grant on this account. */
+  assistantSheetConnected: (name: string) => string;
+  /** A button's accessible name when that assistant is connected. */
+  assistantButtonConnected: (name: string) => string;
+  assistantAddressLabel: string;
+  assistantCopyLabel: string;
+  assistantCopied: string;
+  assistantStepsClaude: readonly string[];
+  assistantStepsChatGpt: readonly string[];
+  assistantStepsGrok: readonly string[];
+  /** The primary action in a sheet: "Open Claude". */
+  assistantOpen: (name: string) => string;
+  assistantConnectedTitle: string;
+  /** `when` is a relative time: "2 hours ago". */
+  assistantLastUsed: (when: string) => string;
+  assistantNeverUsed: string;
+  assistantDisconnect: string;
+  /** `name` is the assistant's own name. */
+  assistantDisconnectLabel: (name: string) => string;
+  /** The same button after a first tap, asking for the second. */
+  assistantDisconnectConfirm: (name: string) => string;
+  assistantDisconnected: (name: string) => string;
+  assistantDisconnectFailed: string;
+  /** How the drawer lists a grant to an app answering on loopback. */
+  assistantLocalApp: string;
+
+  /** A draft from an assistant opens the order drawer, prefilled, never sent. */
+  draftOpenedTitle: string;
+  draftOpenedBody: string;
+  draftUnknownListing: string;
+  draftNothingToSell: (name: string) => string;
+  /** A drafted sell whose holdings could not be read in time. */
+  draftCouldNotCheck: (name: string) => string;
 };
 
 /** "first day", "1 market day", "4 market days". */
@@ -929,8 +1006,8 @@ export const COPY: Copy = {
   infoBuildersCta: "See how it is built at SODAX Builders",
   infoDocsCta: "SODAX developer docs",
 
-  rewardsTitle: "Your rank",
-  rewardsDrawerSub: "Rewards for using Berth, and an avatar for your account.",
+  walletAccountDrawerTitle: "Your account",
+  walletAccountDrawerSub: "Your rank, rewards and avatar, and the assistant you connect to Berth.",
   fundsAddedTitle: "Funds added",
   fundsAddedBody: "USDC is on its way to your account.",
   walletEmbeddedLabel: "Your account wallet",
@@ -1054,4 +1131,90 @@ export const COPY: Copy = {
   nudgeInvite: "Invites are open to you now. Your link is in your account.",
   nudgeInviteAction: "Open account",
   nudgeDismissLabel: "Dismiss",
+
+  authorizeTitle: (party) =>
+    party.kind === "known"
+      ? `${party.name} would like to use your Berth account`
+      : party.kind === "loopback"
+        ? "An app on this computer would like to use your Berth account"
+        : `An app at ${party.host}, not one Berth recognises, would like to use your Berth account`,
+  authorizeUnverified: (party) =>
+    party.kind === "known"
+      ? null
+      : party.selfName
+        ? `It calls itself “${party.selfName}”. Allow it only if you added it yourself.`
+        : "Allow it only if you added it yourself.",
+  authorizeSignInLead: (party) =>
+    party.kind === "known"
+      ? `Sign in to Berth to connect ${party.name}.`
+      : party.kind === "loopback"
+        ? "Sign in to Berth to connect an app on this computer."
+        : `Sign in to Berth to connect an app at ${party.host}.`,
+  authorizeCanLead: "If you allow it, it can",
+  authorizeScopeRead: "See what you own, your orders, and how your money compares with the S&P 500 fund.",
+  authorizeScopeDraft: "Suggest a buy or a sell. Nothing happens until you approve it and sign, here in Berth.",
+  authorizeCannot: "It cannot move your money, sign for you, or see your keys. You can disconnect it at any time from your account.",
+  authorizeReturnTo: (host) => `Afterwards you go back to ${host}.`,
+  authorizeAccount: (who) => `Connecting the account of ${who}.`,
+  authorizeApprove: "Allow",
+  authorizeDecline: "Decline",
+  authorizeReturning: (party) =>
+    party.kind === "known"
+      ? `Done. Taking you back to ${party.name}.`
+      : party.kind === "loopback"
+        ? "Done. Taking you back to the app."
+        : `Done. Taking you back to ${party.host}.`,
+  authorizeFailed: "That did not go through. Please try again.",
+  authorizeExpired: "This request has expired. Start again from your assistant.",
+  authorizeErrorTitle: "This link cannot be used",
+  authorizeErrorUnknownClient: "Berth does not recognise the app that sent you here. Start again from your assistant.",
+  authorizeErrorRedirect: "The app that sent you here asked to be answered at an address it never registered, so Berth will not send you there.",
+  authorizeTroubleTitle: "Berth could not open this request",
+  authorizeTroubleBody: "Something went wrong on our side. Nothing was connected. Please try again in a moment.",
+  authorizeTryAgain: "Try again",
+
+  assistantTitle: "Your assistant",
+  assistantBody:
+    "Let your assistant read your account. It can see what you own, how it compares with the S&P 500 fund, and what moved today. It can suggest a buy or a sell, and nothing happens until you approve and sign it, here in Berth.",
+  assistantClaude: "Claude",
+  assistantChatGpt: "ChatGPT",
+  assistantGrok: "Grok",
+  assistantSheetTitle: (name) => `Connect ${name}`,
+  assistantSheetBody: "Berth is added to your assistant as a connector. You sign in here once, and can disconnect it whenever you like.",
+  assistantSheetConnected: (name) => `${name} is connected to this account. The steps below connect it again, for example on another ${name} account.`,
+  assistantButtonConnected: (name) => `${name}, connected`,
+  assistantAddressLabel: "Berth's address for assistants",
+  assistantCopyLabel: "Copy the address",
+  assistantCopied: "Address copied",
+  assistantStepsClaude: [
+    "Open Claude with the button below. It goes straight to adding a connector. You can also find it under Settings, then Connectors, then Add custom connector.",
+    "Name it Berth and paste the address above, if Claude has not filled it in.",
+    "Choose Connect, sign in to Berth, and allow it.",
+    "On the free plan Claude allows one custom connector.",
+  ],
+  assistantStepsChatGpt: [
+    "In ChatGPT's settings, turn on Developer mode (Plus plan or higher), then create an app named Berth with the address above.",
+    "Sign in to Berth when ChatGPT asks, and allow it.",
+  ],
+  assistantStepsGrok: [
+    "Open Grok's connectors with the button below and choose New connector, then Custom. It needs SuperGrok or X Premium+.",
+    "Name it Berth and paste the address above.",
+    "Sign in to Berth when Grok asks, and allow it.",
+  ],
+  assistantOpen: (name) => `Open ${name}`,
+  assistantConnectedTitle: "Connected",
+  assistantLastUsed: (when) => `Last used ${when}`,
+  assistantNeverUsed: "Not used yet",
+  assistantDisconnect: "Disconnect",
+  assistantDisconnectLabel: (name) => `Disconnect ${name}`,
+  assistantDisconnectConfirm: (name) => `Disconnect ${name}?`,
+  assistantDisconnected: (name) => `${name} can no longer read your account.`,
+  assistantDisconnectFailed: "That did not go through. Please try again.",
+  assistantLocalApp: "An app on this computer",
+
+  draftOpenedTitle: "Suggested by your assistant",
+  draftOpenedBody: "Check the amount and what you pay with. Nothing is sent until you sign.",
+  draftUnknownListing: "That suggestion names something Berth does not offer.",
+  draftNothingToSell: (name) => `There is no ${name} in your account to sell.`,
+  draftCouldNotCheck: (name) => `Berth could not check your ${name} just now. You can sell it from what you own when it shows.`,
 };

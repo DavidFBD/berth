@@ -31,6 +31,7 @@ import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
 import { SettingsDrawer } from "@/components/settings-drawer";
+import { AssistantSection } from "@/components/assistant/assistant-section";
 import { RankChip, RewardsPanel } from "@/components/rewards-panel";
 import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
@@ -132,6 +133,10 @@ export function AccountButton({
             {/* The way out. Client-only, like SolanaReceive. */}
             {address && mounted && <KeyExportRow evmAddress={address} />}
 
+            {/* An assistant that reads the account and drafts orders the
+                person signs here (app/mcp). */}
+            {address && <AssistantSection />}
+
             {/* No external-wallet CONNECT affordance here on purpose: email
                 users live entirely in Funds, and the expert path stays on
                 the welcome screen for people who skip Privy. Getting funds
@@ -187,8 +192,8 @@ export function AccountButton({
  * (rank, avatar grid, and the email invitation with its reward).
  */
 /**
- * A wallet user's header: rank chip, wallet pill, and the rewards drawer the
- * chip opens. It honours the same open state the page passes AccountButton,
+ * A wallet user's header: rank chip, wallet pill, and the account drawer the
+ * chip opens (rewards, then "Your assistant", so it is titled for both). It honours the same open state the page passes AccountButton,
  * so "Open account" in the nudge line opens this drawer for a wallet user
  * rather than an email drawer that is never rendered for them (it did
  * nothing at all until 2026-09-22).
@@ -208,11 +213,14 @@ function ExternalAccountEntry({
       <Drawer open={serviceOpen} onOpenChange={setServiceOpen}>
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>{copy.rewardsTitle}</DrawerTitle>
-            <DrawerDescription>{copy.rewardsDrawerSub}</DrawerDescription>
+            <DrawerTitle>{copy.walletAccountDrawerTitle}</DrawerTitle>
+            <DrawerDescription>{copy.walletAccountDrawerSub}</DrawerDescription>
           </DrawerHeader>
-          <div className="p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          <div className="flex flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <RewardsPanel />
+            <Panel>
+              <AssistantSection />
+            </Panel>
           </div>
         </DrawerContent>
       </Drawer>
