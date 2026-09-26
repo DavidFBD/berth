@@ -7,6 +7,12 @@
       "skillPath": "skills/engineering/codebase-design/SKILL.md",
       "computedHash": "e6394592ecf4b5aa5bc93f95a20d0a56314788bde2e1221f87296d3becb734a2"
     },
+    "colosseum-copilot": {
+      "source": "ColosseumOrg/colosseum-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/colosseum-copilot/SKILL.md",
+      "computedHash": "4038e366dd3bbcbc3065abc61c5cc9453b29655f2e5c390a8d3441181d6021b5"
+    },
     "domain-modeling": {
       "source": "mattpocock/skills",
       "sourceType": "github",
