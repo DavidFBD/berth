@@ -1,21 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { normalizeWallet, toProfile, type UserRow } from "./accounts";
+import { toCaip10 } from "@/lib/identity/caip";
 
 describe("normalizeWallet", () => {
-  const evm = "0xAbCd1234aBcD1234AbCd1234aBcD1234AbCd1234";
+  const evm = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"; // valid EIP-55
 
   it("lowercases and trims a plausible address", () => {
     expect(normalizeWallet(`  ${evm} `)).toBe(evm.toLowerCase());
   });
 
-  it("accepts non-EVM shapes within the sane charset", () => {
-    // Solana-style base58 and namespaced ids both pass the same gate.
+  it("keeps the case of Solana and unknown shapes, lowercases bech32", () => {
+    // Base58 is case-sensitive: lowercasing would turn one key into another.
     expect(normalizeWallet("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin")).toBe(
-      "9xqewvg816bux9epjhmat23yvvm2zwbrrpzb9pusvfin",
+      "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
+    );
+    expect(normalizeWallet("BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4")).toBe(
+      "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+    );
+    expect(normalizeWallet("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2")).toBe(
+      "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
     );
     expect(normalizeWallet("cosmos:hub-4.addr_0-EXAMPLE")).toBe(
-      "cosmos:hub-4.addr_0-example",
+      "cosmos:hub-4.addr_0-EXAMPLE",
     );
+  });
+
+  it("refuses mixed-case EVM with a broken EIP-55 checksum, as toCaip10 does", () => {
+    const good = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+    const bad = "0xd8Da6BF26964aF9D7eEd9e03E53415D37aA96045";
+    expect(normalizeWallet(good)).toBe(good.toLowerCase());
+    expect(normalizeWallet(good.toLowerCase())).toBe(good.toLowerCase());
+    expect(normalizeWallet(bad)).toBeNull();
+    expect(toCaip10("evm", bad)).toBeNull();
   });
 
   it("rejects non-strings", () => {

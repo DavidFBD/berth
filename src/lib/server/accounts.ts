@@ -1,4 +1,6 @@
 import { getSql } from "@/lib/server/db";
+import { detectFamily, normalizeAddress } from "@/lib/identity/caip";
+import { recordHomeWallet, recordPrimaryEmail } from "@/lib/server/identities";
 import { CODE_ALPHABET, CODE_LENGTH } from "@/lib/invite-code";
 import type {
   Profile,
@@ -27,13 +29,24 @@ export type UserRow = {
 const USER_COLUMNS =
   "id, privy_did, wallet_address, email, avatar_id, xp, referral_code, referred_by" as const;
 
+/**
+ * The one spelling of a wallet address Berth stores and compares, per
+ * network family (lib/identity/caip): EVM lowercase, Solana base58 exactly
+ * as given (base58 is case-sensitive), Bitcoin bech32 lowercase and base58
+ * as given. An address of no family Berth knows keeps its case too (only
+ * trimmed, and only within a sane charset and length): lowercasing it could
+ * merge two different keys into one row.
+ */
 export function normalizeWallet(address: unknown): string | null {
   if (typeof address !== "string") return null;
   const trimmed = address.trim();
-  // EVM (0x…), Solana base58, and the odd non-EVM format — accept a sane
-  // charset and length instead of hard-coding one chain's shape.
   if (!/^[a-zA-Z0-9:._-]{20,90}$/.test(trimmed)) return null;
-  return trimmed.toLowerCase();
+  // Any 0x + 40 hex is EVM and compares case-insensitively. Mixed case must
+  // be a valid EIP-55 checksum, the same rule toCaip10 applies, so a row
+  // is never stored under an address its identity would refuse.
+  if (/^0x[0-9a-fA-F]{40}$/.test(trimmed)) return normalizeAddress("evm", trimmed);
+  const family = detectFamily(trimmed);
+  return family ? normalizeAddress(family, trimmed) : trimmed;
 }
 
 /**
@@ -142,6 +155,9 @@ export async function getOrCreateUser({
          returning ${USER_COLUMNS}`,
         [user.id, wallet],
       )) as UserRow[];
+      // Dual write (phase 1), after the users write and never failing it.
+      // Privy vouches for this address, so the proof says so.
+      if (updated[0]) await recordHomeWallet(updated[0].id, wallet, "privy_wallet");
       user = updated[0] ?? user;
     }
     return { user, created };
@@ -159,6 +175,10 @@ export async function getOrCreateUser({
      returning ${USER_COLUMNS}`,
     [wallet],
   )) as UserRow[];
+  // Dual write (phase 1), after the users write and never failing it. A
+  // wallet-only caller proved the address with SIWE (readRewardsCaller
+  // accepts nothing less).
+  if (inserted[0]) await recordHomeWallet(inserted[0].id, wallet, "siwe");
   return { user: inserted[0], created: true };
 }
 
@@ -440,12 +460,20 @@ export async function setAvatar(
   );
 }
 
+/**
+ * Stores the Privy-verified email on the row, then records it as the
+ * account's primary email identity (dual write, phase 1) in a separate
+ * statement that can never fail the save (lib/server/identities).
+ * users.email stays exactly as Privy spelled it; the identity is the
+ * normalised form.
+ */
 export async function setEmail(userId: string, email: string): Promise<void> {
   const sql = getSql();
   await sql.query(
     "update users set email = $2, updated_at = now() where id = $1",
     [userId, email],
   );
+  await recordPrimaryEmail(userId, email);
 }
 
 /**

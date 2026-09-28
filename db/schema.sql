@@ -312,3 +312,59 @@ create table if not exists chat_usage (
 
 create index if not exists chat_usage_user_idx on chat_usage (user_id, created_at);
 create index if not exists chat_usage_created_idx on chat_usage (created_at);
+
+-- The identifiers that belong to an account (docs/plans/account-linking.md,
+-- phase 1). An account is the users row; every verified email and every
+-- wallet address it has proved attaches here, one row each. `value` is the
+-- normalised identifier: a trimmed, lowercased email, or a chain-agnostic
+-- CAIP-10 wallet id (`eip155:<lowercase hex>`, `solana:<base58 as signed>`,
+-- `bip122:<bech32 lowercase | base58 as given>`, see lib/identity/caip).
+-- unique (kind, value): an identifier belongs to one account, ever. One
+-- primary email and one home EVM address (where buys land) per account.
+-- Phase 1 only dual writes here; reads still come from users.email and
+-- users.wallet_address, which stay as they are.
+create table if not exists user_identities (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  kind text not null check (kind in ('email', 'wallet')),
+  value text not null,
+  family text check (family in ('evm', 'solana', 'bitcoin')),
+  is_primary boolean not null default false,
+  is_home boolean not null default false,
+  -- When Berth accepted a proof in a live request (the Privy email code,
+  -- a SIWE session, Privy's record of the wallet). Null for 'legacy' rows
+  -- carried over by the backfill: proved once, time unknown.
+  verified_at timestamptz,
+  -- How it was proved: the Privy email code, a signature (SIWE, SIWS,
+  -- BIP-322), Privy's own record of the account's wallet, or carried over
+  -- from the users row by the backfill.
+  proof text not null check (proof in ('privy_email', 'siwe', 'siws', 'bip322', 'privy_wallet', 'legacy')),
+  created_at timestamptz not null default now(),
+  constraint user_identities_kind_value unique (kind, value),
+  constraint user_identities_family_shape check (
+    (kind = 'email' and family is null) or (kind = 'wallet' and family is not null)
+  ),
+  constraint user_identities_primary_is_email check (not is_primary or kind = 'email'),
+  constraint user_identities_home_is_evm check (not is_home or family = 'evm')
+);
+
+create unique index if not exists user_identities_one_primary_email
+  on user_identities (user_id) where is_primary;
+
+create unique index if not exists user_identities_one_home_evm
+  on user_identities (user_id) where is_home;
+
+create index if not exists user_identities_user_idx on user_identities (user_id);
+
+-- What happened to an account and why, for the linking, unlinking and merge
+-- phases that follow. `detail` never holds a secret: no token, no code, no
+-- signature.
+create table if not exists account_audit (
+  id bigint generated always as identity primary key,
+  user_id uuid references users(id) on delete set null,
+  action text not null,
+  detail jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists account_audit_user_idx on account_audit (user_id, created_at desc);

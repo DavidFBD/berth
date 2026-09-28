@@ -20,7 +20,7 @@ export type OrderRecord = {
   direction: "buy" | "sell";
   walletAddress: string | null;
   /**
-   * intent.dstAddress, lowercased: the wallet the output was delivered to.
+   * intent.dstAddress, lowercased when hex: the wallet the output was delivered to.
    * On a buy this is exactly where the fill's Transfer landed, and the one
    * place the thirty day hold check reads the balance (lib/server/holds).
    */
@@ -177,7 +177,13 @@ export function readOrder({
     fillTx: fillTx ? fillTx.toLowerCase() : null,
     direction,
     walletAddress: evm ? intent.srcAddress.toLowerCase() : null,
-    deliveredTo: intent.dstAddress ? intent.dstAddress.toLowerCase() : null,
+    // Hex (the intent's encoding, and every EVM address) lowercases without
+    // loss; anything else, a base58 payout address say, keeps its case.
+    deliveredTo: intent.dstAddress
+      ? /^0x[0-9a-fA-F]*$/.test(intent.dstAddress)
+        ? intent.dstAddress.toLowerCase()
+        : intent.dstAddress
+      : null,
     listingSymbol: listing.symbol,
     listingAddress: listing.address.toLowerCase(),
     quantity,

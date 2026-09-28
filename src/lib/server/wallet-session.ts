@@ -1,5 +1,6 @@
 import { hkdfSync } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
+import { normalizeWallet } from "@/lib/server/accounts";
 
 /**
  * Wallet-guest sessions: short self-issued JWTs proving "this browser holds
@@ -53,8 +54,9 @@ export async function readNonceToken(token: string): Promise<string | null> {
   }
 }
 
+/** The subject is the address in its family's one spelling (normalizeWallet): EVM lowercase, base58 as given. */
 export async function issueWalletSession(address: string): Promise<string> {
-  return sign({ purpose: "wallet-session", sub: address.toLowerCase() }, SESSION_TTL);
+  return sign({ purpose: "wallet-session", sub: normalizeWallet(address) ?? address }, SESSION_TTL);
 }
 
 /** The address a session token proves, or null for anything less. */

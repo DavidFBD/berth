@@ -63,6 +63,11 @@ describe("readOrder", () => {
       readOrder({ intentTx: "0x1", direction: "buy", intent: CASH_BUY, listing: CASH, pay: USDC_BSC })
         .deliveredTo,
     ).toBeNull();
+    const solana = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    expect(
+      readOrder({ intentTx: "0x1", direction: "buy", intent: { ...CASH_BUY, dstAddress: solana }, listing: CASH, pay: USDC_BSC })
+        .deliveredTo,
+    ).toBe(solana);
   });
 
   it("leaves the quantity unknown until the fill is found", () => {
