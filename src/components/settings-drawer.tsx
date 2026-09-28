@@ -132,6 +132,13 @@ export function SettingsDrawer({
                 ))}
               </div>
             </section>
+
+            <a
+              href="/privacy"
+              className="self-start text-[13px] text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            >
+              {copy.privacyLink}
+            </a>
           </div>
         </DrawerContent>
     </Drawer>

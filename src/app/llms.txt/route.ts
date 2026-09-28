@@ -26,6 +26,7 @@ export function GET(request: Request): Response {
 ## Links
 
 - App: ${origin}
+- Privacy policy (covers the MCP connector): ${origin}/privacy
 `;
   return new Response(body, {
     headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" },

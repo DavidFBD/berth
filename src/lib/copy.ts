@@ -663,6 +663,35 @@ export type Copy = {
   draftNothingToSell: (name: string) => string;
   /** A drafted sell whose holdings could not be read in time. */
   draftCouldNotCheck: (name: string) => string;
+
+  /* — the privacy policy (app/privacy): public, signed in or not — */
+  /** The small link to /privacy, in the settings drawer and under the consent screen. */
+  privacyLink: string;
+  privacyPolicy: PrivacyPolicy;
+};
+
+/**
+ * The privacy policy as data: headings, paragraphs and lists, rendered by
+ * app/privacy. Three facts are the operator's to give; they live in
+ * PRIVACY_OPERATOR and are interpolated wherever the policy names them.
+ */
+export type PrivacySection = {
+  id: string;
+  heading: string;
+  /** Paragraphs before the list. */
+  body: readonly string[];
+  list?: readonly string[];
+  /** Paragraphs after the list. */
+  after?: readonly string[];
+};
+
+export type PrivacyPolicy = {
+  title: string;
+  /** Under the title: the status and the effective date. */
+  status: string;
+  intro: readonly string[];
+  sections: readonly PrivacySection[];
+  backHome: string;
 };
 
 /** "first day", "1 market day", "4 market days". */
@@ -670,6 +699,17 @@ function marketDays(days: number): string {
   if (days <= 0) return "first day";
   return days === 1 ? "1 market day" : `${days} market days`;
 }
+
+/**
+ * The three facts about the operator that the privacy policy names. The
+ * country of establishment also sets the governing law and the lead
+ * supervisory authority named in the policy.
+ */
+export const PRIVACY_OPERATOR = {
+  name: "RD Norra-Winkels",
+  email: "david@sodax.com",
+  country: "the Netherlands",
+} as const;
 
 export const COPY: Copy = {
   brand: "Berth",
@@ -1246,4 +1286,178 @@ export const COPY: Copy = {
   draftUnknownListing: "That suggestion names something Berth does not offer.",
   draftNothingToSell: (name) => `There is no ${name} in your account to sell.`,
   draftCouldNotCheck: (name) => `Berth could not check your ${name} just now. You can sell it from what you own when it shows.`,
+
+  privacyLink: "Privacy",
+  privacyPolicy: {
+    title: "Privacy policy",
+    status: "Effective 28 September 2026.",
+    intro: [
+      "This policy explains what Berth collects when you use www.berthmarkets.com and the Berth connector for assistants, why, who else sees it, how long we keep it, and what you can ask of us.",
+      "Berth is self custodial. We never hold your keys and we never hold your money.",
+    ],
+    sections: [
+      {
+        id: "who-we-are",
+        heading: "Who we are",
+        body: [
+          `Berth is operated by ${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country} ("we" or "us"). We are the controller of the personal data described here.`,
+          `For any question or request about this policy, write to ${PRIVACY_OPERATOR.email}. This includes requests from the European Union and the United Kingdom.`,
+        ],
+      },
+      {
+        id: "what-we-collect",
+        heading: "What we collect and why",
+        body: ["We keep only what the app needs to work. This is all of it."],
+        list: [
+          "Your sign in. If you sign in with email, our sign in provider Privy checks the address and gives us an account identifier. We store that identifier and your email address. If you sign in with a wallet, we store its public address, after you sign a free message that proves the wallet is yours.",
+          "Your account. The avatar you pick, your XP and rank, the rewards you earned and when, your invite code, and who invited you, if anyone.",
+          "Your orders. For each order: buy or sell, which listing, the quantity, what you paid with and on which network, the fee, the value in dollars, the transaction identifiers, the delivery address, and the time. We also keep the price of each comparison fund at the minute of the order, so your results can be drawn beside it.",
+          "Your daily value. Once a day, after the New York close, we read your balances from the blockchain and keep that day's holdings and value, so your history can be drawn.",
+          "Invite links. When someone opens an invite link, we count the visit against the invite code. We do not record who opened it.",
+          "Assistants. If you connect an assistant, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what the assistant asked or what Berth answered.",
+          "Error reports. When an order fails or does not settle, the app sends a report so we can fix the cause: the step it stopped at, the networks, the token and amount, the transaction hashes, a shortened form of your address, the error text, recent app logs, the page address, your screen size and your browser's user agent. Keys and tokens are removed first, and it never includes your email address.",
+          "Usage statistics. We count page views with Vercel Web Analytics, which uses no cookies.",
+        ],
+        after: [
+          "We use this to run your account, show what you own and how it has done, check an order before a reward is paid for it, pay invite rewards, keep the service secure, limit abuse, and fix what breaks.",
+          "We do not sell personal data. We do not use it for advertising, and we do not build profiles of you for anyone else.",
+          "Where the law asks for a legal basis: running your account and your orders is necessary to provide the service you asked for. Security, abuse limits, error reports and usage statistics rest on our legitimate interest in a service that works and is safe. For anything else, we will ask you first.",
+        ],
+      },
+      {
+        id: "never-collect",
+        heading: "What we never collect",
+        body: [
+          "We never see or store your seed phrase or private keys. If you sign in with a wallet, the keys stay in your wallet. If you sign in with email, your wallet is created and secured by Privy, and you can export its keys at any time. Berth cannot sign for you and cannot move your money.",
+          "We do not collect identity documents, bank details or card numbers. If you add funds by card inside Berth, the purchase is handled by the provider shown on that screen, under its own terms and privacy policy, and we do not receive your card details.",
+        ],
+      },
+      {
+        id: "onchain",
+        heading: "The blockchain is public",
+        body: [
+          "Orders settle on public blockchains. Your addresses, balances and transactions can be seen by anyone, permanently. No one controls that record, and no one, including us, can change or delete it.",
+        ],
+      },
+      {
+        id: "assistants",
+        heading: "Assistants and the Berth connector",
+        body: [
+          "You can connect Claude, ChatGPT or Grok to your Berth account through Berth's connector at www.berthmarkets.com/mcp. Nothing is shared until you approve the connection on Berth's own consent screen, signed in to your account.",
+          "Once approved, an assistant can do two things.",
+        ],
+        list: [
+          "Read. Your holdings, orders, results against a benchmark, rank and XP, account addresses, and the public board: listings, prices, what moved and the news.",
+          "Draft. Prepare a buy or a sell as a link. The link opens Berth with the order filled in, and nothing happens unless you check it and sign it yourself.",
+        ],
+        after: [
+          "An assistant never holds your keys, never signs and never moves money. It is not given your email address.",
+          "What an assistant does with Berth's answers is governed by its provider's own terms and privacy policy: Anthropic for Claude, OpenAI for ChatGPT, xAI for Grok. Those answers may be kept in your chat history with that provider.",
+          "To disconnect, open the account drawer in Berth, go to Your assistant, and choose Disconnect. Access ends straight away. You can also remove the connector in the assistant's own settings.",
+        ],
+      },
+      {
+        id: "assistant-chat",
+        heading: "The assistant chat in Berth",
+        body: [
+          "If you use the assistant chat in Berth, your messages, and the account details needed to answer them, are sent to OpenAI to generate the replies. Berth does not store the content of the chat. We keep only the number of tokens each reply used and what it cost. OpenAI handles the messages under its API data policy.",
+        ],
+      },
+      {
+        id: "sharing",
+        heading: "Who we share it with",
+        body: ["We share personal data only with the services that run Berth, each for its own part."],
+        list: [
+          "Privy, for email sign in and the wallets it creates for email accounts. Privy receives your email address and secures your wallet's keys.",
+          "Neon, which hosts our database.",
+          "Vercel, which hosts the app, serves every request and counts page views. Like any web host, it processes your IP address and browser details to do so.",
+          "SODAX, whose service, solvers and relayers price, route and fill your orders. They receive the addresses, amounts and transactions needed to fill them.",
+          "Blockchain networks. Your browser reads balances and sends transactions through public network nodes. A Bitcoin order links to mempool.space so you can follow it there.",
+          "GitHub, where error reports are kept in a private repository.",
+          "OpenAI, if you use the assistant chat in Berth, as described above.",
+          "TypeSafe, whose Jev model helps choose the one line shown at the top of the app, such as news about something you own. It receives which listings your account holds and whether it has cash to spend, never your name, email or address.",
+          "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
+        ],
+        after: [
+          "We disclose personal data to authorities only when the law requires it.",
+          "Some of these providers process data outside your country, including in the United States. Where the law requires it, we rely on appropriate safeguards, such as standard contractual clauses.",
+        ],
+      },
+      {
+        id: "storage",
+        heading: "Cookies and local storage",
+        body: [
+          "Berth sets no advertising or tracking cookies. The app keeps a few things in your browser's local storage so it remembers your choices:",
+        ],
+        list: [
+          "your appearance and currency, and the comparison and time range you last picked;",
+          "whether your account holds any stocks, so the home screen opens in the right order;",
+          "which suggestions you dismissed;",
+          "an invite code you arrived with, until your account is created;",
+          "a signed session token when you sign in with a wallet, valid for seven days.",
+        ],
+        after: [
+          "When you sign in with email, Privy keeps its own sign in session in your browser. Clearing this site's data in your browser removes all of it.",
+        ],
+      },
+      {
+        id: "retention",
+        heading: "How long we keep it",
+        body: [],
+        list: [
+          "Your account, rewards, orders, daily values and assistant approvals: for as long as your account is active, and after that as long as needed for legal, accounting and security purposes.",
+          "Assistant sign in codes: they expire after 90 seconds and are deleted within the hour.",
+          "Assistant access tokens last an hour and refresh tokens thirty days. Both are deleted a week after they expire or are revoked.",
+          "The log of assistant requests: 90 days.",
+          "Abuse limit counters: one day. They hold a hashed form of the caller's IP address, never the address itself.",
+          "Invite link visits and error reports: up to 12 months.",
+        ],
+      },
+      {
+        id: "rights",
+        heading: "Your choices and rights",
+        body: [
+          "You can disconnect an assistant at any time, sign out, and clear the app's storage in your browser.",
+          `You can ask for a copy of the personal data we hold about you, ask us to correct it, or ask us to delete your account. Write to ${PRIVACY_OPERATOR.email} from the email address on your account, or with proof that you control the wallet. We answer within 30 days.`,
+          "When we delete an account, we delete or anonymise its data within 30 days, except what the law requires us to keep. Records on a blockchain are public and permanent, and no one can delete them. Your money stays in your own wallet either way.",
+          "Depending on where you live, including the European Economic Area and the United Kingdom, you may also have the right to object to or restrict how we use your data, to receive it in a portable form, and to complain to a data protection authority. Our lead supervisory authority is the Dutch Data Protection Authority, the Autoriteit Persoonsgegevens. You may also complain to the authority where you live.",
+        ],
+      },
+      {
+        id: "security",
+        heading: "Security",
+        body: [
+          "Connections to Berth are encrypted. Every secret we issue, such as an assistant's tokens, is stored only as a one way hash. An assistant's access is limited to what you approved and ends when you disconnect it, and a refresh token used twice ends the whole connection.",
+          "No system is perfectly secure. If a breach affects your data, we will tell you as the law requires.",
+        ],
+      },
+      {
+        id: "children",
+        heading: "Age",
+        body: [
+          "Berth is a trading product for adults. You must be 18 or older to use it. We do not knowingly collect data from anyone younger, and if you believe a minor has an account, write to us and we will delete it.",
+        ],
+      },
+      {
+        id: "law",
+        heading: "Governing law",
+        body: [
+          `This policy is governed by the laws of ${PRIVACY_OPERATOR.country}, without taking away any protection the law where you live gives you.`,
+        ],
+      },
+      {
+        id: "changes",
+        heading: "Changes to this policy",
+        body: [
+          "When this policy changes, we update the effective date at the top. For a change that matters, we will say so in the app before it applies.",
+        ],
+      },
+      {
+        id: "contact",
+        heading: "Contact",
+        body: [`${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country}. Email ${PRIVACY_OPERATOR.email}.`],
+      },
+    ],
+    backHome: "Back to Berth",
+  },
 };
