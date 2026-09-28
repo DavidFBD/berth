@@ -151,14 +151,14 @@ export function ConsentCard({
                 ? copy.authorizeFailed
                 : ""}
         </p>
-        <a
-          href="/privacy"
-          target="_blank"
-          rel="noopener"
-          className="self-center text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-        >
-          {copy.privacyLink}
-        </a>
+        <div className="flex gap-5 self-center text-xs">
+          <a href="/privacy" target="_blank" rel="noopener" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+            {copy.privacyLink}
+          </a>
+          <a href="/terms" target="_blank" rel="noopener" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+            {copy.termsLink}
+          </a>
+        </div>
       </div>
     </main>
   );

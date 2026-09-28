@@ -13,6 +13,7 @@ import { SPRING_SHELF } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { ProviderMark } from "@/components/assistant/provider-marks";
 import type { AssistantId } from "@/lib/assistant-party";
+import { assistantOpenUrl } from "@/lib/assistant-links";
 import { promptUrl } from "@/lib/assistant-prompts";
 
 /**
@@ -36,17 +37,6 @@ import { promptUrl } from "@/lib/assistant-prompts";
 const DISCONNECT_CONFIRM_MS = 4_000;
 
 type Grant = { id: string; clientName: string; lastUsedAt: string | null; assistant?: AssistantId | null };
-
-function openUrl(id: AssistantId, mcpUrl: string): string {
-  switch (id) {
-    case "claude":
-      return `https://claude.ai/customize/connectors?modal=add-custom-connector&mcpName=Berth&mcpServerUrl=${encodeURIComponent(mcpUrl)}`;
-    case "chatgpt":
-      return "https://chatgpt.com/plugins";
-    case "grok":
-      return "https://grok.com/connectors";
-  }
-}
 
 export function AssistantSection({
   demoGrants,
@@ -114,6 +104,14 @@ export function AssistantSection({
       <div className="flex flex-col gap-1">
         <span className="text-sm font-medium text-foreground">{copy.assistantTitle}</span>
         <p className="text-xs leading-relaxed text-muted-foreground">{copy.assistantBody}</p>
+        <a
+          href="/assistants"
+          target="_blank"
+          rel="noopener"
+          className="self-start text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          {copy.assistantsLink}
+        </a>
       </div>
 
       <div className="grid grid-cols-3 gap-2" role="group" aria-label={copy.assistantTitle}>
@@ -233,7 +231,7 @@ export function AssistantSection({
                 <Button
                   variant="outline"
                   className="h-10 w-full"
-                  render={<a href={openUrl(chosen.id, mcpUrl)} target="_blank" rel="noopener noreferrer" />}
+                  render={<a href={assistantOpenUrl(chosen.id, mcpUrl)} target="_blank" rel="noopener noreferrer" />}
                   nativeButton={false}
                 >
                   {copy.assistantOpen(chosen.name)}

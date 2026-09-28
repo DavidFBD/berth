@@ -667,15 +667,48 @@ export type Copy = {
   /* — the privacy policy (app/privacy): public, signed in or not — */
   /** The small link to /privacy, in the settings drawer and under the consent screen. */
   privacyLink: string;
-  privacyPolicy: PrivacyPolicy;
+  privacyPolicy: LegalDocument;
+
+  /* — the terms of use (app/terms): public, signed in or not — */
+  /** The small link to /terms, beside Privacy in the settings drawer and under the consent screen. */
+  termsLink: string;
+  termsOfUse: LegalDocument;
+
+  /* — the help page for assistants (app/assistants): public, the directories' documentation and support page — */
+  /** The small link to /assistants under "Your assistant" in the account drawer. */
+  assistantsLink: string;
+  assistantsHelp: AssistantsHelp;
 };
 
 /**
- * The privacy policy as data: headings, paragraphs and lists, rendered by
- * app/privacy. Three facts are the operator's to give; they live in
- * PRIVACY_OPERATOR and are interpolated wherever the policy names them.
+ * The public help page for assistants. The steps for each assistant are not
+ * here: the page reads assistantStepsClaude and its siblings, the same words
+ * the account drawer shows.
  */
-export type PrivacySection = {
+export type AssistantsHelp = {
+  title: string;
+  intro: readonly string[];
+  connectHeading: string;
+  connectBody: string;
+  canHeading: string;
+  can: readonly string[];
+  cannotHeading: string;
+  cannot: readonly string[];
+  disconnectHeading: string;
+  disconnect: readonly string[];
+  moreHeading: string;
+  more: readonly string[];
+  support: string;
+  backHome: string;
+};
+
+/**
+ * A legal page as data: headings, paragraphs and lists, rendered by
+ * components/legal-page for app/privacy and app/terms. Three facts are the
+ * operator's to give; they live in PRIVACY_OPERATOR and are interpolated
+ * wherever a page names them.
+ */
+export type LegalSection = {
   id: string;
   heading: string;
   /** Paragraphs before the list. */
@@ -685,12 +718,12 @@ export type PrivacySection = {
   after?: readonly string[];
 };
 
-export type PrivacyPolicy = {
+export type LegalDocument = {
   title: string;
   /** Under the title: the status and the effective date. */
   status: string;
   intro: readonly string[];
-  sections: readonly PrivacySection[];
+  sections: readonly LegalSection[];
   backHome: string;
 };
 
@@ -710,6 +743,27 @@ export const PRIVACY_OPERATOR = {
   email: "david@sodax.com",
   country: "the Netherlands",
 } as const;
+
+/**
+ * Where Berth may be used, as the terms of use state it. This is a DEFAULT,
+ * not a decision: Robinhood's stock tokens are issued for customers outside
+ * the United States, so the United States is excluded until someone with
+ * standing says otherwise.
+ *
+ * TODO(David): confirm this list, ideally with counsel, before the terms
+ * are relied on or a directory listing names its countries. Add a country
+ * here and the terms say it; the sanctions and local law clause stays
+ * whatever the list holds.
+ */
+export const TERMS_AVAILABILITY = {
+  excluded: ["the United States"],
+} as const;
+
+/** "the United States", "the United States or Canada", "A, B or C". */
+function orList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+}
 
 export const COPY: Copy = {
   brand: "Berth",
@@ -1458,6 +1512,169 @@ export const COPY: Copy = {
         body: [`${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country}. Email ${PRIVACY_OPERATOR.email}.`],
       },
     ],
+    backHome: "Back to Berth",
+  },
+  termsLink: "Terms",
+  termsOfUse: {
+    title: "Terms of use",
+    status: "Effective 28 September 2026.",
+    intro: [
+      "These terms apply when you use www.berthmarkets.com, the Berth app and the Berth connector for assistants. By using Berth you agree to them. If you do not agree, please do not use Berth.",
+      "Berth is software. It never holds your keys or your money, and it does not give investment advice.",
+    ],
+    sections: [
+      {
+        id: "who-we-are",
+        heading: "Who we are",
+        body: [
+          `Berth is operated by ${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country} ("we" or "us"). You can reach us at ${PRIVACY_OPERATOR.email}.`,
+        ],
+      },
+      {
+        id: "what-berth-is",
+        heading: "What Berth is",
+        body: ["Berth is software that helps you buy and sell tokenised stocks and funds with money you already hold in your own wallet."],
+        list: [
+          "Berth is self custodial. Your wallet and its keys are yours. We never hold your keys or your funds, and we cannot move them.",
+          "You sign every order yourself, in your own wallet. Nothing is bought or sold unless you sign it.",
+          "Orders are filled by independent solvers through SODAX, a protocol run by others. We do not fill orders ourselves.",
+          "A tokenised stock or fund is a token that tracks the price of a share or a fund. It is issued by a third party under its own terms. It is not the share itself, and holding one does not make you a shareholder of the company.",
+        ],
+      },
+      {
+        id: "no-advice",
+        heading: "No investment advice",
+        body: [
+          "Nothing in Berth is investment, financial, legal or tax advice, or a recommendation to buy or sell anything. Prices, history, comparisons, market posts and headlines are facts and reports, shown as they are.",
+          "The same holds for assistants. When you connect Claude, ChatGPT, Grok or another assistant, or use a chat inside Berth, what it tells you is information, not advice. An assistant can only read your account and draft an order as a link. It cannot place, sign or send an order. You decide, and you sign.",
+          "Past performance tells nothing certain about the future. Make your own decisions, and ask a qualified adviser if you need one.",
+        ],
+      },
+      {
+        id: "risks",
+        heading: "Risks",
+        body: ["Buying and holding tokens carries real risk. You can lose some or all of what you put in."],
+        list: [
+          "Prices move, sometimes quickly, including outside market hours. A token can lose value, trade at a price different from the share it tracks, or stop trading.",
+          "Blockchain transactions are final. An order you sign, or funds sent to a wrong address, cannot be reversed by us or by anyone else.",
+          "Networks can be slow, congested or down, and what they charge can change.",
+          "The issuer of a token, the solvers, SODAX, a blockchain, a wallet or another service Berth relies on can fail, pause, change its terms or be attacked.",
+          "Rules about tokens differ from country to country and can change.",
+        ],
+        after: ["You are responsible for keeping your wallet, your sign in and your recovery details safe."],
+      },
+      {
+        id: "fees",
+        heading: "Fees",
+        body: [
+          "Berth charges a fee on orders. The fee, and what you will receive, are shown before you sign. Networks, solvers and card providers may charge their own fees, shown where they are known.",
+        ],
+      },
+      {
+        id: "eligibility",
+        heading: "Who may use Berth",
+        body: [],
+        list: [
+          "You must be 18 or older, and able to enter a binding agreement where you live.",
+          `Berth is not offered in ${orList(TERMS_AVAILABILITY.excluded)}. You may not use it if you live there or are there when you use it.`,
+          "You may not use Berth where the law that applies to you prohibits it, if you are subject to sanctions, or from a country or region under sanctions.",
+          "You are responsible for knowing and following the laws that apply to you, including tax rules.",
+        ],
+      },
+      {
+        id: "acceptable-use",
+        heading: "Using Berth fairly",
+        body: ["Please do not:"],
+        list: [
+          "Break the law with Berth, or use it to launder money or to fund anything unlawful.",
+          "Try to reach accounts, data or systems that are not yours, or get around a limit or a safeguard.",
+          "Overload, disrupt or reverse engineer Berth, or copy it at a volume that harms it.",
+          "Pretend to be someone else, or use Berth for someone who may not use it.",
+        ],
+        after: ["We may limit or end access for anyone who does, and we may refuse or pause service where the law requires it."],
+      },
+      {
+        id: "assistants",
+        heading: "Assistants and other services",
+        body: [
+          "Berth's connector lets an assistant you choose read your account and draft orders as links, within what you approve when you connect it. You can disconnect it at any time, in Berth or in the assistant.",
+          "Assistants such as Claude, ChatGPT and Grok, wallets, sign in and card providers, SODAX and token issuers are run by others. Their own terms and privacy policies apply to your use of them, and we are not responsible for what they do or say.",
+          "What we keep about assistant requests is set out in our privacy policy.",
+        ],
+      },
+      {
+        id: "availability",
+        heading: "Availability",
+        body: [
+          "We work to keep Berth running, but it may at times be unavailable, slow or wrong, and we may change, pause or stop parts of it. Your tokens stay in your own wallet whatever happens to Berth.",
+        ],
+      },
+      {
+        id: "liability",
+        heading: "Liability",
+        body: [
+          "Berth is provided as it is and as available. To the extent the law allows, we do not promise that it is free of errors, or that prices, data and third party content are accurate or complete.",
+          "To the extent the law allows, we are not liable for losses from price changes, from your own decisions, from transactions you signed, or from the failure of any third party, network or token. Where we are liable, our liability is limited to the fees you paid Berth in the twelve months before the claim.",
+          "Nothing in these terms limits liability that the law does not allow to be limited, or takes away your rights as a consumer.",
+        ],
+      },
+      {
+        id: "law",
+        heading: "Governing law",
+        body: [
+          `These terms are governed by the laws of ${PRIVACY_OPERATOR.country}, and disputes go to the competent courts of ${PRIVACY_OPERATOR.country}. If you are a consumer, this does not take away the protection the law where you live gives you, or your right to go to the courts there.`,
+        ],
+      },
+      {
+        id: "changes",
+        heading: "Changes to these terms",
+        body: [
+          "When these terms change, we update the effective date at the top. For a change that matters, we will say so in the app before it applies. Using Berth after that means you accept the new terms.",
+        ],
+      },
+      {
+        id: "contact",
+        heading: "Contact",
+        body: [`${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country}. Email ${PRIVACY_OPERATOR.email}.`],
+      },
+    ],
+    backHome: "Back to Berth",
+  },
+  assistantsLink: "How assistants work with Berth",
+  assistantsHelp: {
+    title: "Berth for assistants",
+    intro: [
+      "Claude, ChatGPT and Grok can connect to your Berth account. Once connected, you can ask about what you own and the market in plain words, and have an order drafted for you to check and sign in Berth.",
+      "An assistant reads and drafts. You sign.",
+    ],
+    connectHeading: "Connect an assistant",
+    connectBody:
+      "Each assistant adds Berth as a connector. You sign in to Berth once and choose what it may do: read your account, draft orders, or both. Signed in to Berth, you can also start from Your assistant in your account.",
+    canHeading: "What an assistant can do",
+    can: [
+      "See what you own, what it is worth now, and how it has done over a week, a month, three months or since your first buy.",
+      "Compare your money with the same dollars in the S&P 500 fund, the Nasdaq 100 fund, Gold, Bitcoin or Treasury bills.",
+      "Read your past orders, what moved on the last trading day, and what companies and the press have been saying, with links.",
+      "Draft a buy or a sell, if you allowed it. A draft is a link to Berth's order screen with the listing and amount filled in.",
+    ],
+    cannotHeading: "What it cannot do",
+    cannot: [
+      "Place, sign or send an order. A draft only becomes an order if you open the link, check it and sign in Berth.",
+      "Hold your keys or move your money. Nothing on Berth's side can.",
+      "See anything you did not allow when you connected it.",
+      "Give advice. It reports prices, history and what was said. The decision is yours.",
+    ],
+    disconnectHeading: "Disconnect",
+    disconnect: [
+      "In Berth, open your account and choose Disconnect beside the assistant under Your assistant. It stops working at once.",
+      "You can also remove Berth in the assistant's own connector settings.",
+    ],
+    moreHeading: "Privacy and terms",
+    more: [
+      "Berth keeps a short record of which tools an assistant called, never what you asked or what it answered.",
+      "The assistant itself is run by its own company, under its own terms and privacy policy.",
+    ],
+    support: `Questions or trouble connecting? Write to ${PRIVACY_OPERATOR.email}.`,
     backHome: "Back to Berth",
   },
 };

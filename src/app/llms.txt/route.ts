@@ -8,7 +8,7 @@ export function GET(request: Request): Response {
   const origin = publicOrigin(request.headers, request.url);
   const body = `# Berth
 
-> A self custodial brokerage for money that already lives onchain. Buy tokenised US stocks and ETFs (Robinhood Stock Tokens on Sonic) with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature. Idle dollars can wait in a Treasury bill fund.
+> Self custodial software for money that already lives onchain. Buy tokenised US stocks and ETFs (Robinhood Stock Tokens on Sonic) with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature. Idle dollars can wait in a Treasury bill fund.
 
 ## Assistants (MCP)
 
@@ -27,6 +27,8 @@ export function GET(request: Request): Response {
 
 - App: ${origin}
 - Privacy policy (covers the MCP connector): ${origin}/privacy
+- Terms of use: ${origin}/terms
+- How to connect an assistant, what it can and cannot do, and support: ${origin}/assistants
 `;
   return new Response(body, {
     headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" },

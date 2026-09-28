@@ -133,12 +133,14 @@ export function SettingsDrawer({
               </div>
             </section>
 
-            <a
-              href="/privacy"
-              className="self-start text-[13px] text-muted-foreground underline underline-offset-4 hover:text-foreground"
-            >
-              {copy.privacyLink}
-            </a>
+            <div className="flex gap-5 self-start text-[13px]">
+              <a href="/privacy" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+                {copy.privacyLink}
+              </a>
+              <a href="/terms" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+                {copy.termsLink}
+              </a>
+            </div>
           </div>
         </DrawerContent>
     </Drawer>

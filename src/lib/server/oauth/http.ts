@@ -8,7 +8,7 @@ import { MCP_PATH, SCOPES_SUPPORTED, publicOrigin, resourceFor } from "@/lib/ser
 
 export const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, content-type, mcp-protocol-version, mcp-session-id, last-event-id",
   "Access-Control-Expose-Headers": "www-authenticate, mcp-session-id, mcp-protocol-version",
   "Access-Control-Max-Age": "86400",
@@ -58,7 +58,7 @@ export function protectedResourceMetadata(origin: string) {
     scopes_supported: [...SCOPES_SUPPORTED],
     bearer_methods_supported: ["header"],
     resource_name: "Berth",
-    resource_documentation: `${origin}/llms.txt`,
+    resource_documentation: `${origin}/assistants`,
   };
 }
 

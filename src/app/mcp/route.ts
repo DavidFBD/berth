@@ -22,7 +22,7 @@ export const maxDuration = 60;
 const SERVER_INFO = { name: "berth", version: "1.0.0" };
 
 const INSTRUCTIONS =
-  "Berth is a self custodial brokerage: tokenised US stocks and funds on Sonic, bought with stablecoins or Bitcoin. " +
+  "Berth is self custodial software for buying tokenised US stocks and funds on Sonic with stablecoins or Bitcoin. " +
   "These tools read the person's Berth account and the market, and can draft an order as a link. " +
   "You cannot place, sign or send an order: a draft only happens if the person opens the link and signs in Berth. " +
   "Say names rather than tickers to the person. Past performance says nothing certain about the future; do not give it as advice.";
