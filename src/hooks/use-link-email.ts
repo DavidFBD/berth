@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { getAddress } from "viem";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLinkEmail as usePrivyLinkEmail, useLoginWithSiwe } from "@privy-io/react-auth";
@@ -148,6 +148,14 @@ function isDecline(error: unknown): boolean {
   );
 }
 
+/** Wait for Privy to publish the user a login just created, up to 5 seconds. */
+async function signedIn(userRef: { current: unknown }, timeoutMs = 5000): Promise<void> {
+  const until = Date.now() + timeoutMs;
+  while (!userRef.current && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 /**
  * `address` is the wallet account the panel is showing. If a different
  * wallet takes its place mid-flow, the flow is for someone who is no longer
@@ -168,6 +176,17 @@ export function useLinkEmail(address: string | undefined): Snapshot & {
   const { sendCode, linkWithCode } = usePrivyLinkEmail();
   const { mutateAsync: sign } = useXSignMessage();
   const { logout, getAccessToken } = privy;
+
+  // Privy's sendCode is a callback over its signed-in user. The copy this
+  // render holds was made while the wallet was still signed out, so after
+  // loginWithSiwe it would throw must_be_authenticated. The refs always hold
+  // the latest render's sendCode and user.
+  const sendCodeRef = useRef(sendCode);
+  const userRef = useRef(privy.user);
+  useEffect(() => {
+    sendCodeRef.current = sendCode;
+    userRef.current = privy.user;
+  });
 
   /**
    * Close what this flow opened, then land on `patch`. The session is ended
@@ -219,11 +238,13 @@ export function useLinkEmail(address: string | undefined): Snapshot & {
           // throws, the session still gets closed.
           set({ startedSession: true });
           await loginWithSiwe({ message, signature });
+          await signedIn(userRef);
         }
         set({ state: "sending" });
-        await sendCode({ email });
+        await sendCodeRef.current({ email });
         set({ state: "code" });
       } catch (error) {
+        console.warn("[link-email] submitEmail failed:", privyErrorCode(error) ?? (error instanceof Error ? error.name : "unknown"));
         if (privyErrorCode(error) === "linked_to_another_user") {
           await finish({ state: "taken", error: null });
         } else if (isDecline(error)) {
@@ -233,7 +254,7 @@ export function useLinkEmail(address: string | undefined): Snapshot & {
         }
       }
     },
-    [privy.enabled, privy.ready, privy.authenticated, generateSiweMessage, sign, loginWithSiwe, sendCode, finish],
+    [privy.enabled, privy.ready, privy.authenticated, generateSiweMessage, sign, loginWithSiwe, finish],
   );
 
   const resend = useCallback(async () => {
