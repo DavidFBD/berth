@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
-import { AccountButton } from "@/components/account-button";
+import { AccountButton, useAssistantReachable } from "@/components/account-button";
 import { BerthMark } from "@/components/berth-mark";
 import { InfoDrawer } from "@/components/info-drawer";
 import { useCopy } from "@/components/settings-provider";
@@ -15,6 +15,11 @@ import {
   NewsFeed,
   NudgeLine,
 } from "@/components/board";
+import { AskCard, AskCardPlaceholder, AskDock, DOCK_CLEARANCE } from "@/components/chat/ask-surfaces";
+import { useAskAvailable } from "@/components/chat/chat-status";
+import { AssistantCard } from "@/components/assistant/assistant-card";
+import type { AssistantId } from "@/lib/assistant-party";
+import { cn } from "@/lib/utils";
 import { FundsModule } from "@/components/funds-module";
 import { Panel } from "@/components/ui/panel";
 import { VaultPositions } from "@/components/vaults";
@@ -38,12 +43,19 @@ import { ChatButton } from "@/components/chat/chat-button";
 import type { ChatDraft } from "@/components/chat/chat-parts";
 import { draftOpening } from "@/lib/draft-open";
 
+/** The board's frame, shared with the dev gallery (/dev/board?home=…) so the two cannot drift. */
+export const BOARD_PAGE = "mx-auto flex w-full max-w-lg flex-col px-4 pb-12 lg:max-w-[75rem] lg:px-8";
+export const BOARD_GRID =
+  "flex flex-col gap-3.5 lg:grid lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-6";
+export const BOARD_TRACK = "flex min-w-0 flex-col gap-3.5";
+
 const ChatHost = dynamic(() => import("@/components/chat/chat-sheet"), { ssr: false });
 
 /**
- * The one screen: what the account is worth, the funds that can pay, what
- * it owns, the cash shelf, the board of stocks and funds, and any earlier
- * vault positions still to be withdrawn. Every order opens a drawer over it.
+ * The one screen: what the account is worth beside a benchmark, what it
+ * owns, the funds that can pay and the cash shelf, the board of stocks and
+ * funds, any earlier vault positions still to be withdrawn, then Ask, the
+ * news and the assistant. Every order opens a drawer over it.
  */
 export function Home() {
   // The buy drawer pours into a listing: a stock or fund from the board, or
@@ -69,9 +81,25 @@ export function Home() {
   const [chatOpen, setChatOpen] = useState(false);
   // Loaded on first open, then kept, so the conversation outlives the sheet.
   const [chatLoaded, setChatLoaded] = useState(false);
-  const openChat = () => {
+  // A suggestion tapped on the board, sent once the sheet has the chat's status.
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const takePending = useCallback(() => setPendingPrompt(null), []);
+  const openChat = (prompt?: string) => {
     setChatLoaded(true);
+    setPendingPrompt(prompt ?? null);
     setChatOpen(true);
+  };
+  const askAvailable = useAskAvailable();
+  const assistantReachable = useAssistantReachable();
+  // Which assistant the board's "Your assistant" card opened the drawer on.
+  const [accountAssistant, setAccountAssistant] = useState<AssistantId | null>(null);
+  const openAccount = (assistant: AssistantId | null = null) => {
+    setAccountAssistant(assistant);
+    setAccountOpen(true);
+  };
+  const onAccountOpenChange = (next: boolean) => {
+    setAccountOpen(next);
+    if (!next) setAccountAssistant(null);
   };
   const [chatReturn, setChatReturn] = useState(false);
   const privy = usePrivyEmbeddedWallet();
@@ -155,67 +183,55 @@ export function Home() {
     if (!next) returnToChat();
   };
 
+  const anyDrawerOpen = chatOpen || buyOpen || sellOpen || withdrawOpen || walletOpen || accountOpen;
+
+  const moneyRows = (
+    <Panel key="money" className="divide-y divide-border">
+      <FundsModule onTopUp={() => openAccount()} />
+      <CashShelf
+        onPark={() => openBuy(CASH_LISTING)}
+        onTakeOut={() => openSell(CASH_LISTING)}
+      />
+      <VaultPositions
+        onWithdraw={(vault) => {
+          setWithdrawVault(vault);
+          setWithdrawOpen(true);
+        }}
+      />
+    </Panel>
+  );
+  const owned = (
+    <Panel key="owned">
+      <HoldingsList onSell={openSell} />
+    </Panel>
+  );
+
   return (
     <AuthGate>
       {/*
-        One column on a phone, a composition on a desktop. The account's own
-        figure spans the top, then three tracks: what you have on the left,
-        what you can buy in the middle, what is being said about it on the
-        right. Two tracks from 1024px (the news falls under the board, since
-        three columns at that width would squeeze a board row below the space
-        its name, line and price need), three from 1280px. Below 1024px
-        nothing changes at all: every placement class is breakpoint-prefixed,
-        so the phone keeps the single column it was designed as.
+        The ledger (2026-09-28): one column on a phone, two from 1024px.
+        The left track is the account, top to bottom: its figure beside a
+        benchmark, the nudge, what it owns, its money, then the board. The
+        right track is what to ask and what is being said. On a phone the
+        right track simply follows the left, and Ask docks at the foot.
       */}
-      <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-12 sm:max-w-lg lg:max-w-5xl xl:max-w-7xl">
-        {/* data-glass names the surface for the grain-and-glass trial, so
-            the rule does not hang off a utility class that could be edited
-            away without anyone noticing the effect went with it. */}
-        <HomeHeader onOpenChat={openChat}>
-          <AccountButton open={accountOpen} onOpenChange={setAccountOpen} />
+      <div className={cn(BOARD_PAGE, askAvailable !== false && DOCK_CLEARANCE)}>
+        <HomeHeader onOpenChat={() => openChat()}>
+          <AccountButton open={accountOpen} onOpenChange={onAccountOpenChange} assistant={accountAssistant} />
         </HomeHeader>
 
-        <AccountTotal />
-        <NudgeLine
-          onAddFunds={() => setAccountOpen(true)}
-          onParkCash={() => openBuy(CASH_LISTING)}
-          onOpenAccount={() => setAccountOpen(true)}
-        />
-
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,23rem)]">
-          {/*
-            One object, not four. What can pay, what is owned, what is
-            parked and what is left over are all the same subject, the
-            account, and giving each its own bordered box made four equal
-            voices where there is one topic. Ruled sections inside a single
-            panel say the same thing and leave the page with a first read.
-          */}
-          <Panel className="divide-y divide-border lg:col-start-1 lg:row-start-1 lg:row-span-2 xl:row-span-1">
-            {ownsListings ? (
-              <>
-                <HoldingsList key="holdings" onSell={openSell} />
-                <FundsModule key="funds" quiet onTopUp={() => setAccountOpen(true)} />
-              </>
-            ) : (
-              <>
-                <FundsModule key="funds" onTopUp={() => setAccountOpen(true)} />
-                <HoldingsList key="holdings" onSell={openSell} />
-              </>
-            )}
-            <CashShelf
-              onPark={() => openBuy(CASH_LISTING)}
-              onTakeOut={() => openSell(CASH_LISTING)}
+        <div className={BOARD_GRID}>
+          <div className={BOARD_TRACK}>
+            <AccountTotal />
+            <NudgeLine
+              onAddFunds={() => openAccount()}
+              onParkCash={() => openBuy(CASH_LISTING)}
+              onOpenAccount={() => openAccount()}
             />
-            <VaultPositions
-              onWithdraw={(vault) => {
-                setWithdrawVault(vault);
-                setWithdrawOpen(true);
-              }}
-            />
-          </Panel>
-
-          {/* The board keeps the widest track: it is what people come to do. */}
-          <div className="lg:col-start-2 lg:row-start-1">
+            {/* Once the account owns something, what it owns leads, since
+                that is what a returning person comes to see; before the
+                first buy the money leads, since adding funds comes first. */}
+            {ownsListings ? [owned, moneyRows] : [moneyRows, owned]}
             <ListingBoard
               onBuy={openBuy}
               onSell={openSell}
@@ -228,16 +244,19 @@ export function Home() {
             />
           </div>
 
-          {/* Six cards at a time, the rest rotating in. From 1280px the
-              column is exactly as tall as the board beside it rather than
-              running on below it (see NewsFeed `fill`). */}
-          <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1 xl:self-stretch xl:[contain:size]">
+          <div className={BOARD_TRACK}>
+            {/* On a phone the docked field is the way in. */}
+            {askAvailable !== false && (
+              <div className="hidden lg:block">
+                {askAvailable ? <AskCard onOpen={openChat} /> : <AskCardPlaceholder />}
+              </div>
+            )}
             <NewsFeed
               filter={newsFilter}
               onClearFilter={() => setNewsFilter(null)}
-              limit={6}
-              fill
+              collapsible
             />
+            {assistantReachable && <AssistantCard onChoose={(assistant) => openAccount(assistant)} />}
           </div>
         </div>
 
@@ -253,7 +272,7 @@ export function Home() {
             // Leaving for the account drawer is not a return to the chat.
             setChatReturn(false);
             setBuyOpen(false);
-            setAccountOpen(true);
+            openAccount();
           }}
         />
         <SellHost
@@ -270,7 +289,19 @@ export function Home() {
           onConnectWallet={openWallet}
         />
         <WalletDrawer open={walletOpen} onOpenChange={setWalletOpen} />
-        {chatLoaded && <ChatHost open={chatOpen} onOpenChange={setChatOpen} onOpenDraft={openChatDraft} />}
+        {chatLoaded && (
+          <ChatHost
+            open={chatOpen}
+            onOpenChange={(next) => {
+              setChatOpen(next);
+              // A suggestion not yet sent does not outlive the sheet.
+              if (!next) setPendingPrompt(null);
+            }}
+            onOpenDraft={openChatDraft}
+            pending={pendingPrompt}
+            onPendingTaken={takePending}
+          />
+        )}
 
         <footer className="mt-9 flex flex-col gap-1 text-center text-xs text-muted-foreground">
           <span className="text-[11px] text-muted-foreground">
@@ -278,6 +309,7 @@ export function Home() {
           </span>
         </footer>
       </div>
+      {askAvailable && <AskDock onOpen={() => openChat()} hidden={anyDrawerOpen} />}
     </AuthGate>
   );
 }
@@ -291,7 +323,7 @@ export function HomeHeader({ onOpenChat, children }: { onOpenChat: () => void; c
   return (
     <header
       data-glass="bar"
-      className="group/bar sticky top-0 z-10 -mx-4 mb-5 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur"
+      className="group/bar sticky top-0 z-10 -mx-4 mb-4 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur lg:-mx-8 lg:mb-5 lg:px-8 lg:py-4"
     >
       {/* Brand never shrinks; the account pill truncates instead. */}
       <div className="flex shrink-0 items-center gap-2">

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseUnits } from "viem";
 import { HoldingsView, type HoldingRow } from "@/components/board";
+import { AccountTotalView } from "@/components/board/account-total";
 import { Panel } from "@/components/ui/panel";
 import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route";
 import { compareHolding, type Marks, type OrderFacts } from "@/lib/benchmark";
@@ -20,8 +21,9 @@ import { historyRanges, type PortfolioDay } from "@/lib/portfolio-history";
 import MARKS_JSON from "./portfolio-marks.json";
 
 /**
- * Dev-only: the top of "What you own" in each of its states, drawn by the
- * real HoldingsView and PortfolioSummary from seeded query data, so the
+ * Dev-only: the account's figure with its comparison, and "What you own",
+ * in each of their states, drawn by the real AccountTotalView (with
+ * PortfolioSummary) and HoldingsView from seeded query data, so the
  * chart, the headline and the range control can be reviewed (and
  * screenshotted) without an account in that state.
  *
@@ -228,10 +230,17 @@ function build(scene: Scene) {
   return { orders, days, rows };
 }
 
-function seededClient(state: PortfolioState): { client: QueryClient; rows: HoldingRow[] } {
+export function seededPortfolioClient(
+  state: PortfolioState,
+  { xp }: { xp?: number } = {},
+): { client: QueryClient; rows: HoldingRow[] } {
   const client = new QueryClient({
     defaultOptions: { queries: { staleTime: Infinity, retry: false } },
   });
+  // A profile, for a gallery that draws the header's rank chip.
+  if (xp !== undefined) {
+    client.setQueryData(["profile", null], { xp, avatarId: null, hasEmail: true, referralCode: null });
+  }
   if (state === "empty" || state === "loading") {
     const rows = state === "loading" ? build(SCENES["four-days"]).rows : [];
     return { client, rows };
@@ -273,7 +282,7 @@ function seededClient(state: PortfolioState): { client: QueryClient; rows: Holdi
 }
 
 export function PortfolioGallery({ state }: { state: PortfolioState }) {
-  const [{ client, rows }] = useState(() => seededClient(state));
+  const [{ client, rows }] = useState(() => seededPortfolioClient(state));
   const total = rows.reduce((sum, row) => sum + (row.worth ?? 0), 0);
   return (
     <QueryClientProvider client={client}>
@@ -289,12 +298,21 @@ export function PortfolioGallery({ state }: { state: PortfolioState }) {
             </a>
           ))}
         </nav>
-        <Panel className="divide-y divide-border">
+        <AccountTotalView
+          figures={{
+            holdings: state === "loading" ? undefined : total,
+            cash: 0,
+            funds: 0,
+            holdsAnything: state !== "empty",
+          }}
+        />
+        <Panel>
           <HoldingsView
             rows={rows}
             loading={false}
             pricesLoading={false}
             total={state === "loading" ? undefined : total}
+            includesCash={false}
             onSell={() => {}}
           />
         </Panel>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { CaretDown, Check } from "@phosphor-icons/react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,10 +41,6 @@ function Pct({ value, dim }: { value: number; dim?: boolean }) {
       {formatPercentChange(value, 1)}
     </span>
   );
-}
-
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** Which range opens: a month when there is one, else the longest there is. */
@@ -140,9 +136,9 @@ function RangeControl({
 }) {
   const copy = useCopy();
   return (
-    // The first button's label sits flush with the text column: the row is
-    // pulled left by exactly one button's padding.
-    <div role="group" aria-label={copy.portfolioRangeLabel} className="mt-1 -ml-2.5 flex flex-wrap gap-1">
+    // The last button's label sits flush with the chart's right edge: the
+    // row is pulled right by exactly one button's padding.
+    <div role="group" aria-label={copy.portfolioRangeLabel} className="-mr-2.5 flex flex-wrap justify-end gap-0.5">
       {RANGES.filter((range) => available.includes(range)).map((range) => (
         <button
           key={range}
@@ -167,21 +163,28 @@ function RangeControl({
   );
 }
 
+/** The legend's small line: solid for the account, dashed for the benchmark. */
+function Swatch({ dashed }: { dashed?: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "mr-1.5 inline-block w-3.5 translate-y-[-3px] border-t-2",
+        dashed ? "border-dashed border-muted-foreground" : "border-foreground",
+      )}
+    />
+  );
+}
+
 /**
- * The top of "What you own": the holdings total, one sentence saying what
- * the money did beside the chosen benchmark, the two lines, and the range.
- * Rendered only while the account holds something; the query is not even
- * asked otherwise. Every number is the server's (lib/portfolio-history);
- * this only lays them out and refuses to draw what it was not given.
+ * Under the account's figure: the account's money beside the same dollars
+ * in a chosen benchmark, as a legend (the chooser is the benchmark's name),
+ * the two lines, and the range. Rendered only while the account holds
+ * something; the query is not even asked otherwise. Every number is the
+ * server's (lib/portfolio-history); this only lays them out and refuses to
+ * draw what it was not given.
  */
-export function PortfolioSummary({
-  total,
-  holdsAnything,
-}: {
-  /** The holdings at live prices, in dollars; undefined while they load. */
-  total: number | undefined;
-  holdsAnything: boolean;
-}) {
+export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) {
   const copy = useCopy();
   const money = useMoney();
   const [storedBenchmark, setBenchmark] = useStoredChoice(BENCHMARK_KEY);
@@ -192,28 +195,15 @@ export function PortfolioSummary({
 
   if (!holdsAnything) return null;
 
-  const totalLine =
-    total === undefined ? (
-      <Skeleton className="h-8 w-28" />
-    ) : (
-      <div className="money text-2xl leading-8 font-semibold tracking-[-0.02em] tabular-nums text-foreground">
-        {money.format(total)}
-      </div>
-    );
-
   const data = query.data;
   if (!data) {
-    // Loading: the headline and the chart hold their places. An error
-    // behaves as a line too short to draw: the total alone, no message.
-    if (query.isError) return <div className="px-4 pb-3">{totalLine}</div>;
+    // Loading: the legend and the chart hold their places. An error
+    // behaves as a line too short to draw: nothing, no message.
+    if (query.isError) return null;
     return (
-      <div className="px-4 pb-3">
-        {totalLine}
-        <div className="mt-1.5 flex h-10 flex-col justify-center gap-1.5">
-          <Skeleton className="h-3.5 w-64 max-w-full" />
-          <Skeleton className="h-3.5 w-40" />
-        </div>
-        <div className="mt-2 h-28 sm:h-36" />
+      <div className="mt-4">
+        <Skeleton className="h-4 w-56 max-w-full" />
+        <div className="mt-2 h-24 sm:h-32" />
         <div className="mt-1 h-8" />
       </div>
     );
@@ -225,12 +215,7 @@ export function PortfolioSummary({
   const result = data.ranges[range];
 
   if (!result || result.days.length < 2 || data.available.length === 0) {
-    return (
-      <div className="px-4 pb-3">
-        {totalLine}
-        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{copy.portfolioFirstDay}</p>
-      </div>
-    );
+    return <p className="mt-4 text-xs leading-5 text-muted-foreground">{copy.portfolioFirstDay}</p>;
   }
 
   const shownBenchmark = data.benchmark.symbol as BenchmarkSymbol;
@@ -240,19 +225,14 @@ export function PortfolioSummary({
   const chooser = (
     <BenchmarkChooser value={benchmark} shown={shownBenchmark} onChange={setBenchmark} />
   );
-  // The chooser with the article its name takes mid sentence.
-  const named = (
-    <>
-      {copy.benchmarkArticle[shownBenchmark]}
-      {chooser}
-    </>
-  );
+  // In a reason's sentence the name is plain text: the legend holds the chooser.
+  const named = `${copy.benchmarkArticle[shownBenchmark]}${copy.benchmarkNames[shownBenchmark]}`;
 
   const scrubbed = scrub !== null ? result.days[scrub] : undefined;
   const readout = scrubbed && (
-    // Over the sentence, never instead of it: the sentence keeps its
-    // height, hidden, so nothing below moves, and this may wrap.
-    <p className="absolute inset-0 flex flex-wrap content-center items-baseline gap-x-1.5 text-xs leading-5 text-muted-foreground">
+    // Over the legend, never instead of it: the legend keeps its height,
+    // hidden, so nothing below moves.
+    <p className="absolute inset-0 flex flex-wrap content-center items-baseline gap-x-1.5 text-[13px] leading-5 text-muted-foreground">
       <span className="whitespace-nowrap">{shortDate(scrubbed.day)}</span>
       <span aria-hidden="true">·</span>
       <span className="whitespace-nowrap text-foreground">
@@ -271,48 +251,55 @@ export function PortfolioSummary({
     </p>
   );
 
-  let reason: ReactNode = null;
+  let reason: string | null = null;
   if (status === "unpriced_orders" || status === "unexplained_balance") {
-    reason = <WithChooser sentence={copy.portfolioNoBenchmark[status]} name={named} />;
+    reason = copy.portfolioNoBenchmark[status](named);
   } else if (status === "no_marks") {
-    reason = <WithChooser sentence={copy.portfolioNoMarks} name={chooser} />;
+    reason = copy.portfolioNoMarks(copy.benchmarkNames[shownBenchmark]);
   } else if (result.rebasedFrom) {
-    // After the percentages' closing full stop, so it needs its own space.
-    reason = <> {copy.portfolioRebased(shortDate(result.rebasedFrom))}</>;
+    reason = copy.portfolioRebased(shortDate(result.rebasedFrom));
   }
 
-  const headline = (
-    <p className={cn("text-xs leading-5 text-muted-foreground", readout && "invisible")}>
-      {copy.portfolioSince(shortDate(result.since ?? result.days[0].day), result.tradingDays)}{" "}
-      {result.changePct !== null && (
-        <span className="whitespace-nowrap">
-          {copy.portfolioYou} <Pct value={result.changePct} dim={stale} />
-          {withBenchmark ? "," : "."}
-        </span>
-      )}{" "}
-      {withBenchmark && (
-        <>
-          {/* Without your percentage before it, this starts the sentence. */}
-          {result.changePct === null
-            ? capitalize(copy.portfolioSameDollarsIn[shownBenchmark])
-            : copy.portfolioSameDollarsIn[shownBenchmark]}{" "}
-          {chooser}{" "}
-          <Pct value={result.benchmarkPct!} dim={stale} />.
-        </>
+  const legend = (
+    <p
+      className={cn(
+        "flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm leading-5 text-secondary-foreground",
+        readout && "invisible",
       )}
-      {reason}
+    >
+      <span className="whitespace-nowrap">
+        <Swatch />
+        {copy.portfolioYou}
+        {result.changePct !== null && (
+          <>
+            {" "}
+            <Pct value={result.changePct} dim={stale} />
+          </>
+        )}
+      </span>
+      {/* The benchmark's name is the chooser in every state, so another is
+          always one tap away, with or without its line drawn. */}
+      <span className="whitespace-nowrap">
+        <Swatch dashed />
+        {chooser}
+        {withBenchmark && (
+          <>
+            {" "}
+            <Pct value={result.benchmarkPct!} dim={stale} />
+          </>
+        )}
+      </span>
     </p>
   );
 
   return (
-    <div className="px-4 pb-3">
-      {totalLine}
-      {/* At least two lines tall, and never a different height while
-          scrubbing: the readout is laid over the sentence, not swapped in. */}
-      <div className="relative mt-1.5 flex min-h-10 items-center">
-        {headline}
+    <div className="mt-4">
+      <div className="relative flex min-h-5 items-center">
+        {legend}
         {readout}
       </div>
+      {/* Why the benchmark's line is missing or starts late, when it is. */}
+      {reason && <p className="mt-1 text-xs leading-5 text-muted-foreground">{reason}</p>}
       <div className="mt-2">
         <PortfolioChart
           days={result.days}
@@ -322,30 +309,18 @@ export function PortfolioSummary({
           drawKey={`${range}:${shownBenchmark}`}
         />
       </div>
-      <RangeControl
-        available={data.available}
-        value={range}
-        sinceFrom={data.ranges.since?.rebasedFrom ?? null}
-        onChange={(next) => {
-          setScrub(null);
-          setRange(next);
-        }}
-      />
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <span className="text-xs text-muted-foreground">{copy.portfolioSameDays}</span>
+        <RangeControl
+          available={data.available}
+          value={range}
+          sinceFrom={data.ranges.since?.rebasedFrom ?? null}
+          onChange={(next) => {
+            setScrub(null);
+            setRange(next);
+          }}
+        />
+      </div>
     </div>
-  );
-}
-
-/**
- * A sentence from copy with the benchmark's name inside it, where the name
- * becomes the chooser, so another benchmark is one tap away in every state.
- */
-function WithChooser({ sentence, name }: { sentence: (name: string) => string; name: ReactNode }) {
-  const [before, after = ""] = sentence("\u0000").split("\u0000");
-  return (
-    <>
-      {before}
-      {name}
-      {after}
-    </>
   );
 }

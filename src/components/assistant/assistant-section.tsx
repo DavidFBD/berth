@@ -45,7 +45,7 @@ export function AssistantSection({
 }: {
   /** Dev gallery only: show these as connected instead of asking the server. */
   demoGrants?: Grant[];
-  /** Dev gallery only: start with one assistant's steps unfolded. */
+  /** Start with one assistant's steps unfolded: the board's card, and the dev gallery. */
   initialOpen?: AssistantId | null;
 } = {}) {
   const copy = useCopy();

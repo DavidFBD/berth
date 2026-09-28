@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, X } from "@phosphor-icons/react";
+import { ArrowUpRight, Bank, ChartLineUp, Newspaper, UserPlus, Wallet, X, type Icon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
 import { useNudge } from "@/hooks/use-nudge";
@@ -14,12 +14,22 @@ import type { Nudge } from "@/lib/nudge";
  * are copy.ts's. Dismissing it sends the next true line, or none, and a
  * standing line stays away for a week.
  *
- * Deliberately a sentence and not a banner: no accent, set in the muted tone,
- * so the page's first read is still the figure above it. It sits in a hairline
- * outline only as wide as its words, because at full width the dismiss button
- * landed at the far edge of the page and read as belonging to the page, not
- * to the line (David, 2026-09-23).
+ * Deliberately a sentence and not a banner: no accent, so the page's first
+ * read is still the figure above it. It sits on a filled surface-2 strip:
+ * at full width in a hairline outline the dismiss button landed at the far
+ * edge of the page and read as belonging to the page (David, 2026-09-23);
+ * on a filled strip the edge is the line's own, so the button stays with it
+ * (the ledger layout, 2026-09-28).
  */
+/** One duotone glyph per kind of line, in the ink-2 tone. */
+const GLYPH: Record<Nudge["kind"], Icon> = {
+  addFunds: Wallet,
+  firstBuy: ChartLineUp,
+  heldNews: Newspaper,
+  parkCash: Bank,
+  invite: UserPlus,
+};
+
 type Actions = {
   onAddFunds: () => void;
   onParkCash: () => void;
@@ -60,6 +70,7 @@ export function NudgeLineView({
   };
 
   const shown = nudge ? line(nudge) : undefined;
+  const Glyph = nudge ? GLYPH[nudge.kind] : Newspaper;
 
   return (
     <AnimatePresence initial={false}>
@@ -70,10 +81,11 @@ export function NudgeLineView({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.24, ease: EASE_LIFT }}
-          className="-mt-2 mb-5 flex w-fit max-w-full items-start gap-1.5 rounded-xl border border-border/70 py-1.5 pr-1.5 pl-3"
+          className="flex items-start gap-2.5 rounded-xl bg-muted py-2 pr-2 pl-3.5"
           role="status"
         >
-          <p className="min-w-0 py-0.5 text-sm text-muted-foreground">
+          <Glyph weight="duotone" aria-hidden className="mt-1 size-[18px] shrink-0 text-secondary-foreground" />
+          <p className="min-w-0 flex-1 py-0.5 text-sm text-foreground">
             {shown.text}
             {shown.action ? (
               <>
@@ -83,7 +95,7 @@ export function NudgeLineView({
                     href={shown.action.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline"
+                    className="inline-flex items-center gap-0.5 font-semibold text-foreground underline underline-offset-[3px]"
                   >
                     {shown.action.label}
                     <ArrowUpRight weight="duotone" className="size-3.5" aria-hidden />
@@ -92,7 +104,7 @@ export function NudgeLineView({
                   <button
                     type="button"
                     onClick={shown.action.run}
-                    className="font-medium text-foreground underline-offset-4 hover:underline"
+                    className="font-semibold text-foreground underline underline-offset-[3px]"
                   >
                     {shown.action.label}
                   </button>

@@ -13,6 +13,7 @@ import {
   NudgeLineView,
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
+import { HomeGallery } from "./home-gallery";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,9 +50,26 @@ import {
  *   /dev/board?news=NVDA                the news column already filtered, so
  *                                       the filtered state can be reviewed
  *                                       without a cursor
+ *   /dev/board?home=held                the signed-in board as Home lays it
+ *                                       out, from fixtures (home-gallery.tsx);
+ *                                       home=new for a first visit, &dock=0
+ *                                       without the docked Ask
  */
 export default function BoardGalleryPage() {
   if (process.env.NODE_ENV === "production") notFound();
+  return (
+    <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+      <Galleries />
+    </Suspense>
+  );
+}
+
+function Galleries() {
+  const params = useSearchParams();
+  const home = params.get("home");
+  if (home === "held" || home === "new") {
+    return <HomeGallery key={home} scene={home} dock={params.get("dock") !== "0"} />;
+  }
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:max-w-lg lg:max-w-5xl xl:max-w-7xl">
       <h1 className="font-display text-xl text-foreground">The board</h1>

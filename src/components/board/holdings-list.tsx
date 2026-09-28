@@ -10,7 +10,8 @@ import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
 import { JevMark } from "@/components/jev-mark";
-import { PortfolioSummary, shortDate } from "@/components/board/portfolio-summary";
+import { shortDate } from "@/components/board/portfolio-summary";
+import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { useOrders } from "@/hooks/use-profile";
 import { compareHolding, type HoldingComparison } from "@/lib/benchmark";
 import { formatTokenAmount } from "@/lib/format";
@@ -142,40 +143,79 @@ export function HoldingsList({
       loading={loading}
       pricesLoading={prices.isLoading}
       total={total}
+      includesCash={holdings.held.some((holding) => holding.listing.kind === "cash" && holding.balance > 0n)}
       onSell={onSell}
     />
   );
 }
 
+/** A listing's ticker in a small tile, where a logo would sit. */
+export function TickerTile({ symbol }: { symbol: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="money flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-medium tracking-tight text-secondary-foreground"
+    >
+      {symbol.slice(0, 4)}
+    </span>
+  );
+}
+
+/** Rows shown before "All N holdings". */
+const HOLDINGS_SHOWN = 2;
+
 /**
- * The section as drawn, from rows already worked out. The dev gallery
- * (/dev/account?portfolio=…) renders this same view from fixtures.
+ * The section as drawn, from rows already worked out: its figure (the
+ * stocks and funds plus the parked cash, as the comparison line counts
+ * them), then the first two holdings and the rest behind "All". The dev
+ * gallery (/dev/board?home=…) renders this same view from fixtures.
  */
 export function HoldingsView({
   rows,
   loading,
   pricesLoading,
   total,
+  includesCash,
   onSell,
 }: {
   rows: readonly HoldingRow[];
   loading: boolean;
   pricesLoading: boolean;
   total: number | undefined;
+  /** Whether cash is parked, and so part of `total`. */
+  includesCash: boolean;
   onSell: (listing: TokenListing) => void;
 }) {
   const copy = useCopy();
   const money = useMoney();
+  const [open, toggle, listId] = useDisclosure("holdings");
   const holdsAnything = !loading && rows.length > 0;
+  const shown = open ? rows : rows.slice(0, HOLDINGS_SHOWN);
 
   return (
     <section>
       <SectionHeading
         title={copy.holdingsTitle}
         hint={copy.holdingsHint}
-        note={holdsAnything ? copy.holdingsBenchmarkNote : undefined}
+        note={holdsAnything ? copy.holdingsSubline : undefined}
+        className="pb-0"
+        action={
+          holdsAnything ? (
+            total === undefined ? (
+              <Skeleton className="h-5 w-16" />
+            ) : (
+              <span className="money text-[15px] font-medium tabular-nums text-foreground">{money.format(total)}</span>
+            )
+          ) : undefined
+        }
       />
-      <PortfolioSummary total={total} holdsAnything={holdsAnything} />
+      {holdsAnything ? (
+        <p className="px-4 pt-0.5 pb-2.5 text-xs leading-5 text-muted-foreground">
+          {includesCash ? `${copy.holdingsCashIncluded} ${copy.holdingsWalletsNote}` : copy.holdingsWalletsNote}
+        </p>
+      ) : (
+        <div className="pb-2.5" />
+      )}
       {loading ? (
         <div className="flex flex-col gap-2 border-t border-border px-4 py-3">
           <Skeleton className="h-5 w-40" />
@@ -186,55 +226,88 @@ export function HoldingsView({
           {copy.holdingsEmpty}
         </p>
       ) : (
-        <ul className="divide-y divide-border border-t border-border">
-          {rows.map(({ listing, balance, worth, move, comparison }) => (
-            <li key={listing.address} className="flex items-center gap-3 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="truncate text-sm font-semibold text-foreground">
-                    {listing.name}
-                  </span>
-                  <span className="money text-xs text-muted-foreground">{listing.symbol}</span>
+        <>
+          <ul id={listId} className="divide-y divide-border border-t border-border">
+            {shown.map(({ listing, balance, worth, move, comparison }) => (
+              <li key={listing.address} className="flex items-center gap-3 px-4 py-2.5">
+                <TickerTile symbol={listing.symbol} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-foreground">{listing.name}</div>
+                  <div className="money truncate text-xs text-muted-foreground">
+                    {formatTokenAmount(balance, listing.decimals, 6)} {listing.symbol}
+                  </div>
+                  {move && (
+                    <a
+                      href={move.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={copy.moveReadPost(move.name)}
+                      className="mt-0.5 flex w-fit items-center gap-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      <JevMark className="size-2.5" />
+                      {copy.moveInTheNews(move.name)}
+                    </a>
+                  )}
                 </div>
-                <div className="money mt-0.5 text-xs text-muted-foreground">
-                  {formatTokenAmount(balance, listing.decimals, 6)} {listing.symbol}
+                <div className="shrink-0 text-right">
+                  <div className="money text-sm font-medium tabular-nums text-foreground">
+                    {worth !== undefined ? (
+                      money.format(worth)
+                    ) : pricesLoading ? (
+                      <Skeleton className="h-4 w-14" />
+                    ) : (
+                      <span className="text-muted-foreground">·</span>
+                    )}
+                  </div>
+                  {comparison && (
+                    <VersusLine
+                      comparison={comparison}
+                      withBenchmark={listing.symbol !== BENCHMARK?.symbol}
+                    />
+                  )}
                 </div>
-                {move && (
-                  <a
-                    href={move.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={copy.moveReadPost(move.name)}
-                    className="mt-1 flex w-fit items-center gap-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                  >
-                    <JevMark className="size-2.5" />
-                    {copy.moveInTheNews(move.name)}
-                  </a>
-                )}
-                {comparison && (
-                  <ComparisonLine
-                    comparison={comparison}
-                    label={copy.holdingSince(shortDate(comparison.since))}
-                    withBenchmark={listing.symbol !== BENCHMARK?.symbol}
-                  />
-                )}
-              </div>
-              <div className="money shrink-0 text-right text-sm font-medium tabular-nums text-foreground">
-                {worth !== undefined ? (
-                  money.format(worth)
-                ) : pricesLoading ? (
-                  <Skeleton className="h-4 w-14" />
-                ) : (
-                  <span className="text-muted-foreground">·</span>
-                )}
-              </div>
-              <Button variant="outline" size="xs" onClick={() => onSell(listing)}>
-                {copy.sell}
-              </Button>
-            </li>
-          ))}
-        </ul>
+                <Button variant="outline" size="xs" onClick={() => onSell(listing)}>
+                  {copy.sell}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {rows.length > HOLDINGS_SHOWN && (
+            <DisclosureRow
+              open={open}
+              onToggle={toggle}
+              controls={listId}
+              label={copy.holdingsAll(rows.length)}
+            />
+          )}
+        </>
       )}
     </section>
+  );
+}
+
+/**
+ * "+6.4% vs +1.9%": the holding since its first buy, beside the same
+ * dollars in the S&P 500 fund on the same days, as the section's (i) says.
+ */
+function VersusLine({ comparison, withBenchmark }: { comparison: HoldingComparison; withBenchmark: boolean }) {
+  const copy = useCopy();
+  const pct = (value: number) => {
+    const direction = changeDirection(value) ?? "flat";
+    return <span className={`money ${TONE[direction]}`}>{formatPercentChange(value, 1)}</span>;
+  };
+  return (
+    <p
+      className="mt-0.5 text-[11px] whitespace-nowrap text-muted-foreground"
+      title={`${copy.holdingSince(shortDate(comparison.since))}, ${copy.holdingsMarketDays(comparison.tradingDays)}`}
+    >
+      {pct(comparison.changePct)}
+      {withBenchmark && (
+        <>
+          {" "}
+          {copy.holdingVs} <span className="money">{formatPercentChange(comparison.benchmarkChangePct, 1)}</span>
+        </>
+      )}
+    </p>
   );
 }

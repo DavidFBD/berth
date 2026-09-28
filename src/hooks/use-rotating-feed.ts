@@ -4,6 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { nextDelayMs, startRotation, turn, type Rotation } from "@/lib/rotation";
 
 /**
+ * What restarts the rotation: the ids in order, and where the shown cards
+ * end. A column that opens from two cards to eight keeps the same ids in
+ * the same order, so without the count it would go on showing two.
+ */
+export function feedSignature(items: readonly { id: string }[], reserve: readonly { id: string }[]): string {
+  return `${items.length}|${[...items, ...reserve].map((item) => item.id).join(",")}`;
+}
+
+/**
  * Rotates `reserve` through `items` on a slow, jittered clock (lib/rotation),
  * and holds still whenever moving would get in a reader's way: while the
  * pointer or focus is inside the list, while the list's top edge is off
@@ -18,7 +27,7 @@ export function useRotatingFeed<T extends { id: string }>(
   reserve: readonly T[],
   enabled: boolean,
 ) {
-  const signature = [...items, ...reserve].map((item) => item.id).join(",");
+  const signature = feedSignature(items, reserve);
   const [state, setState] = useState<{ signature: string; rotation: Rotation<T> }>(() => ({
     signature,
     rotation: startRotation(items, reserve),

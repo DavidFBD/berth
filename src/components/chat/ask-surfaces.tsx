@@ -1,0 +1,156 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ArrowUp, ChatCircleText } from "@phosphor-icons/react";
+import { Panel, SectionHeading } from "@/components/ui/panel";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCopy } from "@/components/settings-provider";
+import { cn } from "@/lib/utils";
+
+/**
+ * The board's two ways into Ask besides the header's button. Neither is a
+ * real field: each opens the chat sheet, which holds the one composer, so
+ * the conversation lives in one place and the keyboard only ever opens
+ * there. Home renders them only while the chat is open to this person
+ * (useAskAvailable).
+ */
+
+/** The field's look, shared by the card and the dock. */
+const FIELD =
+  "flex w-full items-center gap-2 rounded-xl border border-border pr-1.5 pl-3.5 text-left text-[15px] text-muted-foreground outline-none transition-colors duration-150 ease-lift hover:border-foreground/30 focus-visible:ring-3 focus-visible:ring-ring/50";
+
+/** Desktop: a card in the right column, with three things to ask. */
+export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
+  const copy = useCopy();
+  return (
+    <Panel>
+      <SectionHeading title={copy.chatTitle} hint={copy.chatWhy} />
+      <div className="px-4 pb-4">
+        <button type="button" onClick={() => onOpen()} aria-label={copy.chatOpenLabel} className={cn(FIELD, "h-11 bg-background")}>
+          <ChatCircleText weight="duotone" className="size-[18px] shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">{copy.askPlaceholder}</span>
+          <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-secondary-foreground">
+            <ArrowUp weight="duotone" className="size-4" />
+          </span>
+        </button>
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {copy.askSuggestions.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => onOpen(prompt)}
+              className="h-8 rounded-full border border-border bg-card px-3 text-[13px] text-secondary-foreground outline-none transition-colors duration-150 ease-lift hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2.5 text-xs text-muted-foreground">{copy.askFine}</p>
+      </div>
+    </Panel>
+  );
+}
+
+/** The card's place while it is not yet known whether Ask is open here. */
+export function AskCardPlaceholder() {
+  return (
+    <Panel className="flex flex-col gap-3 px-4 pt-4 pb-4" aria-hidden>
+      <Skeleton className="h-4 w-12" />
+      <Skeleton className="h-11 w-full rounded-xl" />
+      <div className="flex gap-1.5">
+        <Skeleton className="h-8 w-32 rounded-full" />
+        <Skeleton className="h-8 w-32 rounded-full" />
+      </div>
+      <Skeleton className="h-3 w-48" />
+    </Panel>
+  );
+}
+
+/**
+ * Whether an on-screen keyboard has taken the bottom of the viewport. iOS
+ * Safari lays a fixed element over the keyboard's top edge instead of
+ * moving it, so the dock steps aside while one is up.
+ */
+function useKeyboardUp(): boolean {
+  const [up, setUp] = useState(false);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    // A pinch zoom shrinks the visual viewport too, so it counts only at
+    // scale 1 and while a field has focus, which is when a keyboard is up.
+    const update = () => {
+      const active = document.activeElement;
+      const typing =
+        active instanceof HTMLElement &&
+        (active.isContentEditable || active.matches("input, textarea, select"));
+      setUp(typing && Math.abs(viewport.scale - 1) < 0.01 && window.innerHeight - viewport.height > 120);
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    document.addEventListener("focusin", update);
+    document.addEventListener("focusout", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", update);
+    };
+  }, []);
+  return up;
+}
+
+/**
+ * Whether any dialog is on screen: a drawer or sheet from anywhere on the
+ * page (funds breakdown, settings, the info sheet), including the ones Home
+ * does not own the state of. Drawers mount into a portal on open and leave
+ * on close, so watching the body's children is enough.
+ */
+function useDialogOpen(): boolean {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const check = () => setOpen(document.querySelector('[role="dialog"], [role="alertdialog"]') !== null);
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+  return open;
+}
+
+/**
+ * Phone: the field docked at the foot of the screen, over the safe area.
+ * Hidden from 1024px, where the card holds the same place, and whenever
+ * `hidden` (a sheet or an order drawer Home owns is open), any other
+ * dialog is open, or a keyboard is up. The
+ * page adds the dock's height to its own bottom padding (DOCK_CLEARANCE),
+ * so the last thing on it is never under the dock.
+ */
+export function AskDock({ onOpen, hidden }: { onOpen: () => void; hidden: boolean }) {
+  const copy = useCopy();
+  const keyboard = useKeyboardUp();
+  const dialog = useDialogOpen();
+  const gone = hidden || keyboard || dialog;
+  return (
+    <div
+      data-glass="bar"
+      aria-hidden={gone}
+      inert={gone}
+      className={cn(
+        "fixed inset-x-0 bottom-0 z-20 border-t border-border/60 bg-background/85 px-4 pt-2.5 pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur transition-[transform,opacity] duration-200 ease-lift lg:hidden",
+        gone && "pointer-events-none translate-y-full opacity-0",
+      )}
+    >
+      <div className="mx-auto max-w-lg">
+        <button type="button" onClick={onOpen} aria-label={copy.chatOpenLabel} className={cn(FIELD, "h-12 bg-card")}>
+          <ChatCircleText weight="duotone" className="size-5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">{copy.askPlaceholder}</span>
+          <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-secondary-foreground">
+            <ArrowUp weight="duotone" className="size-4" />
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Bottom padding the page keeps on a phone while the dock shows. */
+export const DOCK_CLEARANCE = "max-lg:pb-[calc(6rem+env(safe-area-inset-bottom))]";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CaretRight, GasPump, Wallet } from "@phosphor-icons/react";
+import { Coins, GasPump } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -11,6 +11,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { MoneyName } from "@/components/board/money-name";
 import { TokenLogo } from "@/components/flow/token-picker";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import {
@@ -22,27 +23,26 @@ import { formatTokenAmount } from "@/lib/format";
 import { useCopy, useMoney } from "@/components/settings-provider";
 
 /**
- * The funds header module: idle money waiting to be spent. Email users see
- * what it is worth (embedded-wallet holdings valued by the money market
- * oracle) and can open the breakdown drawer, showing each asset, the network
- * it sits on, and whether that network has enough native gas to actually
- * move it. Everyone else gets the account-state copy.
+ * Funds, as one row of the board's money card: idle money in the user's own
+ * wallets, waiting to be spent. Email users see what it is worth
+ * (embedded-wallet holdings valued by the money market oracle) and can open
+ * the breakdown drawer, showing each asset, the network it sits on, and
+ * whether that network has enough native gas to actually move it. Everyone
+ * else gets the account-state copy.
+ *
+ * `demo` stands in for the wallet sweep and the session, for the dev gallery.
  */
 export function FundsModule({
   onTopUp,
-  quiet = false,
+  demo,
 }: {
   onTopUp: () => void;
-  /**
-   * The glyph goes muted when something else in the panel holds the accent
-   * (the portfolio line, once anything is held). Before the first buy this
-   * is the one action, and keeps it.
-   */
-  quiet?: boolean;
+  demo?: { embedded: EmbeddedHoldingsResult; signedIn: boolean };
 }) {
   const privy = usePrivyEmbeddedWallet();
-  const signedIn = privy.enabled && privy.authenticated;
-  const embedded = useEmbeddedHoldings();
+  const signedIn = demo ? demo.signedIn : privy.enabled && privy.authenticated;
+  const swept = useEmbeddedHoldings();
+  const embedded = demo?.embedded ?? swept;
   const { connected, isLoading, holdings, erroredChains, gasShortChains, totalUsd } =
     embedded;
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -55,77 +55,58 @@ export function FundsModule({
     connected && !isLoading && (holdings.length > 0 || erroredChains.length > 0);
 
   return (
-    <div className="flex items-center gap-3.5 px-4 py-3.5">
-      <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted">
-        <Wallet className={quiet ? "size-6 text-muted-foreground" : "size-6 text-primary"} />
-      </div>
+    <div className="flex items-center gap-3 px-4 py-3">
+      <Coins weight="duotone" className="size-[22px] shrink-0 text-secondary-foreground" aria-hidden />
       <div className="min-w-0 flex-1">
-        <h2 className="font-display text-[15px] leading-tight font-semibold tracking-[-0.012em] text-foreground">
-          {copy.fundsTitle}
+        <h2 className="text-[15px] leading-tight font-medium text-foreground">
+          {worth ? (
+            <MoneyName name={copy.fundsTitle} amount={money.format(totalUsd)} />
+          ) : (
+            copy.fundsTitle
+          )}
         </h2>
         {connected && isLoading ? (
-          // Mirrors the loaded shape: worth sentence + peek hint, so the
-          // module doesn't grow when the sweep lands.
-          <div className="mt-1 flex flex-col gap-1.5">
-            <Skeleton className="h-4 w-36" />
-            <Skeleton className="h-3.5 w-24" />
-          </div>
-        ) : worth ? (
-          <div className="mt-0.5 text-[13px] text-muted-foreground">
-            <span className="font-semibold text-foreground tabular-nums">
-              ≈ {money.format(totalUsd)}
-            </span>{" "}
-            {copy.fundsReadyTail(holdings.length)}
-          </div>
+          <Skeleton className="mt-1 h-3.5 w-36" />
         ) : (
-          <div className="mt-0.5 text-[13px] text-muted-foreground">
-            {connected
-              ? holdings.length === 0
-                ? copy.fundsEmpty
-                : copy.fundsSendAnything
-              : copy.fundsSignIn}
-          </div>
-        )}
-        {canPeek && (
-          // Inline flow, not flex: each span stays whole (nowrap) and drops
-          // to its own full line when the column gets narrow, instead of
-          // the two labels wrapping side-by-side into skinny columns.
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            className="mt-1 block text-left text-xs leading-5 text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <span className="whitespace-nowrap underline underline-offset-2">
-              {copy.fundsWhatsInside}
-            </span>{" "}
-            {gasShortChains.length > 0 ? (
-              <span className="whitespace-nowrap font-medium text-warn">
-                <GasPump className="inline size-3.5 align-[-0.2em]" />{" "}
-                {copy.fundsNeedsGas}
-              </span>
-            ) : (
-              <CaretRight className="inline size-3" />
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+            {worth
+              ? holdings.length > 0
+                ? copy.fundsReadyLine(holdings.length)
+                : copy.fundsEmpty
+              : connected
+                ? holdings.length === 0
+                  ? copy.fundsEmpty
+                  : copy.fundsSendAnything
+                : copy.fundsSignIn}
+            {canPeek && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(true)}
+                  className="whitespace-nowrap text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
+                >
+                  {copy.fundsWhatsInside}
+                </button>
+                {gasShortChains.length > 0 && (
+                  <span className="ml-1.5 whitespace-nowrap font-medium text-warn">
+                    <GasPump weight="duotone" className="inline size-3.5 align-[-0.2em]" /> {copy.fundsNeedsGas}
+                  </span>
+                )}
+              </>
             )}
-          </button>
+          </p>
         )}
       </div>
       {/* Email accounts top up through Privy's funding flow; a connected
           wallet holds its own funds and needs no button; a browser with
           neither is offered the sign in. */}
       {signedIn ? (
-        <Button
-          variant="secondary"
-          className="h-11 shrink-0 rounded-full px-4 text-[13.5px] font-bold"
-          onClick={onTopUp}
-        >
+        <Button variant="outline" size="xs" className="shrink-0" onClick={onTopUp}>
           {copy.topUp}
         </Button>
       ) : !connected ? (
-        <Button
-          variant="secondary"
-          className="h-11 shrink-0 rounded-full px-4 text-[13.5px] font-bold"
-          onClick={privy.login}
-        >
+        <Button variant="outline" size="xs" className="shrink-0" onClick={privy.login}>
           {copy.signIn}
         </Button>
       ) : null}

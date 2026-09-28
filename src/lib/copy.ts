@@ -102,6 +102,43 @@ export type Copy = {
   /* — account total: funds plus holdings plus cash, one figure — */
   accountTotalLabel: string;
   accountTotalSub: string;
+  /* — the signed-in board's own words (components/home, components/board) — */
+  /** The first of the three figures under the total: stocks and funds held, not cash. */
+  accountSplitHoldings: string;
+  /** Under the comparison chart, beside the range: what the two lines are. */
+  portfolioSameDays: string;
+  /** Over the holding rows: what the pair of figures on each row is. */
+  holdingsSubline: string;
+  /** Under "What you own": what its figure counts. Must match lib/server/portfolio. The first only while cash is parked. */
+  holdingsCashIncluded: string;
+  holdingsWalletsNote: string;
+  /** Disclosures: closed, then open. */
+  holdingsAll: (count: number) => string;
+  disclosureFewer: string;
+  /** Between a holding's change and the S&P 500 fund's: "+6.4% vs +1.9%". */
+  holdingVs: string;
+  /** Beside Cash: parked cash is part of What you own's figure. */
+  cashCounts: string;
+  /** `rate` arrives pre-formatted: "3.97%". */
+  cashRate: (rate: string) => string;
+  /** Parking more once some is parked. */
+  cashParkMore: string;
+  boardYours: string;
+  boardMovers: string;
+  boardAll: (count: number) => string;
+  newsMorePosts: string;
+  newsMoreHeadlines: string;
+  /** The Ask card's fake field and the phone's docked one. */
+  askPlaceholder: string;
+  askFine: string;
+  /** Tapped, each opens Ask and sends itself. */
+  askSuggestions: readonly string[];
+  /** The short card on the board that leads to the account drawer's section. */
+  assistantCardBody: string;
+  /** A money row's name with its figure: "Cash, $2.00". */
+  moneyRowName: (name: string, amount: string) => string;
+  /** Under Funds, once they are counted. */
+  fundsReadyLine: (assetCount: number) => string;
 
   /* — funds: the user's own wallets, what can pay for an order — */
   fundsTitle: string;
@@ -879,6 +916,29 @@ export const COPY: Copy = {
 
   accountTotalLabel: "Your account",
   accountTotalSub: "Funds, holdings and cash, in one figure.",
+  accountSplitHoldings: "Stocks",
+  portfolioSameDays: "Same dollars, same days",
+  holdingsSubline: "Since you bought, beside the S&P 500 fund.",
+  holdingsCashIncluded: "Includes your parked cash.",
+  holdingsWalletsNote: "Money waiting in your wallets is not counted.",
+  holdingsAll: (count) => `All ${count} holdings`,
+  disclosureFewer: "Fewer",
+  holdingVs: "vs",
+  cashCounts: "Counts toward What you own.",
+  cashRate: (rate) => `About ${rate} a year.`,
+  cashParkMore: "Add",
+  boardYours: "Yours",
+  boardMovers: "Moving most today",
+  boardAll: (count) => `All ${count} stocks and funds`,
+  newsMorePosts: "More posts",
+  newsMoreHeadlines: "More headlines",
+  askPlaceholder: "Ask about your account",
+  askFine: "Facts, not advice. You sign every order.",
+  askSuggestions: ["What moved today?", "Am I ahead of Gold?", "Buy $5 of NVIDIA"],
+  assistantCardBody: "Let Claude, ChatGPT or Grok read your account and draft orders you sign here.",
+  moneyRowName: (name, amount) => `${name}, ${amount}`,
+  fundsReadyLine: (assetCount) =>
+    assetCount === 1 ? "In one asset, ready to spend." : `Across ${assetCount} assets, ready to spend.`,
 
   fundsTitle: "Funds",
   fundsReadyTail: (assetCount) =>
@@ -984,7 +1044,7 @@ export const COPY: Copy = {
   cashHint: "Idle dollars sit in a token tracking a fund of short Treasury bills, not in a lending pool.",
   cashYieldLine: (rate) =>
     `The 3 month Treasury bill rate is ${rate}. What you earn is the fund's return after its costs, and it moves with that rate.`,
-  cashEmpty: "Nothing parked yet",
+  cashEmpty: "Nothing parked yet.",
   cashPark: "Park cash",
   cashTakeOut: "Take out",
 

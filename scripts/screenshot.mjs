@@ -9,6 +9,7 @@
  *   pnpm shot --hover "li:has-text('NVIDIA')"  # a hover-revealed control
  *   pnpm shot --local-storage '{"key":"value"}' # seeded once, before first load
  *   pnpm shot --reload-out second.png          # reload in the same context, shoot again
+ *   pnpm shot --full                           # the whole page, not just the viewport
  *
  * The last two exist for state a browser keeps between visits (the posts
  * column's "new to you" mark): seed it, shoot, reload, shoot again.
@@ -55,6 +56,7 @@ if (storageSeedRaw) {
   }
 }
 const reloadOut = arg("reload-out", null);
+const fullPage = process.argv.includes("--full");
 
 const engine = browserName === "chromium" ? chromium : webkit;
 
@@ -104,14 +106,14 @@ if (hover) {
   // Let the reveal finish before the shutter.
   await page.waitForTimeout(400);
 }
-await page.screenshot({ path: out });
+await page.screenshot({ path: out, fullPage });
 console.log(
   `${out} (${browserName} ${width}x${height} ${colorScheme})`,
 );
 if (reloadOut) {
   await page.reload({ waitUntil: "networkidle", timeout: 90_000 });
   await page.waitForTimeout(settleMs);
-  await page.screenshot({ path: reloadOut });
+  await page.screenshot({ path: reloadOut, fullPage });
   console.log(`${reloadOut} (after reload, same context)`);
 }
 await browser.close();

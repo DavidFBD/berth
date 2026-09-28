@@ -21,6 +21,9 @@ export function WalletDiagnostics() {
   const solana = useXAccount({ xChainType: "SOLANA" });
   const holdings = useEmbeddedHoldings();
 
+  // ?diag=0 clears the overlay off a page being screenshotted.
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("diag") === "0") return null;
+
   const rows: Array<[string, string]> = [
     ["privy enabled", String(privy.enabled)],
     ["ready / auth", `${privy.ready} / ${privy.authenticated}`],

@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Trash } from "@phosphor-icons/react";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
-import { ChatPanel } from "@/components/chat/chat-panel";
+import { ChatPanel, stateOf } from "@/components/chat/chat-panel";
 import type { ChatDraft } from "@/components/chat/chat-parts";
 import { berthChatTransport, useBerthChat, type BerthChat } from "@/components/chat/use-berth-chat";
 import { useAccountHeaders, useChatStatus, useProfile } from "@/hooks/use-profile";
 import type { ChatStatusResponse } from "@/app/api/chat/status/route";
-import { CHAT_UNLOCK_LEVEL, RANKS, rankForXp } from "@/lib/xp";
+import { guessStatus } from "@/components/chat/chat-status";
 
 /**
  * Ask: the assistant inside Berth. A header button beside the info button
@@ -24,15 +24,6 @@ import { CHAT_UNLOCK_LEVEL, RANKS, rankForXp } from "@/lib/xp";
  * the order drawer filled in (the same rule a link from a connected
  * assistant follows, lib/draft-open), and reopens the sheet after.
  */
-
-/** A status guessed from the profile while the real one loads, so a locked account never sees an open composer first. */
-function guessStatus(xp: number | undefined): ChatStatusResponse | undefined {
-  if (xp === undefined) return undefined;
-  const unlock = RANKS[CHAT_UNLOCK_LEVEL - 1];
-  const level = rankForXp(xp).level;
-  if (level >= CHAT_UNLOCK_LEVEL) return undefined;
-  return { state: "locked", level, unlockLevel: CHAT_UNLOCK_LEVEL, unlockRankName: unlock.name, xpToUnlock: Math.max(0, unlock.xp - xp), left: null };
-}
 
 export function useAppChat(): { chat: BerthChat; accountKey: string | null } {
   const { key, headers } = useAccountHeaders();
@@ -47,11 +38,16 @@ export function ChatSheet({
   open,
   onOpenChange,
   onOpenDraft,
+  pending = null,
+  onPendingTaken,
 }: {
   chat: BerthChat;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenDraft: (draft: ChatDraft) => void;
+  /** A suggestion tapped on the board: sent once the server says the chat is open. */
+  pending?: string | null;
+  onPendingTaken?: () => void;
 }) {
   const profile = useProfile();
   const status = useChatStatus(open);
@@ -63,6 +59,23 @@ export function ChatSheet({
   useEffect(() => {
     if (open && settled && chat.messages.length > 0) void refetch();
   }, [open, settled, chat.messages.length, refetch]);
+
+  // A board suggestion waits for the server's word, then goes once. Refused
+  // (locked, a limit), it is dropped and the sheet says why instead.
+  // The ref makes it once even when an effect runs twice (StrictMode).
+  const busy = chat.status === "submitted" || chat.status === "streaming";
+  const send = chat.send;
+  const taken = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pending) {
+      taken.current = null;
+      return;
+    }
+    if (!open || !status.data || busy || taken.current === pending) return;
+    taken.current = pending;
+    onPendingTaken?.();
+    if (stateOf(status.data, null) === "open") void send(pending);
+  }, [open, pending, status.data, busy, send, onPendingTaken]);
 
   return <ChatSheetFrame chat={chat} open={open} onOpenChange={onOpenChange} status={shown} onOpenDraft={onOpenDraft} />;
 }
@@ -120,11 +133,24 @@ export default function ChatHost({
   open,
   onOpenChange,
   onOpenDraft,
+  pending,
+  onPendingTaken,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenDraft: (draft: ChatDraft) => void;
+  pending?: string | null;
+  onPendingTaken?: () => void;
 }) {
   const { chat } = useAppChat();
-  return <ChatSheet chat={chat} open={open} onOpenChange={onOpenChange} onOpenDraft={onOpenDraft} />;
+  return (
+    <ChatSheet
+      chat={chat}
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenDraft={onOpenDraft}
+      pending={pending}
+      onPendingTaken={onPendingTaken}
+    />
+  );
 }

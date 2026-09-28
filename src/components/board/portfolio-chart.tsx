@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 /**
  * Two lines in dollars: the account's money each day, and the same dollars
  * placed in a benchmark on the same days (lib/portfolio-history). The first
- * is the composition's one accent; the second is quiet and dashed. No fill,
+ * is ink, since the board's one accent is Ask; the second is quiet and dashed. No fill,
  * no grid, no axis: the headline above states the numbers, so the drawing
  * is hidden from assistive technology.
  *
@@ -104,7 +104,7 @@ export function PortfolioChart({
   const box = useRef<HTMLDivElement>(null);
   const shown = withBenchmark ? days : days.map((day) => ({ ...day, benchmark: null }));
   const scale = chartScale(shown);
-  if (!scale || days.length < 2) return <div className="h-28 sm:h-36" />;
+  if (!scale || days.length < 2) return <div className="h-24 lg:h-32" />;
 
   const count = days.length;
   const valuePath = linePath(
@@ -127,7 +127,7 @@ export function PortfolioChart({
   return (
     <div
       ref={box}
-      className="relative h-28 cursor-crosshair touch-pan-y select-none sm:h-36"
+      className="relative h-24 cursor-crosshair touch-pan-y select-none lg:h-32"
       onPointerDown={pick}
       onPointerMove={pick}
       onPointerLeave={leave}
@@ -161,7 +161,7 @@ export function PortfolioChart({
           )}
           <path
             d={valuePath}
-            stroke="var(--primary)"
+            stroke="var(--foreground)"
             strokeWidth={1.75}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -171,7 +171,7 @@ export function PortfolioChart({
         {lastBenchmark !== null && (
           <Dot x={WIDTH} y={yAt(lastBenchmark, scale)} className="bg-muted-foreground" />
         )}
-        <Dot x={WIDTH} y={yAt(last.value, scale)} className="bg-primary" />
+        <Dot x={WIDTH} y={yAt(last.value, scale)} className="bg-foreground" />
       </div>
       {scrubIndex !== null && scrubIndex < count && (
         <>
@@ -190,7 +190,7 @@ export function PortfolioChart({
           <Dot
             x={xAt(scrubIndex, count)}
             y={yAt(days[scrubIndex].value, scale)}
-            className="bg-primary"
+            className="bg-foreground"
           />
         </>
       )}

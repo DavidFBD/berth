@@ -11,6 +11,7 @@ import {
   XLogo,
 } from "@phosphor-icons/react";
 import { JevMark } from "@/components/jev-mark";
+import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
@@ -58,6 +59,10 @@ const ARRIVE = { duration: 0.5, ease: EASE_LIFT };
 /** Where Jev's name links: its maker, where the claim can be checked. */
 const JEV_URL = "https://typesafe.ai";
 
+/** Cards a collapsible column shows closed, and open. */
+const COLLAPSED_LIMIT = 2;
+const EXPANDED_LIMIT = 8;
+
 /** Posts lead, because they are the livelier half and the reason to look. */
 type Tab = "posts" | "headlines";
 
@@ -89,8 +94,9 @@ type Tab = "posts" | "headlines";
 export function NewsFeed({
   filter,
   onClearFilter,
-  limit,
+  limit: limitProp,
   fill = false,
+  collapsible = false,
 }: {
   filter?: TokenListing | null;
   onClearFilter?: () => void;
@@ -109,9 +115,16 @@ export function NewsFeed({
    * and a contained column would collapse to nothing.
    */
   fill?: boolean;
+  /**
+   * Two cards, then "More posts" (or headlines) opens eight. The board's
+   * column, where the news is one section among several.
+   */
+  collapsible?: boolean;
 }) {
   const copy = useCopy();
   const [tab, setTab] = useState<Tab>("posts");
+  const [open, toggle, listId] = useDisclosure("news");
+  const limit = collapsible ? (open ? EXPANDED_LIMIT : COLLAPSED_LIMIT) : limitProp;
   const news = useListingNews(filter?.symbol);
   const posts = useListingX(filter?.symbol);
   const performance = useListingPerformance();
@@ -258,7 +271,8 @@ export function NewsFeed({
 
       {showing.isLoading ? (
         <ul className="divide-y divide-border border-t border-border">
-          {[0, 1, 2].map((row) => (
+          {/* As many as will show, up to three, so nothing jumps when they land. */}
+          {Array.from({ length: Math.min(limit ?? 3, 3) }, (_, row) => row).map((row) => (
             <li key={row} className="flex items-start gap-3 px-4 py-3">
               <Skeleton
                 className={`size-11 shrink-0 ${tab === "posts" ? "rounded-full" : "rounded-lg"}`}
@@ -288,6 +302,7 @@ export function NewsFeed({
             initial="hidden"
             animate="shown"
             exit="gone"
+            id={listId}
             className="divide-y divide-border border-t border-border"
             ref={tab === "posts" ? river.ref : undefined}
             {...(tab === "posts" ? river.handlers : {})}
@@ -497,6 +512,16 @@ export function NewsFeed({
           </motion.ul>
         </AnimatePresence>
       )}
+      {collapsible &&
+        !showing.isLoading &&
+        (tab === "posts" ? posts.items.length + posts.reserve.length : news.items.length) > COLLAPSED_LIMIT && (
+          <DisclosureRow
+            open={open}
+            onToggle={toggle}
+            controls={listId}
+            label={tab === "posts" ? copy.newsMorePosts : copy.newsMoreHeadlines}
+          />
+        )}
     </Panel>
   );
 }

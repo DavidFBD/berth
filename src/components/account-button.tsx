@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { AssistantId } from "@/lib/assistant-party";
 import { toast } from "sonner";
 import { useLinkInProgress } from "@/hooks/use-link-email";
 import { AnimatePresence, motion } from "motion/react";
@@ -49,10 +50,13 @@ import { SPRING_SHELF } from "@/lib/motion";
 export function AccountButton({
   open: openProp,
   onOpenChange,
+  assistant = null,
 }: {
   /** Optional controlled open state so the page (the funds module's top-up button) can open the account drawer. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Opened from the board's "Your assistant" card: that assistant's steps, scrolled to. */
+  assistant?: AssistantId | null;
 } = {}) {
   const privy = usePrivyEmbeddedWallet();
   const linking = useLinkInProgress();
@@ -62,6 +66,7 @@ export function AccountButton({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const accountOpen = openProp ?? accountOpenState;
   const setAccountOpen = onOpenChange ?? setAccountOpenState;
+  useScrollToAssistant(accountOpen && assistant !== null);
 
   if (!PRIVY_ENABLED) return <ConnectButton />;
 
@@ -74,7 +79,7 @@ export function AccountButton({
   // session to add an email, and after: the email drawer below assumes an
   // embedded wallet this person does not have. See hooks/use-link-email.
   if (!privy.authenticated || linking || privy.walletAccountSession) {
-    return <ExternalAccountEntry open={accountOpen} onOpenChange={setAccountOpen} />;
+    return <ExternalAccountEntry open={accountOpen} onOpenChange={setAccountOpen} assistant={assistant} />;
   }
 
   const email = privy.user?.email?.address;
@@ -135,7 +140,11 @@ export function AccountButton({
 
             {/* An assistant that reads the account and drafts orders the
                 person signs here (app/mcp). */}
-            {address && <AssistantSection />}
+            {address && (
+              <div id={ASSISTANT_ANCHOR} className="scroll-mt-4">
+                <AssistantSection initialOpen={assistant} />
+              </div>
+            )}
 
             {/* No external-wallet CONNECT affordance here on purpose: email
                 users live entirely in Funds, and the expert path stays on
@@ -187,6 +196,38 @@ export function AccountButton({
 }
 
 /**
+ * Whether the account drawer carries "Your assistant" for this session,
+ * by the same rule the drawer itself follows below: a wallet account's
+ * drawer always does, an email account's once its address exists, and
+ * without Privy there is no drawer at all. The board shows its card only
+ * then, so the card never opens a drawer that lacks what it promised.
+ */
+export function useAssistantReachable(): boolean {
+  const privy = usePrivyEmbeddedWallet();
+  const linking = useLinkInProgress();
+  if (!PRIVY_ENABLED || !privy.ready) return false;
+  if (!privy.authenticated || linking || privy.walletAccountSession) return true;
+  return Boolean(privy.embedded?.address);
+}
+
+/** Where the board's "Your assistant" card lands inside the drawer. */
+const ASSISTANT_ANCHOR = "account-assistant";
+
+/**
+ * Once the drawer has slid up, bring "Your assistant" into view. The
+ * drawer's content mounts on open, so the anchor is looked up after it.
+ */
+function useScrollToAssistant(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const timer = setTimeout(() => {
+      document.getElementById(ASSISTANT_ANCHOR)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 360);
+    return () => clearTimeout(timer);
+  }, [active]);
+}
+
+/**
  * Header entry for external-wallet visitors: the familiar connect pill plus
  * the rewards chip, which opens a small drawer holding the rewards panel
  * (rank, avatar grid, and the email invitation with its reward).
@@ -201,9 +242,11 @@ export function AccountButton({
 function ExternalAccountEntry({
   open: serviceOpen,
   onOpenChange: setServiceOpen,
+  assistant,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  assistant: AssistantId | null;
 }) {
   const copy = useCopy();
   return (
@@ -219,7 +262,9 @@ function ExternalAccountEntry({
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <RewardsPanel />
             <Panel>
-              <AssistantSection />
+              <div id={ASSISTANT_ANCHOR} className="scroll-mt-4">
+                <AssistantSection initialOpen={assistant} />
+              </div>
             </Panel>
           </div>
         </DrawerContent>
