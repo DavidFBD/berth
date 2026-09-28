@@ -12,9 +12,6 @@ const PRODUCTION_HOSTS = ["www.berthmarkets.com", "berthmarkets.com"];
 /** Sonic, where the rewards identity lives (hooks/use-wallet-session). */
 export const SIWE_CHAIN_ID = 146;
 
-/** How old a signed message may be before it is refused. */
-export const SIWE_MAX_AGE_MS = 10 * 60 * 1000;
-
 function allowedHosts(): string[] {
   const hosts = [...PRODUCTION_HOSTS];
   for (const url of [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL]) {
@@ -31,10 +28,12 @@ function hostAllowed(host: string): boolean {
 }
 
 /**
- * True when the message was made for Berth, on Sonic, recently. Checks the
- * domain, that the uri is on the same host, the chain id, and the issue time.
+ * True when the message was made for Berth, on Sonic: the domain, that the
+ * uri is on the same host, and the chain id. Freshness is the nonce's job
+ * (its token expires after ten minutes, lib/server/wallet-session); the
+ * message's own issuedAt comes from the person's clock, which may be off.
  */
-export function siweMadeForBerth(fields: Partial<SiweMessage>, now = Date.now()): boolean {
+export function siweMadeForBerth(fields: Partial<SiweMessage>): boolean {
   if (!fields.domain || !hostAllowed(fields.domain)) return false;
   if (!fields.uri) return false;
   try {
@@ -42,8 +41,5 @@ export function siweMadeForBerth(fields: Partial<SiweMessage>, now = Date.now())
   } catch {
     return false;
   }
-  if (fields.chainId !== SIWE_CHAIN_ID) return false;
-  const issued = fields.issuedAt instanceof Date ? fields.issuedAt.getTime() : NaN;
-  if (!Number.isFinite(issued) || now - issued > SIWE_MAX_AGE_MS || issued - now > 60_000) return false;
-  return true;
+  return fields.chainId === SIWE_CHAIN_ID;
 }
