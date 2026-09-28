@@ -15,7 +15,8 @@ import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { useOrders } from "@/hooks/use-profile";
 import { compareHolding, type HoldingComparison } from "@/lib/benchmark";
 import { formatTokenAmount } from "@/lib/format";
-import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
+import { LISTING_MARK_BY_SYMBOL, TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
+import { CompanyMark } from "@/components/company-marks";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 import { formatUnits } from "viem";
 
@@ -149,14 +150,20 @@ export function HoldingsList({
   );
 }
 
-/** A listing's ticker in a small tile, where a logo would sit. */
+/**
+ * A listing's mark in a small tile: the company's own mark when one is
+ * pinned in the registry (LISTING_MARK_BY_SYMBOL), otherwise the ticker's
+ * first letters. Same neutral surface either way, so a covered listing and
+ * a lettered one sit at the same weight in a row.
+ */
 export function TickerTile({ symbol }: { symbol: string }) {
+  const mark = LISTING_MARK_BY_SYMBOL[symbol];
   return (
     <span
       aria-hidden="true"
       className="money flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-medium tracking-tight text-secondary-foreground"
     >
-      {symbol.slice(0, 4)}
+      {mark ? <CompanyMark id={mark} className="size-4.5" /> : symbol.slice(0, 4)}
     </span>
   );
 }

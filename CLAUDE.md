@@ -37,9 +37,12 @@ would offer).
   tickers, wherever a person is reading.
 - No dashes as punctuation in user-facing copy (reads as AI). Commas, periods.
 - No raw emoji in UI; glyphs are Phosphor duotone or nothing.
-  One exception: the assistant buttons carry Claude's, OpenAI's and Grok's
-  own marks (`src/components/assistant/provider-marks.tsx`), monochrome in
-  currentColor, never in brand colour.
+  Two exceptions: the assistant buttons carry Claude's, OpenAI's and Grok's
+  own marks (`src/components/assistant/provider-marks.tsx`), and a listing's
+  ticker tile carries the listed company's own mark where one is pinned
+  (`src/components/company-marks.tsx`, `LISTING_MARK_BY_SYMBOL` in
+  `src/lib/listings.ts`), falling back to the lettered tile otherwise. Both
+  are monochrome in currentColor, never in brand colour.
 - Every user-facing string lives in `src/lib/copy.ts` as a key on the one
   `Copy` object; never hardcode copy in components. Components read it via
   `useCopy()`; modules without React import `COPY` directly. There is one

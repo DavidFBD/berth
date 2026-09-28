@@ -4,6 +4,7 @@ import {
   type LeverageYieldVault,
   type XToken,
 } from "@sodax/sdk";
+import type { CompanyMarkId } from "@/components/company-marks";
 
 /**
  * The house's listings: every asset a pour can land in on the Sonic hub.
@@ -205,6 +206,22 @@ export const TOKEN_LISTINGS: readonly TokenListing[] = [
     "0x690B92c27ac80015E57DB8cc02A81255814f49A2",
   ),
 ];
+
+/**
+ * Symbol → the listed company's own mark, for the ticker tile's icon where
+ * one exists (company-marks.tsx). The single source of truth so the tile,
+ * `pnpm listings:verify`'s letter-badge report, and any future consumer
+ * agree on the same five. A listing absent here draws the lettered fallback,
+ * which is deliberate for GME, MU and SNDK (no Simple Icons mark) and for
+ * the four ETFs (no issuer mark that clearly represents the fund itself).
+ */
+export const LISTING_MARK_BY_SYMBOL: Readonly<Record<string, CompanyMarkId>> = {
+  SPCX: "spacex",
+  NVDA: "nvidia",
+  MSTR: "microstrategy",
+  AAPL: "apple",
+  TSLA: "tesla",
+};
 
 /** The stocks and ETFs on offer: every token listing that is not cash. */
 export const STOCK_LISTINGS: readonly TokenListing[] = TOKEN_LISTINGS.filter(

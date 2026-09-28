@@ -11,7 +11,9 @@ import { createPublicClient, http, parseAbi } from "viem";
 
 // Node strips the types from the .ts import (see the flag in package.json),
 // so the script reads the very table the app ships, not a copy of it.
-const { TOKEN_LISTINGS, CASH_LISTING } = await import("../src/lib/listings.ts");
+const { TOKEN_LISTINGS, CASH_LISTING, LISTING_MARK_BY_SYMBOL } = await import(
+  "../src/lib/listings.ts"
+);
 
 const TOKENS_URL = "https://api.sodax.com/v1/swaps/tokens/sonic";
 const SONIC_RPC =
@@ -96,7 +98,21 @@ for (const read of reads) {
     note(`${listing.symbol}: contract decimals() is ${read.decimals}`);
 }
 
-// 3. Report.
+// 3. Icon coverage. Informational only, not a drift check: a listing with
+//    no mark in LISTING_MARK_BY_SYMBOL draws the lettered TickerTile
+//    fallback (company-marks.tsx), which is a deliberate design choice for
+//    tickers Simple Icons has no clean mark for, not a bug to fail the
+//    build over.
+const lettered = TOKEN_LISTINGS.filter((listing) => !LISTING_MARK_BY_SYMBOL[listing.symbol]);
+if (lettered.length > 0) {
+  console.log(
+    `${lettered.length} listing(s) drawing the letter badge (no mark pinned): ${lettered
+      .map((listing) => listing.symbol)
+      .join(", ")}.`,
+  );
+}
+
+// 4. Report.
 console.log(
   `${TOKEN_LISTINGS.length} listings pinned, ${robinhood.length} Robinhood tokens served, cash is ${CASH_LISTING.symbol}.`,
 );
