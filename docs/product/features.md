@@ -1,0 +1,81 @@
+# Berth: what it does
+
+The canonical feature list for pitches, brand videos and other content. Every
+line says whether it is live or coming. Content made from this file must not
+present a "coming" feature as available, and must keep the wording under
+"Say it this way" (these are product truths, not style choices).
+
+Voice: plain, calm, adult, never clever about money. Names, not tickers.
+Positioning line: Stocks for the money that already lives onchain.
+
+## Live
+
+1. **Buy stocks and funds with the crypto you already hold.** US stocks and
+   ETFs (NVIDIA, Tesla, Apple, SpaceX, the S&P 500 fund, Gold and more) paid
+   from stablecoins, ETH, SOL, Bitcoin or other assets on 20+ networks, in
+   one signature. Filled by independent solvers through SODAX.
+2. **Your custody, always.** Berth is software, not a broker. You sign every
+   order in your own wallet. Berth never holds keys or funds.
+3. **Start with just an email.** Sign in with email and get a wallet with no
+   seed phrase, or bring your own wallet extension. Keys can be exported.
+4. **Cash that earns.** Park idle money in a Treasury bill fund, so waiting
+   cash earns the T-bill rate. It counts toward what you own.
+5. **See what your money would have made elsewhere.** Your portfolio drawn
+   beside the same dollars, on the same days, in the S&P 500 fund, the Nasdaq
+   100 fund, Gold, Bitcoin or Treasury bills, over a week, a month, three
+   months or since your first buy. Each holding shows its own result the same
+   way.
+6. **News that is about your stocks, curated by Jev.** A live column of posts
+   on X and headlines, each read and labelled by Jev (a model by TypeSafe),
+   kept only when it reports something. "What moved" links a large price move
+   to the post that reported it. A calm one-line nudge when there is news
+   about something you own.
+7. **The Assistant, inside Berth.** Ask about your account and the market in
+   plain words: what you own, how it compares, what moved and why. Ask it to
+   draft a buy or a sell and it hands you the order, filled in, to check and
+   sign. Facts, not advice. Berth keeps no copy of the chat. Unlocks at
+   level 2.
+8. **Bring Berth into your AI.** Connect Claude, ChatGPT or Grok to your
+   Berth account through Berth's MCP server. Your own AI can read your
+   account beside everything else it does (the web, your files, your other
+   tools) and draft orders you sign in Berth. Disconnect any time.
+9. **Ranks, XP and avatars.** Earn XP for buying, holding, adding an email
+   and bringing friends; climb ten harbour ranks from Cleat to the top, with
+   avatars and features unlocked on the way.
+10. **Invite friends.** Share your link; you both earn XP when they join and
+    trade.
+
+## Coming (not live yet)
+
+- **Limit orders.** "Buy NVIDIA if it drops to $200": set a price, the order
+  waits, and fills when the price is reached. Waiting orders show under your
+  total. The Assistant can draft them.
+- **Profiles, Salutes and your crew.** Pick a username to get a one-screen
+  profile (avatar, rank, XP, salutes). Salute friends, form a crew, and see a
+  crew board ranked on XP and salutes.
+- **One account, many wallets.** Link wallets from several networks and
+  extensions to one email account.
+
+## Say it this way
+
+- The Assistant and connected AIs **read and draft; you sign.** Never "trades
+  for you", "does it for you" or "autonomous".
+- Leaderboards rank **XP and salutes, never returns.** Never "see who made the
+  most" or a returns leaderboard.
+- The comparison is against **benchmarks** (the same dollars in another
+  holding), not against other people's portfolios.
+- Cash sits in a **Treasury bill fund**. Say "earns the T-bill rate", not
+  "interest account", "savings" or a fixed percentage.
+- Tokenized stocks are **tokens that track a share**, issued by third parties.
+  Do not call them the shares themselves.
+- Not available in the United States or where local law or sanctions forbid
+  it.
+- No price predictions, no promises of returns, no "get rich".
+
+## Where to look in the product (for screen capture)
+
+- Board: `src/components/home.tsx`, gallery `/dev/board?home=held` (dev only).
+- Assistant: `/dev/chat` (dev only, mock model), live via the Assistant button.
+- Connector help: `/assistants`. Legal: `/privacy`, `/terms`.
+- Brand: `public/berth-brand/brand-sheet.md`, rank names in
+  `public/berth-brand/rank-names.md`, thinking orbs only while something works.
