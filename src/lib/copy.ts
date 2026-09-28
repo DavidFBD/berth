@@ -1207,7 +1207,7 @@ export const COPY: Copy = {
         ? "Sign in to Berth to connect an app on this computer."
         : `Sign in to Berth to connect an app at ${party.host}.`,
   authorizeCanLead: "If you allow it, it can",
-  authorizeScopeRead: "See what you own, your orders, and how your money compares with the S&P 500 fund.",
+  authorizeScopeRead: "See what you own, your orders, and what the same money would have made in other holdings.",
   authorizeScopeDraft: "Suggest a buy or a sell. Nothing happens until you approve it and sign, here in Berth.",
   authorizeCannot: "It cannot move your money, sign for you, or see your keys. You can disconnect it at any time from your account.",
   authorizeReturnTo: (host) => `Afterwards you go back to ${host}.`,
@@ -1233,7 +1233,7 @@ export const COPY: Copy = {
 
   assistantTitle: "Your assistant",
   assistantBody:
-    "Let your assistant read your account. It can see what you own, how it compares with the S&P 500 fund, and what moved today. It can suggest a buy or a sell, and nothing happens until you approve and sign it, here in Berth.",
+    "Let your assistant read your account. It can see what you own, what the same money would have made in other holdings, and what moved today. It can suggest a buy or a sell, and nothing happens until you approve and sign it, here in Berth.",
   assistantClaude: "Claude",
   assistantChatGpt: "ChatGPT",
   assistantGrok: "Grok",
@@ -1243,7 +1243,7 @@ export const COPY: Copy = {
   assistantButtonConnected: (name) => `${name}, connected`,
   assistantPromptsTitle: "Try asking",
   assistantPrompts: [
-    "How is my Berth account doing against the S&P 500 fund?",
+    "Would my Berth money have done better in Gold or Bitcoin?",
     "What moved on Berth today, and why?",
     "Draft a $20 buy of NVIDIA on Berth.",
   ],
