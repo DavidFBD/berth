@@ -115,21 +115,119 @@ export function ledgerQuantities(
 export function ledgerExplains(
   orders: readonly OrderFacts[],
   balances: Readonly<Record<string, number>>,
+  opening: Readonly<Record<string, number>> = {},
 ): boolean {
-  const ledger = ledgerQuantities(orders, Infinity);
-  if (!ledger) return false;
-  const symbols = new Set([...Object.keys(ledger), ...Object.keys(balances)]);
-  for (const symbol of symbols) {
-    const expected = ledger[symbol] ?? 0;
-    const held = balances[symbol] ?? 0;
-    if (expected < -DUST_QUANTITY) return false;
-    if (expected <= DUST_QUANTITY) {
-      if (held > DUST_QUANTITY) return false;
+  const counted = ledgerQuantities(orders, Infinity);
+  if (!counted) return false;
+  const ledger: Record<string, number> = { ...opening };
+  for (const [symbol, quantity] of Object.entries(counted)) ledger[symbol] = (ledger[symbol] ?? 0) + quantity;
+  return quantitiesMatch(ledger, balances);
+}
+
+/** Whether `held` is `expected`, listing by listing, within lib/benchmark's tolerance. */
+function quantitiesMatch(
+  expected: Readonly<Record<string, number>>,
+  held: Readonly<Record<string, number>>,
+): boolean {
+  for (const symbol of new Set([...Object.keys(expected), ...Object.keys(held)])) {
+    const want = expected[symbol] ?? 0;
+    const have = held[symbol] ?? 0;
+    if (want < -DUST_QUANTITY) return false;
+    if (want <= DUST_QUANTITY) {
+      if (have > DUST_QUANTITY) return false;
       continue;
     }
-    if (Math.abs(held - expected) / expected > QUANTITY_TOLERANCE) return false;
+    if (Math.abs(have - want) / want > QUANTITY_TOLERANCE) return false;
   }
   return true;
+}
+
+export type SnapshotBase = { day: IsoDay; asOf: string; holdings: readonly Holding[] };
+
+/**
+ * When the orders do not explain what is held, the earliest snapshot from
+ * which they do: its holdings plus the orders placed after it add up to
+ * the next snapshot, and to `balances` (today's, or undefined when they
+ * were not read). Money moved before that snapshot without an order, and
+ * nothing moved after it that the orders do not show, so a comparison may
+ * start from its value. Undefined when no snapshot qualifies: money moved
+ * after the newest one too.
+ *
+ * Linear in snapshots and orders: order times are read once, the orders'
+ * running totals are taken at each snapshot, and the snapshots are walked
+ * newest first, each checked against the one after it (already known to
+ * explain everything since) and against today. The first that fails ends
+ * the walk: an older one would span the same move. A later snapshot that
+ * rebuilt from the orders ('ledger') proves nothing and is stepped over.
+ */
+export function explainedFrom(
+  days: readonly (SnapshotBase & { source: "snapshot" | "ledger" })[],
+  orders: readonly OrderFacts[],
+  balances: Readonly<Record<string, number>> | undefined,
+): SnapshotBase | undefined {
+  const snapshots = days
+    .filter((day) => day.source === "snapshot")
+    .map((day) => ({ day, at: Date.parse(day.asOf) }))
+    .filter((entry) => Number.isFinite(entry.at))
+    .sort((a, b) => a.at - b.at);
+  if (snapshots.length === 0) return undefined;
+  const timed = orders
+    .map((order) => ({ order, at: Date.parse(order.placedAt) }))
+    .sort((a, b) => a.at - b.at);
+
+  // The orders' running totals at each snapshot, and the newest snapshot
+  // taken before an order with no quantity (it and every older one span an
+  // order that cannot be counted).
+  const totals: Record<string, number>[] = [];
+  const running: Record<string, number> = {};
+  let next = 0;
+  let unknownAfter = -1;
+  for (const [index, { at }] of snapshots.entries()) {
+    for (; next < timed.length && timed[next].at <= at; next += 1) {
+      if (timed[next].order.quantity === null) unknownAfter = index - 1;
+      add(running, timed[next].order);
+    }
+    totals.push({ ...running });
+  }
+  for (; next < timed.length; next += 1) {
+    if (timed[next].order.quantity === null) unknownAfter = snapshots.length - 1;
+    add(running, timed[next].order);
+  }
+  const final = running;
+
+  const quantities = (day: SnapshotBase) => {
+    const out: Record<string, number> = {};
+    for (const holding of day.holdings) out[holding.symbol] = (out[holding.symbol] ?? 0) + holding.quantity;
+    return out;
+  };
+  /** Opening holdings plus the orders between two running totals. */
+  const expected = (opening: Record<string, number>, from: Record<string, number>, to: Record<string, number>) => {
+    const out = { ...opening };
+    for (const symbol of new Set([...Object.keys(from), ...Object.keys(to)])) {
+      out[symbol] = (out[symbol] ?? 0) + (to[symbol] ?? 0) - (from[symbol] ?? 0);
+    }
+    return out;
+  };
+
+  let found: SnapshotBase | undefined;
+  for (let index = snapshots.length - 1; index >= 0; index -= 1) {
+    if (index <= unknownAfter) break;
+    const { day } = snapshots[index];
+    const opening = quantities(day);
+    if (index + 1 < snapshots.length) {
+      const later = snapshots[index + 1].day;
+      if (!quantitiesMatch(expected(opening, totals[index], totals[index + 1]), quantities(later))) break;
+    }
+    if (balances && !quantitiesMatch(expected(opening, totals[index], final), balances)) break;
+    found = { day: day.day, asOf: day.asOf, holdings: day.holdings };
+  }
+  return found;
+}
+
+function add(running: Record<string, number>, order: OrderFacts): void {
+  if (order.quantity === null) return;
+  const sign = order.direction === "buy" ? 1 : -1;
+  running[order.symbol] = (running[order.symbol] ?? 0) + sign * order.quantity;
 }
 
 /** The market day whose close is the first to come after `placedAt`. */

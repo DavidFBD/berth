@@ -130,10 +130,13 @@ function RangeControl({
   available,
   value,
   onChange,
+  sinceFrom,
 }: {
   available: readonly Range[];
   value: Range;
   onChange: (range: Range) => void;
+  /** When since first buy starts on a later snapshot, that day: the chip names it. */
+  sinceFrom: string | null;
 }) {
   const copy = useCopy();
   return (
@@ -155,7 +158,9 @@ function RangeControl({
               : "text-muted-foreground hover:text-foreground",
           )}
         >
-          {copy.portfolioRanges[range]}
+          {range === "since" && sinceFrom
+            ? copy.portfolioRangeSince(shortDate(sinceFrom))
+            : copy.portfolioRanges[range]}
         </button>
       ))}
     </div>
@@ -271,6 +276,9 @@ export function PortfolioSummary({
     reason = <WithChooser sentence={copy.portfolioNoBenchmark[status]} name={named} />;
   } else if (status === "no_marks") {
     reason = <WithChooser sentence={copy.portfolioNoMarks} name={chooser} />;
+  } else if (result.rebasedFrom) {
+    // After the percentages' closing full stop, so it needs its own space.
+    reason = <> {copy.portfolioRebased(shortDate(result.rebasedFrom))}</>;
   }
 
   const headline = (
@@ -317,6 +325,7 @@ export function PortfolioSummary({
       <RangeControl
         available={data.available}
         value={range}
+        sinceFrom={data.ranges.since?.rebasedFrom ?? null}
         onChange={(next) => {
           setScrub(null);
           setRange(next);

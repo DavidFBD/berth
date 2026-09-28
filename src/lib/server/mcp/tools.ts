@@ -139,7 +139,7 @@ const BENCHMARK_CHOICES: Record<string, BenchmarkSymbol> = {
 
 const STATUS_WORDS: Record<string, string> = {
   unexplained_balance:
-    "Money moved in or out that no Berth order explains (a transfer, most likely), so neither percentage can be told honestly. The dollar values stand.",
+    "Money moved in or out without a Berth order, so neither percentage can be told honestly. The dollar values stand. A comparison starts from the next evening whose balances the orders add up to.",
   unpriced_orders: "Some orders were paid in a coin Berth could not price at the time, so the percentages cannot be told.",
   no_marks: "The benchmark has no price for part of this window, so it cannot be compared.",
   too_short: "There are fewer than two days of history in this window.",
@@ -400,13 +400,20 @@ export function registerBerthTools(server: McpServer, { origin }: { origin: stri
           // Since the first buy reads from the first day on record, which can
           // be later than the first buy itself (the daily record began with
           // the evening cron), so the date is named as the record's start.
-          period === "since_first_buy"
+          period === "since_first_buy" && result.rebasedFrom
+            ? `Since ${day(result.rebasedFrom)}, not the first buy: the comparison starts there. ${result.tradingDays} market day${result.tradingDays === 1 ? "" : "s"}.`
+            : period === "since_first_buy"
             ? `Since the first buy. Daily values are on record from ${day(result.days[0].day)}, ${result.tradingDays} market day${result.tradingDays === 1 ? "" : "s"}.`
             : `${wanted.words[0].toUpperCase()}${wanted.words.slice(1)}, from ${day(result.since ?? result.days[0].day)}, ${result.tradingDays} market day${result.tradingDays === 1 ? "" : "s"}.`,
           `The account: ${pct(result.changePct)}. The same dollars in ${benchmark.name}: ${pct(result.benchmarkPct)}.`,
           `Value now ${usd(last.value)}${last.benchmark !== null ? `, the ${benchmark.name} line ${usd(last.benchmark)}` : ""}.`,
         ];
         if (result.benchmarkStatus !== "ok" && STATUS_WORDS[result.benchmarkStatus]) out.push(STATUS_WORDS[result.benchmarkStatus]);
+        else if (result.rebasedFrom) {
+          out.push(
+            `Money moved in or out without a Berth order before ${day(result.rebasedFrom)}, so both figures are measured from that day, with only later orders counted as money in or out.`,
+          );
+        }
         if (result.tradingDays < 20) out.push("Under about twenty market days, a comparison like this is mostly noise.");
         const step = Math.max(1, Math.ceil(result.days.length / 10));
         const sampled = result.days.filter((_, index) => index % step === 0 || index === result.days.length - 1);

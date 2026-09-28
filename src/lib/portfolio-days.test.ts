@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { OrderFacts } from "@/lib/benchmark";
 import {
   dayOfOrder,
+  explainedFrom,
   ledgerDays,
   ledgerExplains,
   ledgerQuantities,
@@ -59,6 +60,12 @@ describe("the ledger", () => {
     expect(ledgerExplains([], {})).toBe(true);
   });
 
+  it("counts from an opening balance when one is given", () => {
+    const later = [order("buy", "SGOV", 1, "2026-09-28T10:00:00Z")];
+    expect(ledgerExplains(later, { SGOV: 1.1, NVDA: 2 }, { SGOV: 0.1, NVDA: 2 })).toBe(true);
+    expect(ledgerExplains(later, { SGOV: 1.1 }, { SGOV: 0.1, NVDA: 2 })).toBe(false);
+  });
+
   it("puts an order in the first market day whose close comes after it", () => {
     expect(dayOfOrder("2026-09-21T09:30:00Z")).toBe("2026-09-21");
     expect(dayOfOrder("2026-09-22T22:00:00Z")).toBe("2026-09-23");
@@ -114,5 +121,68 @@ describe("repriceHolding", () => {
     expect(repriceHolding(holdings, "SGOV", 90, "mark")).toBeUndefined();
     expect(repriceHolding(holdings, "NVDA", 500, "mark")).toBeUndefined();
     expect(repriceHolding(holdings, "AAPL", 1, "mark")).toBeUndefined();
+  });
+});
+
+describe("explainedFrom", () => {
+  // The shape of a real account: cash bought on the 21st, most of it moved
+  // out on the 25th with no order, a stock bought that day and cash again
+  // on the 28th.
+  const orders = [
+    order("buy", "SGOV", 0.0189, "2026-09-21T09:19:00Z"),
+    order("buy", "NVDA", 0.0123, "2026-09-21T09:30:00Z"),
+    order("buy", "TSLA", 0.0037, "2026-09-25T11:57:00Z"),
+    order("buy", "SGOV", 0.0113, "2026-09-28T10:09:00Z"),
+  ];
+  const snapshot = (day: string, asOf: string, held: Record<string, number>, source: "snapshot" | "ledger" = "snapshot") => ({
+    day,
+    asOf,
+    source,
+    holdings: Object.entries(held).map(([symbol, quantity]) => ({ symbol, quantity, price: 1, source: "mark" as const })),
+  });
+  const before = snapshot("2026-09-24", "2026-09-24T22:00:00Z", { SGOV: 0.0189, NVDA: 0.0123 });
+  const after = snapshot("2026-09-25", "2026-09-25T22:44:00Z", { SGOV: 0.00003, NVDA: 0.0123, TSLA: 0.0037 });
+  const now = { SGOV: 0.01133, NVDA: 0.0123, TSLA: 0.0037 };
+
+  it("starts from the first snapshot after the move that the later orders explain", () => {
+    expect(explainedFrom([before, after], orders, now)?.day).toBe("2026-09-25");
+    // Without today's balances, the stored snapshots alone decide.
+    expect(explainedFrom([before, after], orders, undefined)?.day).toBe("2026-09-25");
+  });
+
+  it("finds nothing when money moved after the newest snapshot too", () => {
+    expect(explainedFrom([before, after], orders, { ...now, NVDA: 0 })).toBeUndefined();
+  });
+
+  it("finds nothing past an order with no quantity", () => {
+    const unknown = [...orders, order("buy", "NVDA", null, "2026-09-26T10:00:00Z")];
+    expect(explainedFrom([before, after], unknown, undefined)).toBeUndefined();
+    // Placed before the snapshot, it is inside the snapshot's own holdings.
+    const earlier = [...orders, order("buy", "NVDA", null, "2026-09-25T15:00:00Z")];
+    expect(explainedFrom([before, after], earlier, now)?.day).toBe("2026-09-25");
+  });
+
+  it("stays near linear on a long history, explained or not", () => {
+    const start = Date.parse("2024-01-02T22:00:00Z");
+    const many: OrderFacts[] = [];
+    const snaps: ReturnType<typeof snapshot>[] = [];
+    let held = 0;
+    for (let index = 0; index < 500; index += 1) {
+      const at = start + index * 86_400_000;
+      for (const offset of [1, 2]) {
+        many.push(order("buy", "NVDA", 1, new Date(at + offset * 3_600_000).toISOString()));
+        held += 1;
+      }
+      snaps.push(snapshot(new Date(at + 5 * 3_600_000).toISOString().slice(0, 10), new Date(at + 5 * 3_600_000).toISOString(), { NVDA: held }));
+    }
+    const began = performance.now();
+    expect(explainedFrom(snaps, many, { NVDA: held })?.day).toBe(snaps[0].day);
+    expect(explainedFrom(snaps, many, { NVDA: held + 7 })).toBeUndefined();
+    expect(performance.now() - began).toBeLessThan(50);
+  });
+
+  it("never starts from a day rebuilt from the orders", () => {
+    const rebuilt = snapshot("2026-09-25", "2026-09-25T21:30:00Z", after.holdings.reduce((all, h) => ({ ...all, [h.symbol]: h.quantity }), {}), "ledger");
+    expect(explainedFrom([before, rebuilt], orders, now)).toBeUndefined();
   });
 });

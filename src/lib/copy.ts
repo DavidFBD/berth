@@ -172,6 +172,13 @@ export type Copy = {
    * chooser with its article ("the S&P 500 fund", "Gold").
    */
   portfolioNoBenchmark: Record<"unpriced_orders" | "unexplained_balance", (name: string) => string>;
+  /**
+   * After the "Since" sentence when the comparison starts on a later
+   * snapshot, because money moved without an order before it.
+   */
+  portfolioRebased: (date: string) => string;
+  /** The "First buy" range chip when that window starts on a later snapshot instead. */
+  portfolioRangeSince: (date: string) => string;
   /** The article a benchmark's name takes mid sentence, by id: "the " or nothing. */
   benchmarkArticle: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
   /** `name` is the chooser, so another benchmark is one tap away. */
@@ -884,8 +891,10 @@ export const COPY: Copy = {
     unpriced_orders: (name) =>
       `A buy was paid in a coin we could not price, so ${name} cannot be set beside it.`,
     unexplained_balance: (name) =>
-      `Your balance and your orders here do not agree, so ${name} cannot be set beside it.`,
+      `Money moved in or out without a Berth order, so ${name} is set beside it from the next evening that adds up.`,
   },
+  portfolioRebased: (date) => `Money moved without a Berth order before ${date}, so the comparison starts then.`,
+  portfolioRangeSince: (date) => `Since ${date}`,
   benchmarkArticle: { SPY: "the ", QQQ: "the ", PAXG: "", BTC: "", SGOV: "" },
   portfolioNoMarks: (name) => `No prices for ${name} yet.`,
   portfolioRanges: {

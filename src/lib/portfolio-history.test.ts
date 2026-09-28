@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { markAt, type Marks, type OrderFacts } from "@/lib/benchmark";
-import { MARK_MINUTES } from "@/lib/marks";
+import { MARK_MINUTES, markAsOf } from "@/lib/marks";
 import {
   availableRanges,
   historyRanges,
@@ -320,6 +320,7 @@ describe("refusing rather than guessing", () => {
     expect(result.benchmarkPct).toBeNull();
     // The dollars stay.
     expect(result.days.map((point) => point.value)).toEqual([100, 110]);
+    expect(result.rebasedFrom).toBeNull();
   });
 
   it("draws no benchmark when a buy has no dollar cost", () => {
@@ -547,5 +548,73 @@ describe("historyRanges", () => {
     expect(first.available).toEqual([]);
     expect(Object.keys(first.ranges)).toEqual(["since"]);
     expect(first.ranges.since?.benchmarkStatus).toBe("too_short");
+  });
+});
+
+describe("starting from a snapshot when money moved without an order", () => {
+  // Two NVDA bought at 50 on the 15th; on the 16th one of them leaves the
+  // account with no order, and the evening's snapshot holds one at 60.
+  // Ten dollars buy a seventh of one on the 18th at 70.
+  const base = {
+    day: "2026-09-16",
+    asOf: markAsOf("2026-09-16"),
+    holdings: [{ symbol: "NVDA", quantity: 1, price: 60, source: "mark" as const }],
+  };
+  const input: HistoryInput = {
+    days: days({ "2026-09-15": 100, "2026-09-16": 60, "2026-09-17": 66, "2026-09-18": 80 }),
+    orders: [buy("2026-09-15T15:00:00Z", 100, 2), buy("2026-09-18T15:00:00Z", 10, 1 / 7)],
+    benchmarkSymbol: "SPY",
+    benchmarkMarks: SPY,
+    balanceExplained: false,
+    base,
+  };
+
+  it("buys the benchmark with the snapshot's value at that day's close, and counts only later orders", () => {
+    const result = portfolioHistory(input, "since");
+    expect(result.benchmarkStatus).toBe("ok");
+    expect(result.rebasedFrom).toBe("2026-09-16");
+    expect(result.since).toBe("2026-09-16");
+    expect(result.days.map((point) => point.day)).toEqual(["2026-09-16", "2026-09-17", "2026-09-18"]);
+    const units = 60 / 52;
+    expect(result.days[0].benchmark).toBeCloseTo(60, 10);
+    expect(result.days[1].benchmark).toBeCloseTo(units * 49, 10);
+    // The 18th's buy takes the fund at its minute's price (the 17th's close, 49).
+    expect(result.days[2].benchmark).toBeCloseTo((units + 10 / 49) * 50, 10);
+    // Time weighted from the snapshot: 60 to 66, then 66 plus 10 in to 80.
+    expect(result.changePct).toBeCloseTo((1.1 * (80 / 76) - 1) * 100, 10);
+    expect(result.benchmarkPct).toBeCloseTo((50 / 52 - 1) * 100, 10);
+  });
+
+  it("offers no range that would reach back before the snapshot", () => {
+    const { available, ranges } = historyRanges(input);
+    expect(available).toEqual(["since"]);
+    expect(portfolioHistory(input, "all").since).toBe("2026-09-16");
+    expect(ranges.since?.rebasedFrom).toBe("2026-09-16");
+  });
+
+  it("ignores an unpriced order before the snapshot, and still refuses one after it", () => {
+    const early = { ...input, orders: [buy("2026-09-15T15:00:00Z", null, 2), input.orders[1]] };
+    expect(portfolioHistory(early, "since").benchmarkStatus).toBe("ok");
+    const late = { ...input, orders: [input.orders[0], buy("2026-09-18T15:00:00Z", null, 1 / 7)] };
+    const refused = portfolioHistory(late, "since");
+    expect(refused.benchmarkStatus).toBe("unpriced_orders");
+    expect(refused.changePct).toBeNull();
+  });
+
+  it("names the late start when the snapshot itself was worth nothing", () => {
+    const empty = {
+      ...input,
+      days: days({ "2026-09-15": 100, "2026-09-16": 0, "2026-09-17": 10, "2026-09-18": 11 }),
+      orders: [buy("2026-09-15T15:00:00Z", 100, 2), buy("2026-09-17T15:00:00Z", 10, 1)],
+      base: { ...base, holdings: [] },
+    };
+    const result = portfolioHistory(empty, "since");
+    expect(result.since).toBe("2026-09-17");
+    expect(result.rebasedFrom).toBe("2026-09-17");
+  });
+
+  it("refuses when the snapshot's day has no benchmark close", () => {
+    const gap = { ...input, benchmarkMarks: marks({ "2026-09-15": 51, "2026-09-17": 49, "2026-09-18": 50 }) };
+    expect(portfolioHistory(gap, "since").benchmarkStatus).toBe("no_marks");
   });
 });

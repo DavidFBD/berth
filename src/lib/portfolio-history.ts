@@ -1,6 +1,7 @@
 import type { Marks, OrderFacts } from "@/lib/benchmark";
 import { isTradingDay } from "@/lib/market-calendar";
 import { addDays, markAsOf, subtractMonths, type IsoDay } from "@/lib/marks";
+import type { SnapshotBase } from "@/lib/portfolio-days";
 
 /**
  * A person's money over time, beside the same money placed in a benchmark.
@@ -37,10 +38,22 @@ import { addDays, markAsOf, subtractMonths, type IsoDay } from "@/lib/marks";
  * - `benchmarkPct`: the benchmark's own price change over the same days;
  *   since first buy, from its price at the first order's minute.
  *
+ * A LATER START. When money moved without an order (a transfer, or a
+ * trade the ledger never saw) but a stored snapshot's holdings plus the
+ * orders after it explain everything since (lib/portfolio-days
+ * explainedFrom), the comparison starts from that snapshot: the shadow
+ * buys the benchmark with the snapshot's whole value at the benchmark's
+ * close that day, each listing's share kept apart for its sells, and both
+ * percentages are told from that close with only the later orders as
+ * flows. That is the same time weighting as a fixed range starting there.
+ * No window starts before it; `rebasedFrom` names the day on any window
+ * that starts on it.
+ *
  * REFUSALS. The benchmark line is null, never guessed, when the balance
- * held is not what the orders add up to ('unexplained_balance': a sell or a
- * transfer the ledger never saw, so the shadow would be buying for money
- * that is not there); when a buy has no dollar cost, a sell has no
+ * held is not what the orders add up to and no snapshot explains it
+ * ('unexplained_balance': a sell or a transfer the ledger never saw, after
+ * the newest snapshot, so the shadow would be buying for money that is not
+ * there); when a buy has no dollar cost, a sell has no
  * quantity, or a sell is larger than the orders say was held
  * ('unpriced_orders'); or when a buy has no benchmark price at its minute,
  * or the benchmark no closes ('no_marks'). With the first two `changePct`
@@ -112,6 +125,12 @@ export type HistoryInput = {
    * has. Absent means yes.
    */
   balanceExplained?: boolean;
+  /**
+   * With `balanceExplained` false: the snapshot from which the orders do
+   * explain the balance (lib/portfolio-days explainedFrom). The comparison
+   * starts there instead of being refused.
+   */
+  base?: SnapshotBase;
 };
 
 export type HistoryPoint = { day: IsoDay; value: number; benchmark: number | null };
@@ -138,6 +157,12 @@ export type HistoryResult = {
   /** Market days the window lived through after its first day. */
   tradingDays: number;
   benchmarkStatus: BenchmarkStatus;
+  /**
+   * The day this window starts on because money moved without an order
+   * before the snapshot it is built on (A LATER START): that snapshot's
+   * day, or the first valued day after it; null otherwise.
+   */
+  rebasedFrom: IsoDay | null;
 };
 
 /** How far a sell may exceed what the orders bought before it is refused. */
@@ -219,16 +244,20 @@ function shadowLine(
   symbol: string | undefined,
   marks: Marks,
   livePrice: number | null,
-  balanceExplained: boolean,
+  basis: Basis,
 ): { values: (number | null)[]; status: Exclude<BenchmarkStatus, "too_short"> } {
   const none = () => series.map(() => null);
-  if (!balanceExplained) return { values: none(), status: "unexplained_balance" };
+  if (basis === "unexplained") return { values: none(), status: "unexplained_balance" };
+  const base = basis === "orders" ? undefined : basis;
   const lastAsOf = series.at(-1)?.asOf ?? -Infinity;
-  const counted = orders.filter((order) => order.at <= lastAsOf);
+  const counted = orders.filter((order) => order.at <= lastAsOf && (!base || order.at > base.at));
 
   // Refusals first: an unpriced order outranks a missing mark, since a
   // mark can arrive tomorrow and a missing dollar cost cannot.
   const held = new Map<string, number>();
+  for (const holding of base?.holdings ?? []) {
+    held.set(holding.symbol, (held.get(holding.symbol) ?? 0) + holding.quantity);
+  }
   for (const order of counted) {
     if (order.direction === "buy") {
       if (order.usd === null || order.quantity === null) return { values: none(), status: "unpriced_orders" };
@@ -246,7 +275,20 @@ function shadowLine(
   const quantity = new Map<string, number>();
   const values: (number | null)[] = [];
   let next = 0;
-  for (const point of series) {
+  for (const [index, point] of series.entries()) {
+    if (base && index < base.index) {
+      values.push(null);
+      continue;
+    }
+    if (base && index === base.index) {
+      // The snapshot's whole value buys the benchmark at that day's close.
+      const close = closeOn(marks, base.day);
+      if (!(close && close > 0)) return { values: none(), status: "no_marks" };
+      for (const holding of base.holdings) {
+        units.set(holding.symbol, (units.get(holding.symbol) ?? 0) + (holding.quantity * holding.price) / close);
+        quantity.set(holding.symbol, (quantity.get(holding.symbol) ?? 0) + holding.quantity);
+      }
+    }
     for (; next < counted.length && counted[next].at <= point.asOf; next += 1) {
       const order = counted[next];
       const heldBefore = quantity.get(order.symbol) ?? 0;
@@ -270,6 +312,25 @@ function shadowLine(
     values.push(price === undefined ? null : total * price);
   }
   return { values, status: "ok" };
+}
+
+/**
+ * What the shadow is built on: every order ('orders'), a snapshot and the
+ * orders after it (A LATER START), or nothing ('unexplained').
+ */
+type Basis =
+  | "orders"
+  | "unexplained"
+  | { day: IsoDay; at: number; index: number; holdings: SnapshotBase["holdings"] };
+
+function basisOf(input: HistoryInput, series: readonly SeriesPoint[]): Basis {
+  if (input.balanceExplained ?? true) return "orders";
+  const base = input.base;
+  if (!base) return "unexplained";
+  const index = series.findIndex((point) => point.day === base.day);
+  const at = Date.parse(base.asOf);
+  if (index === -1 || !Number.isFinite(at)) return "unexplained";
+  return { day: base.day, at, index, holdings: base.holdings };
 }
 
 /** The first day of a range, before the first-value rule is applied. */
@@ -311,24 +372,25 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
     benchmarkPct: null,
     tradingDays: 0,
     benchmarkStatus: "too_short",
+    rebasedFrom: null,
   };
   const last = series.at(-1);
   if (!last) return empty;
 
-  const start = rangeStart(range, last.day, firstBuyDay(series, orders));
-  if (start === undefined) return empty;
+  const basis = basisOf(input, series);
+  const base = typeof basis === "object" ? basis : undefined;
+  const rangeFrom = rangeStart(range, last.day, firstBuyDay(series, orders));
+  if (rangeFrom === undefined) return empty;
+  // No window starts before the snapshot the comparison is built on.
+  const start = base && base.day > rangeFrom ? base.day : rangeFrom;
   const from = series.findIndex((point) => point.day >= start && point.value > 0);
   if (from === -1) return empty;
+  // The window's first day when the snapshot is what set it (a snapshot
+  // worth nothing moves it to the first valued day after).
+  const rebasedFrom = base && start === base.day ? series[from].day : null;
 
   const livePrice = input.live?.benchmarkPrice ?? null;
-  const shadow = shadowLine(
-    series,
-    orders,
-    input.benchmarkSymbol,
-    input.benchmarkMarks,
-    livePrice,
-    input.balanceExplained ?? true,
-  );
+  const shadow = shadowLine(series, orders, input.benchmarkSymbol, input.benchmarkMarks, livePrice, basis);
   const window = series.slice(from);
   const days: HistoryPoint[] = window.map((point, index) => ({
     day: point.day,
@@ -338,7 +400,7 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
   const since = window[0].day;
   const tradingDays = tradingDaysBetween(since, window.at(-1)!.day);
   if (window.length < 2) {
-    return { ...empty, days, since, tradingDays, benchmarkStatus: "too_short" };
+    return { ...empty, days, since, tradingDays, benchmarkStatus: "too_short", rebasedFrom };
   }
   const refused = shadow.status === "unexplained_balance" || shadow.status === "unpriced_orders";
 
@@ -346,7 +408,8 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
   // the first point's own flows (its base is what came before, nothing);
   // a fixed range starts from its first close, so its first point's flows
   // are already inside that value.
-  const fromZero = range === "since";
+  // A window built on a snapshot starts from its value, as a fixed range does.
+  const fromZero = range === "since" && !base;
   const flowIn = window.map(() => 0);
   const flowOut = window.map(() => 0);
   let changeKnown = !refused;
@@ -395,6 +458,7 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
     benchmarkPct,
     tradingDays,
     benchmarkStatus: shadow.status,
+    rebasedFrom,
   };
 }
 
@@ -408,8 +472,11 @@ export function availableRanges(input: HistoryInput): Range[] {
   const series = buildSeries(input);
   const last = series.at(-1);
   if (!last) return [];
-  const firstValued = series.find((point) => point.value > 0)?.day;
-  if (!firstValued) return [];
+  const valued = series.find((point) => point.value > 0)?.day;
+  if (!valued) return [];
+  // A comparison built on a snapshot has no days before it to fill a range.
+  const base = basisOf(input, series);
+  const firstValued = typeof base === "object" && base.day > valued ? base.day : valued;
   const since = portfolioHistory(input, "since");
 
   const available: Range[] = [];

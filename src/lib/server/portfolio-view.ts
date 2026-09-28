@@ -2,7 +2,7 @@ import { BENCHMARKS, type Benchmark } from "@/lib/benchmarks";
 import { isTradingDay } from "@/lib/market-calendar";
 import { MARKS_MARKET_ID_BY_SYMBOL } from "@/lib/market-ids";
 import { newYorkDay } from "@/lib/marks";
-import { ledgerExplains, valueHoldings } from "@/lib/portfolio-days";
+import { explainedFrom, ledgerExplains, valueHoldings } from "@/lib/portfolio-days";
 import {
   historyRanges,
   type HistoryResult,
@@ -43,7 +43,10 @@ import {
  * - `days[].value` is always dollars; `days[].benchmark` is dollars or
  *   null (every point null unless `benchmarkStatus` is 'ok'; a single null
  *   with 'ok' is a day the benchmark has no close).
- * - `benchmarkStatus` 'unexplained_balance' or 'unpriced_orders':
+ * - `rebasedFrom` a day: money moved without an order before it, so the
+ *   window starts on that day's snapshot and both lines are told from it.
+ * - `benchmarkStatus` 'unexplained_balance' (money moved after the newest
+ *   snapshot too) or 'unpriced_orders':
  *   `changePct` AND `benchmarkPct` are both null (money moved that no order
  *   prices, so neither percentage can be told), the dollar values stay.
  * - 'no_marks' (a buy with no benchmark price at its minute, or no closes):
@@ -215,15 +218,22 @@ export async function loadPortfolioHistory({
       Object.fromEntries(lastDay.holdings.map((holding) => [holding.symbol, holding.quantity])),
     );
   }
+  // When they do not, money moved without an order: the comparison starts
+  // from the first snapshot the orders explain everything after.
+  const base = balanceExplained ? undefined : explainedFrom(days, orders, liveInputs?.balances);
+  // A day rebuilt from the orders after that snapshot would leave out the
+  // move, so only snapshots are drawn from it on.
+  const drawn = base ? days.filter((day) => day.source === "snapshot" || day.day <= base.day) : days;
 
   const { ranges, available } = historyRanges({
-    days,
+    days: drawn,
     orders,
     benchmarkSymbol: benchmark.symbol,
     benchmarkMarks: marks[benchmark.symbol],
     listingCloses: marks,
     live,
     balanceExplained,
+    base,
   });
 
   const response: PortfolioHistoryResponse = {

@@ -81,6 +81,11 @@ const PAY_PRICE_IDS: Readonly<Record<string, string>> = {
   s: "sonic-3",
   stx: "blockstack",
   hype: "hyperliquid",
+  // The hub's own form of a coin, paid from the account on Sonic. Only
+  // wrappers taken as one to one with their coin: sodaBTC is the SDK's
+  // soda vault for Bitcoin (SodaTokens.sodaBTC). Others stay unpriced
+  // until checked.
+  sodabtc: "bitcoin",
 };
 
 /** The id to price a pay token by, from this list, then the app's own. */

@@ -150,6 +150,9 @@ describe("helpers", () => {
     expect(priceIdFor("KAIA")).toBe("kaia");
     expect(priceIdFor("aave", { aave: "aave" })).toBe("aave");
     expect(priceIdFor("NOPE")).toBeUndefined();
+    expect(priceIdFor("sodaBTC")).toBe("bitcoin");
+    expect(priceIdFor("sodaETH")).toBeUndefined();
+    expect(priceIdFor("soda")).toBeUndefined();
   });
 
   it("counts only dollar stablecoins as dollars", () => {

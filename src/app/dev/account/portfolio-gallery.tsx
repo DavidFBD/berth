@@ -9,6 +9,13 @@ import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route
 import { compareHolding, type Marks, type OrderFacts } from "@/lib/benchmark";
 import { BENCHMARKS } from "@/lib/benchmarks";
 import { TOKEN_LISTINGS } from "@/lib/listings";
+import { markAsOf } from "@/lib/marks";
+import {
+  explainedFrom,
+  ledgerExplains,
+  type Holding,
+  type SnapshotBase,
+} from "@/lib/portfolio-days";
 import { historyRanges, type PortfolioDay } from "@/lib/portfolio-history";
 import MARKS_JSON from "./portfolio-marks.json";
 
@@ -22,6 +29,8 @@ import MARKS_JSON from "./portfolio-marks.json";
  *   /dev/account?portfolio=four-days      a first buy four market days ago
  *   /dev/account?portfolio=large          the same stretch at four-digit dollars
  *   /dev/account?portfolio=value-only     a buy paid in a coin with no price
+ *   /dev/account?portfolio=moved          money moved without an order; compared from the next snapshot
+ *   /dev/account?portfolio=moved-today    money moved since the last snapshot; nothing to compare yet
  *   /dev/account?portfolio=first-day      bought today, nothing to draw yet
  *   /dev/account?portfolio=empty          nothing held
  *   /dev/account?portfolio=loading        the query still out
@@ -42,6 +51,8 @@ export const PORTFOLIO_STATES = [
   "large",
   "four-days",
   "value-only",
+  "moved",
+  "moved-today",
   "first-day",
   "empty",
   "loading",
@@ -53,7 +64,16 @@ const FEE = 0.003;
 
 type Buy = { symbol: string; day: string; usd: number; unpriced?: boolean };
 type Sell = { symbol: string; day: string; share: number };
-type Scene = { from: string; buys: Buy[]; sells: Sell[] };
+/** A share of a holding that left the account without an order. */
+type Moved = { symbol: string; day: string; share: number };
+type Scene = {
+  from: string;
+  buys: Buy[];
+  sells: Sell[];
+  moved?: Moved[];
+  /** Money moved after the newest snapshot, seen only in today's balances. */
+  movedToday?: boolean;
+};
 
 const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
   "three-months": {
@@ -92,6 +112,25 @@ const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
     ],
     sells: [],
   },
+  moved: {
+    from: "2026-09-10",
+    buys: [
+      { symbol: "NVDA", day: "2026-09-10", usd: 12 },
+      { symbol: "TSLA", day: "2026-09-10", usd: 8 },
+      { symbol: "AAPL", day: "2026-09-18", usd: 6 },
+    ],
+    sells: [],
+    moved: [{ symbol: "TSLA", day: "2026-09-16", share: 0.6 }],
+  },
+  "moved-today": {
+    from: "2026-09-10",
+    buys: [
+      { symbol: "NVDA", day: "2026-09-10", usd: 12 },
+      { symbol: "TSLA", day: "2026-09-10", usd: 8 },
+    ],
+    sells: [],
+    movedToday: true,
+  },
   "first-day": {
     from: "2026-09-24",
     buys: [{ symbol: "AAPL", day: "2026-09-24", usd: 15 }],
@@ -114,11 +153,12 @@ function build(scene: Scene) {
   const events = [
     ...scene.buys.map((buy) => ({ kind: "buy" as const, ...buy })),
     ...scene.sells.map((sell) => ({ kind: "sell" as const, ...sell })),
+    ...(scene.moved ?? []).map((moved) => ({ kind: "moved" as const, ...moved })),
   ].sort((a, b) => a.day.localeCompare(b.day));
 
   const held = new Map<string, number>();
   const calendar = MARKS.NVDA.dates.filter((day) => day >= scene.from);
-  const days: PortfolioDay[] = [];
+  const days: (PortfolioDay & SnapshotBase & { source: "snapshot" })[] = [];
   let next = 0;
   for (const day of calendar) {
     for (; next < events.length && events[next].day <= day; next += 1) {
@@ -139,6 +179,8 @@ function build(scene: Scene) {
             BENCHMARKS.map(({ symbol }) => [symbol, closeOnOrBefore(MARKS[symbol], event.day)]),
           ),
         });
+      } else if (event.kind === "moved") {
+        held.set(event.symbol, (held.get(event.symbol) ?? 0) * (1 - event.share));
       } else {
         const quantity = (held.get(event.symbol) ?? 0) * event.share;
         held.set(event.symbol, (held.get(event.symbol) ?? 0) - quantity);
@@ -151,11 +193,16 @@ function build(scene: Scene) {
         });
       }
     }
-    const value = [...held].reduce(
-      (sum, [symbol, quantity]) => sum + quantity * closeOnOrBefore(MARKS[symbol], day),
-      0,
-    );
-    days.push({ day, value });
+    const holdings: Holding[] = [...held]
+      .filter(([, quantity]) => quantity > 0)
+      .map(([symbol, quantity]) => ({
+        symbol,
+        quantity,
+        price: closeOnOrBefore(MARKS[symbol], day),
+        source: "mark",
+      }));
+    const value = holdings.reduce((sum, holding) => sum + holding.quantity * holding.price, 0);
+    days.push({ day, value, asOf: markAsOf(day), holdings, source: "snapshot" });
   }
 
   const last = calendar.at(-1)!;
@@ -189,7 +236,19 @@ function seededClient(state: PortfolioState): { client: QueryClient; rows: Holdi
     const rows = state === "loading" ? build(SCENES["four-days"]).rows : [];
     return { client, rows };
   }
-  const { orders, days, rows } = build(SCENES[state]);
+  const scene = SCENES[state];
+  const { orders, days, rows } = build(scene);
+  // As the server judges it (lib/server/portfolio-view), on the newest
+  // snapshot; a move after it is only in today's balances.
+  const newest = days.at(-1)!;
+  const balanceExplained =
+    !scene.movedToday &&
+    ledgerExplains(
+      orders,
+      Object.fromEntries(newest.holdings.map((holding) => [holding.symbol, holding.quantity])),
+    );
+  const base =
+    balanceExplained || scene.movedToday ? undefined : explainedFrom(days, orders, undefined);
   for (const benchmark of BENCHMARKS) {
     const { ranges, available } = historyRanges({
       days,
@@ -197,6 +256,8 @@ function seededClient(state: PortfolioState): { client: QueryClient; rows: Holdi
       benchmarkSymbol: benchmark.symbol,
       benchmarkMarks: MARKS[benchmark.symbol],
       listingCloses: MARKS,
+      balanceExplained,
+      base,
     });
     const response: PortfolioHistoryResponse = {
       benchmark: { symbol: benchmark.symbol, name: benchmark.name },
