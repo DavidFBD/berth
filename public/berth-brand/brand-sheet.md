@@ -42,7 +42,7 @@ Also avoid: the mark in accent on bg, the mark rotated, the mark with a stroke o
 2. Your berth in the market.
 3. Where savings come ashore.
 
-Positioning line, verbatim: A brokerage for the money that already lives onchain.
+Positioning line, verbatim: Stocks for the money that already lives onchain.
 
 ## Punctuation
 Commas and periods. No dashes, no emoji, no play on "birth".
