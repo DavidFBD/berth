@@ -5,7 +5,7 @@ import { Providers } from "@/components/providers";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-/* Plain brokerage, one column, phone first, the same layout on desktop.
+/* Plain and calm, one column, phone first, the same layout on desktop.
    Berth's type system: Archivo for display and the wordmark, Public Sans
    for body and UI, IBM Plex Mono for numbers, tickers, and addresses. */
 const displayFont = Archivo({
@@ -27,7 +27,7 @@ const moneyFont = IBM_Plex_Mono({
 });
 
 const DESCRIPTION =
-  "A brokerage for the money that already lives onchain. Buy US stocks and ETFs with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature, in your own custody.";
+  "Stocks for the money that already lives onchain. Buy US stocks and ETFs with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature, in your own custody.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.berthmarkets.com"),
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Berth. A brokerage for the money that already lives onchain.",
+        alt: "Berth. Stocks for the money that already lives onchain.",
       },
     ],
   },
