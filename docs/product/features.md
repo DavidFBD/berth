@@ -40,7 +40,7 @@ Positioning line: Stocks for the money that already lives onchain.
    account beside everything else it does (the web, your files, your other
    tools) and draft orders you sign in Berth. Disconnect any time.
 9. **Ranks, XP and avatars.** Earn XP for buying, holding, adding an email
-   and bringing friends; climb ten harbour ranks from Cleat to the top, with
+   and bringing friends; climb ten harbour ranks from First Line to Harbour Master, with
    avatars and features unlocked on the way.
 10. **Invite friends.** Share your link; you both earn XP when they join and
     trade.
