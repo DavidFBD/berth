@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createPublicClient, http } from "viem";
 import { sonic } from "viem/chains";
 import { parseSiweMessage, validateSiweMessage } from "viem/siwe";
+import { siweMadeForBerth } from "@/lib/server/siwe-origin";
 import {
   issueWalletSession,
   readNonceToken,
@@ -42,7 +43,8 @@ export async function POST(request: NextRequest) {
   const fields = parseSiweMessage(body.message);
   if (
     !fields.address ||
-    !validateSiweMessage({ message: fields, nonce })
+    !validateSiweMessage({ message: fields, nonce }) ||
+    !siweMadeForBerth(fields)
   ) {
     return NextResponse.json({ error: "invalid message" }, { status: 401 });
   }
