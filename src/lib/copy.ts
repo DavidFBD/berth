@@ -646,6 +646,8 @@ export type Copy = {
   assistantStepsClaude: readonly string[];
   assistantStepsChatGpt: readonly string[];
   assistantStepsGrok: readonly string[];
+  /** The (i) beside Your assistant: why connect one. */
+  assistantWhy: string;
   /** Under ChatGPT's steps: the icon its app form asks for. */
   assistantIconDownload: string;
   /** The primary action in a sheet: "Open Claude". */
@@ -675,6 +677,8 @@ export type Copy = {
   /* — Ask: the assistant inside Berth (components/chat). It reads and drafts, the person signs — */
   chatOpen: string;
   chatOpenLabel: string;
+  /** The (i) beside Ask: why use it. */
+  chatWhy: string;
   chatTitle: string;
   chatSub: string;
   /** The model's name, as the not advice line says it. */
@@ -1372,6 +1376,8 @@ export const COPY: Copy = {
     "Sign in to Berth and allow it.",
   ],
   assistantIconDownload: "Berth's icon, for the app form",
+  assistantWhy:
+    "Use the assistant you already have. It reads Berth beside the web, your files and your other tools, so it can research what you own and draft an order you sign here.",
   assistantStepsGrok: [
     "Open Grok below and choose New connector, then Custom. Needs SuperGrok or X Premium+.",
     "Name it Berth and paste the address.",
@@ -1396,6 +1402,8 @@ export const COPY: Copy = {
 
   chatOpen: "Ask",
   chatOpenLabel: "Ask the assistant",
+  chatWhy:
+    "Quick answers without leaving Berth. It reads your account and today's market, and turns a request like buy $20 of NVIDIA into an order ready to sign.",
   chatTitle: "Ask",
   chatSub: "About the market and your account.",
   chatModelName: "GPT-6 Luna",

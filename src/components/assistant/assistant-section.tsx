@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowSquareOut, ArrowUpRight, CaretDown, Check, CheckCircle, Copy, DownloadSimple } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
 import { useAssistantGrants, useDisconnectAssistant } from "@/hooks/use-profile";
@@ -102,7 +103,12 @@ export function AssistantSection({
   return (
     <div className="flex flex-col gap-3 px-3 py-3">
       <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-foreground">{copy.assistantTitle}</span>
+        <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          {copy.assistantTitle}
+          <InfoTip label={copy.assistantTitle}>
+            <p>{copy.assistantWhy}</p>
+          </InfoTip>
+        </span>
         <p className="text-xs leading-relaxed text-muted-foreground">{copy.assistantBody}</p>
         <a
           href="/assistants"

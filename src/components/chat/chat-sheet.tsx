@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { Trash } from "@phosphor-icons/react";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
 import { ChatPanel } from "@/components/chat/chat-panel";
@@ -87,7 +88,12 @@ export function ChatSheetFrame({
         <div className="flex h-[calc(100svh-6rem)] min-h-0 flex-col group-data-[swipe-axis=x]/drawer-popup:h-dvh">
           <div className="flex shrink-0 items-start justify-between gap-3 px-4 pt-4 pb-2 group-data-[swipe-axis=x]/drawer-popup:pt-6">
             <div className="flex min-w-0 flex-col gap-0.5">
-              <DrawerTitle className="font-display text-lg font-semibold">{copy.chatTitle}</DrawerTitle>
+              <div className="flex items-center gap-1.5">
+                <DrawerTitle className="font-display text-lg font-semibold">{copy.chatTitle}</DrawerTitle>
+                <InfoTip label={copy.chatTitle}>
+                  <p>{copy.chatWhy}</p>
+                </InfoTip>
+              </div>
               <DrawerDescription className="text-sm text-muted-foreground">{copy.chatSub}</DrawerDescription>
             </div>
             {chat.messages.length > 0 && (
