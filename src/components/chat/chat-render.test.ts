@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { UIMessage } from "ai";
 import { AssistantMessage, DraftCard, readAssistantParts } from "./chat-parts";
 import { ChatMarkdown } from "./chat-markdown";
-import { stateOf } from "./chat-panel";
+import { stateOf, thinkingShown } from "./chat-panel";
 import { chatErrorCode } from "./use-berth-chat";
 
 /**
@@ -108,5 +108,27 @@ describe("states", () => {
     expect(stateOf(undefined, "disabled")).toBe("unavailable");
     expect(stateOf(undefined, "limit_day")).toBe("limit_day");
     expect(stateOf(undefined, "limit_minute")).toBe("open");
+  });
+});
+
+describe("thinkingShown", () => {
+  const tool = (name: string, state: "input-available" | "output-available") =>
+    ({ type: `tool-${name}`, toolCallId: name, state, input: {}, ...(state === "output-available" ? { output: { text: "ok" } } : {}) }) as UIMessage["parts"][number];
+  const answer = (...parts: UIMessage["parts"]): UIMessage => ({ id: "a", role: "assistant", parts });
+
+  it("shows before the first token and between a tool and the words after it", () => {
+    expect(thinkingShown("submitted", undefined)).toBe(true);
+    expect(thinkingShown("streaming", answer())).toBe(true);
+    expect(thinkingShown("streaming", answer(tool("get_moves", "output-available")))).toBe(true);
+  });
+
+  it("gives way to a running tool's own line, and to streaming words", () => {
+    expect(thinkingShown("streaming", answer(tool("get_moves", "input-available")))).toBe(false);
+    expect(thinkingShown("streaming", answer({ type: "text", text: "Three listings" }))).toBe(false);
+    expect(thinkingShown("ready", answer())).toBe(false);
+  });
+
+  it("stays for a running tool with no words of its own", () => {
+    expect(thinkingShown("streaming", answer(tool("get_weather", "input-available")))).toBe(true);
   });
 });

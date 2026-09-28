@@ -79,6 +79,8 @@ export function Home() {
   // Ask, the in-app assistant. A draft opened from it closes the sheet for
   // the order drawer and reopens it once that drawer closes.
   const [chatOpen, setChatOpen] = useState(false);
+  // Whether an answer is streaming in the chat, so the phone's dock can say so.
+  const [chatBusy, setChatBusy] = useState(false);
   // Loaded on first open, then kept, so the conversation outlives the sheet.
   const [chatLoaded, setChatLoaded] = useState(false);
   // A suggestion tapped on the board, sent once the sheet has the chat's status.
@@ -300,6 +302,7 @@ export function Home() {
             onOpenDraft={openChatDraft}
             pending={pendingPrompt}
             onPendingTaken={takePending}
+            onBusyChange={setChatBusy}
           />
         )}
 
@@ -309,7 +312,7 @@ export function Home() {
           </span>
         </footer>
       </div>
-      {askAvailable && <AskDock onOpen={() => openChat()} hidden={anyDrawerOpen} />}
+      {askAvailable && <AskDock onOpen={() => openChat()} hidden={anyDrawerOpen} busy={chatBusy} />}
     </AuthGate>
   );
 }

@@ -453,6 +453,8 @@ export type Copy = {
   ariaSharesToWithdraw: string;
   backToNetworks: string;
   loadingLabel: string;
+  /** The thinking orb's name, by what it is showing (components/ui/thinking-orb). */
+  orbLabel: Record<"working" | "searching" | "solving" | "composing" | "connecting" | "breathing", string>;
 
   /* — order failures, spoken by the order machine itself — */
   errWalletDrifted: string;
@@ -1183,6 +1185,14 @@ export const COPY: Copy = {
   ariaSharesToWithdraw: "Shares to withdraw",
   backToNetworks: "Back to networks",
   loadingLabel: "Loading",
+  orbLabel: {
+    working: "Working",
+    searching: "Looking",
+    solving: "Working it out",
+    composing: "Writing",
+    connecting: "Handing back",
+    breathing: "Loading",
+  },
 
   errWalletDrifted: "Your wallet switched network mid way. Please try again.",
   errCouldNotPrepare: "Could not prepare the order. Please try again.",
@@ -1228,7 +1238,7 @@ export const COPY: Copy = {
   infoDocsCta: "SODAX developer docs",
 
   walletAccountDrawerTitle: "Your account",
-  walletAccountDrawerSub: "Your rank, rewards and avatar, and the assistant you connect to Berth.",
+  walletAccountDrawerSub: "Your rank, rewards and avatar, and the AI you bring Berth into.",
   fundsAddedTitle: "Funds added",
   fundsAddedBody: "USDC is on its way to your account.",
   walletEmbeddedLabel: "Your account wallet",
@@ -1249,13 +1259,13 @@ export const COPY: Copy = {
   ladderHere: "You are here.",
   unlockNext: (unlock) =>
     unlock.kind === "chat"
-      ? "Unlocks Ask, the assistant inside Berth."
+      ? "Unlocks the Assistant, Berth's own AI."
       : unlock.kind === "invite"
         ? "Unlocks your own invite link."
         : `Unlocks the ${unlock.face} face.`,
   unlockDone: (unlock) =>
     unlock.kind === "chat"
-      ? "Ask, the assistant inside Berth, is open to you."
+      ? "The Assistant, Berth's own AI, is open to you."
       : unlock.kind === "invite"
         ? "Your own invite link is open to you."
         : `The ${unlock.face} face is yours to wear.`,
@@ -1264,7 +1274,7 @@ export const COPY: Copy = {
     `Level ${level} · +${total.toLocaleString()} XP${reason ? ` ${reason}` : ""}`,
   levelUpUnlock: (unlock) =>
     unlock.kind === "chat"
-      ? "Ask is open. It is at the top of the screen."
+      ? "The Assistant is open. It is at the top of the screen."
       : unlock.kind === "invite"
         ? "Your own invite link is ready in your account."
         : `The ${unlock.face} face is now in your avatar picker.`,
@@ -1394,22 +1404,22 @@ export const COPY: Copy = {
   authorizeFailed: "That did not go through. Please try again.",
   authorizeNeedsWallet: "To allow it, connect the wallet you use for Berth in this window. Berth asks it for a free signature to know it is you.",
   authorizeConnectWallet: "Connect your wallet",
-  authorizeExpired: "This request has expired. Start again from your assistant.",
+  authorizeExpired: "This request has expired. Start again from your AI.",
   authorizeErrorTitle: "This link cannot be used",
-  authorizeErrorUnknownClient: "Berth does not recognise the app that sent you here. Start again from your assistant.",
+  authorizeErrorUnknownClient: "Berth does not recognise the app that sent you here. Start again from your AI.",
   authorizeErrorRedirect: "The app that sent you here asked to be answered at an address it never registered, so Berth will not send you there.",
   authorizeTroubleTitle: "Berth could not open this request",
   authorizeTroubleBody: "Something went wrong on our side. Nothing was connected. Please try again in a moment.",
   authorizeTryAgain: "Try again",
 
-  assistantTitle: "Your assistant",
+  assistantTitle: "Bring Berth into your AI",
   assistantBody:
-    "Let your assistant read your account. It can see what you own, what the same money would have made in other holdings, and what moved today. It can suggest a buy or a sell, and nothing happens until you approve and sign it, here in Berth.",
+    "Let your AI read your account. It can see what you own, what the same money would have made in other holdings, and what moved today. It can suggest a buy or a sell, and nothing happens until you approve and sign it, here in Berth.",
   assistantClaude: "Claude",
   assistantChatGpt: "ChatGPT",
   assistantGrok: "Grok",
   assistantSheetTitle: (name) => `Connect ${name}`,
-  assistantSheetBody: "Berth is added to your assistant as a connector. You sign in here once, and can disconnect it whenever you like.",
+  assistantSheetBody: "Berth is added to your AI as a connector. You sign in here once, and can disconnect it whenever you like.",
   assistantSheetConnected: (name) => `${name} is connected to this account.`,
   assistantButtonConnected: (name) => `${name}, connected`,
   assistantPromptsTitle: "Try asking",
@@ -1437,7 +1447,7 @@ export const COPY: Copy = {
   ],
   assistantIconDownload: "Berth's icon, for the app form",
   assistantWhy:
-    "Use the assistant you already have. It reads Berth beside the web, your files and your other tools, so it can research what you own and draft an order you sign here.",
+    "Use the AI you already have: Claude, ChatGPT or Grok. It reads Berth beside the web, your files and your other tools, so it can research what you own and draft an order you sign here.",
   assistantStepsGrok: [
     "Open Grok below and choose New connector, then Custom. Needs SuperGrok or X Premium+.",
     "Name it Berth and paste the address.",
@@ -1454,17 +1464,17 @@ export const COPY: Copy = {
   assistantDisconnectFailed: "That did not go through. Please try again.",
   assistantLocalApp: "An app on this computer",
 
-  draftOpenedTitle: "Suggested by your assistant",
+  draftOpenedTitle: "Suggested by your AI",
   draftOpenedBody: "Check the amount and what you pay with. Nothing is sent until you sign.",
   draftUnknownListing: "That suggestion names something Berth does not offer.",
   draftNothingToSell: (name) => `There is no ${name} in your account to sell.`,
   draftCouldNotCheck: (name) => `Berth could not check your ${name} just now. You can sell it from what you own when it shows.`,
 
-  chatOpen: "Ask",
-  chatOpenLabel: "Ask the assistant",
+  chatOpen: "Assistant",
+  chatOpenLabel: "Open the Assistant",
   chatWhy:
     "Quick answers without leaving Berth. It reads your account and today's market, and turns a request like buy $20 of NVIDIA into an order ready to sign.",
-  chatTitle: "Ask",
+  chatTitle: "Assistant",
   chatSub: "About the market and your account.",
   chatModelName: "GPT-6 Luna",
   chatNotAdvice: (model) => `${model} is an AI. It shares facts, not advice. You sign every order.`,
@@ -1500,11 +1510,11 @@ export const COPY: Copy = {
   chatLimitMinute: "One moment. Try again in a minute.",
   chatLimitDay: "That is today's messages. More tomorrow, and more as your rank rises.",
   chatLeft: (n) => (n === 1 ? "1 message left today." : `${n} messages left today.`),
-  chatBudget: "The assistant is resting until the 1st.",
-  chatLimitMonth: "You have used this month's share of the assistant. It opens again on the 1st.",
-  chatUnavailable: "The assistant is not available right now. Everything else in Berth works as usual.",
+  chatBudget: "The Assistant is resting until the 1st.",
+  chatLimitMonth: "You have used this month's share of the Assistant. It opens again on the 1st.",
+  chatUnavailable: "The Assistant is not available right now. Everything else in Berth works as usual.",
   chatTooLong: "That message is too long. Try a shorter one.",
-  chatLockedTitle: (rankName) => `Ask opens at ${rankName}`,
+  chatLockedTitle: (rankName) => `The Assistant opens at ${rankName}`,
   chatLockedBody: (xp) =>
     `${xp} XP to go. Adding an email to your account or making your first buy gets you there.`,
   privacyLink: "Privacy",
@@ -1512,7 +1522,7 @@ export const COPY: Copy = {
     title: "Privacy policy",
     status: "Effective 28 September 2026.",
     intro: [
-      "This policy explains what Berth collects when you use www.berthmarkets.com and the Berth connector for assistants, why, who else sees it, how long we keep it, and what you can ask of us.",
+      "This policy explains what Berth collects when you use www.berthmarkets.com and the Berth connector for your AI, why, who else sees it, how long we keep it, and what you can ask of us.",
       "Berth is self custodial. We never hold your keys and we never hold your money.",
     ],
     sections: [
@@ -1534,7 +1544,7 @@ export const COPY: Copy = {
           "Your orders. For each order: buy or sell, which listing, the quantity, what you paid with and on which network, the fee, the value in dollars, the transaction identifiers, the delivery address, and the time. We also keep the price of each comparison fund at the minute of the order, so your results can be drawn beside it.",
           "Your daily value. Once a day, after the New York close, we read your balances from the blockchain and keep that day's holdings and value, so your history can be drawn.",
           "Invite links. When someone opens an invite link, we count the visit against the invite code. We do not record who opened it.",
-          "Assistants. If you connect an assistant, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what the assistant asked or what Berth answered.",
+          "Your AI. If you connect Claude, ChatGPT, Grok or another AI, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what your AI asked or what Berth answered.",
           "Error reports. When an order fails or does not settle, the app sends a report so we can fix the cause: the step it stopped at, the networks, the token and amount, the transaction hashes, a shortened form of your address, the error text, recent app logs, the page address, your screen size and your browser's user agent. Keys and tokens are removed first, and it never includes your email address.",
           "Usage statistics. We count page views with Vercel Web Analytics, which uses no cookies.",
         ],
@@ -1561,26 +1571,26 @@ export const COPY: Copy = {
       },
       {
         id: "assistants",
-        heading: "Assistants and the Berth connector",
+        heading: "Your AI and the Berth connector",
         body: [
           "You can connect Claude, ChatGPT or Grok to your Berth account through Berth's connector at www.berthmarkets.com/mcp. Nothing is shared until you approve the connection on Berth's own consent screen, signed in to your account.",
-          "Once approved, an assistant can do two things.",
+          "Once approved, your AI can do two things.",
         ],
         list: [
           "Read. Your holdings, orders, results against a benchmark, rank and XP, account addresses, and the public board: listings, prices, what moved and the news.",
           "Draft. Prepare a buy or a sell as a link. The link opens Berth with the order filled in, and nothing happens unless you check it and sign it yourself.",
         ],
         after: [
-          "An assistant never holds your keys, never signs and never moves money. It is not given your email address.",
-          "What an assistant does with Berth's answers is governed by its provider's own terms and privacy policy: Anthropic for Claude, OpenAI for ChatGPT, xAI for Grok. Those answers may be kept in your chat history with that provider.",
-          "To disconnect, open the account drawer in Berth, go to Your assistant, and choose Disconnect. Access ends straight away. You can also remove the connector in the assistant's own settings.",
+          "Your AI never holds your keys, never signs and never moves money. It is not given your email address.",
+          "What your AI does with Berth's answers is governed by its provider's own terms and privacy policy: Anthropic for Claude, OpenAI for ChatGPT, xAI for Grok. Those answers may be kept in your chat history with that provider.",
+          "To disconnect, open the account drawer in Berth, go to Bring Berth into your AI, and choose Disconnect. Access ends straight away. You can also remove the connector in your AI's own settings.",
         ],
       },
       {
         id: "assistant-chat",
-        heading: "The assistant chat in Berth",
+        heading: "The Assistant in Berth",
         body: [
-          "If you use the assistant chat in Berth, your messages, and the account details needed to answer them, are sent to OpenAI to generate the replies. Berth does not store the content of the chat. We keep only the number of tokens each reply used and what it cost. OpenAI handles the messages under its API data policy.",
+          "If you use the Assistant, Berth's own chat, your messages, and the account details needed to answer them, are sent to OpenAI to generate the replies. Berth does not store the content of the chat. We keep only the number of tokens each reply used and what it cost. OpenAI handles the messages under its API data policy.",
         ],
       },
       {
@@ -1594,7 +1604,7 @@ export const COPY: Copy = {
           "SODAX, whose service, solvers and relayers price, route and fill your orders. They receive the addresses, amounts and transactions needed to fill them.",
           "Blockchain networks. Your browser reads balances and sends transactions through public network nodes. A Bitcoin order links to mempool.space so you can follow it there.",
           "GitHub, where error reports are kept in a private repository.",
-          "OpenAI, if you use the assistant chat in Berth, as described above.",
+          "OpenAI, if you use the Assistant in Berth, as described above.",
           "TypeSafe, whose Jev model helps choose the one line shown at the top of the app, such as news about something you own. It receives which listings your account holds and whether it has cash to spend, never your name, email or address.",
           "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
         ],
@@ -1625,10 +1635,10 @@ export const COPY: Copy = {
         heading: "How long we keep it",
         body: [],
         list: [
-          "Your account, rewards, orders, daily values and assistant approvals: for as long as your account is active, and after that as long as needed for legal, accounting and security purposes.",
-          "Assistant sign in codes: they expire after 90 seconds and are deleted within the hour.",
-          "Assistant access tokens last an hour and refresh tokens thirty days. Both are deleted a week after they expire or are revoked.",
-          "The log of assistant requests: 90 days.",
+          "Your account, rewards, orders, daily values and the AI apps you approved: for as long as your account is active, and after that as long as needed for legal, accounting and security purposes.",
+          "Sign in codes for your AI: they expire after 90 seconds and are deleted within the hour.",
+          "Your AI's access tokens last an hour and refresh tokens thirty days. Both are deleted a week after they expire or are revoked.",
+          "The log of requests from your AI: 90 days.",
           "Abuse limit counters: one day. They hold a hashed form of the caller's IP address, never the address itself.",
           "Invite link visits and error reports: up to 12 months.",
         ],
@@ -1637,7 +1647,7 @@ export const COPY: Copy = {
         id: "rights",
         heading: "Your choices and rights",
         body: [
-          "You can disconnect an assistant at any time, sign out, and clear the app's storage in your browser.",
+          "You can disconnect your AI at any time, sign out, and clear the app's storage in your browser.",
           `You can ask for a copy of the personal data we hold about you, ask us to correct it, or ask us to delete your account. Write to ${PRIVACY_OPERATOR.email} from the email address on your account, or with proof that you control the wallet. We answer within 30 days.`,
           "When we delete an account, we delete or anonymise its data within 30 days, except what the law requires us to keep. Records on a blockchain are public and permanent, and no one can delete them. Your money stays in your own wallet either way.",
           "Depending on where you live, including the European Economic Area and the United Kingdom, you may also have the right to object to or restrict how we use your data, to receive it in a portable form, and to complain to a data protection authority. Our lead supervisory authority is the Dutch Data Protection Authority, the Autoriteit Persoonsgegevens. You may also complain to the authority where you live.",
@@ -1647,7 +1657,7 @@ export const COPY: Copy = {
         id: "security",
         heading: "Security",
         body: [
-          "Connections to Berth are encrypted. Every secret we issue, such as an assistant's tokens, is stored only as a one way hash. An assistant's access is limited to what you approved and ends when you disconnect it, and a refresh token used twice ends the whole connection.",
+          "Connections to Berth are encrypted. Every secret we issue, such as your AI's tokens, is stored only as a one way hash. Your AI's access is limited to what you approved and ends when you disconnect it, and a refresh token used twice ends the whole connection.",
           "No system is perfectly secure. If a breach affects your data, we will tell you as the law requires.",
         ],
       },
@@ -1685,7 +1695,7 @@ export const COPY: Copy = {
     title: "Terms of use",
     status: "Effective 28 September 2026.",
     intro: [
-      "These terms apply when you use www.berthmarkets.com, the Berth app and the Berth connector for assistants. By using Berth you agree to them. If you do not agree, please do not use Berth.",
+      "These terms apply when you use www.berthmarkets.com, the Berth app and the Berth connector for your AI. By using Berth you agree to them. If you do not agree, please do not use Berth.",
       "Berth is software. It never holds your keys or your money, and it does not give investment advice.",
     ],
     sections: [
@@ -1712,7 +1722,7 @@ export const COPY: Copy = {
         heading: "No investment advice",
         body: [
           "Nothing in Berth is investment, financial, legal or tax advice, or a recommendation to buy or sell anything. Prices, history, comparisons, market posts and headlines are facts and reports, shown as they are.",
-          "The same holds for assistants. When you connect Claude, ChatGPT, Grok or another assistant, or use a chat inside Berth, what it tells you is information, not advice. An assistant can only read your account and draft an order as a link. It cannot place, sign or send an order. You decide, and you sign.",
+          "The same holds for AI apps. When you connect Claude, ChatGPT, Grok or another AI, or use the Assistant inside Berth, what it tells you is information, not advice. Your AI can only read your account and draft an order as a link. It cannot place, sign or send an order. You decide, and you sign.",
           "Past performance tells nothing certain about the future. Make your own decisions, and ask a qualified adviser if you need one.",
         ],
       },
@@ -1761,11 +1771,11 @@ export const COPY: Copy = {
       },
       {
         id: "assistants",
-        heading: "Assistants and other services",
+        heading: "Your AI and other services",
         body: [
-          "Berth's connector lets an assistant you choose read your account and draft orders as links, within what you approve when you connect it. You can disconnect it at any time, in Berth or in the assistant.",
-          "Assistants such as Claude, ChatGPT and Grok, wallets, sign in and card providers, SODAX and token issuers are run by others. Their own terms and privacy policies apply to your use of them, and we are not responsible for what they do or say.",
-          "What we keep about assistant requests is set out in our privacy policy.",
+          "Berth's connector lets the AI you choose read your account and draft orders as links, within what you approve when you connect it. You can disconnect it at any time, in Berth or in your AI.",
+          "AI apps such as Claude, ChatGPT and Grok, wallets, sign in and card providers, SODAX and token issuers are run by others. Their own terms and privacy policies apply to your use of them, and we are not responsible for what they do or say.",
+          "What we keep about requests from your AI is set out in our privacy policy.",
         ],
       },
       {
@@ -1806,17 +1816,17 @@ export const COPY: Copy = {
     ],
     backHome: "Back to Berth",
   },
-  assistantsLink: "How assistants work with Berth",
+  assistantsLink: "How your AI works with Berth",
   assistantsHelp: {
-    title: "Berth for assistants",
+    title: "Bring Berth into your AI",
     intro: [
       "Claude, ChatGPT and Grok can connect to your Berth account. Once connected, you can ask about what you own and the market in plain words, and have an order drafted for you to check and sign in Berth.",
-      "An assistant reads and drafts. You sign.",
+      "Your AI reads and drafts. You sign.",
     ],
-    connectHeading: "Connect an assistant",
+    connectHeading: "Connect your AI",
     connectBody:
-      "Each assistant adds Berth as a connector. You sign in to Berth once and choose what it may do: read your account, draft orders, or both. Signed in to Berth, you can also start from Your assistant in your account.",
-    canHeading: "What an assistant can do",
+      "Claude, ChatGPT and Grok each add Berth as a connector. You sign in to Berth once and choose what it may do: read your account, draft orders, or both. Signed in to Berth, you can also start from Bring Berth into your AI in your account.",
+    canHeading: "What your AI can do",
     can: [
       "See what you own, what it is worth now, and how it has done over a week, a month, three months or since your first buy.",
       "Compare your money with the same dollars in the S&P 500 fund, the Nasdaq 100 fund, Gold, Bitcoin or Treasury bills.",
@@ -1832,13 +1842,13 @@ export const COPY: Copy = {
     ],
     disconnectHeading: "Disconnect",
     disconnect: [
-      "In Berth, open your account and choose Disconnect beside the assistant under Your assistant. It stops working at once.",
-      "You can also remove Berth in the assistant's own connector settings.",
+      "In Berth, open your account and choose Disconnect beside it under Bring Berth into your AI. It stops working at once.",
+      "You can also remove Berth in your AI's own connector settings.",
     ],
     moreHeading: "Privacy and terms",
     more: [
-      "Berth keeps a short record of which tools an assistant called, never what you asked or what it answered.",
-      "The assistant itself is run by its own company, under its own terms and privacy policy.",
+      "Berth keeps a short record of which tools your AI called, never what you asked or what it answered.",
+      "Your AI itself is run by its own company, under its own terms and privacy policy.",
     ],
     support: `Questions or trouble connecting? Write to ${PRIVACY_OPERATOR.email}.`,
     backHome: "Back to Berth",

@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowUp, LockSimple, Stop } from "@phosphor-icons/react";
-import { isTextUIPart } from "ai";
+import { isTextUIPart, isToolUIPart, type UIMessage } from "ai";
 import { Button } from "@/components/ui/button";
-import { LoadingMark } from "@/components/loading-mark";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { useCopy } from "@/components/settings-provider";
-import { AssistantMessage, UserBubble, type ChatDraft } from "@/components/chat/chat-parts";
+import { AssistantMessage, UserBubble, readAssistantParts, type ChatDraft } from "@/components/chat/chat-parts";
 import type { BerthChat, ChatErrorCode } from "@/components/chat/use-berth-chat";
 import type { ChatStatusResponse } from "@/app/api/chat/status/route";
+import { isBerthToolName } from "@/lib/berth-tool-names";
 import { cn } from "@/lib/utils";
 import { CHAT_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
 
@@ -26,6 +27,25 @@ import { CHAT_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
 const SHOW_LEFT_UNDER = 5;
 
 const MESSAGE_CHARS = 2_000;
+
+/**
+ * Whether the generic Thinking line (with its "working" orb) shows. The orb
+ * shows while something is being worked on and hides once words are
+ * streaming: a running tool with its own line carries it there (by tool),
+ * otherwise it sits on the Thinking line, before the first token, between a
+ * tool finishing and the words that follow it, and beside a tool newer than
+ * the copy, which has no line of its own.
+ */
+export function thinkingShown(status: BerthChat["status"], answering: UIMessage | undefined): boolean {
+  if (status === "submitted") return true;
+  if (status !== "streaming") return false;
+  const toolRunning = answering
+    ? readAssistantParts(answering).tools.some((tool) => tool.state === "running" && isBerthToolName(tool.name))
+    : false;
+  const tail = answering?.parts.filter((part) => isTextUIPart(part) || isToolUIPart(part)).at(-1);
+  const writing = tail !== undefined && isTextUIPart(tail) && tail.text.trim().length > 0;
+  return !toolRunning && !writing;
+}
 
 export type ChatView = "locked" | "unavailable" | "budget" | "limit_month" | "limit_day" | "open";
 
@@ -69,7 +89,8 @@ export function ChatPanel({
   };
 
   const last = chat.messages.at(-1);
-  const waiting = chat.status === "submitted" || (chat.status === "streaming" && last?.role === "assistant" && last.parts.length === 0);
+  const answering = last?.role === "assistant" ? last : undefined;
+  const waiting = thinkingShown(chat.status, answering);
 
   if (view === "locked") {
     return (
@@ -129,13 +150,13 @@ export function ChatPanel({
                   .join("\n")}
               />
             ) : message.role === "assistant" ? (
-              <AssistantMessage key={message.id} message={message} onOpenDraft={onOpenDraft} />
+              <AssistantMessage key={message.id} message={message} onOpenDraft={onOpenDraft} live={busy && message === answering} />
             ) : null,
           )
         )}
         {waiting && (
-          <p className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-            <LoadingMark className="size-5" />
+          <p className="flex h-5 items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+            <ThinkingOrb state="working" size={20} decorative />
             {copy.chatThinking}
           </p>
         )}

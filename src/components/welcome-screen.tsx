@@ -10,6 +10,7 @@ import {
   type IXConnector,
 } from "@sodax/wallet-sdk-react";
 import { Button } from "@/components/ui/button";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { BerthMark } from "@/components/berth-mark";
 import { MarketPreview, NewsFeed } from "@/components/board";
 import { WalletDrawer } from "@/components/wallet";
@@ -77,11 +78,26 @@ export function AuthGate({
   return <>{children}</>;
 }
 
-/** Quiet moment while sessions rehydrate; no flash of the wrong screen. */
-function Splash() {
+/**
+ * Quiet moment while sessions rehydrate; no flash of the wrong screen. The
+ * mark's dot is a breathing orb while this lasts, drawn at 64px so one unit
+ * of the mark is one pixel and the 20px orb centres on the dot (32, 30).
+ * Until the orb's code arrives, and on the server, the still dot stands in.
+ */
+export function Splash() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-2">
-      <BerthMark className="size-14" />
+      <span className="relative size-16">
+        <BerthMark className="size-16" hollow />
+        <ThinkingOrb
+          state="breathing"
+          size={20}
+          dotSize={1.6}
+          decorative
+          className="absolute top-[20px] left-[22px]"
+          fallback={<span className="size-3 rounded-full bg-foreground" />}
+        />
+      </span>
       <span className="sr-only">{COPY.loadingLabel}</span>
     </div>
   );

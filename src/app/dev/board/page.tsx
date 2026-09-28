@@ -68,7 +68,7 @@ function Galleries() {
   const params = useSearchParams();
   const home = params.get("home");
   if (home === "held" || home === "new") {
-    return <HomeGallery key={home} scene={home} dock={params.get("dock") !== "0"} />;
+    return <HomeGallery key={home} scene={home} dock={params.get("dock") !== "0"} streaming={params.get("streaming") === "1"} />;
   }
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:max-w-lg lg:max-w-5xl xl:max-w-7xl">

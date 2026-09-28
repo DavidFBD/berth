@@ -184,7 +184,7 @@ function SheetScene() {
       {/* The dev overlays sit over the composer; the gallery is for looking at it. */}
       <style>{`[data-wallet-diagnostics], nextjs-portal { display: none !important; }`}</style>
       <header className="flex items-center justify-between">
-        <h1 className="font-display text-xl text-foreground">Ask, {scene}</h1>
+        <h1 className="font-display text-xl text-foreground">Assistant, {scene}</h1>
         <ChatButton onOpen={() => setOpen(true)} />
       </header>
       <ChatSheetFrame

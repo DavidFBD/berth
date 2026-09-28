@@ -10,6 +10,7 @@ import {
   X,
   XLogo,
 } from "@phosphor-icons/react";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { JevMark } from "@/components/jev-mark";
 import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { Panel, SectionHeading } from "@/components/ui/panel";
@@ -264,7 +265,14 @@ export function NewsFeed({
 
       {tab === "posts" && posts.curation && (
         <div className="flex items-center gap-1.5 px-4 pb-3 text-[11px]">
-          <JevMark live className="size-3.5 text-foreground" />
+          {/* A 20px slot either way: Jev's still mark, or an orb while the feed is being fetched. */}
+          {posts.isFetching ? (
+            <ThinkingOrb state="searching" size={20} decorative />
+          ) : (
+            <span className="flex size-5 items-center justify-center" aria-hidden>
+              <JevMark className="size-3.5 text-foreground" />
+            </span>
+          )}
           <span className="font-medium text-foreground">{copy.jevCuratedBy}</span>
         </div>
       )}

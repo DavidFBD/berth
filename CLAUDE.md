@@ -55,6 +55,9 @@ would offer).
   fonts in `src/app/layout.tsx` (Archivo display, Public Sans body, IBM Plex
   Mono for numbers). Appearance is light, dark or system via next-themes.
 - The accent is for one thing per composition. No gradients, glow or glass.
+- The one animated status element allowed is the thinking orb
+  (`src/components/ui/thinking-orb.tsx`, MIT `thinking-orbs`), in ink or
+  muted only, and only while something is actually working.
 - Before 2026-09-14 this repo was LSTeaTime, a leveraged staking app in a
   tea-house voice. The tea is gone from the code; git history keeps it.
 

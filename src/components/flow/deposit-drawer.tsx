@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { cn } from "@/lib/utils";
 import { EASE_LIFT } from "@/lib/motion";
 import {
@@ -543,7 +544,7 @@ export function DepositDrawer({
                     </>
                   ) : finding ? (
                     <span className="flex flex-1 items-center gap-2 text-sm text-muted-foreground">
-                      <Spinner className="size-4" />
+                      <ThinkingOrb state="searching" size={20} decorative />
                       {copy.findingPayWith}
                     </span>
                   ) : (

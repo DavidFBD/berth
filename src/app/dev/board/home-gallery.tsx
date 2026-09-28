@@ -30,7 +30,8 @@ import { seededPortfolioClient } from "../account/portfolio-gallery";
  *   /dev/board?home=new     a first visit: funds only, nothing held
  *
  * The prices, the board's lines and the news are live, from the same public
- * routes the app reads. Actions go nowhere. `&dock=0` hides the docked Ask.
+ * routes the app reads. Actions go nowhere. `&dock=0` hides the docked Ask;
+ * `&streaming=1` shows it as it is while an answer comes in.
  */
 export type HomeScene = "held" | "new";
 
@@ -50,7 +51,7 @@ function fundsFixture(held: boolean): EmbeddedHoldingsResult {
   };
 }
 
-export function HomeGallery({ scene, dock }: { scene: HomeScene; dock: boolean }) {
+export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeScene; dock: boolean; streaming?: boolean }) {
   const held = scene === "held";
   const [{ client, rows }] = useState(() => seededPortfolioClient(held ? "three-months" : "empty", { xp: 900 }));
   const mounted = useMounted();
@@ -88,6 +89,8 @@ export function HomeGallery({ scene, dock }: { scene: HomeScene; dock: boolean }
 
   return (
     <QueryClientProvider client={client}>
+      {/* The dev overlays sit over the dock; the gallery is for looking at it. */}
+      <style>{`[data-wallet-diagnostics], nextjs-portal { display: none !important; }`}</style>
       <div className={cn(BOARD_PAGE, dock && DOCK_CLEARANCE)}>
         <HomeHeader onOpenChat={noop}>
           <RankChip onClick={noop} presence />
@@ -122,7 +125,7 @@ export function HomeGallery({ scene, dock }: { scene: HomeScene; dock: boolean }
           </div>
         </div>
       </div>
-      {dock && <AskDock onOpen={noop} hidden={false} />}
+      {dock && <AskDock onOpen={noop} hidden={false} busy={streaming} />}
     </QueryClientProvider>
   );
 }

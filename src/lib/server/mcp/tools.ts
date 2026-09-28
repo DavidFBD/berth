@@ -16,7 +16,7 @@ export { authOf, type BerthAuth } from "@/lib/server/mcp/guard";
 
 function needScope(ctx: ServerContext, scope: string): (BerthAuth & { scopes: string[] }) | ToolResult {
   const auth = authOf(ctx);
-  if (!auth) return refuse("Not signed in to Berth. Reconnect Berth in your assistant's settings.");
+  if (!auth) return refuse("Not signed in to Berth. Reconnect Berth in your AI's settings.");
   if (!auth.scopes.includes(scope)) {
     return refuse(`This connection was not allowed to do that (it needs ${scope}). Reconnect Berth and allow it.`);
   }

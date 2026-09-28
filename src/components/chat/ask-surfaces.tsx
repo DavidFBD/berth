@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowUp, ChatCircleText } from "@phosphor-icons/react";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { useCopy } from "@/components/settings-provider";
 import { cn } from "@/lib/utils";
 
@@ -122,9 +123,10 @@ function useDialogOpen(): boolean {
  * `hidden` (a sheet or an order drawer Home owns is open), any other
  * dialog is open, or a keyboard is up. The
  * page adds the dock's height to its own bottom padding (DOCK_CLEARANCE),
- * so the last thing on it is never under the dock.
+ * so the last thing on it is never under the dock. `busy` while an answer
+ * is streaming in the chat: only then does the dock's glyph become an orb.
  */
-export function AskDock({ onOpen, hidden }: { onOpen: () => void; hidden: boolean }) {
+export function AskDock({ onOpen, hidden, busy = false }: { onOpen: () => void; hidden: boolean; busy?: boolean }) {
   const copy = useCopy();
   const keyboard = useKeyboardUp();
   const dialog = useDialogOpen();
@@ -141,7 +143,12 @@ export function AskDock({ onOpen, hidden }: { onOpen: () => void; hidden: boolea
     >
       <div className="mx-auto max-w-lg">
         <button type="button" onClick={onOpen} aria-label={copy.chatOpenLabel} className={cn(FIELD, "h-12 bg-card")}>
-          <ChatCircleText weight="duotone" className="size-5 shrink-0" aria-hidden />
+          {/* The chat glyph, and an orb in its 20px place only while an answer is coming in, so the orb's code loads only then. */}
+          {busy ? (
+            <ThinkingOrb state="composing" size={20} decorative fallback={<ChatCircleText weight="duotone" className="size-5" />} />
+          ) : (
+            <ChatCircleText weight="duotone" className="size-5 shrink-0" aria-hidden />
+          )}
           <span className="min-w-0 flex-1 truncate">{copy.askPlaceholder}</span>
           <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-secondary-foreground">
             <ArrowUp weight="duotone" className="size-4" />

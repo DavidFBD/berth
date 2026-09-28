@@ -5,6 +5,7 @@ import { Eye, NotePencil, ShieldCheck } from "@phosphor-icons/react";
 import { BerthMark } from "@/components/berth-mark";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { useCopy } from "@/components/settings-provider";
 import { AuthGate } from "@/components/welcome-screen";
 import { useAuthorizeDecision, useCanProveAccount, useIdentityLabel } from "@/hooks/use-profile";
@@ -48,11 +49,14 @@ export function ConsentCard({
   party,
   redirectHost,
   scopes,
+  initialLeaving = false,
 }: {
   request: string;
   party: ConsentParty;
   redirectHost: string;
   scopes: string[];
+  /** Dev gallery only: open already on its way back. */
+  initialLeaving?: boolean;
 }) {
   const copy = useCopy();
   const identity = useIdentityLabel();
@@ -60,7 +64,7 @@ export function ConsentCard({
   const canProve = useCanProveAccount();
   const [walletsOpen, setWalletsOpen] = useState(false);
   const [pressed, setPressed] = useState<"approve" | "decline" | null>(null);
-  const [leaving, setLeaving] = useState(false);
+  const [leaving, setLeaving] = useState(initialLeaving);
   // "expired" when the answer failed after the signed request's life, so
   // it says to start again rather than to try again.
   const [failed, setFailed] = useState<false | "failed" | "expired">(false);
@@ -142,7 +146,9 @@ export function ConsentCard({
         >
           {busy && pressed === "decline" ? <Spinner className="size-5" /> : copy.authorizeDecline}
         </Button>
-        <p className="min-h-4 text-center text-xs text-muted-foreground" aria-live="polite" role="status">
+        {/* 20px tall either way, so the orb arriving beside "Going back" moves nothing. */}
+        <p className="flex min-h-5 items-center justify-center gap-1.5 text-center text-xs text-muted-foreground" aria-live="polite" role="status">
+          {leaving && <ThinkingOrb state="connecting" size={20} decorative />}
           {leaving
             ? copy.authorizeReturning(party)
             : failed === "expired"

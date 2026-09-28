@@ -5,6 +5,7 @@ import { getToolName, isTextUIPart, isToolUIPart, type UIMessage } from "ai";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
+import { ThinkingOrb, type OrbState } from "@/components/ui/thinking-orb";
 import { isBerthToolName } from "@/lib/berth-tool-names";
 import { formatUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,23 @@ import type { DraftSummary } from "@/lib/draft-order";
  */
 
 type ToolLine = { id: string; name: string; state: "running" | "done" | "failed" };
+
+/** What the orb shows while a tool reads: looking something up, working through the numbers, writing an order, or just working. */
+export function orbStateForTool(name: string): OrbState {
+  switch (name) {
+    case "get_market_feed":
+    case "get_listing":
+      return "searching";
+    case "get_performance":
+    case "get_holdings":
+    case "get_account":
+      return "solving";
+    case "draft_order":
+      return "composing";
+    default:
+      return "working";
+  }
+}
 
 export type ChatDraft = DraftSummary;
 
@@ -59,16 +77,19 @@ export function UserBubble({ text }: { text: string }) {
 export function AssistantMessage({
   message,
   onOpenDraft,
+  live = false,
 }: {
   message: UIMessage;
   onOpenDraft: (draft: ChatDraft) => void;
+  /** The answer still coming in: its newest running tool carries the orb. */
+  live?: boolean;
 }) {
   const { tools, drafts, text } = readAssistantParts(message);
   // A draft shows as its card; its line only while it is being drafted, or if it failed.
   const lines = tools.filter((tool) => tool.name !== "draft_order" || tool.state !== "done");
   return (
     <div className="flex flex-col gap-2">
-      {lines.length > 0 && <ToolLines tools={lines} folded={text.length > 0} />}
+      {lines.length > 0 && <ToolLines tools={lines} folded={text.length > 0} live={live} />}
       {text && (
         <div className="text-[15px] leading-relaxed text-foreground">
           <ChatMarkdown text={text} />
@@ -81,7 +102,7 @@ export function AssistantMessage({
   );
 }
 
-function ToolLines({ tools, folded }: { tools: ToolLine[]; folded: boolean }) {
+function ToolLines({ tools, folded, live }: { tools: ToolLine[]; folded: boolean; live: boolean }) {
   const copy = useCopy();
   const words = (tool: ToolLine) => {
     if (tool.state === "failed") return copy.chatToolFailed;
@@ -91,27 +112,36 @@ function ToolLines({ tools, folded }: { tools: ToolLine[]; folded: boolean }) {
   };
   if (folded && tools.every((tool) => tool.state !== "running")) {
     return (
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Check className="size-3.5" aria-hidden />
+      <p className="flex h-5 items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="flex size-5 items-center justify-center" aria-hidden>
+          <Check className="size-3.5" />
+        </span>
         {copy.chatToolsFolded(tools.length)}
       </p>
     );
   }
+  // One orb for the whole answer, on the tool most recently set going.
+  const orbOn = live ? tools.findLast((tool) => tool.state === "running" && words(tool))?.id : undefined;
   return (
     <ul className="flex flex-col gap-1" aria-live="polite">
       {tools.map((tool) => {
         const line = words(tool);
         if (!line) return null;
         return (
-          <li key={tool.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            {tool.state === "running" ? (
-              <span className="flex size-3.5 items-center justify-center" aria-hidden>
-                <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground motion-reduce:animate-none" />
-              </span>
-            ) : tool.state === "failed" ? (
-              <WarningCircle className="size-3.5" aria-hidden />
+          <li key={tool.id} className="flex h-5 items-center gap-1.5 text-xs text-muted-foreground">
+            {/* Every line keeps a 20px slot, so a line settling from the orb to its tick does not move. */}
+            {tool.id === orbOn ? (
+              <ThinkingOrb state={orbStateForTool(tool.name)} size={20} decorative />
             ) : (
-              <Check className="size-3.5" aria-hidden />
+              <span className="flex size-5 items-center justify-center" aria-hidden>
+                {tool.state === "running" ? (
+                  <span className="size-1.5 rounded-full bg-muted-foreground" />
+                ) : tool.state === "failed" ? (
+                  <WarningCircle className="size-3.5" />
+                ) : (
+                  <Check className="size-3.5" />
+                )}
+              </span>
             )}
             {line}
           </li>

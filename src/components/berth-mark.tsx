@@ -7,13 +7,19 @@ import { cn } from "@/lib/utils";
  * wherever it sits. Same single path as public/berth-mark.svg; keep the two
  * in step if the mark ever changes.
  */
+const BERTH = "M10 8H20V40C20 42.21 21.79 44 24 44H40C42.21 44 44 42.21 44 40V8H54V44C54 49.52 49.52 54 44 54H20C14.48 54 10 49.52 10 44Z";
+const DOT = "M32 24A6 6 0 1 1 32 36A6 6 0 1 1 32 24Z";
+
 export function BerthMark({
   className,
   title,
+  hollow = false,
 }: {
   className?: string;
   /** Accessible name; omit for a decorative mark beside the wordmark. */
   title?: string;
+  /** The berth without its dot, for the splash, where a thinking orb sits in the dot's place (centre 32,30 of 64). */
+  hollow?: boolean;
 }) {
   return (
     <svg
@@ -25,7 +31,7 @@ export function BerthMark({
     >
       <path
         fill="currentColor"
-        d="M10 8H20V40C20 42.21 21.79 44 24 44H40C42.21 44 44 42.21 44 40V8H54V44C54 49.52 49.52 54 44 54H20C14.48 54 10 49.52 10 44Z M32 24A6 6 0 1 1 32 36A6 6 0 1 1 32 24Z"
+        d={hollow ? BERTH : `${BERTH} ${DOT}`}
       />
     </svg>
   );

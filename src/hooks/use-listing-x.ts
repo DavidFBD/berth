@@ -19,6 +19,8 @@ const X_REFETCH_MS = 60 * 60 * 1000;
  */
 export function useListingX(symbol?: string): {
   isLoading: boolean;
+  /** Any fetch in flight, the first or a background refresh. */
+  isFetching: boolean;
   items: XPost[];
   reserve: XPost[];
   curation: ListingXResponse["curation"];
@@ -39,6 +41,7 @@ export function useListingX(symbol?: string): {
   });
   return {
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     items: query.data?.items ?? [],
     reserve: query.data?.reserve ?? [],
     curation: query.data?.curation,

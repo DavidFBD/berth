@@ -133,7 +133,7 @@ describe("the MCP door answers as it always has", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toBe("This connection was not allowed to do that (it needs berth.read). Reconnect Berth and allow it.");
     const signedOut = await byName.draft_order.handler({ listing: "NVDA", side: "buy", usd_amount: 20 }, {} as ServerContext);
-    expect(signedOut.content[0].text).toBe("Not signed in to Berth. Reconnect Berth in your assistant's settings.");
+    expect(signedOut.content[0].text).toBe("Not signed in to Berth. Reconnect Berth in your AI's settings.");
   });
 
   it("drafts a link, not a card", async () => {

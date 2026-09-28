@@ -135,14 +135,21 @@ export default function ChatHost({
   onOpenDraft,
   pending,
   onPendingTaken,
+  onBusyChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenDraft: (draft: ChatDraft) => void;
   pending?: string | null;
   onPendingTaken?: () => void;
+  /** Whether an answer is being worked on, for the phone's dock. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const { chat } = useAppChat();
+  const busy = chat.status === "submitted" || chat.status === "streaming";
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
   return (
     <ChatSheet
       chat={chat}

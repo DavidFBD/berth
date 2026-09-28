@@ -10,6 +10,7 @@
  *   pnpm shot --local-storage '{"key":"value"}' # seeded once, before first load
  *   pnpm shot --reload-out second.png          # reload in the same context, shoot again
  *   pnpm shot --full                           # the whole page, not just the viewport
+ *   pnpm shot --reduced-motion                 # emulates prefers-reduced-motion: reduce
  *
  * The last two exist for state a browser keeps between visits (the posts
  * column's "new to you" mark): seed it, shoot, reload, shoot again.
@@ -57,6 +58,7 @@ if (storageSeedRaw) {
 }
 const reloadOut = arg("reload-out", null);
 const fullPage = process.argv.includes("--full");
+const reducedMotion = process.argv.includes("--reduced-motion") ? "reduce" : "no-preference";
 
 const engine = browserName === "chromium" ? chromium : webkit;
 
@@ -82,6 +84,7 @@ const ctx = await browser.newContext({
   viewport: { width, height },
   deviceScaleFactor: dpr,
   colorScheme,
+  reducedMotion,
 });
 if (storageSeed) {
   // Once per tab, so a reload keeps whatever the page wrote in between.

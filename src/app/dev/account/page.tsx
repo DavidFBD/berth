@@ -36,7 +36,8 @@ import { Panel } from "@/components/ui/panel";
  *                                     signed in person sees it (its answer
  *                                     goes nowhere: the request is fake);
  *                                     =unknown or =loopback for the other
- *                                     two kinds of party
+ *                                     two kinds of party; &leaving=1 holds
+ *                                     it on "Going back to …"
  *   /dev/account?assistant=claude     the "Your assistant" section with two
  *                                     connected assistants from fixtures,
  *                                     that one's steps unfolded (claude,
@@ -71,7 +72,7 @@ function Inspector() {
         : kind === "loopback"
           ? [{ kind: "loopback", selfName: null }, "localhost:33418"]
           : [{ kind: "known", assistant: "claude", name: "Claude" }, "claude.ai"];
-    return <ConsentCard key={kind} request="dev-gallery" party={party} redirectHost={host} scopes={["berth.read", "berth.draft"]} />;
+    return <ConsentCard key={kind} request="dev-gallery" party={party} redirectHost={host} scopes={["berth.read", "berth.draft"]} initialLeaving={params.get("leaving") === "1"} />;
   }
   const assistant = params.get("assistant");
   if (assistant) {
