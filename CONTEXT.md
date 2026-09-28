@@ -90,6 +90,12 @@ a round that changes behaviour.
   a link (`lib/draft-order`) that opens the order drawer prefilled, and
   nothing happens until the person signs. Grants are listed and revoked
   under "Your assistant" in the account drawer.
+- **Ask** — the assistant inside Berth (`components/chat`, `app/api/chat`):
+  GPT-6 Luna reading the same nine tools as the MCP server
+  (`lib/server/berth-tools/registry`, one definition for both doors) and
+  drafting orders as cards that open the order drawer. Opens at Slip
+  (`CHAT_UNLOCK_LEVEL`); capped per person per day and by a house budget;
+  Berth keeps counts and cost (`chat_usage`), never what was said.
 - **Appearance** — light, dark or system (`lib/appearance`), stamped by
   next-themes before hydration. The `useCopy()` seam returns the one voice.
 

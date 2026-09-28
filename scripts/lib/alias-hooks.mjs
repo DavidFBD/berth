@@ -37,5 +37,14 @@ export async function resolve(specifier, context, nextResolve) {
     const found = candidate(new URL(specifier, context.parentURL).href);
     if (found) return nextResolve(found, context);
   }
+  // next's subpath entry points (next/cache, next/server) are .js files
+  // with no exports map, which Node's ESM resolver will not guess.
+  if (/^next\/[a-z-]+$/.test(specifier)) {
+    try {
+      return await nextResolve(specifier, context);
+    } catch {
+      return nextResolve(`${specifier}.js`, context);
+    }
+  }
   return nextResolve(specifier, context);
 }

@@ -6,6 +6,8 @@ import { useCopy } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { readDraftParams, type DraftParams } from "@/lib/draft-order";
+import { draftOpening, type DraftOpening } from "@/lib/draft-open";
+import type { Copy } from "@/lib/copy";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 
 const DRAFT_KEYS = ["open", "side", "usd", "qty"] as const;
@@ -65,23 +67,44 @@ export function DraftLinkOpener({
     for (const key of DRAFT_KEYS) url.searchParams.delete(key);
     window.history.replaceState(window.history.state, "", url);
 
-    if (!listing) {
-      toast.error(copy.draftUnknownListing);
-      return;
-    }
-    if (draft.side === "buy") {
-      onBuy(listing, { usd: draft.usd });
-    } else if (!holdings.settled) {
-      toast(copy.draftCouldNotCheck(listing.name));
-      return;
-    } else if (holdings.held.some((holding) => holding.listing.address === listing.address)) {
-      onSell(listing, { usd: draft.usd, quantity: draft.quantity });
-    } else {
-      toast(copy.draftNothingToSell(listing.name));
-      return;
-    }
+    const opening = draftOpening(draft, {
+      settled: holdings.settled,
+      heldAddresses: holdings.held.map((holding) => holding.listing.address),
+    });
+    if (!showDraftOpening(opening, copy, { onBuy, onSell })) return;
     toast(copy.draftOpenedTitle, { description: copy.draftOpenedBody });
   }, [holdings.settled, holdings.held, holdingsUnknown, onBuy, onSell, copy]);
 
   return null;
+}
+
+/**
+ * Carry out a draft opening: open the drawer it names, or say in a toast
+ * why not. True when a drawer opened. Shared with the chat's draft card.
+ */
+export function showDraftOpening(
+  opening: DraftOpening,
+  copy: Pick<Copy, "draftUnknownListing" | "draftCouldNotCheck" | "draftNothingToSell">,
+  open: {
+    onBuy: (listing: TokenListing, prefill: { usd?: number }) => void;
+    onSell: (listing: TokenListing, prefill: { usd?: number; quantity?: number }) => void;
+  },
+): boolean {
+  switch (opening.kind) {
+    case "unknown":
+      toast.error(copy.draftUnknownListing);
+      return false;
+    case "cannot_check":
+      toast(copy.draftCouldNotCheck(opening.listing.name));
+      return false;
+    case "nothing_to_sell":
+      toast(copy.draftNothingToSell(opening.listing.name));
+      return false;
+    case "buy":
+      open.onBuy(opening.listing, opening.prefill);
+      return true;
+    case "sell":
+      open.onSell(opening.listing, opening.prefill);
+      return true;
+  }
 }

@@ -59,6 +59,16 @@ export type XpKind = keyof typeof XP_ACTIONS;
  */
 export const INVITE_UNLOCK_LEVEL = 3;
 
+/**
+ * The in-app assistant (app/api/chat) opens at Slip, the first rung: an
+ * email sign in (25 + 150 XP) lands there at once, and a wallet account
+ * reaches it with its first buy (100 XP). Low enough that nobody works for
+ * it, high enough that a freshly minted wallet cannot spend the house's
+ * model budget before it has done anything. The server refuses below it
+ * (app/api/chat); the client only decides how to say so.
+ */
+export const CHAT_UNLOCK_LEVEL = 2;
+
 export function isXpKind(value: string): value is XpKind {
   return value in XP_ACTIONS;
 }

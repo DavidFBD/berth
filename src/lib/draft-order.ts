@@ -140,6 +140,20 @@ export function draftOrder(input: DraftInput, context: DraftContext): Draft {
   return { ok: true, listing, side: "sell", quantity: Number(trimNumber(quantity, 8)), approxUsd, url: url.toString() };
 }
 
+/**
+ * A draft as the in-app chat renders it (components/chat): the values
+ * draft_order computed on the server, never the model's prose.
+ */
+export type DraftSummary = {
+  symbol: string;
+  name: string;
+  side: "buy" | "sell";
+  usd?: number;
+  quantity?: number;
+  /** What the order is worth in dollars, when it can be told. */
+  approxUsd?: number;
+};
+
 /** The deep link's parameters, read back by the app (components/home). Pure, shared, so both ends agree. */
 export type DraftParams = { symbol: string; side: "buy" | "sell"; usd?: number; quantity?: number };
 

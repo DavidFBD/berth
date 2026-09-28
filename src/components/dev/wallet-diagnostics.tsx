@@ -50,7 +50,7 @@ export function WalletDiagnostics() {
   return (
     // Bottom-RIGHT: Next.js pins its dev-tools button bottom-left and was
     // sitting on top of the panel.
-    <div className="pointer-events-none fixed right-2 bottom-2 z-9999 max-w-75 rounded-lg bg-black/85 p-2 font-mono text-[10px] leading-[1.45] text-lime-300 shadow-lg">
+    <div data-wallet-diagnostics className="pointer-events-none fixed right-2 bottom-2 z-9999 max-w-75 rounded-lg bg-black/85 p-2 font-mono text-[10px] leading-[1.45] text-lime-300 shadow-lg">
       <div className="mb-1 font-bold text-lime-200">wallet diagnostics (dev)</div>
       {rows.map(([label, value]) => (
         <div key={label} className="flex justify-between gap-2">

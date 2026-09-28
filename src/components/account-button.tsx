@@ -207,7 +207,7 @@ function ExternalAccountEntry({
 }) {
   const copy = useCopy();
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
+    <div data-wallet-pill className="flex min-w-0 items-center gap-1.5">
       <RankChip onClick={() => setServiceOpen(true)} />
       <ConnectButton />
       <Drawer open={serviceOpen} onOpenChange={setServiceOpen}>

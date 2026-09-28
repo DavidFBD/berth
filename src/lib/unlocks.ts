@@ -1,20 +1,23 @@
 /**
  * What each rung of the ladder opens, stated once so the ladder caption in
  * the rewards drawer and the level-up card can never disagree. Derived from
- * the two sources that already own the rules (INVITE_UNLOCK_LEVEL in
- * lib/xp, `unlockLevel` on the faces in lib/avatars), so a face that moves
+ * the sources that already own the rules (CHAT_UNLOCK_LEVEL and
+ * INVITE_UNLOCK_LEVEL in lib/xp, `unlockLevel` on the faces in lib/avatars), so a face that moves
  * to another rung moves here too. Pure data; the words live in lib/copy.
  */
 import { AVATARS, type AvatarId } from "@/lib/avatars";
-import { INVITE_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
+import { CHAT_UNLOCK_LEVEL, INVITE_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
 
 export type Unlock =
   | { kind: "invite" }
+  /** The in-app assistant (components/chat). */
+  | { kind: "chat" }
   /** `face` is the face's short name, "Beacon", for "the Beacon face". */
   | { kind: "avatar"; avatarId: AvatarId; face: string };
 
 function unlocksByLevel(): ReadonlyMap<number, Unlock> {
   const map = new Map<number, Unlock>();
+  map.set(CHAT_UNLOCK_LEVEL, { kind: "chat" });
   map.set(INVITE_UNLOCK_LEVEL, { kind: "invite" });
   for (const avatar of AVATARS) {
     if (!("unlockLevel" in avatar)) continue;

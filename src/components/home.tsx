@@ -32,7 +32,13 @@ import {
   type TokenListing,
 } from "@/lib/listings";
 import { AuthGate } from "@/components/welcome-screen";
-import { DraftLinkOpener } from "@/components/assistant/draft-link-opener";
+import { DraftLinkOpener, showDraftOpening } from "@/components/assistant/draft-link-opener";
+import dynamic from "next/dynamic";
+import { ChatButton } from "@/components/chat/chat-button";
+import type { ChatDraft } from "@/components/chat/chat-parts";
+import { draftOpening } from "@/lib/draft-open";
+
+const ChatHost = dynamic(() => import("@/components/chat/chat-sheet"), { ssr: false });
 
 /**
  * The one screen: what the account is worth, the funds that can pay, what
@@ -58,6 +64,16 @@ export function Home() {
   const [newsFilter, setNewsFilter] = useState<TokenListing | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  // Ask, the in-app assistant. A draft opened from it closes the sheet for
+  // the order drawer and reopens it once that drawer closes.
+  const [chatOpen, setChatOpen] = useState(false);
+  // Loaded on first open, then kept, so the conversation outlives the sheet.
+  const [chatLoaded, setChatLoaded] = useState(false);
+  const openChat = () => {
+    setChatLoaded(true);
+    setChatOpen(true);
+  };
+  const [chatReturn, setChatReturn] = useState(false);
   const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
   // Once the account owns something, what it owns leads the panel, since
@@ -91,11 +107,13 @@ export function Home() {
   };
 
   const openBuy = (listing: Listing) => {
+    setChatReturn(false);
     setBuyPrefill(null);
     setBuyListing(listing);
     setBuyOpen(true);
   };
   const openSell = (listing: TokenListing) => {
+    setChatReturn(false);
     setSellPrefill(null);
     setSellListing(listing);
     setSellOpen(true);
@@ -110,6 +128,32 @@ export function Home() {
     setSellListing(listing);
     setSellOpen(true);
   }, []);
+
+  const openChatDraft = (draft: ChatDraft) => {
+    const opening = draftOpening(
+      { symbol: draft.symbol, side: draft.side, usd: draft.usd, quantity: draft.quantity },
+      { settled: holdings.settled, heldAddresses: holdings.held.map((holding) => holding.listing.address) },
+    );
+    if (opening.kind === "buy" || opening.kind === "sell") {
+      setChatOpen(false);
+      setChatReturn(true);
+    }
+    showDraftOpening(opening, copy, { onBuy: openDraftBuy, onSell: openDraftSell });
+  };
+  // Closing an order drawer a chat draft opened brings the chat back.
+  const returnToChat = () => {
+    if (!chatReturn) return;
+    setChatReturn(false);
+    setChatOpen(true);
+  };
+  const onBuyOpenChange = (next: boolean) => {
+    setBuyOpen(next);
+    if (!next) returnToChat();
+  };
+  const onSellOpenChange = (next: boolean) => {
+    setSellOpen(next);
+    if (!next) returnToChat();
+  };
 
   return (
     <AuthGate>
@@ -127,22 +171,9 @@ export function Home() {
         {/* data-glass names the surface for the grain-and-glass trial, so
             the rule does not hang off a utility class that could be edited
             away without anyone noticing the effect went with it. */}
-        <header
-          data-glass="bar"
-          className="sticky top-0 z-10 -mx-4 mb-5 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur"
-        >
-          {/* Brand never shrinks; the account pill truncates instead. */}
-          <div className="flex shrink-0 items-center gap-2">
-            <BerthMark className="size-[26px]" />
-            <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">
-              {copy.brand}
-            </h1>
-          </div>
-          <div className="flex min-w-0 items-center gap-1">
-            <InfoDrawer />
-            <AccountButton open={accountOpen} onOpenChange={setAccountOpen} />
-          </div>
-        </header>
+        <HomeHeader onOpenChat={openChat}>
+          <AccountButton open={accountOpen} onOpenChange={setAccountOpen} />
+        </HomeHeader>
 
         <AccountTotal />
         <NudgeLine
@@ -215,10 +246,12 @@ export function Home() {
           listing={buyListing}
           prefill={buyPrefill}
           open={buyOpen}
-          onOpenChange={setBuyOpen}
+          onOpenChange={onBuyOpenChange}
           onConnectWallet={openWallet}
           onSignIn={privy.enabled ? privy.login : undefined}
           onTopUp={() => {
+            // Leaving for the account drawer is not a return to the chat.
+            setChatReturn(false);
             setBuyOpen(false);
             setAccountOpen(true);
           }}
@@ -227,7 +260,7 @@ export function Home() {
           listing={sellListing}
           prefill={sellPrefill}
           open={sellOpen}
-          onOpenChange={setSellOpen}
+          onOpenChange={onSellOpenChange}
           onConnectWallet={openWallet}
         />
         <WithdrawHost
@@ -237,6 +270,7 @@ export function Home() {
           onConnectWallet={openWallet}
         />
         <WalletDrawer open={walletOpen} onOpenChange={setWalletOpen} />
+        {chatLoaded && <ChatHost open={chatOpen} onOpenChange={setChatOpen} onOpenDraft={openChatDraft} />}
 
         <footer className="mt-9 flex flex-col gap-1 text-center text-xs text-muted-foreground">
           <span className="text-[11px] text-muted-foreground">
@@ -245,6 +279,31 @@ export function Home() {
         </footer>
       </div>
     </AuthGate>
+  );
+}
+
+/**
+ * The sticky bar: the brand, Ask, the info button and the account pill
+ * (passed in, so the dev gallery can shoot the bar without a session).
+ */
+export function HomeHeader({ onOpenChat, children }: { onOpenChat: () => void; children: React.ReactNode }) {
+  const copy = useCopy();
+  return (
+    <header
+      data-glass="bar"
+      className="group/bar sticky top-0 z-10 -mx-4 mb-5 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur"
+    >
+      {/* Brand never shrinks; the account pill truncates instead. */}
+      <div className="flex shrink-0 items-center gap-2">
+        <BerthMark className="size-[26px]" />
+        <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">{copy.brand}</h1>
+      </div>
+      <div className="flex min-w-0 items-center gap-1">
+        <ChatButton onOpen={onOpenChat} />
+        <InfoDrawer />
+        {children}
+      </div>
+    </header>
   );
 }
 

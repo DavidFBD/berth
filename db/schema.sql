@@ -283,3 +283,32 @@ create table if not exists mcp_calls (
 
 create index if not exists mcp_calls_created_idx on mcp_calls (created_at);
 create index if not exists mcp_calls_user_idx on mcp_calls (user_id, created_at);
+
+-- One row per message to the in-app assistant (lib/server/chat/usage),
+-- written when the message ends. Who, which model, how many steps, which
+-- tools by name, the tokens and the cost in USD millionths, whether it
+-- worked (a short code when not) and how long it took. Never what was
+-- said: no message text, no tool arguments, no tool output. The day and
+-- month cost sums read it (the caps and CHAT_MONTHLY_BUDGET_USD); the
+-- evening cron deletes rows older than 90 days.
+create table if not exists chat_usage (
+  id bigserial primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  provider text not null,
+  model text not null,
+  steps smallint not null,
+  tools text[] not null default '{}',
+  input_tokens integer not null,
+  cache_read_tokens integer not null default 0,
+  cache_write_tokens integer not null default 0,
+  output_tokens integer not null,
+  reasoning_tokens integer not null default 0,
+  cost_micros integer not null,
+  ok boolean not null,
+  error text,
+  duration_ms integer not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists chat_usage_user_idx on chat_usage (user_id, created_at);
+create index if not exists chat_usage_created_idx on chat_usage (created_at);

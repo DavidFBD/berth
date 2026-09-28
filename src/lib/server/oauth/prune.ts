@@ -1,5 +1,6 @@
 import { getSql } from "@/lib/server/db";
 import { MCP_CALLS_KEEP_DAYS } from "@/lib/server/mcp/usage";
+import { CHAT_USAGE_KEEP_DAYS } from "@/lib/server/chat/usage";
 
 /**
  * The authorization server's housekeeping, run by the evening cron
@@ -11,7 +12,8 @@ import { MCP_CALLS_KEEP_DAYS } from "@/lib/server/mcp/usage";
  * - tokens expired, or revoked, more than a week ago;
  * - clients registered more than a week ago that no grant ever named;
  * - rate limit windows older than a day;
- * - MCP usage rows (mcp_calls) older than 90 days.
+ * - MCP usage rows (mcp_calls) older than 90 days;
+ * - chat usage rows (chat_usage) older than 90 days.
  *
  * A refresh token deleted this way, if ever presented again, is simply
  * unknown rather than a detected reuse; a week past its end, that is fine.
@@ -19,7 +21,7 @@ import { MCP_CALLS_KEEP_DAYS } from "@/lib/server/mcp/usage";
 
 export const PRUNE_AFTER_DAYS = 7;
 
-export type OAuthPruneSummary = { codes: number; tokens: number; clients: number; rateWindows: number; mcpCalls: number };
+export type OAuthPruneSummary = { codes: number; tokens: number; clients: number; rateWindows: number; mcpCalls: number; chatUsage: number };
 
 export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
   const sql = getSql();
@@ -48,5 +50,13 @@ export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
     if (!/mcp_calls/.test(message) || !/does not exist/.test(message)) console.warn("[prune] mcp_calls:", message);
     return 0;
   });
-  return { codes, tokens, clients, rateWindows, mcpCalls };
+  const chatUsage = await count(`delete from chat_usage where created_at < $1::timestamptz - make_interval(days => $2::int)`, [
+    at,
+    CHAT_USAGE_KEEP_DAYS,
+  ]).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/chat_usage/.test(message) || !/does not exist/.test(message)) console.warn("[prune] chat_usage:", message);
+    return 0;
+  });
+  return { codes, tokens, clients, rateWindows, mcpCalls, chatUsage };
 }

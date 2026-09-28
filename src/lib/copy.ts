@@ -13,6 +13,7 @@
  */
 
 import type { Unlock } from "@/lib/unlocks";
+import type { BerthToolName } from "@/lib/berth-tool-names";
 import { REWARD_REASONS } from "@/lib/xp";
 import type { ConsentParty } from "@/lib/assistant-party";
 
@@ -671,6 +672,43 @@ export type Copy = {
   /** A drafted sell whose holdings could not be read in time. */
   draftCouldNotCheck: (name: string) => string;
 
+  /* — Ask: the assistant inside Berth (components/chat). It reads and drafts, the person signs — */
+  chatOpen: string;
+  chatOpenLabel: string;
+  chatTitle: string;
+  chatSub: string;
+  /** The model's name, as the not advice line says it. */
+  chatModelName: string;
+  chatNotAdvice: (model: string) => string;
+  chatNoCopyKept: string;
+  chatPlaceholder: string;
+  chatSend: string;
+  chatStop: string;
+  chatClear: string;
+  chatEmpty: string;
+  /** One line per tool while it runs, then once it has. */
+  chatTool: Record<BerthToolName, { doing: string; done: string }>;
+  chatToolsFolded: (n: number) => string;
+  chatToolFailed: string;
+  chatDraftLabel: string;
+  chatDraftBuy: (name: string) => string;
+  chatDraftSell: (name: string) => string;
+  chatDraftShares: (quantity: string) => string;
+  chatDraftAbout: (usd: string) => string;
+  chatDraftNothingYet: string;
+  chatDraftOpen: string;
+  chatThinking: string;
+  chatFailed: string;
+  chatRetry: string;
+  chatLimitMinute: string;
+  chatLimitDay: string;
+  chatLeft: (n: number) => string;
+  chatBudget: string;
+  chatLimitMonth: string;
+  chatUnavailable: string;
+  chatTooLong: string;
+  chatLockedTitle: (rankName: string) => string;
+  chatLockedBody: (xp: number) => string;
   /* — the privacy policy (app/privacy): public, signed in or not — */
   /** The small link to /privacy, in the settings drawer and under the consent screen. */
   privacyLink: string;
@@ -1146,20 +1184,26 @@ export const COPY: Copy = {
   ladderRung: (rankName, xp) => `${rankName}, from ${xp} XP.`,
   ladderHere: "You are here.",
   unlockNext: (unlock) =>
-    unlock.kind === "invite"
-      ? "Unlocks your own invite link."
-      : `Unlocks the ${unlock.face} face.`,
+    unlock.kind === "chat"
+      ? "Unlocks Ask, the assistant inside Berth."
+      : unlock.kind === "invite"
+        ? "Unlocks your own invite link."
+        : `Unlocks the ${unlock.face} face.`,
   unlockDone: (unlock) =>
-    unlock.kind === "invite"
-      ? "Your own invite link is open to you."
-      : `The ${unlock.face} face is yours to wear.`,
+    unlock.kind === "chat"
+      ? "Ask, the assistant inside Berth, is open to you."
+      : unlock.kind === "invite"
+        ? "Your own invite link is open to you."
+        : `The ${unlock.face} face is yours to wear.`,
   levelUpTitle: (rankName) => `You reached ${rankName}`,
   levelUpLine: (level, total, reason) =>
     `Level ${level} · +${total.toLocaleString()} XP${reason ? ` ${reason}` : ""}`,
   levelUpUnlock: (unlock) =>
-    unlock.kind === "invite"
-      ? "Your own invite link is ready in your account."
-      : `The ${unlock.face} face is now in your avatar picker.`,
+    unlock.kind === "chat"
+      ? "Ask is open. It is at the top of the screen."
+      : unlock.kind === "invite"
+        ? "Your own invite link is ready in your account."
+        : `The ${unlock.face} face is now in your avatar picker.`,
   avatarLockedLabel: (face, rankName) => `${face}, unlocks at ${rankName}`,
   avatarUnlocksAt: (rankName) => `Unlocks at ${rankName}`,
   pickFace: (amount) => `Pick an avatar · +${amount} XP`,
@@ -1350,6 +1394,51 @@ export const COPY: Copy = {
   draftNothingToSell: (name) => `There is no ${name} in your account to sell.`,
   draftCouldNotCheck: (name) => `Berth could not check your ${name} just now. You can sell it from what you own when it shows.`,
 
+  chatOpen: "Ask",
+  chatOpenLabel: "Ask the assistant",
+  chatTitle: "Ask",
+  chatSub: "About the market and your account.",
+  chatModelName: "GPT-6 Luna",
+  chatNotAdvice: (model) => `${model} is an AI. It shares facts, not advice. You sign every order.`,
+  chatNoCopyKept: "Berth keeps no copy of this chat.",
+  chatPlaceholder: "Ask about a stock or your account",
+  chatSend: "Send",
+  chatStop: "Stop",
+  chatClear: "Clear",
+  chatEmpty: "Ask about the market or your account.",
+  chatTool: {
+    list_listings: { doing: "Reading the board", done: "Read the board" },
+    get_listing: { doing: "Looking at a listing", done: "Looked at a listing" },
+    get_moves: { doing: "Reading what moved", done: "Read what moved" },
+    get_market_feed: { doing: "Reading what is being said", done: "Read what is being said" },
+    get_account: { doing: "Reading your account", done: "Read your account" },
+    get_holdings: { doing: "Reading your holdings", done: "Read your holdings" },
+    get_performance: { doing: "Measuring how your money did", done: "Measured how your money did" },
+    get_orders: { doing: "Reading your orders", done: "Read your orders" },
+    draft_order: { doing: "Drafting an order", done: "Drafted an order" },
+  },
+  chatToolsFolded: (n) => (n === 1 ? "Read 1 thing" : `Read ${n} things`),
+  chatToolFailed: "Could not read that",
+  chatDraftLabel: "Draft",
+  chatDraftBuy: (name) => `Buy ${name}`,
+  chatDraftSell: (name) => `Sell ${name}`,
+  chatDraftShares: (quantity) => `${quantity} shares`,
+  chatDraftAbout: (usd) => `about ${usd} now`,
+  chatDraftNothingYet: "Nothing is placed until you sign.",
+  chatDraftOpen: "Open the order",
+  chatThinking: "Thinking",
+  chatFailed: "That did not go through. Try again.",
+  chatRetry: "Try again",
+  chatLimitMinute: "One moment. Try again in a minute.",
+  chatLimitDay: "That is today's messages. More tomorrow, and more as your rank rises.",
+  chatLeft: (n) => (n === 1 ? "1 message left today." : `${n} messages left today.`),
+  chatBudget: "The assistant is resting until the 1st.",
+  chatLimitMonth: "You have used this month's share of the assistant. It opens again on the 1st.",
+  chatUnavailable: "The assistant is not available right now. Everything else in Berth works as usual.",
+  chatTooLong: "That message is too long. Try a shorter one.",
+  chatLockedTitle: (rankName) => `Ask opens at ${rankName}`,
+  chatLockedBody: (xp) =>
+    `${xp} XP to go. Adding an email to your account or making your first buy gets you there.`,
   privacyLink: "Privacy",
   privacyPolicy: {
     title: "Privacy policy",

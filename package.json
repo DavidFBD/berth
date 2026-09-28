@@ -16,9 +16,13 @@
     "orders:backfill": "node --no-warnings --experimental-strip-types scripts/orders-backfill.mjs",
     "marks:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/marks-backfill.mjs",
     "portfolio:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/portfolio-backfill.mjs",
-    "order-marks:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/order-marks-backfill.mjs"
+    "order-marks:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/order-marks-backfill.mjs",
+    "chat:eval": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/chat-eval.mjs",
+    "chat:usage": "node scripts/chat-usage.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai": "4.0.78",
+    "@ai-sdk/react": "4.0.121",
     "@base-ui/react": "^1.6.0",
     "@modelcontextprotocol/server": "2.1.0",
     "@neondatabase/serverless": "^1.1.0",
@@ -34,6 +38,7 @@
     "@solana/kit": "^5.5.1",
     "@tanstack/react-query": "^5.101.4",
     "@vercel/analytics": "^2.0.1",
+    "ai": "7.0.118",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jose": "^6.2.8",

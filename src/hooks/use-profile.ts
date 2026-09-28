@@ -15,8 +15,10 @@ import type {
 } from "@/lib/profile-types";
 import type { OrdersResponse } from "@/app/api/orders/route";
 import type { AssistantsResponse } from "@/app/api/assistants/route";
+import type { ChatStatusResponse } from "@/app/api/chat/status/route";
 import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
+import { CHAT_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
 import { announceRewards } from "@/components/xp-toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -57,8 +59,7 @@ function useIdentity() {
  * whether null is an error (queries throw) or a quiet miss (mutations).
  */
 function useRewardsCall() {
-  const { authenticated, wallet, key, getAccessToken } = useIdentity();
-  const ensureWalletSession = useEnsureWalletSession();
+  const { key, headers } = useAccountHeaders();
 
   const call = async <T>(
     path: string,
@@ -69,22 +70,11 @@ function useRewardsCall() {
      */
     notFound?: T,
   ): Promise<T | null> => {
-    const auth = authenticated
-      ? { token: await getAccessToken(), walletSession: null }
-      : {
-          token: null,
-          walletSession: wallet ? await ensureWalletSession(wallet) : null,
-        };
-    if (!auth.token && !auth.walletSession) return null;
+    const auth = await headers();
+    if (!auth) return null;
     const response = await fetch(path, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(auth.token ? { authorization: `Bearer ${auth.token}` } : {}),
-        ...(auth.walletSession
-          ? { "x-wallet-session": auth.walletSession }
-          : {}),
-      },
+      headers: { "content-type": "application/json", ...auth },
       body: JSON.stringify(body),
     });
     if (response.status === 404 && notFound !== undefined) return notFound;
@@ -93,6 +83,27 @@ function useRewardsCall() {
   };
 
   return { key, call };
+}
+
+/**
+ * The auth ritual on its own: a fresh Privy token when signed in by email,
+ * the SIWE wallet session otherwise (asking for the free signature once),
+ * as request headers. Null when no session materializes. The rewards
+ * calls use it, and so does the chat, whose streamed POST is not a
+ * rewards call but rides the same proof of who is asking.
+ */
+export function useAccountHeaders(): { key: string | null; headers: () => Promise<Record<string, string> | null> } {
+  const { authenticated, wallet, key, getAccessToken } = useIdentity();
+  const ensureWalletSession = useEnsureWalletSession();
+  const headers = async (): Promise<Record<string, string> | null> => {
+    if (authenticated) {
+      const token = await getAccessToken();
+      return token ? { authorization: `Bearer ${token}` } : null;
+    }
+    const walletSession = wallet ? await ensureWalletSession(wallet) : null;
+    return walletSession ? { "x-wallet-session": walletSession } : null;
+  };
+  return { key, headers };
 }
 
 /**
@@ -203,6 +214,22 @@ function useProfileMutation<TVars>(
       // flow in the portfolio's line.
       void queryClient.invalidateQueries({ queryKey: ["orders", key] });
       void queryClient.invalidateQueries({ queryKey: ["portfolio-history", key] });
+    },
+  });
+}
+
+/** Whether the in-app assistant is open to this account right now, and how many messages are left today. */
+export function useChatStatus(enabled: boolean) {
+  return useRewardsQuery<ChatStatusResponse>("chat-status", "/api/chat/status", {
+    enabled,
+    staleTime: 30_000,
+    notFound: {
+      state: "unavailable",
+      level: 1,
+      unlockLevel: CHAT_UNLOCK_LEVEL,
+      unlockRankName: RANKS[CHAT_UNLOCK_LEVEL - 1].name,
+      xpToUnlock: 0,
+      left: null,
     },
   });
 }

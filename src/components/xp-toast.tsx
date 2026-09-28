@@ -144,13 +144,15 @@ export function LevelUpCard({
   reason,
 }: {
   rank: RankInfo;
-  /** The rung left behind; a jump of several rungs shows the latest opening passed. */
+  /** The rung left behind; a jump of several rungs shows every opening passed. */
   fromLevel?: number;
   total: number;
   reason: string | null;
 }) {
   const copy = useCopy();
-  const unlock = unlocksBetween(fromLevel, rank.level).at(-1) ?? null;
+  // Every opening passed, lowest rung first: a jump from First Line past
+  // Slip must still say that Ask opened, not only the latest opening.
+  const unlocks = unlocksBetween(fromLevel, rank.level);
   return (
     <motion.div
       initial={{ scale: 0.88, y: 14, opacity: 0 }}
@@ -201,16 +203,17 @@ export function LevelUpCard({
         >
           {copy.levelUpLine(rank.level, total, reason)}
         </motion.span>
-        {unlock && (
+        {unlocks.map((unlock, index) => (
           <motion.span
+            key={unlock.kind === "avatar" ? unlock.avatarId : unlock.kind}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ type: "spring", stiffness: 300, damping: 24, delay: 0.46 }}
+            transition={{ type: "spring", stiffness: 300, damping: 24, delay: 0.46 + index * 0.12 }}
             className="text-xs text-foreground"
           >
             {copy.levelUpUnlock(unlock)}
           </motion.span>
-        )}
+        ))}
       </div>
     </motion.div>
   );
