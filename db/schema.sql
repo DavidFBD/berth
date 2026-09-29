@@ -227,7 +227,10 @@ create table if not exists marks (
 -- rows come from the balances read on chain by /api/cron/evening, so
 -- a transfer the orders never saw is still counted; 'ledger' rows are past
 -- days rebuilt from the orders by `pnpm portfolio:backfill`, only for an
--- account whose balance the orders fully explain. `holdings` is
+-- account whose balance the orders fully explain, and the days between the
+-- first buy and the first snapshot by `pnpm history:backfill` and the
+-- evening cron, only when the orders explain that snapshot
+-- (lib/server/history-backfill). `holdings` is
 -- [{symbol, quantity, price, source}], source 'mark', 'oracle' or
 -- 'prior_mark' (the day's mark was taken out after, lib/server/marks). `as_of`
 -- is when the holdings were read (a ledger day: its close).

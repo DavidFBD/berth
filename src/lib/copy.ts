@@ -247,6 +247,12 @@ export type Copy = {
    * snapshot, because money moved without an order before it.
    */
   portfolioRebased: (date: string) => string;
+  /**
+   * After the "Since" sentence on "First buy" when no day before `date` is
+   * stored (the daily record began later, and the orders could not rebuild
+   * the stretch before it). Absent when the line reaches the first buy.
+   */
+  portfolioRecordStarts: (date: string) => string;
   /** The "First buy" range chip when that window starts on a later snapshot instead. */
   portfolioRangeSince: (date: string) => string;
   /** The article a benchmark's name takes mid sentence, by id: "the " or nothing. */
@@ -1438,6 +1444,8 @@ export const COPY: Copy = {
       `Money moved in or out without a Berth order, so ${name} is set beside it from the next evening that adds up.`,
   },
   portfolioRebased: (date) => `Money moved without a Berth order before ${date}, so the comparison starts then.`,
+  portfolioRecordStarts: (date) =>
+    `Daily values are on record from ${date}, after your first buy. The percentages count from the first buy.`,
   portfolioRangeSince: (date) => `Since ${date}`,
   benchmarkArticle: { SPY: "the ", QQQ: "the ", PAXG: "", BTC: "", SGOV: "" },
   portfolioNoMarks: (name) => `No prices for ${name} yet.`,

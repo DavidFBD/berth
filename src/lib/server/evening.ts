@@ -1,3 +1,4 @@
+import { backfillHistories, HISTORY_BACKFILL_PER_RUN, type HistoryBackfillSummary } from "@/lib/server/history-backfill";
 import { refreshMarks, type MarksRunSummary } from "@/lib/server/marks";
 import { fillOrderMarks, type OrderMarksSummary } from "@/lib/server/order-marks";
 import { rebuildMergedPortfolios, runPortfolioSnapshot, type RebuildSummary, type SnapshotSummary } from "@/lib/server/portfolio";
@@ -31,7 +32,10 @@ import { settlePourClaims, type ClaimSummary } from "@/lib/server/pour-claims";
  * back to look. It rides this cron because Hobby allows no third. So does
  * the history of a merged account (lib/server/portfolio
  * rebuildMergedPortfolios), redrawn from its joined orders beside the order
- * marks, before the snapshot writes today's row over it.
+ * marks, before the snapshot writes today's row over it. And beside both,
+ * the history back to the first buy (lib/server/history-backfill) for a
+ * few accounts whose stored days start after their first order: database
+ * reads only, idempotent, never over a stored row.
  *
  * A stage that throws or runs out of budget is reported as that and the
  * next one runs. The route answers 500 only when nothing at all was
@@ -55,6 +59,8 @@ export type EveningSummary = {
   pourClaims: Stage<ClaimSummary>;
   /** Merged accounts whose history was redrawn from their joined orders. */
   rebuilds: Stage<RebuildSummary>;
+  /** Accounts whose history was reached back to the first buy (lib/server/history-backfill). */
+  histories: Stage<HistoryBackfillSummary>;
   /** Marks written or dropped, order prices written, portfolio days written. */
   written: number;
   failed: boolean;
@@ -86,6 +92,7 @@ export async function runEvening({
   limits = () => syncWaitingOrders({ now }),
   claims = () => settlePourClaims({ now }),
   rebuilds = () => rebuildMergedPortfolios({ now }),
+  histories = (deadline: number) => backfillHistories({ write: true, limit: HISTORY_BACKFILL_PER_RUN, now, deadline }),
   budgets = { marks: MARKS_BUDGET_MS, orderMarks: ORDER_MARKS_BUDGET_MS, snapshotDeadline: SNAPSHOT_DEADLINE_MS },
 }: {
   now?: Date;
@@ -96,6 +103,7 @@ export async function runEvening({
   limits?: () => Promise<LimitSyncSummary>;
   claims?: () => Promise<ClaimSummary>;
   rebuilds?: () => Promise<RebuildSummary>;
+  histories?: (deadline: number) => Promise<HistoryBackfillSummary>;
   budgets?: { marks: number; orderMarks: number; snapshotDeadline: number };
 } = {}): Promise<EveningSummary> {
   const started = Date.now();
@@ -106,9 +114,13 @@ export async function runEvening({
   ]);
   // After the limit pass, which records the fills the claims wait on.
   const claimStage = await stage(claims, budgets.orderMarks);
-  const [orderStage, rebuildStage] = await Promise.all([
+  // The history backfill skips accounts waiting on a rebuild, so the two
+  // never write the same account's days at once.
+  const historyDeadline = Date.now() + budgets.orderMarks - 2_000;
+  const [orderStage, rebuildStage, historyStage] = await Promise.all([
     stage(orderMarks, budgets.orderMarks),
     stage(rebuilds, budgets.orderMarks),
+    stage(() => histories(historyDeadline), budgets.orderMarks),
   ]);
   const deadline = started + budgets.snapshotDeadline;
   // The snapshot's own deadline stops new accounts; the budget is the
@@ -136,6 +148,7 @@ export async function runEvening({
   if (!limitStage.ok) console.warn("[cron/evening] limit orders failed:", limitStage.error);
   if (!claimStage.ok) console.warn("[cron/evening] pour claims failed:", claimStage.error);
   if (!rebuildStage.ok) console.warn("[cron/evening] merged history failed:", rebuildStage.error);
+  if (!historyStage.ok) console.warn("[cron/evening] history backfill failed:", historyStage.error);
   return {
     marks: marksStage,
     orderMarks: orderStage,
@@ -144,7 +157,11 @@ export async function runEvening({
     limitOrders: limitStage,
     pourClaims: claimStage,
     rebuilds: rebuildStage,
-    written: written + (rebuildStage.ok ? rebuildStage.result.written : 0),
+    histories: historyStage,
+    written:
+      written +
+      (rebuildStage.ok ? rebuildStage.result.written : 0) +
+      (historyStage.ok ? historyStage.result.written : 0),
     failed,
   };
 }

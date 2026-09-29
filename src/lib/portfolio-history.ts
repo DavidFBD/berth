@@ -1,7 +1,7 @@
 import type { Marks, OrderFacts } from "@/lib/benchmark";
 import { isTradingDay } from "@/lib/market-calendar";
 import { addDays, markAsOf, subtractMonths, type IsoDay } from "@/lib/marks";
-import type { SnapshotBase } from "@/lib/portfolio-days";
+import { dayOfOrder, type SnapshotBase } from "@/lib/portfolio-days";
 
 /**
  * A person's money over time, beside the same money placed in a benchmark.
@@ -63,6 +63,14 @@ import type { SnapshotBase } from "@/lib/portfolio-days";
  * a gap in its line, not a copy of the day before. `changePct` is also null
  * when a sell lands on a day its listing has no close. Under two days
  * there is no line and no change ('too_short').
+ *
+ * THE RECORD'S START. Stored days began with the evening snapshot
+ * (2026-09-25), and an earlier stretch is rebuilt from the orders only
+ * when they explain the first snapshot (lib/server/history-backfill). When
+ * since first buy still starts after the first buy's own close,
+ * `recordFrom` names the day the record starts. Both percentages still
+ * measure from the first buy (its buys are the first day's base); only
+ * the drawn line starts later.
  *
  * Only listings count here: callers pass the token listing orders, not the
  * old vault positions, which `portfolio_days` does not value either.
@@ -163,6 +171,13 @@ export type HistoryResult = {
    * day, or the first valued day after it; null otherwise.
    */
   rebasedFrom: IsoDay | null;
+  /**
+   * Since first buy only, not rebased: the first stored day when it comes
+   * after the first buy's close (lib/portfolio-days dayOfOrder), because no
+   * day before it is stored (THE RECORD'S START); null when the line
+   * reaches the first buy.
+   */
+  recordFrom: IsoDay | null;
 };
 
 /** How far a sell may exceed what the orders bought before it is refused. */
@@ -373,6 +388,7 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
     tradingDays: 0,
     benchmarkStatus: "too_short",
     rebasedFrom: null,
+    recordFrom: null,
   };
   const last = series.at(-1);
   if (!last) return empty;
@@ -399,8 +415,11 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
   }));
   const since = window[0].day;
   const tradingDays = tradingDaysBetween(since, window.at(-1)!.day);
+  const firstOrder = orders[0];
+  const recordFrom =
+    range === "since" && !base && firstOrder && dayOfOrder(firstOrder.placedAt) < since ? since : null;
   if (window.length < 2) {
-    return { ...empty, days, since, tradingDays, benchmarkStatus: "too_short", rebasedFrom };
+    return { ...empty, days, since, tradingDays, benchmarkStatus: "too_short", rebasedFrom, recordFrom };
   }
   const refused = shadow.status === "unexplained_balance" || shadow.status === "unpriced_orders";
 
@@ -459,6 +478,7 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
     tradingDays,
     benchmarkStatus: shadow.status,
     rebasedFrom,
+    recordFrom,
   };
 }
 

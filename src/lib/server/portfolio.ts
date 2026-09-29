@@ -136,6 +136,17 @@ export type AccountDays = {
  * An account nobody merged into reads exactly its own rows.
  */
 export async function loadPortfolioDays(userId: string): Promise<StoredPortfolioDay[]> {
+  const { own, retired } = await loadAccountDays(userId);
+  return combineAccountDays(own, retired);
+}
+
+/**
+ * The rows loadPortfolioDays adds up, account by account and before they
+ * are added: the account's own, and each account retired into it with when
+ * and into whom. What the history backfill (lib/server/history-backfill)
+ * needs to know which rows are whose.
+ */
+export async function loadAccountDays(userId: string): Promise<{ own: AccountDays; retired: AccountDays[] }> {
   const sql = getSql();
   // Every account retired into this one, with the one each was merged into
   // directly: a chain (C into A, then A into here) points C's retired_into
@@ -173,15 +184,15 @@ export async function loadPortfolioDays(userId: string): Promise<StoredPortfolio
       createdAt: new Date(row.created_at).toISOString(),
     });
   }
-  return combineAccountDays(
-    { id: userId, rows: byUser.get(userId) ?? [] },
-    retired.map((row) => ({
+  return {
+    own: { id: userId, rows: byUser.get(userId) ?? [] },
+    retired: retired.map((row) => ({
       id: row.id,
       parent: row.parent && ids.includes(row.parent) ? row.parent : userId,
       rows: byUser.get(row.id) ?? [],
       retiredAt: new Date(row.retired_at ?? 0).toISOString(),
     })),
-  );
+  };
 }
 
 /** The pure half of loadPortfolioDays: the survivor's days with the retired accounts' added in. */

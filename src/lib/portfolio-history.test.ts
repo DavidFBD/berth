@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { markAt, type Marks, type OrderFacts } from "@/lib/benchmark";
 import { MARK_MINUTES, markAsOf } from "@/lib/marks";
+import { ledgerDays } from "@/lib/portfolio-days";
 import {
   availableRanges,
   historyRanges,
@@ -616,5 +617,73 @@ describe("starting from a snapshot when money moved without an order", () => {
   it("refuses when the snapshot's day has no benchmark close", () => {
     const gap = { ...input, benchmarkMarks: marks({ "2026-09-15": 51, "2026-09-17": 49, "2026-09-18": 50 }) };
     expect(portfolioHistory(gap, "since").benchmarkStatus).toBe("no_marks");
+  });
+});
+
+describe("the join between days rebuilt from the orders and days read on chain", () => {
+  // A buy on Tuesday the 15th; the evening snapshot starts on Friday the
+  // 18th. Before it, days rebuilt from the orders (lib/portfolio-days
+  // ledgerDays): valued at the close, as of the close. From it, snapshots:
+  // the same holdings read on chain after the close, at the same closes.
+  const NVDA = marks({ "2026-09-15": 100, "2026-09-16": 110, "2026-09-17": 99, "2026-09-18": 105, "2026-09-21": 108 });
+  const firstBuy = buy("2026-09-15T15:00:00Z", 100);
+  const rebuilt = (orders: OrderFacts[], through: string) =>
+    ledgerDays({ orders, closes: { NVDA }, through }).map(({ day, value, asOf }) => ({ day, value, asOf }));
+  const snapshot = (day: string, value: number): PortfolioDay => ({ day, value, asOf: `${day}T22:40:00.000Z` });
+  const base = { benchmarkSymbol: "SPY", benchmarkMarks: SPY, listingCloses: { NVDA } };
+
+  it("reads a join as the day's price move and nothing more: the same numbers as a line rebuilt all the way", () => {
+    const joined = portfolioHistory(
+      { ...base, orders: [firstBuy], days: [...rebuilt([firstBuy], "2026-09-17"), snapshot("2026-09-18", 105), snapshot("2026-09-21", 108)] },
+      "since",
+    );
+    const allRebuilt = portfolioHistory({ ...base, orders: [firstBuy], days: rebuilt([firstBuy], "2026-09-21") }, "since");
+    expect(joined.days).toEqual(allRebuilt.days);
+    expect(joined.changePct).toBeCloseTo(8, 10);
+    expect(joined.changePct).toBeCloseTo(allRebuilt.changePct!, 10);
+    expect(joined.benchmarkPct).toBeCloseTo(allRebuilt.benchmarkPct!, 10);
+    // 100 dollars at the fund's 50 (the close before the order) is 2 units, held across the join.
+    expect(joined.days.map((point) => point.benchmark)).toEqual([102, 104, 98, 100, 102]);
+    expect(joined).toMatchObject({ since: "2026-09-15", benchmarkStatus: "ok", rebasedFrom: null, recordFrom: null });
+  });
+
+  it("counts an order placed after the close on the join's day in that day's snapshot, as its holdings do", () => {
+    // 22:00 UTC on Friday: after the 21:30 close, before the 22:40 snapshot.
+    const second = buy("2026-09-18T22:00:00Z", 105, 1, "NVDA", 50);
+    const orders = [firstBuy, second];
+    const result = portfolioHistory(
+      { ...base, orders, days: [...rebuilt(orders, "2026-09-17"), snapshot("2026-09-18", 210), snapshot("2026-09-21", 216)] },
+      "since",
+    );
+    // Friday: 210 at the close against Thursday's 99 plus the 105 paid.
+    const expected = (100 / 100) * (110 / 100) * (99 / 110) * (210 / (99 + 105)) * (216 / 210);
+    expect(result.changePct).toBeCloseTo((expected - 1) * 100, 10);
+    // The second buy's 105 buys 2.1 units at the price recorded for its minute, from Friday on.
+    expect(result.days.map((point) => Number(point.benchmark!.toFixed(9)))).toEqual([102, 104, 98, 205, 209.1]);
+  });
+
+  it("names the record's start when no day before a later one is stored, and not once the line reaches the first buy", () => {
+    const late = portfolioHistory({ ...base, orders: [firstBuy], days: [snapshot("2026-09-18", 105), snapshot("2026-09-21", 108)] }, "since");
+    expect(late).toMatchObject({ since: "2026-09-18", recordFrom: "2026-09-18", rebasedFrom: null });
+    // The percentages still count from the first buy: 100 paid, 108 now.
+    expect(late.changePct).toBeCloseTo(8, 10);
+    expect(portfolioHistory({ ...base, orders: [firstBuy], days: rebuilt([firstBuy], "2026-09-21") }, "since").recordFrom).toBeNull();
+    // A fixed range never names it.
+    expect(portfolioHistory({ ...base, orders: [firstBuy], days: [snapshot("2026-09-18", 105), snapshot("2026-09-21", 108)] }, "1w").recordFrom).toBeNull();
+  });
+
+  it("does not name the record's start on a window rebased on a snapshot, which says why it starts late itself", () => {
+    const holdings = [{ symbol: "NVDA", quantity: 2, price: 105, source: "mark" as const }];
+    const result = portfolioHistory(
+      {
+        ...base,
+        orders: [firstBuy],
+        days: [snapshot("2026-09-18", 210), snapshot("2026-09-21", 216)],
+        balanceExplained: false,
+        base: { day: "2026-09-18", asOf: "2026-09-18T22:40:00.000Z", holdings },
+      },
+      "since",
+    );
+    expect(result).toMatchObject({ rebasedFrom: "2026-09-18", recordFrom: null });
   });
 });

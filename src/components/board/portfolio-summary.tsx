@@ -258,6 +258,8 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
     reason = copy.portfolioNoMarks(copy.benchmarkNames[shownBenchmark]);
   } else if (result.rebasedFrom) {
     reason = copy.portfolioRebased(shortDate(result.rebasedFrom));
+  } else if (result.recordFrom) {
+    reason = copy.portfolioRecordStarts(shortDate(result.recordFrom));
   }
 
   const legend = (

@@ -33,6 +33,7 @@ import MARKS_JSON from "./portfolio-marks.json";
  *   /dev/account?portfolio=value-only     a buy paid in a coin with no price
  *   /dev/account?portfolio=moved          money moved without an order; compared from the next snapshot
  *   /dev/account?portfolio=moved-today    money moved since the last snapshot; nothing to compare yet
+ *   /dev/account?portfolio=record-late    bought before the first stored day, and the gap could not be rebuilt
  *   /dev/account?portfolio=first-day      bought today, nothing to draw yet
  *   /dev/account?portfolio=empty          nothing held
  *   /dev/account?portfolio=loading        the query still out
@@ -55,6 +56,7 @@ export const PORTFOLIO_STATES = [
   "value-only",
   "moved",
   "moved-today",
+  "record-late",
   "first-day",
   "empty",
   "loading",
@@ -75,6 +77,8 @@ type Scene = {
   moved?: Moved[];
   /** Money moved after the newest snapshot, seen only in today's balances. */
   movedToday?: boolean;
+  /** No day before this one is stored: the record starts after the first buy. */
+  recordFrom?: string;
 };
 
 const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
@@ -132,6 +136,15 @@ const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
     ],
     sells: [],
     movedToday: true,
+  },
+  "record-late": {
+    from: "2026-09-10",
+    buys: [
+      { symbol: "NVDA", day: "2026-09-10", usd: 12 },
+      { symbol: "TSLA", day: "2026-09-10", usd: 8 },
+    ],
+    sells: [],
+    recordFrom: "2026-09-17",
   },
   "first-day": {
     from: "2026-09-24",
@@ -227,7 +240,8 @@ function build(scene: Scene) {
         }),
       };
     });
-  return { orders, days, rows };
+  const stored = scene.recordFrom ? days.filter((entry) => entry.day >= scene.recordFrom!) : days;
+  return { orders, days: stored, rows };
 }
 
 export function seededPortfolioClient(

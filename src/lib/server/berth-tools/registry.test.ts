@@ -60,6 +60,7 @@ vi.mock("@/lib/server/portfolio-view", () => ({
         tradingDays: 11,
         benchmarkStatus: "ok",
         rebasedFrom: "2026-09-10",
+        recordFrom: null,
       },
     },
   })),
