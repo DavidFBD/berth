@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestEmailProof, pickAccountWallet, type PrivyLinkedAccount } from "./privy";
+import { emailProofFresh, latestEmailProof, pickAccountWallet, type PrivyLinkedAccount } from "./privy";
 
 const embedded: PrivyLinkedAccount = {
   type: "wallet",
@@ -85,11 +85,12 @@ describe("latestEmailProof", () => {
     expect(latestEmailProof([{ type: "google_oauth", email: "a@example.com", latest_verified_at: 1799999999 }])).toBeNull();
   });
 
-  it("a code entered nine minutes ago is fresh for the ten minute rule, eleven is not", async () => {
-    const { PRIVY_FRESH_MS } = await import("./account-wallets-route");
-    const now = Date.now();
-    const at = (minutesAgo: number) => latestEmailProof([{ type: "email", latest_verified_at: Math.floor((now - minutesAgo * 60_000) / 1000) }])!;
-    expect(now - at(9) <= PRIVY_FRESH_MS).toBe(true);
-    expect(now - at(11) <= PRIVY_FRESH_MS).toBe(false);
+  it("a code entered nine minutes ago is fresh for the ten minute rule, eleven is not", () => {
+    const now = Date.UTC(2026, 8, 29, 12, 0, 0);
+    const at = (minutesAgo: number) => latestEmailProof([{ type: "email", latest_verified_at: (now - minutesAgo * 60_000) / 1000 }]);
+    expect(emailProofFresh(at(9), now)).toBe(true);
+    expect(emailProofFresh(at(10), now)).toBe(true);
+    expect(emailProofFresh(at(11), now)).toBe(false);
+    expect(emailProofFresh(null, now)).toBe(false);
   });
 });

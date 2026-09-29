@@ -147,6 +147,14 @@ export function latestEmailProof(accounts: readonly PrivyLinkedAccount[]): numbe
   return latest;
 }
 
+/** How recently an email account must have proved its email to act on its wallets. */
+export const PRIVY_FRESH_MS = 10 * 60_000;
+
+/** Whether a proof at `at` (ms, from latestEmailProof) is still fresh at `now`. */
+export function emailProofFresh(at: number | null, now: number): boolean {
+  return at !== null && now - at <= PRIVY_FRESH_MS;
+}
+
 export async function fetchPrivyEmail(did: string): Promise<string | null> {
   const accounts = await fetchPrivyUser(did);
   for (const account of accounts ?? []) {

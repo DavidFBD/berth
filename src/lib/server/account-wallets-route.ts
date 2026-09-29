@@ -6,7 +6,7 @@ import { parseSiwsMessage } from "@/lib/siws";
 import { parseSiwbMessage } from "@/lib/siwb";
 import { getSql } from "@/lib/server/db";
 import { hubWalletFor, readListingBalances } from "@/lib/server/portfolio";
-import { fetchPrivyEmailVerifiedAt, fetchPrivyEmbeddedWallet } from "@/lib/server/privy";
+import { emailProofFresh, fetchPrivyEmailVerifiedAt, fetchPrivyEmbeddedWallet } from "@/lib/server/privy";
 import { normalizeWallet, type UserRow } from "@/lib/server/accounts";
 import { walletsOf } from "@/lib/server/account-wallets";
 import type { LinkedWallet } from "@/lib/server/identities";
@@ -148,9 +148,6 @@ function keyFor(family: ProofFamily, raw: unknown): string | null {
   return address && address === raw ? targetKey(family, address) : null;
 }
 
-/** How recently an email account must have proved its email to act on its wallets. */
-export const PRIVY_FRESH_MS = 10 * 60_000;
-
 /**
  * POST /api/account/wallets/nonce { act, target, family? }: a nonce this
  * account can spend once, on one act, for one target address. `family` is
@@ -228,7 +225,7 @@ export async function spend(nonce: string, userId: string | null, act: AccountAc
 }
 
 /**
- * Whether an email account proved its email in the last PRIVY_FRESH_MS:
+ * Whether an email account proved its email in the last PRIVY_FRESH_MS (lib/server/privy):
  * Privy's latest_verified_at on the email account (unix seconds, read as ms
  * by lib/server/privy latestEmailProof), which moves when a code is
  * entered, not when a session silently refreshes (checked against
@@ -236,8 +233,7 @@ export async function spend(nonce: string, userId: string | null, act: AccountAc
  * reissued on every refresh without the person doing anything.
  */
 export async function privyFresh(did: string): Promise<boolean> {
-  const at = await fetchPrivyEmailVerifiedAt(did);
-  return at !== null && Date.now() - at <= PRIVY_FRESH_MS;
+  return emailProofFresh(await fetchPrivyEmailVerifiedAt(did), Date.now());
 }
 
 export type ProvedAct =
