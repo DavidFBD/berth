@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
 import { useXAccount } from "@sodax/wallet-sdk-react";
@@ -181,14 +181,19 @@ export function useAccountHeaders({
 } = {}): { key: string | null; headers: () => Promise<Record<string, string> | null> } {
   const { authenticated, wallet, key, getAccessToken } = useIdentity();
   const ensureWalletSession = useEnsureWalletSession();
-  const headers = async (): Promise<Record<string, string> | null> => {
+  // Memoized: callers (useRecordLimitOrder, and effects downstream of it)
+  // put this in a dependency array, and a fresh closure every render there
+  // defeats their own memoization, rerunning an effect every render even
+  // when nothing changed (a setState inside such an effect then loops
+  // forever — "Maximum update depth exceeded").
+  const headers = useCallback(async (): Promise<Record<string, string> | null> => {
     if (authenticated) {
       const token = await getAccessToken();
       return token ? { authorization: `Bearer ${token}` } : null;
     }
     const walletSession = wallet ? (prompt ? await ensureWalletSession(wallet) : storedWalletSession(wallet)) : null;
     return walletSession ? { "x-wallet-session": walletSession } : null;
-  };
+  }, [authenticated, wallet, prompt, ensureWalletSession, getAccessToken]);
   return { key, headers };
 }
 

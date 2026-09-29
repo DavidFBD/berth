@@ -40,6 +40,12 @@ import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 
 export const LIMIT_ORDERS_QUERY_KEY = ["limit-orders"] as const;
 const POLL_MS = 30_000;
+// Stable reference for the no-data case (signed out, or query disabled): a
+// fresh `[]` literal there would change identity every render, and two
+// downstream effects (useAnnounceClosings, usePendingLimits) depend on this
+// array, so a fresh one each time reruns them forever (Maximum update depth
+// exceeded) even while genuinely idle.
+const EMPTY_ORDERS: readonly LimitOrderView[] = [];
 
 export type { LimitOrderView };
 
@@ -75,7 +81,7 @@ export function useLimitOrders({ poll = true }: { poll?: boolean } = {}) {
       return (await post<LimitOrdersResponse>(auth, { action: "list", ...(sweep && { sweep: true }) })) ?? { enabled: false, orders: [] };
     },
   });
-  const orders = query.data?.orders ?? [];
+  const orders = query.data?.orders ?? EMPTY_ORDERS;
   return {
     /** The switch. False until the server says otherwise. */
     enabled: query.data?.enabled === true,
