@@ -190,6 +190,14 @@ export type Copy = {
   /* — the board: stocks and funds on offer — */
   boardTitle: string;
   boardHint: string;
+  /**
+   * Beside the board and in the buy and sell drawers, only while the US
+   * market is shut. `day` is "today", "tomorrow" or a weekday, `time` the
+   * open in the viewer's own zone: "US market closed. Opens Monday 15:30
+   * your time." Says nothing about trading on; that waits for the weekend
+   * checks (docs/plans/recurring-email.md, Around the clock).
+   */
+  marketClosedLine: (day: string, time: string) => string;
   /** `amount` arrives pre-formatted: "0.0089 NVDA ≈ €1.80". */
   boardYouHold: (amount: string) => string;
   /**
@@ -1408,6 +1416,7 @@ export const COPY: Copy = {
 
   boardTitle: "Stocks and funds",
   boardHint: "Robinhood Stock Tokens. Choose one to buy.",
+  marketClosedLine: (day, time) => `US market closed. Opens ${day} ${time} your time.`,
   boardYouHold: (amount) => `You hold ${amount}`,
   boardPerformanceNote: (days) =>
     `The figure under the line is the last ${days} days. The figure by the price is the day. Only days the market was open are counted.`,

@@ -1,5 +1,6 @@
 "use client";
 
+import { MarketClosedLine } from "@/components/market/market-closed-line";
 import { useState } from "react";
 import { formatUnits } from "viem";
 import { AnimatePresence, motion } from "motion/react";
@@ -536,6 +537,7 @@ export function WithdrawDrawer({
             <DrawerDescription>
               {isSell ? copy.sellSub : copy.withdrawSub}
             </DrawerDescription>
+            {listing?.kind === "stock" && <MarketClosedLine className="pt-1" />}
           </DrawerHeader>
 
           {/* Same three-act wash as the deposit drawer. */}

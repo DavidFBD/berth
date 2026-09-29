@@ -1,5 +1,6 @@
 "use client";
 
+import { MarketClosedLine } from "@/components/market/market-closed-line";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
@@ -534,6 +535,7 @@ export function DepositDrawer({
                 : copy.orderTitleFallback}
             </DrawerTitle>
             <DrawerDescription>{copy.buySub}</DrawerDescription>
+            {listing?.kind === "stock" && <MarketClosedLine className="pt-1" />}
           </DrawerHeader>
 
           {/* The three acts (form → working → settling) hand off with a soft

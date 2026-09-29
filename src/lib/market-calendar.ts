@@ -15,10 +15,14 @@
  * because a hand-written holiday table goes stale in January and then
  * silently lets a bad mark back into the chart.
  *
- * The nine standard NYSE closures, plus Good Friday. Not modelled: half days
- * (the market is open, so the mark is real), and ad-hoc closures for national
- * mourning or weather, which are rare, unpredictable and cost at most one
- * point in a line of eighty.
+ * The nine standard NYSE closures, plus Good Friday. The same rules also
+ * answer the question a person asks in the drawer, whether the share's own
+ * market is open right now and when it opens next, so the regular session
+ * (09:30 to 16:00 New York time, daylight saving included) and the three
+ * 13:00 half days are modelled below. A half day counts as a trading day for
+ * the marks, because the market was open and the close is real. Not
+ * modelled: ad-hoc closures for national mourning or weather, which are
+ * rare, unpredictable and cost at most one point in a line of eighty.
  */
 
 /** A calendar day as `YYYY-MM-DD`, always UTC. */
@@ -127,4 +131,186 @@ export function isTradingDay(date: IsoDate): boolean {
   const weekdayIndex = weekday(year, month, day);
   if (weekdayIndex === 0 || weekdayIndex === 6) return false;
   return !marketHolidays(year).has(date);
+}
+
+const earlyCloseCache = new Map<number, ReadonlySet<IsoDate>>();
+
+/**
+ * The days the market closes at 13:00 New York time: the Friday after
+ * Thanksgiving always, and 3 July and 24 December when they fall Monday to
+ * Thursday. On a Friday those two are the observed holiday itself, and on a
+ * weekend there is no session to shorten.
+ */
+export function earlyCloses(year: number): ReadonlySet<IsoDate> {
+  const cached = earlyCloseCache.get(year);
+  if (cached) return cached;
+  const thanksgiving = Number(nthWeekdayOf(year, 11, 4, 4).slice(8));
+  const days = [iso(year, 11, thanksgiving + 1)];
+  for (const [month, day] of [
+    [7, 3],
+    [12, 24],
+  ] as const) {
+    const index = weekday(year, month, day);
+    if (index >= 1 && index <= 4) days.push(iso(year, month, day));
+  }
+  const set: ReadonlySet<IsoDate> = new Set(days);
+  earlyCloseCache.set(year, set);
+  return set;
+}
+
+const NEW_YORK = "America/New_York";
+
+const newYorkParts = new Intl.DateTimeFormat("en-US", {
+  timeZone: NEW_YORK,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+/** New York's wall clock at an instant, as the parts a UTC date would have. */
+function newYorkWall(at: number): { date: IsoDate; asUtc: number } {
+  const parts: Record<string, number> = {};
+  for (const part of newYorkParts.formatToParts(new Date(at))) {
+    if (part.type !== "literal") parts[part.type] = Number(part.value);
+  }
+  const { year, month, day, hour, minute, second } = parts;
+  return {
+    date: iso(year, month, day),
+    asUtc: Date.UTC(year, month - 1, day, hour, minute, second),
+  };
+}
+
+/** The calendar day in New York at an instant. */
+export function newYorkDate(now: Date): IsoDate {
+  return newYorkWall(now.getTime()).date;
+}
+
+/**
+ * The instant New York's clock reads `hour:minute` on `date`. Two passes
+ * settle the offset; session times sit far from the 02:00 daylight saving
+ * change, so there is never an ambiguous hour to resolve.
+ */
+function newYorkInstant(date: IsoDate, hour: number, minute: number): Date {
+  const [year, month, day] = date.split("-").map(Number);
+  const wall = Date.UTC(year, month - 1, day, hour, minute);
+  let at = wall;
+  for (let pass = 0; pass < 2; pass += 1) {
+    at = wall - (newYorkWall(at).asUtc - at);
+  }
+  return new Date(at);
+}
+
+/** One regular session: when it opens and closes, and whether it is a half day. */
+export type Session = {
+  date: IsoDate;
+  open: Date;
+  close: Date;
+  early: boolean;
+};
+
+/** The regular session on a New York calendar day, or null when there is none. */
+export function sessionOn(date: IsoDate): Session | null {
+  if (!isTradingDay(date)) return null;
+  const early = earlyCloses(Number(date.slice(0, 4))).has(date);
+  return {
+    date,
+    open: newYorkInstant(date, 9, 30),
+    close: newYorkInstant(date, early ? 13 : 16, 0),
+    early,
+  };
+}
+
+const DAY_MS = 86_400_000;
+
+/** A New York calendar day moved by whole days. */
+function shiftDate(date: IsoDate, days: number): IsoDate {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day) + days * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** No gap between sessions is longer than a four day weekend; this is ample. */
+const SEARCH_DAYS = 14;
+
+/** Whether the regular session is under way at `now`. */
+export function isOpen(now: Date): boolean {
+  const session = sessionOn(newYorkDate(now));
+  const at = now.getTime();
+  return (
+    session !== null &&
+    at >= session.open.getTime() &&
+    at < session.close.getTime()
+  );
+}
+
+/** The next session that opens after `now`; during a session, the following one. */
+export function nextOpen(now: Date): Date {
+  const today = newYorkDate(now);
+  for (let offset = 0; offset <= SEARCH_DAYS; offset += 1) {
+    const session = sessionOn(shiftDate(today, offset));
+    if (session && session.open.getTime() > now.getTime()) return session.open;
+  }
+  throw new Error(`No session within ${SEARCH_DAYS} days of ${now.toISOString()}`);
+}
+
+/** The most recent close at or before `now`. */
+export function lastClose(now: Date): Date {
+  const today = newYorkDate(now);
+  for (let offset = 0; offset <= SEARCH_DAYS; offset += 1) {
+    const session = sessionOn(shiftDate(today, -offset));
+    if (session && session.close.getTime() <= now.getTime()) return session.close;
+  }
+  throw new Error(`No session within ${SEARCH_DAYS} days of ${now.toISOString()}`);
+}
+
+export type MarketStatus = {
+  /** `early_close` is an open market that shuts at 13:00 today. */
+  state: "open" | "early_close" | "closed";
+  nextOpen: Date;
+  lastClose: Date;
+};
+
+/** Everything a screen needs to say whether the share's market is open. */
+export function marketStatus(now: Date): MarketStatus {
+  const open = isOpen(now);
+  const early = open && sessionOn(newYorkDate(now))!.early;
+  return {
+    state: open ? (early ? "early_close" : "open") : "closed",
+    nextOpen: nextOpen(now),
+    lastClose: lastClose(now),
+  };
+}
+
+/**
+ * When the next open falls, in words a person reads in their own zone:
+ * "today", "tomorrow" or the weekday, and the clock time. `timeZone` and
+ * `hour12` are the viewer's; the day words stay English like the copy.
+ */
+export function opensAt(
+  open: Date,
+  now: Date,
+  timeZone: string,
+  hour12: boolean,
+): { day: "today" | "tomorrow" | string; time: string } {
+  const dayOf = (at: Date) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone }).format(at);
+  const openDay = dayOf(open);
+  const day =
+    openDay === dayOf(now)
+      ? "today"
+      : openDay === dayOf(new Date(now.getTime() + DAY_MS))
+        ? "tomorrow"
+        : new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "long" }).format(open);
+  const time = new Intl.DateTimeFormat(hour12 ? "en-US" : "en-GB", {
+    timeZone,
+    hour: hour12 ? "numeric" : "2-digit",
+    minute: "2-digit",
+    hour12,
+  }).format(open);
+  return { day, time };
 }
