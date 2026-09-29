@@ -15,9 +15,9 @@ describe("unlockAt", () => {
   });
 
   it("opens the three rank faces on their rungs", () => {
-    expect(unlockAt(7)).toEqual({ kind: "avatar", avatarId: "beacon", face: "Beacon" });
-    expect(unlockAt(8)).toEqual({ kind: "avatar", avatarId: "bell", face: "Bell" });
-    expect(unlockAt(10)).toEqual({ kind: "avatar", avatarId: "capstan", face: "Capstan" });
+    expect(unlockAt(7)).toEqual({ kind: "avatar", avatarId: "beacon", face: "Blue Crab" });
+    expect(unlockAt(8)).toEqual({ kind: "avatar", avatarId: "bell", face: "Porpoise" });
+    expect(unlockAt(10)).toEqual({ kind: "avatar", avatarId: "capstan", face: "Blue Lobster" });
   });
 
   it("opens nothing on every other rung, or off the ladder", () => {
@@ -47,8 +47,8 @@ describe("unlockLevels", () => {
 describe("unlocksBetween", () => {
   it("lists every opening passed on a jump, lowest rung first", () => {
     expect(unlocksBetween(6, 8)).toEqual([
-      { kind: "avatar", avatarId: "beacon", face: "Beacon" },
-      { kind: "avatar", avatarId: "bell", face: "Bell" },
+      { kind: "avatar", avatarId: "beacon", face: "Blue Crab" },
+      { kind: "avatar", avatarId: "bell", face: "Porpoise" },
     ]);
     expect(unlocksBetween(2, 10).map((unlock) => unlockLevelOf(unlock))).toEqual([3, 7, 8, 10]);
     expect(unlocksBetween(1, 3)).toEqual([{ kind: "chat" }, { kind: "invite" }]);

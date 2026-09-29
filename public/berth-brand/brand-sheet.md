@@ -22,6 +22,15 @@ Dark: canvas #0F0E0D, card #1A1817, card-2 #232120, ink #F2F0EE, ink-2 #D6D3D1, 
 ## Surfaces and controls
 Cards are white on the canvas, 12 px radius, one 1 px hairline in line, no shadow, 18 px padding on a phone and 24 px on a desktop. Buttons and chips are pills. A primary pill is the accent with accent-ink text; a ghost pill is card with a line-2 hairline. A segmented control (ranges, Posts and Headlines) is a pill group whose active chip is ink with canvas text, so the accent is never spent on a filter. A headline may carry one highlighted phrase on the welcome screen: the phrase stays ink on the accent-soft wash, so the accent itself stays with the one primary action.
 
+## Avatars
+Since 2026-09-29 the faces are harbour creatures, eleven of them, drawn from one source (scripts/avatars/art.mjs, `pnpm avatars:build`) into app/avatars/ and the app's public/avatars/. Each is a 128 px circle of flat shapes, no strokes around shapes, no gradients: stone neutrals and ink, one warm brown and one ochre for the creatures, and Berth blue on exactly one thing per face (the seal's ball, the gull's fish, the otter's shell, the puffin's beak plate, the starfish's periwinkle, the moon jelly's four rings, the heron's water, the cormorant's post). Friendly faces, dark eyes with one white catchlight, a small smile. Each must read at 28 px.
+
+Open to everyone: the Seal, the Gull, the Otter, the Puffin, the Starfish, the Moon Jelly, the Heron, the Cormorant. Opened by rank, and the only faces that are wholly blue or wholly in motion: the Blue Crab at Pier, the Porpoise at Quay, the Blue Lobster at Harbour Master, the rarest creature for the highest rung.
+
+A face not yet earned is shown as its own silhouette, one flat #D6D0C9 on the plain disc #ECE9E4, in app/avatars/locked/. No padlock over it; the line beneath says the rank that opens it. The disc stays light in dark mode too.
+
+Stored ids never change. The creatures took the places of the harbour objects, one for one, so bollard is the Seal, cleat the Gull, ring the Otter, lantern the Puffin, buoy the Starfish, rope the Moon Jelly, tidemark the Heron, compass the Cormorant, beacon the Blue Crab, bell the Porpoise, capstan the Blue Lobster.
+
 ## Approved lockups
 1. Horizontal: mark left, wordmark right, gap equal to the cap height, baselines aligned. mark/berth-lockup-horizontal.svg
 2. Stacked: mark centred above the wordmark, gap equal to the cap height. mark/berth-lockup-stacked.svg

@@ -58,8 +58,8 @@ const RANK_MARK_MIN = 36;
  * is drawn (the header chip sets the glyph beside it instead). With no face
  * chosen yet, the rank glyph itself is the face, on a muted disc that
  * follows the appearance (the glyph is currentColor, so it reads either
- * way). A chosen face sits on `bg-avatar-disc`, light in both appearances,
- * because the face SVGs are fixed dark ink with no ground of their own.
+ * way). A chosen face paints its own light disc (the creature SVGs carry
+ * their ground); `bg-avatar-disc` under it only shows while it loads.
  */
 export function AvatarWithRank({
   avatarId,

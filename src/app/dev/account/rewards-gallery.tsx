@@ -19,7 +19,7 @@ import { RANKS, rankForXp, REWARD_REASONS } from "@/lib/xp";
  *
  *   /dev/account?rewards=1     First Line, no face yet, grid open
  *   /dev/account?rewards=3     Berth Holder, invite open
- *   /dev/account?rewards=7     Pier, the Beacon open, Bell and Capstan locked
+ *   /dev/account?rewards=7     Pier, the Blue Crab open, Porpoise and Blue Lobster locked
  *   /dev/account?rewards=10    Harbour Master, every face open
  *
  * Each panel gets its own QueryClient with the rewards queries seeded under

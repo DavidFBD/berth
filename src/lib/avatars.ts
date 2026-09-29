@@ -5,22 +5,28 @@
  * keep resolving to a harbour face through LEGACY_AVATAR_IDS.
  */
 export const AVATARS = [
-  { id: "bollard", label: "The Bollard", src: "/avatars/bollard.svg" },
-  { id: "cleat", label: "The Cleat", src: "/avatars/cleat.svg" },
-  { id: "ring", label: "The Ring", src: "/avatars/ring.svg" },
-  { id: "lantern", label: "The Lantern", src: "/avatars/lantern.svg" },
-  { id: "buoy", label: "The Buoy", src: "/avatars/buoy.svg" },
-  { id: "rope", label: "The Rope", src: "/avatars/rope.svg" },
-  { id: "tidemark", label: "The Tide Mark", src: "/avatars/tidemark.svg" },
-  { id: "compass", label: "The Compass", src: "/avatars/compass.svg" },
+  /**
+   * Harbour creatures since 2026-09-29 (art: scripts/avatars/art.mjs). The
+   * ids are the older harbour objects' and stay what the database stores;
+   * each creature took the place on the shelf of the object it replaced,
+   * so every stored face resolves to the creature in the same place.
+   */
+  { id: "bollard", label: "The Seal", src: "/avatars/seal.svg" },
+  { id: "cleat", label: "The Gull", src: "/avatars/gull.svg" },
+  { id: "ring", label: "The Otter", src: "/avatars/otter.svg" },
+  { id: "lantern", label: "The Puffin", src: "/avatars/puffin.svg" },
+  { id: "buoy", label: "The Starfish", src: "/avatars/starfish.svg" },
+  { id: "rope", label: "The Moon Jelly", src: "/avatars/moon-jelly.svg" },
+  { id: "tidemark", label: "The Heron", src: "/avatars/heron.svg" },
+  { id: "compass", label: "The Cormorant", src: "/avatars/cormorant.svg" },
   /**
    * The three faces below unlock with rank. `unlockLevel` is the rung on
    * the ladder (src/lib/xp.ts RANKS) from which the face can be picked; the
    * server checks it too, the picker only decides how to say it.
    */
-  { id: "beacon", label: "The Beacon", src: "/avatars/beacon.svg", unlockLevel: 7 },
-  { id: "bell", label: "The Bell", src: "/avatars/bell.svg", unlockLevel: 8 },
-  { id: "capstan", label: "The Capstan", src: "/avatars/capstan.svg", unlockLevel: 10 },
+  { id: "beacon", label: "The Blue Crab", src: "/avatars/blue-crab.svg", unlockLevel: 7 },
+  { id: "bell", label: "The Porpoise", src: "/avatars/porpoise.svg", unlockLevel: 8 },
+  { id: "capstan", label: "The Blue Lobster", src: "/avatars/blue-lobster.svg", unlockLevel: 10 },
 ] as const;
 
 export type AvatarId = (typeof AVATARS)[number]["id"];
@@ -66,4 +72,9 @@ export function resolveAvatarId(id: string | null | undefined): AvatarId | undef
 export function avatarSrc(id: string | null | undefined): string | undefined {
   const resolved = resolveAvatarId(id);
   return AVATARS.find((avatar) => avatar.id === resolved)?.src;
+}
+
+/** The face as a flat silhouette, for the picker while it is still locked. */
+export function avatarLockedSrc(id: string | null | undefined): string | undefined {
+  return avatarSrc(id)?.replace(/^\/avatars\//, "/avatars/locked/");
 }

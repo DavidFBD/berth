@@ -12,7 +12,7 @@ export type Unlock =
   | { kind: "invite" }
   /** The in-app assistant (components/chat). */
   | { kind: "chat" }
-  /** `face` is the face's short name, "Beacon", for "the Beacon face". */
+  /** `face` is the face's short name, "Blue Crab", for "the Blue Crab face". */
   | { kind: "avatar"; avatarId: AvatarId; face: string };
 
 function unlocksByLevel(): ReadonlyMap<number, Unlock> {

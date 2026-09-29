@@ -10,7 +10,6 @@ import {
   Check,
   UserCircle,
   HandHeart,
-  Lock,
   LockSimple,
   Receipt,
   Ticket,
@@ -27,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { SPRING_POP, SPRING_SHELF } from "@/lib/motion";
 import {
   AVATARS,
+  avatarLockedSrc,
   avatarSrc,
   avatarUnlockLevel,
   type AvatarId,
@@ -192,28 +192,20 @@ export function RewardsPanel({
                           ? "cursor-default"
                           : chosen
                             ? "ring-2 ring-primary"
-                            : "opacity-80 hover:opacity-100",
+                            : "hover:ring-2 hover:ring-border",
                       )}
                     >
-                      {/* The disc stays solid under a locked face so the
-                          faded ink and the lock both read in dark mode. */}
-                      <span className="block rounded-full bg-avatar-disc">
-                        <Image
-                          src={avatarSrc(avatar.id) ?? avatar.src}
-                          alt=""
-                          width={56}
-                          height={56}
-                          className={cn(
-                            "size-full rounded-full",
-                            locked && "opacity-30 grayscale",
-                          )}
-                        />
-                      </span>
-                      {locked && (
-                        <span className="absolute inset-0 flex items-center justify-center">
-                          <Lock aria-hidden className="size-5 text-avatar-ink" />
-                        </span>
-                      )}
+                      {/* A locked face is its own flat silhouette on the
+                          plain disc (public/avatars/locked), no padlock:
+                          the shape says what is coming, the line under it
+                          says when. */}
+                      <Image
+                        src={(locked ? avatarLockedSrc(avatar.id) : avatarSrc(avatar.id)) ?? avatar.src}
+                        alt=""
+                        width={56}
+                        height={56}
+                        className="block size-full rounded-full bg-avatar-disc"
+                      />
                     </button>
                     {locked && (
                       // aria-hidden: the button's label already says it.
