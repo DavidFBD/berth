@@ -26,7 +26,7 @@ import {
   clearPendingReferral,
   pendingReferralCode,
 } from "@/lib/referral";
-import { useEnsureWalletSession } from "@/hooks/use-wallet-session";
+import { storedWalletSession, useEnsureWalletSession } from "@/hooks/use-wallet-session";
 
 export type { Profile } from "@/lib/profile-types";
 
@@ -92,7 +92,16 @@ function useRewardsCall() {
  * calls use it, and so does the chat, whose streamed POST is not a
  * rewards call but rides the same proof of who is asking.
  */
-export function useAccountHeaders(): { key: string | null; headers: () => Promise<Record<string, string> | null> } {
+export function useAccountHeaders({
+  prompt = true,
+}: {
+  /**
+   * false: never ask a wallet for its signature, only use a session already
+   * pocketed. For reads that also work signed out (a profile), where a
+   * signature request out of nowhere would be alarming.
+   */
+  prompt?: boolean;
+} = {}): { key: string | null; headers: () => Promise<Record<string, string> | null> } {
   const { authenticated, wallet, key, getAccessToken } = useIdentity();
   const ensureWalletSession = useEnsureWalletSession();
   const headers = async (): Promise<Record<string, string> | null> => {
@@ -100,7 +109,7 @@ export function useAccountHeaders(): { key: string | null; headers: () => Promis
       const token = await getAccessToken();
       return token ? { authorization: `Bearer ${token}` } : null;
     }
-    const walletSession = wallet ? await ensureWalletSession(wallet) : null;
+    const walletSession = wallet ? (prompt ? await ensureWalletSession(wallet) : storedWalletSession(wallet)) : null;
     return walletSession ? { "x-wallet-session": walletSession } : null;
   };
   return { key, headers };

@@ -1,0 +1,233 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAccountHeaders } from "@/hooks/use-profile";
+import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import type {
+  BlockedName,
+  CardAnswer,
+  FriendAction,
+  FriendsBoard,
+  FriendsList,
+  HandleCheck,
+  MySocial,
+  ReportReason,
+} from "@/lib/social-types";
+import type { HandleRefusal } from "@/lib/handle";
+
+/**
+ * The client side of the social routes (app/api/social/[op]). Every call is
+ * a POST with the same proof of who is asking as the rewards calls
+ * (useAccountHeaders). Opening a profile also works signed out, so that one
+ * read never asks a wallet to sign: it sends a proof only if one is already
+ * at hand.
+ */
+
+type Call = <T>(op: string, body?: Record<string, unknown>) => Promise<{ status: number; data: T | null }>;
+
+function useSocialCall({ prompt = true }: { prompt?: boolean } = {}): { key: string | null; call: Call } {
+  const { key, headers } = useAccountHeaders({ prompt });
+  const call: Call = async <T>(op: string, body: Record<string, unknown> = {}) => {
+    const auth = key ? await headers() : null;
+    if (prompt && !auth) return { status: 401, data: null };
+    const response = await fetch(`/api/social/${op}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(auth ?? {}) },
+      body: JSON.stringify(body),
+    });
+    const data = (await response.json().catch(() => null)) as T | null;
+    return { status: response.status, data };
+  };
+  return { key, call };
+}
+
+async function must<T>(result: Promise<{ status: number; data: T | null }>): Promise<T> {
+  const { status, data } = await result;
+  if (status !== 200 || data === null) throw new Error(`social ${status}`);
+  return data;
+}
+
+const KEYS = {
+  me: (key: string | null) => ["social-me", key] as const,
+  friends: (key: string | null) => ["social-friends", key] as const,
+  link: (key: string | null) => ["social-link", key] as const,
+  blocked: (key: string | null) => ["social-blocked", key] as const,
+  board: (key: string | null) => ["social-board", key] as const,
+  card: (key: string | null, handle: string) => ["social-card", key, handle.toLowerCase()] as const,
+};
+
+/** The viewer's own social state. */
+export function useMySocial(enabled = true) {
+  const { key, call } = useSocialCall();
+  return useQuery({
+    queryKey: KEYS.me(key),
+    enabled: enabled && key !== null,
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: () => must(call<MySocial>("me")),
+  });
+}
+
+/**
+ * The picker's live check, a beat after typing stops. Shape errors are the
+ * rulebook's and are answered in the picker without a request; only a name
+ * that could be one is asked about.
+ */
+export function useHandleCheck(value: string, enabled: boolean) {
+  const { key, call } = useSocialCall();
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), 450);
+    return () => clearTimeout(timer);
+  }, [value]);
+  const query = useQuery({
+    queryKey: ["social-check", key, settled.toLowerCase()],
+    enabled: enabled && key !== null && settled === value && value.length > 0,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: () => must(call<HandleCheck>("check", { handle: settled })),
+  });
+  return { ...query, pending: settled !== value || query.isFetching };
+}
+
+export function useSetHandle() {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  return useMutation({
+    mutationFn: async (handle: string): Promise<{ ok: true; social: MySocial } | { ok: false; reason: HandleRefusal | "failed" }> => {
+      const { status, data } = await call<MySocial | { ok: false; reason: HandleRefusal }>("name", { handle });
+      if (status === 200 && data) return { ok: true, social: data as MySocial };
+      if (status === 422 && data && "reason" in data) return { ok: false, reason: data.reason };
+      return { ok: false, reason: "failed" };
+    },
+    onSuccess: (result) => {
+      if (result.ok) queryClient.setQueryData(KEYS.me(key), result.social);
+      void queryClient.invalidateQueries({ queryKey: ["social-card"] });
+      void queryClient.invalidateQueries({ queryKey: KEYS.board(key) });
+    },
+  });
+}
+
+export function useSetVisible() {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  return useMutation({
+    mutationFn: (visible: boolean) => must(call<MySocial>("visibility", { visible })),
+    onSuccess: (social) => queryClient.setQueryData(KEYS.me(key), social),
+  });
+}
+
+export function useFriendsList(enabled: boolean) {
+  const { key, call } = useSocialCall();
+  return useQuery({
+    queryKey: KEYS.friends(key),
+    enabled: enabled && key !== null,
+    staleTime: 30_000,
+    retry: 1,
+    queryFn: () => must(call<FriendsList>("friends")),
+  });
+}
+
+export function useFriendLink(enabled: boolean) {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  const query = useQuery({
+    queryKey: KEYS.link(key),
+    enabled: enabled && key !== null,
+    staleTime: Infinity,
+    retry: 1,
+    queryFn: async () => (await must(call<{ token: string }>("link"))).token,
+  });
+  const fresh = useMutation({
+    mutationFn: async () => (await must(call<{ token: string }>("link", { fresh: true }))).token,
+    onSuccess: (token) => queryClient.setQueryData(KEYS.link(key), token),
+  });
+  return { ...query, fresh };
+}
+
+export function useBlocked(enabled: boolean) {
+  const { key, call } = useSocialCall();
+  return useQuery({
+    queryKey: KEYS.blocked(key),
+    enabled: enabled && key !== null,
+    staleTime: 30_000,
+    retry: 1,
+    queryFn: async () => (await must(call<{ blocked: BlockedName[] }>("blocked"))).blocked,
+  });
+}
+
+export function useFriendsBoard(enabled: boolean) {
+  const { key, call } = useSocialCall();
+  return useQuery({
+    queryKey: KEYS.board(key),
+    enabled: enabled && key !== null,
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: () => must(call<FriendsBoard>("board")),
+  });
+}
+
+/**
+ * A profile, by username or by a friend link's token. Keyed on the viewer
+ * too, so a card fetched signed out is never shown as the signed in view.
+ */
+export function useCard(target: { handle: string } | { token: string }) {
+  const { key, call } = useSocialCall({ prompt: false });
+  // Wait until the session is known: asked too early, a signed in person
+  // would be answered as a visitor, which could show a card a block hides.
+  const privy = usePrivyEmbeddedWallet();
+  const id = "handle" in target ? target.handle : `link:${target.token}`;
+  return useQuery({
+    queryKey: KEYS.card(key, id),
+    enabled: !privy.enabled || privy.ready,
+    staleTime: 30_000,
+    retry: 1,
+    queryFn: () =>
+      must(call<CardAnswer>("handle" in target ? "card" : "link-card", "handle" in target ? { handle: target.handle } : { token: target.token })),
+  });
+}
+
+export type CardActionVars =
+  | { kind: "salute"; handle: string; on: boolean }
+  | { kind: "friend"; handle: string; action: FriendAction; token?: string }
+  | { kind: "block"; handle: string; on: boolean }
+  | { kind: "report"; handle: string; reason: ReportReason };
+
+/**
+ * Everything a person does from a profile or the friends list. The answer
+ * replaces the cached card where one comes back, and the lists it touches
+ * are refetched on their next open.
+ */
+export function useSocialAction() {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  return useMutation({
+    mutationFn: async (vars: CardActionVars): Promise<{ done: boolean; card: CardAnswer | null }> => {
+      if (vars.kind === "salute") {
+        const card = await must(call<CardAnswer>("salute", { handle: vars.handle, on: vars.on }));
+        return { done: true, card };
+      }
+      if (vars.kind === "friend") {
+        const body: Record<string, unknown> = vars.token ? { token: vars.token, action: vars.action } : { handle: vars.handle, action: vars.action };
+        return must(call<{ done: boolean; card: CardAnswer }>("friend", body));
+      }
+      if (vars.kind === "block") {
+        await must(call("block", { handle: vars.handle, on: vars.on }));
+        return { done: true, card: vars.on ? { found: false } : null };
+      }
+      await must(call("report", { handle: vars.handle, reason: vars.reason }));
+      return { done: true, card: null };
+    },
+    onSuccess: (result, vars) => {
+      if (result.card) queryClient.setQueryData(KEYS.card(key, vars.handle), result.card);
+      if (vars.kind === "friend" && vars.token) void queryClient.invalidateQueries({ queryKey: ["social-card", key] });
+      if (vars.kind !== "report") {
+        void queryClient.invalidateQueries({ queryKey: KEYS.friends(key) });
+        void queryClient.invalidateQueries({ queryKey: KEYS.me(key) });
+        void queryClient.invalidateQueries({ queryKey: KEYS.board(key) });
+        void queryClient.invalidateQueries({ queryKey: KEYS.blocked(key) });
+      }
+    },
+  });
+}

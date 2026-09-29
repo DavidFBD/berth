@@ -53,6 +53,7 @@ import {
   useXpHolds,
 } from "@/hooks/use-profile";
 import { useCopy } from "@/components/settings-provider";
+import { ADD_EMAIL_ANCHOR } from "@/components/social/social-section";
 
 /**
  * The rewards corner of an account surface: rank, progress toward the next
@@ -245,7 +246,7 @@ export function RewardsPanel({
         privy.enabled &&
         account.mode === "external" &&
         account.address && (
-        <div className="rounded-lg bg-muted/60 p-3">
+        <div id={ADD_EMAIL_ANCHOR} className="scroll-mt-4 rounded-lg bg-muted/60 p-3">
           {link.state === "idle" ? (
             <button
               type="button"

@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { AssistantSection } from "@/components/assistant/assistant-section";
+import { SocialSection } from "@/components/social/social-section";
 import { RankChip, RewardsPanel } from "@/components/rewards-panel";
 import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
@@ -109,6 +110,10 @@ export function AccountButton({
 
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <RewardsPanel />
+            {/* Username, profile and friends (lib/server/social). */}
+            <Panel>
+              <SocialSection />
+            </Panel>
             {/*
               One panel with ruled rows, not five cards stacked inside a
               drawer that is already a card. Every row here is the same kind
@@ -261,6 +266,9 @@ function ExternalAccountEntry({
           </DrawerHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <RewardsPanel />
+            <Panel>
+              <SocialSection />
+            </Panel>
             <Panel>
               <div id={ASSISTANT_ANCHOR} className="scroll-mt-4">
                 <AssistantSection initialOpen={assistant} />

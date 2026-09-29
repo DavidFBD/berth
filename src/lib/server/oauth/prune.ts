@@ -13,7 +13,9 @@ import { CHAT_USAGE_KEEP_DAYS } from "@/lib/server/chat/usage";
  * - clients registered more than a week ago that no grant ever named;
  * - rate limit windows older than a day;
  * - MCP usage rows (mcp_calls) older than 90 days;
- * - chat usage rows (chat_usage) older than 90 days.
+ * - chat usage rows (chat_usage) older than 90 days;
+ * - social audit rows (social_audit) older than a year, and retired
+ *   usernames whose hold has ended (lib/server/social).
  *
  * A refresh token deleted this way, if ever presented again, is simply
  * unknown rather than a detected reuse; a week past its end, that is fine.
@@ -21,7 +23,7 @@ import { CHAT_USAGE_KEEP_DAYS } from "@/lib/server/chat/usage";
 
 export const PRUNE_AFTER_DAYS = 7;
 
-export type OAuthPruneSummary = { codes: number; tokens: number; clients: number; rateWindows: number; mcpCalls: number; chatUsage: number };
+export type OAuthPruneSummary = { codes: number; tokens: number; clients: number; rateWindows: number; mcpCalls: number; chatUsage: number; socialAudit: number };
 
 export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
   const sql = getSql();
@@ -58,5 +60,16 @@ export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
     if (!/chat_usage/.test(message) || !/does not exist/.test(message)) console.warn("[prune] chat_usage:", message);
     return 0;
   });
-  return { codes, tokens, clients, rateWindows, mcpCalls, chatUsage };
+  // Social tables arrive with their own db:push; until then this counts nothing.
+  const socialAudit = await count(`delete from social_audit where created_at < $1::timestamptz - interval '365 days'`, [at])
+    .then(async (n) => {
+      await sql.query(`delete from handle_reserved where until is not null and until < $1::timestamptz`, [at]);
+      return n;
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/does not exist/.test(message)) console.warn("[prune] social:", message);
+      return 0;
+    });
+  return { codes, tokens, clients, rateWindows, mcpCalls, chatUsage, socialAudit };
 }

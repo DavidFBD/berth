@@ -368,3 +368,173 @@ create table if not exists account_audit (
 );
 
 create index if not exists account_audit_user_idx on account_audit (user_id, created_at desc);
+
+-- Social, phase 1 (docs/plans/social.md, ADR-0005): usernames, the public
+-- card, Salutes, friends, blocks, reports. Nothing here holds money, a
+-- wallet or a holding; the card never shows one. lib/server/social owns
+-- every read and write.
+
+-- One username per account. `handle` is as typed, for display;
+-- `handle_norm` is the fold from lib/handle (lowercase, 0→o, 1→l, 5→s,
+-- underscores dropped), and uniqueness is on it, so lookalikes collide.
+create table if not exists handles (
+  user_id uuid primary key references users(id) on delete cascade,
+  handle text not null,
+  handle_norm text not null,
+  created_at timestamptz not null default now(),
+  changed_at timestamptz not null default now(),
+  constraint handles_norm_unique unique (handle_norm)
+);
+
+-- Names nobody may take. The fixed lists (house words, ranks, listings,
+-- offensive words) live in lib/handle; this table holds what changes: a
+-- name dropped by a change, held 90 days for its last owner (`user_id`),
+-- and anything a moderator adds. `until` null means forever.
+create table if not exists handle_reserved (
+  handle_norm text primary key,
+  reason text not null check (reason in ('house', 'rank', 'listing', 'offensive', 'retired')),
+  user_id uuid references users(id) on delete set null,
+  until timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- Whether the card can be found. A row exists once a username is picked;
+-- no row, no card. The performance line columns wait for phase 3.
+create table if not exists profiles (
+  user_id uuid primary key references users(id) on delete cascade,
+  visible boolean not null default true,
+  hidden_at timestamptz,
+  -- The username when the card was hidden: all a friend's list shows of a
+  -- hidden friend, so a rename while hidden stays unseen.
+  hidden_handle text,
+  perf_line boolean not null default false,
+  perf_benchmark text,
+  updated_at timestamptz not null default now()
+);
+
+-- One Salute per giver per card. Revoking sets revoked_at; saluting again
+-- clears it and keeps first_at, so toggling cannot mint a new salute point
+-- in a new month (ADR-0005).
+create table if not exists salutes (
+  giver_id uuid not null references users(id) on delete cascade,
+  recipient_id uuid not null references users(id) on delete cascade,
+  first_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  primary key (giver_id, recipient_id),
+  constraint salutes_not_self check (giver_id <> recipient_id)
+);
+
+create index if not exists salutes_recipient_idx on salutes (recipient_id, first_at) where revoked_at is null;
+
+-- Friend requests. 'declined' stays live for its sender, who keeps seeing
+-- "sent" (a decline is silent); cancelling makes it 'withdrawn'. At most
+-- one live request per direction.
+create table if not exists friend_requests (
+  id uuid primary key default gen_random_uuid(),
+  from_id uuid not null references users(id) on delete cascade,
+  to_id uuid not null references users(id) on delete cascade,
+  via text not null default 'handle' check (via in ('handle', 'link')),
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'withdrawn')),
+  created_at timestamptz not null default now(),
+  responded_at timestamptz,
+  constraint friend_requests_not_self check (from_id <> to_id)
+);
+
+create unique index if not exists friend_requests_live_unique
+  on friend_requests (from_id, to_id) where status in ('pending', 'declined');
+create index if not exists friend_requests_to_idx on friend_requests (to_id) where status = 'pending';
+
+-- Friends, one row per pair with a_id < b_id.
+create table if not exists friends (
+  a_id uuid not null references users(id) on delete cascade,
+  b_id uuid not null references users(id) on delete cascade,
+  since timestamptz not null default now(),
+  primary key (a_id, b_id),
+  constraint friends_ordered check (a_id < b_id)
+);
+
+create index if not exists friends_b_idx on friends (b_id);
+
+-- The 50 friend cap, held by the database itself (lib/server/social/friends
+-- FRIENDS_MAX). After each new pair the trigger takes an advisory lock per
+-- account, in uuid order, then counts: a racing insert for the same person
+-- waits for the lock and, counting afresh, sees the other's row, so two
+-- accepts at once cannot take anyone past 50. The body sits on one line
+-- because db:push splits statements at a semicolon that ends a line.
+create or replace function friends_cap() returns trigger language plpgsql as $$
+begin perform pg_advisory_xact_lock(hashtextextended('friends:' || new.a_id::text, 0)); perform pg_advisory_xact_lock(hashtextextended('friends:' || new.b_id::text, 0)); if (select count(*) from friends where a_id = new.a_id or b_id = new.a_id) > 50 or (select count(*) from friends where a_id = new.b_id or b_id = new.b_id) > 50 then raise exception 'friends cap reached' using errcode = 'check_violation'; end if; return null; end $$;
+
+drop trigger if exists friends_cap on friends;
+
+create trigger friends_cap after insert on friends for each row execute function friends_cap();
+
+-- A card is off while its account has no verified email (lib/server/social
+-- SHOWN_SQL). When the email goes, the username at that moment is kept as
+-- `hidden_handle`, as the hide switch does, so friends' lists keep showing
+-- that name and nothing newer; when an email comes back to a card whose
+-- switch is on, the stored name is cleared. Held here rather than in the
+-- code that unlinks, so every way an email is removed does it. One line
+-- body, for db:push's split.
+create or replace function social_email_change() returns trigger language plpgsql as $$
+begin if new.email is null and old.email is not null then update profiles p set hidden_handle = coalesce(p.hidden_handle, (select h.handle from handles h where h.user_id = new.id)), updated_at = now() where p.user_id = new.id; elsif new.email is not null and old.email is null then update profiles p set hidden_handle = null, updated_at = now() where p.user_id = new.id and p.visible; end if; return new; end $$;
+
+drop trigger if exists social_email_change on users;
+
+create trigger social_email_change after update of email on users for each row execute function social_email_change();
+
+-- A friend link: its own unguessable token, not the referral code, and
+-- paying no XP. One live link per account; a new one revokes the old.
+create table if not exists friend_links (
+  token text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  revoked_at timestamptz
+);
+
+create unique index if not exists friend_links_one_live
+  on friend_links (user_id) where revoked_at is null;
+
+-- Blocks: silent and total (lib/server/social/blocks). `handle_snapshot`
+-- is the name exactly as the blocker typed it, and the only thing the
+-- blocker's list ever shows; `handle_norm` is its fold. A name that belongs
+-- to nobody still gets a row, with `blocked_id` null, so the list cannot
+-- tell a hidden card from a missing one.
+create table if not exists blocks (
+  id bigint generated always as identity primary key,
+  blocker_id uuid not null references users(id) on delete cascade,
+  blocked_id uuid references users(id) on delete cascade,
+  handle_snapshot text not null,
+  handle_norm text not null,
+  created_at timestamptz not null default now(),
+  constraint blocks_not_self check (blocker_id <> blocked_id)
+);
+
+create unique index if not exists blocks_pair_unique on blocks (blocker_id, blocked_id) where blocked_id is not null;
+create unique index if not exists blocks_name_unique on blocks (blocker_id, handle_norm);
+create index if not exists blocks_blocked_idx on blocks (blocked_id);
+
+-- A report of a card. A reason from a fixed list and the name at the time;
+-- no free text anywhere.
+create table if not exists social_reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid references users(id) on delete set null,
+  target_id uuid references users(id) on delete set null,
+  handle_snapshot text not null,
+  reason text not null check (reason in ('name', 'impersonation', 'other')),
+  status text not null default 'open' check (status in ('open', 'closed')),
+  created_at timestamptz not null default now()
+);
+
+-- What happened, for moderation: who, which action, to whom. `meta` holds
+-- names at the time, never an email, a wallet or a token. The evening cron
+-- keeps a year.
+create table if not exists social_audit (
+  id bigint generated always as identity primary key,
+  actor_id uuid references users(id) on delete set null,
+  action text not null,
+  target_id uuid references users(id) on delete set null,
+  meta jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists social_audit_actor_idx on social_audit (actor_id, created_at desc);

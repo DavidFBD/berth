@@ -1,5 +1,5 @@
 /**
- * The names of the nine Berth tools (lib/server/berth-tools/registry), in
+ * The names of the eleven Berth tools (lib/server/berth-tools/registry), in
  * a module the client may import: the chat's tool lines are copy keyed on
  * these. A test holds the registry to this list.
  */
@@ -12,6 +12,8 @@ export const BERTH_TOOL_NAMES = [
   "get_holdings",
   "get_performance",
   "get_orders",
+  "get_my_profile",
+  "get_friends_board",
   "draft_order",
 ] as const;
 

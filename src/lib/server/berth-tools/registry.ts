@@ -14,6 +14,10 @@ import { loadOrderLog } from "@/lib/server/order-marks";
 import { liveListingPrices } from "@/lib/server/portfolio";
 import { loadPortfolioHistory } from "@/lib/server/portfolio-view";
 import { ago, clip, day, moment, named, pct, units, usd } from "@/lib/server/mcp/text";
+import { friendsBoard } from "@/lib/server/social/board";
+import { readCardOf } from "@/lib/server/social/cards";
+import { listFriends } from "@/lib/server/social/friends";
+import { mySocial } from "@/lib/server/social/handles";
 import {
   BENCHMARK_CHOICES,
   PERIODS,
@@ -398,6 +402,91 @@ const getOrders = defineTool({
   },
 });
 
+/** "2026-09" as a person reads it: "September 2026". */
+function monthWords(month: string): string {
+  const [year, index] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, index - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+/*
+ * The two social reads. Each answers for the signed in account only: its own
+ * card and its own friends board. No tool looks up another username, reads
+ * another person's Salutes or friends, or writes anything social (a Salute,
+ * a request, a block). Usernames are 3 to 20 of a-z, 0-9 and underscore, so
+ * the names in this output cannot carry an instruction.
+ */
+
+const getMyProfile = defineTool({
+  name: "get_my_profile",
+  title: "Your Berth card",
+  description:
+    "The signed in person's own Berth card: their username, whether the card can be found, their rank and XP, the month they joined, how many Salutes they have, and how many friends and waiting friend requests they have. A card never shows money, wallets or holdings. Cannot look up anyone else.",
+  input: z.object({}),
+  annotations: { title: "Your Berth card", ...READ_ONLY },
+  scope: SCOPE_READ,
+  run: async (_args, ctx) => {
+    const row = await loadAccountRow(userOf(ctx));
+    if (!row) return no("This Berth account no longer exists.");
+    const viewer = { id: row.id, email: row.email };
+    const social = await mySocial(viewer);
+    const rank = rankForXp(row.xp);
+    if (!social.handle) {
+      return ok(
+        [
+          "No username yet, so this account has no card and nobody can find it.",
+          social.hasEmail
+            ? "A username is picked in Berth, in the account drawer."
+            : "A username needs a verified email first; one can be added in Berth, in the account drawer.",
+          `Rank: ${rank.name}, level ${rank.level} of 10, ${row.xp} XP.`,
+        ].join("\n"),
+      );
+    }
+    const [card, friends] = await Promise.all([readCardOf(viewer, row.id), listFriends(viewer)]);
+    const salutes = card.found ? card.card.salutes : 0;
+    return ok(
+      [
+        `Username: ${social.handle}. Card: ${ctx.origin}/u/${social.handle}`,
+        social.visible
+          ? "The card can be opened by anyone who knows the name. It shows the username, face, rank, XP, the month they joined and the Salutes count, nothing else."
+          : "The card is hidden: to everyone else the name answers as if no one had it.",
+        `Rank: ${rank.name}, level ${rank.level} of 10, ${row.xp} XP. Member since ${monthWords(card.found ? card.card.memberSince : new Date(row.created_at).toISOString().slice(0, 7))}.`,
+        `Salutes: ${salutes}.`,
+        `Friends: ${friends.friends.length}. Waiting for your answer: ${friends.incoming.length}. Sent by you, not yet answered: ${friends.outgoing.length}.`,
+        social.nextChangeAt ? `The username can change again from ${day(social.nextChangeAt)}.` : "The username can be changed now, once per 30 days.",
+      ].join("\n"),
+    );
+  },
+});
+
+const getFriendsBoard = defineTool({
+  name: "get_friends_board",
+  title: "Your friends board",
+  description:
+    "The signed in person's friends board for this calendar month: them and their friends, ranked on board points. Points are this month's XP with XP from orders capped at 300 and XP from invited friends capped at 250, plus at most 10 for Salutes first given to them this month. Never money, returns or holdings, and never anyone outside their friends.",
+  input: z.object({}),
+  annotations: { title: "Your friends board", ...READ_ONLY },
+  scope: SCOPE_READ,
+  run: async (_args, ctx) => {
+    const row = await loadAccountRow(userOf(ctx));
+    if (!row) return no("This Berth account no longer exists.");
+    const viewer = { id: row.id, email: row.email };
+    const social = await mySocial(viewer);
+    if (!social.handle) return ok("No username yet, so there are no friends and no board. A username is picked in Berth, in the account drawer.");
+    const board = await friendsBoard(viewer);
+    const out = [
+      `Friends board, ${monthWords(board.month)}. Points are this month's XP with order XP capped at 300 and invite XP at 250, plus at most 10 for Salutes received this month. Money and returns never count.`,
+    ];
+    for (const entry of board.rows) {
+      const rank = rankForXp(entry.xp);
+      out.push(
+        `${entry.place}. ${entry.handle}${entry.you ? " (you)" : ""}, ${rank.name}: ${entry.points} points (${entry.orderXp} from orders, ${entry.referralXp} from invites, ${entry.otherXp} other XP, ${entry.salutePoints} from Salutes)`,
+      );
+    }
+    if (board.rows.length === 1) out.push("No friends on the board yet.");
+    return ok(out.join("\n"));
+  },
+});
+
 const draftOrderTool = defineTool({
   name: "draft_order",
   title: "Draft a buy or sell",
@@ -474,7 +563,7 @@ const draftOrderTool = defineTool({
   },
 });
 
-/** The nine tools, in the order both doors list them. */
+/** The eleven tools, in the order both doors list them. */
 export const BERTH_TOOLS = [
   listListings,
   getListing,
@@ -484,6 +573,8 @@ export const BERTH_TOOLS = [
   getHoldings,
   getPerformance,
   getOrders,
+  getMyProfile,
+  getFriendsBoard,
   draftOrderTool,
 ] as const;
 

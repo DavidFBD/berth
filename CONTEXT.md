@@ -91,25 +91,44 @@ a round that changes behaviour.
   nothing happens until the person signs. Grants are listed and revoked
   under "Your assistant" in the account drawer.
 - **Ask** — the assistant inside Berth (`components/chat`, `app/api/chat`):
-  GPT-6 Luna reading the same nine tools as the MCP server
+  GPT-6 Luna reading the same eleven tools as the MCP server
   (`lib/server/berth-tools/registry`, one definition for both doors) and
   drafting orders as cards that open the order drawer. Opens at Slip
   (`CHAT_UNLOCK_LEVEL`); capped per person per day and by a house budget;
   Berth keeps counts and cost (`chat_usage`), never what was said.
+- **Username** — the name a person picks to have a card
+  (`lib/handle`, the rulebook: shape, the lookalike fold, reserved and
+  offensive names). Only an account with a verified email picks one;
+  picking it is the opt-in to being findable by that exact name.
+- **Card** — the public profile at `/u/<username>`: face, username, rank,
+  XP, member since, Salutes count, and the viewer's relation to them.
+  Never money, wallets, holdings or friends. Missing, hidden and blocked
+  read the same ("No one by that name"). Server side in
+  `lib/server/social`.
+- **Salute** — one per giver per card, revocable, verified email only, no
+  XP. The count shows on the card and feeds salute points.
+- **Friends** — a mutual connection by request (`friend_requests`,
+  `friends`; the plan called it crew). Only you see your friends. A friend
+  link (`friend_links`) is its own token, not the referral code.
+- **Friends board** — you and your friends ranked on board points
+  (ADR-0005), this calendar month.
 - **Appearance** — light, dark or system (`lib/appearance`), stamped by
   next-themes before hydration. The `useCopy()` seam returns the one voice.
 
 ## Settled decisions (do not re-propose)
 
 Load-bearing decisions live in `docs/adr/` (base-voice rewards copy, the
-level-3 invite gate, no leaderboard, referral pays at first verified order)
+level-3 invite gate, no leaderboard of strangers, referral pays at first
+verified order, the friends board on capped points)
 and in `docs/research/2026-09-16-colosseum-pivot-deep-dive.md` (the pivot,
 the account model, the name). Recorded in `thoughts.md`: the account-linking
 edge is accepted; SIWE and order-ownership proof are done. The
 `useVaultAction` pipeline body, the Privy EVM provider bridge and the gas
 buffer model were reviewed (2026-08-07) and confirmed deep — leave them whole.
 Cut, do not build: cross-wrapper best execution, recurring DCA, any money
-market supply, leaderboard, agent as wallet. Agents read and draft, the
+market supply, a harbour-wide or all-time leaderboard, any ranking on
+returns, agent as wallet. The friends board (ADR-0005) ranks board points:
+this month's XP with order XP capped at 300, plus at most 10 salute points. Agents read and draft, the
 person signs (2026-09-26): an assistant never holds a key, never signs and
 never moves money; its most is a draft the person opens, checks and signs
 in Berth.

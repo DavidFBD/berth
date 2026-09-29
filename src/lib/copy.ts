@@ -16,6 +16,8 @@ import type { Unlock } from "@/lib/unlocks";
 import type { BerthToolName } from "@/lib/berth-tool-names";
 import { REWARD_REASONS } from "@/lib/xp";
 import type { ConsentParty } from "@/lib/assistant-party";
+import type { HandleRefusal } from "@/lib/handle";
+import type { Relation, ReportReason } from "@/lib/social-types";
 
 export type Copy = {
   /* — brand and shell — */
@@ -766,6 +768,7 @@ export type Copy = {
   /** The small link to /assistants under "Your assistant" in the account drawer. */
   assistantsLink: string;
   assistantsHelp: AssistantsHelp;
+  social: SocialCopy;
 };
 
 /**
@@ -773,6 +776,93 @@ export type Copy = {
  * here: the page reads assistantStepsClaude and its siblings, the same words
  * the account drawer shows.
  */
+/**
+ * Usernames, profiles, Salutes and friends (docs/plans/social.md). Short
+ * lines: a profile is one phone screen and the drawer section is a few rows.
+ * Never "beat", "win", "top", "streak" or a money figure.
+ */
+export type SocialCopy = {
+  sectionTitle: string;
+  /** The section's one (i). */
+  sectionWhy: string;
+  addEmail: string;
+  addEmailSub: string;
+  pickTitle: string;
+  pickSub: string;
+  pickPlaceholder: string;
+  pickRules: string;
+  pickSave: string;
+  pickChecking: string;
+  pickFree: string;
+  /** Why a name cannot be had; `nextChange` is a readable date for "cooldown". */
+  refusal: (reason: HandleRefusal, nextChange?: string) => string;
+  saved: (handle: string) => string;
+  saveFailed: string;
+  view: string;
+  change: string;
+  cancel: string;
+  hide: string;
+  hideSub: string;
+  hiddenNote: string;
+  friends: string;
+  friendsNone: string;
+  requestsTitle: string;
+  sentLabel: string;
+  accept: string;
+  decline: string;
+  shareLink: string;
+  shareLinkSub: string;
+  shareLinkText: (handle: string) => string;
+  linkCopied: string;
+  newLink: string;
+  newLinkDone: string;
+  boardRow: string;
+  boardRowSub: string;
+  blocked: string;
+  unblock: string;
+  /* — the profile — */
+  memberSince: (month: string) => string;
+  xpLabel: string;
+  salutesLabel: string;
+  sinceLabel: string;
+  salute: string;
+  saluted: string;
+  saluteUndoLabel: (handle: string) => string;
+  saluteNeedsEmail: string;
+  relation: Record<Exclude<Relation, "self">, string>;
+  addFriend: string;
+  cancelRequest: string;
+  removeFriend: string;
+  removeConfirm: string;
+  needHandle: string;
+  youAreFriends: (handle: string) => string;
+  requestSent: string;
+  selfNote: string;
+  signInLine: string;
+  signIn: string;
+  notFound: string;
+  notFoundSub: string;
+  back: string;
+  moreLabel: string;
+  block: string;
+  blockConfirm: (handle: string) => string;
+  blockDone: string;
+  report: string;
+  reportReasons: Record<ReportReason, string>;
+  reportDone: string;
+  actionFailed: string;
+  /* — the friends board — */
+  boardTitle: string;
+  boardMonth: (month: string) => string;
+  boardWhy: string;
+  /** The word after a board row's number. */
+  boardPointsUnit: (points: number) => string;
+  boardYou: string;
+  boardEmpty: string;
+  boardNoHandle: string;
+  boardSignedOut: string;
+};
+
 export type AssistantsHelp = {
   title: string;
   intro: readonly string[];
@@ -1493,6 +1583,8 @@ export const COPY: Copy = {
     get_holdings: { doing: "Reading your holdings", done: "Read your holdings" },
     get_performance: { doing: "Measuring how your money did", done: "Measured how your money did" },
     get_orders: { doing: "Reading your orders", done: "Read your orders" },
+    get_my_profile: { doing: "Reading your card", done: "Read your card" },
+    get_friends_board: { doing: "Reading your friends board", done: "Read your friends board" },
     draft_order: { doing: "Drafting an order", done: "Drafted an order" },
   },
   chatToolsFolded: (n) => (n === 1 ? "Read 1 thing" : `Read ${n} things`),
@@ -1594,6 +1686,14 @@ export const COPY: Copy = {
         ],
       },
       {
+        id: "profiles",
+        heading: "Your profile and friends",
+        body: [
+          "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your face, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets, your money or what you own.",
+          "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. Nobody else can see your friends or who you block. The record of changes is kept for a year.",
+        ],
+      },
+      {
         id: "sharing",
         heading: "Who we share it with",
         body: ["We share personal data only with the services that run Berth, each for its own part."],
@@ -1641,6 +1741,7 @@ export const COPY: Copy = {
           "The log of requests from your AI: 90 days.",
           "Abuse limit counters: one day. They hold a hashed form of the caller's IP address, never the address itself.",
           "Invite link visits and error reports: up to 12 months.",
+          "The record of profile and friend changes: 12 months.",
         ],
       },
       {
@@ -1831,6 +1932,7 @@ export const COPY: Copy = {
       "See what you own, what it is worth now, and how it has done over a week, a month, three months or since your first buy.",
       "Compare your money with the same dollars in the S&P 500 fund, the Nasdaq 100 fund, Gold, Bitcoin or Treasury bills.",
       "Read your past orders, what moved on the last trading day, and what companies and the press have been saying, with links.",
+      "Read your own card and friends board. Never anyone else's.",
       "Draft a buy or a sell, if you allowed it. A draft is a link to Berth's order screen with the listing and amount filled in.",
     ],
     cannotHeading: "What it cannot do",
@@ -1852,5 +1954,102 @@ export const COPY: Copy = {
     ],
     support: `Questions or trouble connecting? Write to ${PRIVACY_OPERATOR.email}.`,
     backHome: "Back to Berth",
+  },
+  social: {
+    sectionTitle: "Your profile",
+    sectionWhy:
+      "Only people who know your username can open your profile. It shows your face, rank, XP and Salutes, never money or what you own.",
+    addEmail: "Add an email to get a profile",
+    addEmailSub: "A profile needs a verified email.",
+    pickTitle: "Pick a username",
+    pickSub: "Until you do, nobody can find you.",
+    pickPlaceholder: "username",
+    pickRules: "3 to 20 letters, numbers or _. People who know it can open your profile.",
+    pickSave: "Save",
+    pickChecking: "Checking",
+    pickFree: "Available",
+    refusal: (reason, nextChange) =>
+      ({
+        short: "At least 3 characters.",
+        long: "At most 20 characters.",
+        charset: "Letters, numbers and _ only.",
+        edge: "No _ at the start or end.",
+        offensive: "Pick another name.",
+        taken: "That name is taken.",
+        cooldown: nextChange ? `You can change it again on ${nextChange}.` : "You changed it recently.",
+        noEmail: "Add an email first.",
+      })[reason],
+    saved: (handle) => `Your username is ${handle}.`,
+    saveFailed: "That did not save. Try again.",
+    view: "View",
+    change: "Change",
+    cancel: "Cancel",
+    hide: "Hide my profile",
+    hideSub: "While hidden, your username finds no one.",
+    hiddenNote: "Hidden. Only you can see this.",
+    friends: "Friends",
+    friendsNone: "No friends yet.",
+    requestsTitle: "Wants to be friends",
+    sentLabel: "Sent",
+    accept: "Accept",
+    decline: "Decline",
+    shareLink: "Share your friend link",
+    shareLinkSub: "Anyone with it can ask to be friends.",
+    shareLinkText: (handle) => `Be my friend on Berth. I am ${handle}.`,
+    linkCopied: "Link copied",
+    newLink: "New link",
+    newLinkDone: "The old link no longer works.",
+    boardRow: "Friends board",
+    boardRowSub: "You and your friends, this month.",
+    blocked: "Blocked",
+    unblock: "Unblock",
+    memberSince: (month) => `Since ${month}`,
+    xpLabel: "XP",
+    salutesLabel: "Salutes",
+    sinceLabel: "Member since",
+    salute: "Salute",
+    saluted: "Saluted",
+    saluteUndoLabel: (handle) => `Take back your Salute to ${handle}`,
+    saluteNeedsEmail: "Add an email to salute or add friends.",
+    relation: {
+      none: "Add friend",
+      sent: "Request sent",
+      received: "Wants to be friends",
+      friends: "Friends",
+    },
+    addFriend: "Add friend",
+    cancelRequest: "Cancel request",
+    removeFriend: "Remove",
+    removeConfirm: "Tap again to remove",
+    needHandle: "Pick a username to add friends.",
+    youAreFriends: (handle) => `You and ${handle} are friends.`,
+    requestSent: "Request sent.",
+    selfNote: "This is you.",
+    signInLine: "Sign in to see this profile.",
+    signIn: "Sign in",
+    notFound: "No one by that name.",
+    notFoundSub: "Usernames are exact. Ask them for their link.",
+    back: "Back to Berth",
+    moreLabel: "More",
+    block: "Block",
+    blockConfirm: (handle) => `Block ${handle}? They will not be told.`,
+    blockDone: "Blocked.",
+    report: "Report",
+    reportReasons: {
+      name: "Offensive name",
+      impersonation: "Pretends to be someone",
+      other: "Something else",
+    },
+    reportDone: "Thank you. We will look at it.",
+    actionFailed: "That did not go through. Try again.",
+    boardTitle: "Friends board",
+    boardMonth: (month) => `Friends board, ${month}`,
+    boardWhy:
+      "Points come from what you do in Berth this month, not what you earn. Orders count up to 300, invites up to 250, Salutes up to 10. Money and returns never count.",
+    boardPointsUnit: (points) => (points === 1 ? "point" : "points"),
+    boardYou: "You",
+    boardEmpty: "Add friends and they appear here.",
+    boardNoHandle: "Pick a username in your account to have friends.",
+    boardSignedOut: "Sign in to see your friends board.",
   },
 };
