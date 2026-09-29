@@ -45,16 +45,20 @@ Positioning line: Stocks for the money that already lives onchain.
 10. **Invite friends.** Share your link; you both earn XP when they join and
     trade.
 
+11. **Profiles, Salutes and friends.** Pick a username to get a one-screen
+    profile (avatar, rank, XP, Salutes). Salute people, add friends, and see
+    a friends board ranked on XP and Salutes, never returns. Private until you
+    pick a name; nobody sees anyone's friends.
+12. **One account, many wallets.** Link several wallets and networks to one
+    account (EVM and Solana today); buys land at your home wallet and totals
+    add up every wallet.
+
 ## Coming (not live yet)
 
 - **Limit orders.** "Buy NVIDIA if it drops to $200": set a price, the order
-  waits, and fills when the price is reached. Waiting orders show under your
-  total. The Assistant can draft them.
-- **Profiles, Salutes and your crew.** Pick a username to get a one-screen
-  profile (avatar, rank, XP, salutes). Salute friends, form a crew, and see a
-  crew board ranked on XP and salutes.
-- **One account, many wallets.** Link wallets from several networks and
-  extensions to one email account.
+  waits, and fills when the price is reached. Waiting money shows under your
+  total. The Assistant can draft them. (In testing, not open to everyone.)
+- **More networks for linking** (Bitcoin next).
 
 ## Say it this way
 
