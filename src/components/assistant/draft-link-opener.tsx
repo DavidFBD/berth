@@ -37,7 +37,7 @@ export function DraftLinkOpener({
 }) {
   const copy = useCopy();
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallet);
+  const holdings = useHubHoldings(account.hubWallets);
   // Read once, at mount, on the client: this component never renders on the server.
   const pending = useRef<DraftParams | null | undefined>(undefined);
   if (pending.current === undefined) {

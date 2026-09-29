@@ -71,6 +71,7 @@ describe("toProfile", () => {
       xp: 135,
       avatarId: null,
       hasEmail: false,
+      homeAddress: null,
       referralCode: null,
     });
   });
@@ -82,8 +83,15 @@ describe("toProfile", () => {
       xp: 25,
       avatarId: "kettle",
       hasEmail: true,
+      homeAddress: null,
       referralCode: null,
     });
+  });
+
+  it("names the home EVM address, the buy destination's fallback, and nothing else", () => {
+    const home = "0x00000000000000000000000000000000000000aa";
+    expect(toProfile({ ...stale, wallet_address: home }).homeAddress).toBe(home);
+    expect(toProfile({ ...stale, wallet_address: null }).homeAddress).toBeNull();
   });
 
   it("keeps the minted invite code hidden below the unlock rank", () => {

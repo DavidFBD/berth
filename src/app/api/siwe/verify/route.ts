@@ -1,8 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createPublicClient, http } from "viem";
-import { sonic } from "viem/chains";
-import { parseSiweMessage, validateSiweMessage } from "viem/siwe";
-import { siweMadeForBerth } from "@/lib/server/siwe-origin";
+import { verifySiwe } from "@/lib/server/siwe";
 import {
   issueWalletSession,
   readNonceToken,
@@ -10,17 +7,11 @@ import {
 
 /**
  * Second half of the SIWE handshake: check the signed message against the
- * nonce we issued and the signature against the chain (public-client
- * verifyMessage handles EOAs, ERC-1271 smart accounts, and ERC-6492
- * pre-deploy accounts alike), then mint the wallet session the rewards
- * routes now require from wallet-only callers.
+ * nonce we issued and the signature against the key (lib/server/siwe: an
+ * ordinary key locally, ERC-1271 and ERC-6492 accounts on chain), then mint
+ * the wallet session the rewards routes now require from wallet-only
+ * callers.
  */
-
-const client = createPublicClient({
-  chain: sonic,
-  transport: http("https://sonic-rpc.publicnode.com"),
-});
-
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     message?: unknown;
@@ -40,27 +31,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "stale nonce" }, { status: 401 });
   }
 
-  const fields = parseSiweMessage(body.message);
-  if (
-    !fields.address ||
-    !validateSiweMessage({ message: fields, nonce }) ||
-    !siweMadeForBerth(fields)
-  ) {
-    return NextResponse.json({ error: "invalid message" }, { status: 401 });
-  }
-
-  const valid = await client
-    .verifyMessage({
-      address: fields.address,
-      message: body.message,
-      signature: body.signature as `0x${string}`,
-    })
-    .catch(() => false);
-  if (!valid) {
+  const walletAddress = await verifySiwe({ message: body.message, signature: body.signature, nonce });
+  if (!walletAddress) {
     return NextResponse.json({ error: "bad signature" }, { status: 401 });
   }
 
-  const walletAddress = fields.address.toLowerCase();
   return NextResponse.json({
     sessionToken: await issueWalletSession(walletAddress),
     walletAddress,

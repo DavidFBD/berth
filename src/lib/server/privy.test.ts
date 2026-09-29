@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickAccountWallet, type PrivyLinkedAccount } from "./privy";
+import { latestEmailProof, pickAccountWallet, type PrivyLinkedAccount } from "./privy";
 
 const embedded: PrivyLinkedAccount = {
   type: "wallet",
@@ -67,5 +67,27 @@ describe("pickAccountWallet", () => {
   it("skips a wallet entry with no address", () => {
     const blank = { ...external, address: undefined };
     expect(pickAccountWallet([blank])).toBeNull();
+  });
+});
+
+describe("latestEmailProof", () => {
+  it("reads Privy's unix seconds as epoch ms, the newest email proof, and nothing else", () => {
+    // The shape and values production's Privy returned on 2026-09-29.
+    const accounts: PrivyLinkedAccount[] = [
+      { type: "email", address: "a@example.com", latest_verified_at: 1789997562 },
+      { type: "wallet", chain_type: "ethereum", address: "0xabc", latest_verified_at: 1799999999 },
+    ];
+    expect(latestEmailProof(accounts)).toBe(1789997562_000);
+    expect(new Date(latestEmailProof(accounts)!).toISOString()).toBe("2026-09-21T13:32:42.000Z");
+    expect(latestEmailProof([{ type: "email", address: "a@example.com", latest_verified_at: null }])).toBeNull();
+    expect(latestEmailProof([])).toBeNull();
+  });
+
+  it("a code entered nine minutes ago is fresh for the ten minute rule, eleven is not", async () => {
+    const { PRIVY_FRESH_MS } = await import("./account-wallets-route");
+    const now = Date.now();
+    const at = (minutesAgo: number) => latestEmailProof([{ type: "email", latest_verified_at: Math.floor((now - minutesAgo * 60_000) / 1000) }])!;
+    expect(now - at(9) <= PRIVY_FRESH_MS).toBe(true);
+    expect(now - at(11) <= PRIVY_FRESH_MS).toBe(false);
   });
 });

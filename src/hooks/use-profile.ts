@@ -1,9 +1,14 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
 import { useXAccount } from "@sodax/wallet-sdk-react";
 import { ChainKeys } from "@sodax/sdk";
+import { getAddress } from "viem";
+import { createSiweMessage } from "viem/siwe";
+import { proofResource, proofStatement, type ProofAct } from "@/lib/account-proof";
+import { walletActOutcome } from "@/lib/account-wallets";
 import type { AvatarId } from "@/lib/avatars";
 import type {
   Hold,
@@ -17,6 +22,7 @@ import type { OrdersResponse } from "@/app/api/orders/route";
 import type { AssistantsResponse } from "@/app/api/assistants/route";
 import type { ChatStatusResponse } from "@/app/api/chat/status/route";
 import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route";
+import type { WalletsResponse } from "@/app/api/account/wallets/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
 import { CHAT_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
 import { announceRewards } from "@/components/xp-toast";
@@ -26,7 +32,15 @@ import {
   clearPendingReferral,
   pendingReferralCode,
 } from "@/lib/referral";
-import { storedWalletSession, useEnsureWalletSession } from "@/hooks/use-wallet-session";
+import {
+  anchorWalletSession,
+  keptSeparate,
+  storedWalletSession,
+  storeWalletSession,
+  subscribeWalletSessions,
+  useEnsureWalletSession,
+  walletSessionsVersion,
+} from "@/hooks/use-wallet-session";
 
 export type { Profile } from "@/lib/profile-types";
 
@@ -43,11 +57,35 @@ function useIdentity() {
   // wallet account: keyed on the DID for that moment, the panel would blank
   // mid-flow and a shared browser could inherit the wrong row.
   const linking = useLinkInProgress();
+  // Re-read when a session or a choice is pocketed (a wallet just linked).
+  useSyncExternalStore(subscribeWalletSessions, walletSessionsVersion, () => 0);
   const authenticated =
     privy.enabled && privy.authenticated && !linking && !privy.walletAccountSession;
-  const wallet = authenticated ? privy.embedded?.address : external.address;
+  let wallet = authenticated ? privy.embedded?.address : external.address;
+  // Connected is not signed in (docs/plans/account-linking.md, addendum):
+  // when the extension switches to an address this browser holds no session
+  // for, while it still holds one for the account it last signed in to,
+  // NEITHER account's data shows. The browser waits, holding the earlier
+  // session only as `anchor`, for the person to choose (components/
+  // account-wallets SignedInAsBar): sign in with the new address (the
+  // default, a signature as before), or add it to the earlier account. A
+  // shared browser never shows one person's account to the next. Never a
+  // signature on its own.
+  let pending: string | null = null;
+  let anchor: { address: string; token: string } | null = null;
+  if (!authenticated && external.address) {
+    const connected = external.address.toLowerCase();
+    if (!storedWalletSession(connected) && !keptSeparate(connected)) {
+      const last = anchorWalletSession();
+      if (last && last.address !== connected) {
+        anchor = last;
+        pending = connected;
+        wallet = undefined;
+      }
+    }
+  }
   const key = authenticated ? (privy.user?.id ?? null) : (wallet ?? null);
-  return { authenticated, wallet: wallet ?? null, key, getAccessToken };
+  return { authenticated, wallet: wallet ?? null, key, getAccessToken, pending, anchor };
 }
 
 /**
@@ -82,7 +120,23 @@ function useRewardsCall() {
     return response.json();
   };
 
-  return { key, call };
+  /**
+   * The same POST, answering the status as well as the body, for a caller
+   * whose refusals mean different things (the wallet acts: 403 is "sign in
+   * again", 429 "slow down"). Status 0 when no session materialized.
+   */
+  const callStatus = async <T>(path: string, body: Record<string, unknown>): Promise<{ status: number; data: T | null }> => {
+    const auth = await headers();
+    if (!auth) return { status: 0, data: null };
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...auth },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, data: response.ok ? ((await response.json()) as T) : null };
+  };
+
+  return { key, call, callStatus };
 }
 
 /**
@@ -173,6 +227,7 @@ function profileOf(data: ProfileResponse): Profile {
     xp: data.xp,
     avatarId: data.avatarId,
     hasEmail: data.hasEmail,
+    homeAddress: data.homeAddress ?? null,
     referralCode: data.referralCode,
   };
 }
@@ -431,6 +486,129 @@ export function useDisconnectAssistant() {
       if (!data) return;
       // useRewardsQuery caches the selected shape: the list itself.
       queryClient.setQueryData(["assistant-grants", key], data.grants);
+    },
+  });
+}
+
+/**
+ * The wallets linked to this account, home first (app/api/account/wallets).
+ * Every signed in session reads it: it decides where buys land (the home)
+ * and whose hub wallets the totals add up (hooks/use-hub-account).
+ */
+export function useAccountWallets(enabled = true) {
+  return useRewardsQuery<WalletsResponse>("account-wallets", "/api/account/wallets", {
+    enabled,
+    staleTime: 5 * 60_000,
+    // Not deployed yet: nothing linked beyond what the session proves.
+    notFound: { wallets: [], signedInWith: null },
+  });
+}
+
+/**
+ * The connected wallet the identity is waiting on, lowercase, and the
+ * account session this browser signed in with before it (useIdentity).
+ * Both null otherwise.
+ */
+export function usePendingWallet(): string | null {
+  return useIdentity().pending;
+}
+
+export function useWaitingIdentity(): { pending: string | null; anchor: { address: string; token: string } | null } {
+  const { pending, anchor } = useIdentity();
+  return { pending, anchor };
+}
+
+export type WalletActResult =
+  | { ok: true; response: WalletsResponse & { state?: string } }
+  | { ok: false; reason: "declined" | "failed" | "reauth" | "slow" | "home_missing" };
+
+type Signed = { message: string; signature: string };
+
+/**
+ * One wallet act on the account: link a wallet, make an address home, or
+ * remove one. Each is a SIWE made for Berth over a nonce the server bound
+ * to this account, this act and this target (lib/server/account-wallets-
+ * route), saying exactly what it is for (lib/account-proof), spent once.
+ * A link carries two signatures over the one nonce: the new wallet's, and
+ * the account's own confirmation from its home (`confirm`); an email
+ * account confirms with a recent code instead ("reauth" when it is not).
+ *
+ * `auth` is the session to speak as: the normal one, or, while a new
+ * extension address waits, the earlier account's own session (useIdentity
+ * anchor), so a wallet can join it without its data ever showing.
+ */
+export function useWalletAct() {
+  const queryClient = useQueryClient();
+  const { key, callStatus } = useRewardsCall();
+  return useMutation({
+    mutationFn: async (vars: {
+      act: "link" | "home" | "unlink";
+      /** The address acted on: the wallet to link, to make home, or to remove. */
+      target: string;
+      /** The address that signs the act (for a link, the target). */
+      signer: string;
+      sign: (message: string) => Promise<string | null>;
+      /** A link's confirmation by the account's home, when it has one to sign with. */
+      confirm?: { signer: string; sign: (message: string) => Promise<string | null> };
+      /** Speak as this wallet session instead of the normal identity. */
+      asSession?: string;
+    }): Promise<WalletActResult> => {
+      const post = async <T,>(path: string, body: Record<string, unknown>): Promise<{ status: number; data: T | null }> => {
+        if (vars.asSession) {
+          const response = await fetch(path, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-wallet-session": vars.asSession },
+            body: JSON.stringify(body),
+          });
+          return { status: response.status, data: response.ok ? ((await response.json()) as T) : null };
+        }
+        if (!key) return { status: 0, data: null };
+        return callStatus<T>(path, body);
+      };
+      const nonce = (await post<{ nonce: string; nonceToken: string }>("/api/account/wallets/nonce", { act: vars.act, target: vars.target })).data;
+      if (!nonce) return { ok: false, reason: "failed" };
+      const signOne = async (act: ProofAct, signer: string, sign: (message: string) => Promise<string | null>): Promise<Signed | null> => {
+        const message = createSiweMessage({
+          address: getAddress(signer),
+          chainId: 146,
+          domain: window.location.host,
+          uri: window.location.origin,
+          nonce: nonce.nonce,
+          version: "1",
+          statement: proofStatement(act, vars.target),
+          resources: [proofResource(act, vars.target)],
+        });
+        try {
+          const signature = await sign(message);
+          return signature ? { message, signature } : null;
+        } catch {
+          return null;
+        }
+      };
+      const own = await signOne(vars.act, vars.signer, vars.sign);
+      if (!own) return { ok: false, reason: "declined" };
+      let accountProof: Signed | undefined;
+      if (vars.act === "link" && vars.confirm) {
+        const confirmed = await signOne("link-confirm", vars.confirm.signer, vars.confirm.sign);
+        if (!confirmed) return { ok: false, reason: "declined" };
+        accountProof = confirmed;
+      }
+      const path = vars.act === "link" ? "link" : vars.act === "home" ? "home" : "remove";
+      const response = await post<WalletsResponse & { state?: string; walletSession?: string; address?: string }>(
+        `/api/account/wallets/${path}`,
+        { ...own, nonceToken: nonce.nonceToken, address: vars.target, accountProof },
+      );
+      const outcome = walletActOutcome(response.status, response.data);
+      if (!outcome.ok || !response.data) return outcome.ok ? { ok: false, reason: "failed" } : outcome;
+      if (response.data.walletSession && response.data.address) storeWalletSession(response.data.address, response.data.walletSession);
+      return { ok: true, response: response.data };
+    },
+    onSuccess: (result, vars) => {
+      if (!result.ok || vars.asSession) return;
+      const { wallets, signedInWith } = result.response;
+      queryClient.setQueryData(["account-wallets", key], { wallets, signedInWith });
+      // Totals and history now read another hub wallet.
+      void queryClient.invalidateQueries({ queryKey: ["portfolio-history"] });
     },
   });
 }

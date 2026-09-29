@@ -29,7 +29,7 @@ export type AccountFigures = {
 export function AccountTotal() {
   const funds = useEmbeddedHoldings();
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallet);
+  const holdings = useHubHoldings(account.hubWallets);
   const prices = useListingPrices();
 
   if (!account.spokeAddress) return null;

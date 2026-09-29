@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { AssistantSection } from "@/components/assistant/assistant-section";
+import { WalletsSection } from "@/components/account-wallets";
 import { SocialSection } from "@/components/social/social-section";
 import { RankChip, RewardsPanel } from "@/components/rewards-panel";
 import { useCopy } from "@/components/settings-provider";
@@ -120,6 +121,7 @@ export function AccountButton({
               of thing, somewhere to go or something to copy, and giving each
               its own border made a drawer that read as a list of boxes.
             */}
+            <WalletsSection />
             <Panel className="divide-y divide-border">
             {address ? (
               <>
@@ -266,6 +268,7 @@ function ExternalAccountEntry({
           </DrawerHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <RewardsPanel />
+            <WalletsSection />
             <Panel>
               <SocialSection />
             </Panel>

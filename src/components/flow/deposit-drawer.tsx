@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowsDownUp, CaretDown, GasPump } from "@phosphor-icons/react";
-import { ChainKeys, type SpokeChainKey, type XToken } from "@sodax/sdk";
+import { ChainKeys, isEvmChainKeyType, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import { useXBalances } from "@sodax/dapp-kit";
 import {
   getXChainType,
@@ -46,6 +46,7 @@ import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useHubAccount } from "@/hooks/use-hub-account";
+import { useAddConnectedWallet } from "@/hooks/use-account-wallets";
 import {
   useEmbeddedHoldings,
   type EmbeddedHoldingsResult,
@@ -132,6 +133,7 @@ export function DepositDrawer({
 
   // Where a buy lands: the account. Vault deposits ignore this (see RunDepositArgs).
   const account = useHubAccount();
+  const addWallet = useAddConnectedWallet();
   const deliverTo = isBuy ? account.hubWallet : undefined;
   const accountState = !isBuy
     ? "ready"
@@ -380,6 +382,9 @@ export function DepositDrawer({
     minOut: quote.minOut,
     hasWalletProvider: !!walletProvider,
     account: accountState,
+    // An EVM payer is the session's signer; one not on the account yet is
+    // added first, or the order would not count as the account's.
+    payerLinked: !isBuy || !isEvmChainKeyType(srcChainKey) || account.signerLinked,
   });
   const cta: Cta = (() => {
     switch (gate.kind) {
@@ -391,6 +396,15 @@ export function DepositDrawer({
         };
       case "accountPending":
         return { label: copy.ctaOpeningAccount, disabled: true, busy: true };
+      case "walletNotLinked":
+        return {
+          label: copy.ctaAddWalletFirst,
+          disabled: !addWallet.canSign || addWallet.busy,
+          busy: addWallet.busy,
+          onClick: () => void addWallet.add(),
+        };
+      case "signWithOther":
+        return { label: copy.ctaAddWalletFirst, disabled: true };
       case "pickToken":
         if (finding) {
           return { label: copy.findingPayWith, disabled: true, busy: true };

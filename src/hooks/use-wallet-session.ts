@@ -15,40 +15,124 @@ import { useXSignMessage } from "@sodax/wallet-sdk-react";
  * wallet UIs next to scary hex, so it stays plain and reassuring.
  */
 
-const STORAGE_KEY = "lsteatime.wallet-session";
+const LEGACY_KEY = "lsteatime.wallet-session";
+const STORAGE_KEY = "berth.wallet-sessions";
+const KEEP_SEPARATE_KEY = "berth.keep-separate";
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SIWE_STATEMENT =
   "Prove this wallet is yours to Berth. Signing is free and moves nothing.";
 
-type StoredSession = { token: string; address: string; expiresAt: number };
+type StoredSession = { token: string; address: string; expiresAt: number; storedAt?: number };
 
-function readStored(): StoredSession | null {
+/**
+ * One pocketed session per address (phase 2: an account may hold several
+ * EVM wallets, and switching between them in the extension must not forget
+ * the others). The old single-slot key is read once and folded in.
+ */
+function readAll(): Record<string, StoredSession> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as StoredSession) : null;
+    const all = raw ? (JSON.parse(raw) as Record<string, StoredSession>) : {};
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const old = JSON.parse(legacy) as StoredSession;
+      if (old?.address && !all[old.address]) all[old.address] = { ...old, storedAt: 0 };
+    }
+    return all;
   } catch {
-    return null;
+    return {};
   }
 }
 
+const listeners = new Set<() => void>();
+let version = 0;
+function changed() {
+  version += 1;
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to pocketed sessions and keep-separate choices (useSyncExternalStore). */
+export function subscribeWalletSessions(listener: () => void): () => void {
+  listeners.add(listener);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY || event.key === KEEP_SEPARATE_KEY) changed();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+/** Changes whenever a session or a choice is pocketed, for useSyncExternalStore. */
+export function walletSessionsVersion(): number {
+  return version;
+}
+
+const isFresh = (stored: StoredSession | undefined) => !!stored && stored.expiresAt > Date.now() + 60_000;
+
 /** A still-fresh session token for this address, if one is pocketed. */
 export function storedWalletSession(address: string): string | null {
-  const stored = readStored();
-  if (!stored) return null;
-  const fresh =
-    stored.address === address.toLowerCase() &&
-    stored.expiresAt > Date.now() + 60_000;
-  return fresh ? stored.token : null;
+  const stored = readAll()[address.toLowerCase()];
+  return isFresh(stored) ? stored!.token : null;
+}
+
+/**
+ * The account this browser last signed in to with a wallet: the freshest
+ * pocketed session, whichever address it proves. When the extension switches
+ * to an address with no session of its own, the identity stays on this one
+ * until the person says whether the new wallet joins it (hooks/use-profile).
+ */
+export function anchorWalletSession(): { address: string; token: string } | null {
+  const fresh = Object.values(readAll()).filter(isFresh);
+  fresh.sort((a, b) => (b.storedAt ?? 0) - (a.storedAt ?? 0));
+  return fresh[0] ? { address: fresh[0].address, token: fresh[0].token } : null;
+}
+
+/** Pocket a session for `address` (the handshake, or a wallet just linked). */
+export function storeWalletSession(address: string, token: string): void {
+  try {
+    const all = readAll();
+    const key = address.toLowerCase();
+    all[key] = { token, address: key, expiresAt: Date.now() + SESSION_TTL_MS, storedAt: Date.now() };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    // Storage refused: the session lives only as long as this request.
+  }
+  changed();
 }
 
 export function clearWalletSession(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_KEY);
   } catch {
     // Nothing to clear.
   }
+  changed();
 }
 
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Addresses the person chose to keep as accounts of their own ("Not now"). */
+export function keptSeparate(address: string): boolean {
+  try {
+    const list = JSON.parse(localStorage.getItem(KEEP_SEPARATE_KEY) ?? "[]") as string[];
+    return list.includes(address.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+export function keepSeparate(address: string): void {
+  try {
+    const list = JSON.parse(localStorage.getItem(KEEP_SEPARATE_KEY) ?? "[]") as string[];
+    if (!list.includes(address.toLowerCase())) list.push(address.toLowerCase());
+    localStorage.setItem(KEEP_SEPARATE_KEY, JSON.stringify(list));
+  } catch {
+    // Storage refused: the prompt returns next visit.
+  }
+  changed();
+}
 
 /**
  * Returns an ensure function: cached token when fresh, otherwise the full
@@ -102,12 +186,7 @@ export function useEnsureWalletSession() {
             walletAddress: string;
           };
 
-        const stored: StoredSession = {
-          token: sessionToken,
-          address: walletAddress,
-          expiresAt: Date.now() + SESSION_TTL_MS,
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+        storeWalletSession(walletAddress, sessionToken);
         return sessionToken;
       } catch {
         // Declined signature or a network stumble: quietly no session.

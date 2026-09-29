@@ -11,11 +11,10 @@ import {
 } from "@/lib/portfolio-history";
 import { readMarks } from "@/lib/server/marks";
 import {
-  hubWalletFor,
   liveListingPrices,
   loadListingOrders,
   loadPortfolioDays,
-  readListingBalances,
+  readAccountBalances,
 } from "@/lib/server/portfolio";
 
 /**
@@ -105,17 +104,18 @@ async function currentPrice(marketId: string): Promise<number | undefined> {
 }
 
 /**
- * The history for one account against one benchmark. `spoke` is the
- * account's EVM address on the home chain (lib/account), or null when it
- * has none, which only costs today's live point.
+ * The history for one account against one benchmark. `spokes` are the
+ * account's EVM addresses (home first, lib/server/identities
+ * accountEvmAddresses): today's live point sums every one's hub wallet.
+ * Empty when it has none, which only costs today's live point.
  */
 export async function loadPortfolioHistory({
   userId,
-  spoke,
+  spokes,
   benchmark,
 }: {
   userId: string;
-  spoke: string | null;
+  spokes: readonly string[];
   benchmark: Benchmark;
 }): Promise<PortfolioHistoryResponse> {
   const [days, orders] = await Promise.all([loadPortfolioDays(userId), loadListingOrders(userId)]);
@@ -135,9 +135,9 @@ export async function loadPortfolioHistory({
   let timer: ReturnType<typeof setTimeout> | undefined;
   const liveRead = Promise.race([
     (async () => {
-      if (!isTradingDay(today) || !spoke) return undefined;
+      if (!isTradingDay(today) || spokes.length === 0) return undefined;
       const [balances, prices] = await Promise.all([
-        hubWalletFor(spoke).then(readListingBalances),
+        readAccountBalances(spokes).then((read) => read.total),
         liveListingPrices().catch(() => ({}) as Record<string, number>),
       ]);
       return { balances, prices };

@@ -53,7 +53,7 @@ function writeDismissed(value: Record<string, number>): void {
  */
 export function useNudge(): { nudge: Nudge | null; dismiss: () => void } {
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallet);
+  const holdings = useHubHoldings(account.hubWallets);
   const funds = useEmbeddedHoldings();
   const profile = useProfile();
   const home = useAccount(HOME_CHAIN);

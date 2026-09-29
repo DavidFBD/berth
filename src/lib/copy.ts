@@ -768,6 +768,69 @@ export type Copy = {
   /** The small link to /assistants under "Your assistant" in the account drawer. */
   assistantsLink: string;
   assistantsHelp: AssistantsHelp;
+
+  /* — the account's wallets (account drawer; docs/plans/account-linking.md, phase 2) — */
+  accountWalletsTitle: string;
+  accountWalletsSub: string;
+  walletsHomeTag: string;
+  /** Under the home address. */
+  walletsHomeNote: string;
+  /** Under any other address. */
+  walletsPayFromNote: string;
+  /** The network family heading, e.g. EVM. */
+  walletsNetworkEvm: string;
+  walletsAdd: string;
+  walletsAddHint: string;
+  walletsAddHintEmail: string;
+  walletsMakeHome: string;
+  walletsRemove: string;
+  walletsCancel: string;
+  walletsMakeHomeConfirm: (short: string) => string;
+  walletsRemoveConfirm: (short: string) => string;
+  walletsRemoveHolds: string;
+  walletsRemoveHomeFirst: string;
+  walletsRemoveSignedIn: string;
+  /** The confirm button: the change needs one free signature. */
+  walletsSignToConfirm: string;
+  /** Home and remove are confirmed by the home wallet, which is not the one connected. */
+  walletsNeedHomeSigner: (short: string) => string;
+  walletsLinkedToast: string;
+  walletsHomeToast: string;
+  walletsRemovedToast: string;
+  walletsOtherAccount: string;
+  walletsCooling: string;
+  walletsFailed: string;
+  walletsDeclined: string;
+  /** The quiet prompt when the connected wallet is not on the account. */
+  walletNotLinkedPrompt: string;
+  walletNotLinkedAdd: string;
+  walletNotLinkedDismiss: string;
+  /** Wallet mode, a new extension address with no session here while an earlier account's has one. */
+  signedInAsWallet: (short: string) => string;
+  connectedWallet: (short: string) => string;
+  signInWithWallet: (short: string) => string;
+  addToThisAccount: string;
+  /** A link's second signature: the home confirms, after the new wallet signed. */
+  walletsConfirmWithHome: (short: string) => string;
+  walletsHomeMissing: (short: string) => string;
+  walletsSlowDown: string;
+  /** An email account adds a wallet only with an email code entered in the last ten minutes. */
+  walletsSignInAgain: string;
+  walletsSignInAgainAction: string;
+  /** A sell draft for more than the chosen hub wallet holds. */
+  sellUpToFromWallet: (amount: string) => string;
+  /** SIWE statements, shown inside the wallet next to the address. */
+  walletLinkStatement: string;
+  walletHomeStatement: (short: string) => string;
+  /** Signed by the account's home wallet to confirm a new wallet joins it. */
+  walletLinkConfirmStatement: (short: string) => string;
+  walletRemoveStatement: (short: string) => string;
+  /** A buy paid from a wallet that is not on the account yet. */
+  ctaAddWalletFirst: string;
+  /** A sell from a hub wallet another address of the account owns. */
+  ctaSellSwitchWallet: (short: string) => string;
+  sellFromLabel: string;
+  sellFromHomeTag: string;
   social: SocialCopy;
 };
 
@@ -1955,6 +2018,53 @@ export const COPY: Copy = {
     support: `Questions or trouble connecting? Write to ${PRIVACY_OPERATOR.email}.`,
     backHome: "Back to Berth",
   },
+  accountWalletsTitle: "Wallets",
+  accountWalletsSub: "Each wallet stays the key to its own money. Your totals add them up.",
+  walletsHomeTag: "Home",
+  walletsHomeNote: "Buys land here.",
+  walletsPayFromNote: "Pays for orders. Its holdings count.",
+  walletsNetworkEvm: "EVM",
+  walletsAdd: "Add a wallet",
+  walletsAddHint: "Switch to the other wallet in your extension. Berth will ask to add it.",
+  walletsAddHintEmail: "Connect the other wallet in this browser. Berth will ask to add it.",
+  walletsMakeHome: "Make home",
+  walletsRemove: "Remove",
+  walletsCancel: "Cancel",
+  walletsMakeHomeConfirm: (short) => `Make ${short} your home? Future buys land there. Nothing you hold moves.`,
+  walletsRemoveConfirm: (short) => `Remove ${short}? Its orders stay in your history.`,
+  walletsRemoveHolds: "This wallet still holds stocks in Berth. Sell them or move them home first.",
+  walletsRemoveHomeFirst: "This is your home. Make another wallet home first.",
+  walletsRemoveSignedIn: "You are signed in with this wallet. Switch to another to remove it.",
+  walletsSignToConfirm: "Sign to confirm",
+  walletsNeedHomeSigner: (short) => `Switch to your home wallet, ${short}, to confirm.`,
+  walletsLinkedToast: "Wallet added.",
+  walletsHomeToast: "Home changed. Future buys land there.",
+  walletsRemovedToast: "Wallet removed.",
+  walletsOtherAccount: "This wallet belongs to another Berth account.",
+  walletsCooling: "This wallet left another account recently. Try again in a week.",
+  walletsFailed: "That did not go through. Try again.",
+  walletsDeclined: "No signature, so nothing changed.",
+  walletNotLinkedPrompt: "This wallet isn't part of your account. Add it?",
+  walletNotLinkedAdd: "Add it",
+  walletNotLinkedDismiss: "Not now",
+  signedInAsWallet: (short) => `Signed in as ${short}`,
+  connectedWallet: (short) => `Connected ${short}`,
+  signInWithWallet: (short) => `Sign in with ${short}`,
+  addToThisAccount: "Add to this account",
+  walletsConfirmWithHome: (short) => `Confirm with your home wallet ${short}. Switch to it in your extension.`,
+  walletsHomeMissing: (short) => `Your home wallet, ${short}, was not connected, so nothing changed.`,
+  walletsSlowDown: "Too many tries. Wait a little and try again.",
+  walletsSignInAgain: "To add a wallet, sign in with your email again.",
+  walletsSignInAgainAction: "Sign in again",
+  sellUpToFromWallet: (amount) => `You can sell up to ${amount} from this wallet.`,
+  walletLinkStatement: "Add this wallet to your Berth account. Signing is free and moves nothing.",
+  walletLinkConfirmStatement: (short) => `Let ${short} join your Berth account. Signing is free and moves nothing.`,
+  walletHomeStatement: (short) => `Make ${short} the home of your Berth account. Signing is free and moves nothing.`,
+  walletRemoveStatement: (short) => `Remove ${short} from your Berth account. Signing is free and moves nothing.`,
+  ctaAddWalletFirst: "Add this wallet to your account first",
+  ctaSellSwitchWallet: (short) => `Switch to ${short} to sell from it`,
+  sellFromLabel: "Sell from",
+  sellFromHomeTag: "Home",
   social: {
     sectionTitle: "Your profile",
     sectionWhy:

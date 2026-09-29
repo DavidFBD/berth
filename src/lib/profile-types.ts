@@ -17,6 +17,13 @@ export type Profile = {
    * server keeps the minted code to itself and the client shows the lock.
    */
   referralCode: string | null;
+  /**
+   * The account's home EVM address (users.wallet_address, the mirror of the
+   * home identity): where buys land. The buy destination's fallback when
+   * the linked-wallets list cannot be read (lib/account-wallets). Null
+   * without one; absent from a server that predates it.
+   */
+  homeAddress?: string | null;
 };
 
 /** A payout the server made in THIS response. Refetches stay quiet. */

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { RewardList } from "@/lib/profile-types";
 import { awardXp, flushUnannounced } from "@/lib/server/accounts";
+import { linkedWallets } from "@/lib/server/identities";
 import { recordOrder } from "@/lib/server/orders";
 import { verifyPourTx } from "@/lib/server/pour-verify";
 import {
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
     txHash,
     direction: kind === "pour_out" ? "out" : "in",
     accountWallet: user.wallet_address,
+    linkedWallets: (await linkedWallets(user.id, user.wallet_address))
+      .filter((wallet) => wallet.family === "evm")
+      .map((wallet) => ({ address: wallet.address, linkedAt: Date.parse(wallet.linkedAt) })),
   });
   if (!verdict.ok) {
     return NextResponse.json({ error: verdict.reason }, { status: 422 });

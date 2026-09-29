@@ -24,6 +24,7 @@ describe("rewardsResponse", () => {
       xp: 125,
       avatarId: "kettle",
       hasEmail: false,
+      homeAddress: null,
       referralCode: null,
       rewards: [{ kind: "avatar_set", amount: 25 }],
     });
@@ -35,6 +36,7 @@ describe("rewardsResponse", () => {
       xp: 25,
       avatarId: null,
       hasEmail: false,
+      homeAddress: null,
       referralCode: null,
       rewards: [],
     });

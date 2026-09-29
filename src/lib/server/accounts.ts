@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/server/db";
 import { detectFamily, normalizeAddress } from "@/lib/identity/caip";
-import { recordHomeWallet, recordPrimaryEmail } from "@/lib/server/identities";
+import { recordHomeWallet, recordPrimaryEmail, walletOwner } from "@/lib/server/identities";
 import { CODE_ALPHABET, CODE_LENGTH } from "@/lib/invite-code";
 import type {
   Profile,
@@ -50,11 +50,49 @@ export function normalizeWallet(address: unknown): string | null {
 }
 
 /**
+ * Thrown by getOrCreateUser when a wallet-only caller's address was unlinked
+ * from an account less than UNLINK_COOLDOWN_DAYS ago: it may not start or
+ * join another account yet (docs/plans/account-linking.md, Decisions).
+ */
+export class WalletCoolingDownError extends Error {
+  constructor() {
+    super("wallet cooling down");
+    this.name = "WalletCoolingDownError";
+  }
+}
+
+/**
+ * Thrown by getOrCreateUser when user_identities cannot be read and the
+ * users columns know nothing of the wallet either: the address might be one
+ * unlinked days ago and still cooling down, so no new account is made for
+ * it on a guess (fail closed). An address the users columns already place
+ * on an account still signs in to that one, as before phase 2.
+ */
+export class IdentityUnavailableError extends Error {
+  constructor() {
+    super("identity lookup failed");
+    this.name = "IdentityUnavailableError";
+  }
+}
+
+/** The users row with this id, or undefined. */
+async function userById(id: string): Promise<UserRow | undefined> {
+  return (
+    (await getSql().query(`select ${USER_COLUMNS} from users where id = $1`, [id])) as UserRow[]
+  )[0];
+}
+
+/**
  * Finds or creates the account for this request's identity, linking the
  * wallet onto the Privy row when both are present. The one interesting case
  * is the incentive path: a wallet-only account that later signs in with
  * email gets CLAIMED by the DID (one human, one row) instead of forked.
  * Returns the row plus whether it was created just now.
+ *
+ * Phase 2: a wallet is looked up in user_identities first, so any address
+ * linked to an account (not only its home, users.wallet_address) signs in to
+ * that account. When the table cannot be read the users columns decide, as
+ * before; an account with one wallet resolves exactly as it always did.
  */
 export async function getOrCreateUser({
   did,
@@ -74,15 +112,23 @@ export async function getOrCreateUser({
         [did],
       )) as UserRow[]
     )[0];
+    // Who the Privy wallet belongs to in user_identities (undefined when the
+    // table cannot be read: the users columns decide).
+    const owner = wallet ? await walletOwner(wallet) : undefined;
     if (!user && wallet) {
       // The incentive path: claim a pre-existing wallet-only account rather
-      // than forking the human into two rows.
+      // than forking the human into two rows. The account is the one the
+      // identity names, else the row whose users.wallet_address it is.
       user = (
         (await sql.query(
-          `update users set privy_did = $1, updated_at = now()
-           where wallet_address = $2 and privy_did is null
-           returning ${USER_COLUMNS}`,
-          [did, wallet],
+          owner?.state === "linked"
+            ? `update users set privy_did = $1, updated_at = now()
+               where id = $2 and privy_did is null
+               returning ${USER_COLUMNS}`
+            : `update users set privy_did = $1, updated_at = now()
+               where wallet_address = $2 and privy_did is null
+               returning ${USER_COLUMNS}`,
+          [did, owner?.state === "linked" ? owner.userId : wallet],
         )) as UserRow[]
       )[0];
     }
@@ -148,7 +194,10 @@ export async function getOrCreateUser({
     // Store the embedded wallet the first time we see it, so pours keyed by
     // address land on this same row. Never steal an address that already
     // belongs to another account.
-    if (wallet && !user.wallet_address) {
+    // An address another account holds in user_identities (linked, or
+    // unlinked and cooling down) is theirs too.
+    const heldElsewhere = owner !== undefined && owner.state !== "free" && owner.userId !== user.id;
+    if (wallet && !user.wallet_address && !heldElsewhere) {
       const updated = (await sql.query(
         `update users set wallet_address = $2, updated_at = now()
          where id = $1 and not exists (select 1 from users where wallet_address = $2)
@@ -163,12 +212,21 @@ export async function getOrCreateUser({
     return { user, created };
   }
 
-  // Wallet-only path.
+  // Wallet-only path. The identity decides first: a linked address (home or
+  // not) is its account; an address unlinked less than the cooldown ago
+  // joins nothing yet.
+  const owner = await walletOwner(wallet);
+  if (owner?.state === "linked") {
+    const linked = await userById(owner.userId);
+    if (linked) return { user: linked, created: false };
+  }
+  if (owner?.state === "cooling") throw new WalletCoolingDownError();
   const existing = (await sql.query(
     `select ${USER_COLUMNS} from users where wallet_address = $1`,
     [wallet],
   )) as UserRow[];
   if (existing[0]) return { user: existing[0], created: false };
+  if (owner === undefined) throw new IdentityUnavailableError();
   const inserted = (await sql.query(
     `insert into users (wallet_address) values ($1)
      on conflict (wallet_address) do update set updated_at = now()
@@ -487,6 +545,7 @@ export function toProfile(user: UserRow): Profile {
     xp: user.xp,
     avatarId: user.avatar_id,
     hasEmail: user.email !== null,
+    homeAddress: user.wallet_address && /^0x[0-9a-f]{40}$/.test(user.wallet_address) ? user.wallet_address : null,
     referralCode:
       rankForXp(user.xp).level >= INVITE_UNLOCK_LEVEL
         ? user.referral_code

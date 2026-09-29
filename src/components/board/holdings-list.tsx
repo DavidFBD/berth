@@ -89,7 +89,7 @@ export function HoldingsList({
   onSell: (listing: TokenListing) => void;
 }) {
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallet);
+  const holdings = useHubHoldings(account.hubWallets);
   const prices = useListingPrices();
   const performance = useListingPerformance();
   const orders = useOrders(Boolean(account.spokeAddress));

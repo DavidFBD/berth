@@ -74,6 +74,12 @@ const FILLED_UNCHECKED_BUY = `o.direction = 'buy'
 /**
  * Who owns an order: the account that placed it, or, only for a row that
  * never learned its account, the account whose wallet paid.
+ *
+ * The null user_id branch matches the home address (users.wallet_address)
+ * only, not every linked wallet (phase 2). Deliberately: every order since
+ * the orders table began is recorded with its account (lib/server/orders),
+ * and production held no order without one on 2026-09-29 (SELECT count(*)
+ * from orders where user_id is null: 0). The branch is a legacy guard.
  */
 const OWNER_JOIN = `join users u
     on (o.user_id is not null and u.id = o.user_id)

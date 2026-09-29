@@ -6,6 +6,8 @@ import {
   flushUnannounced,
   getOrCreateUser,
   normalizeWallet,
+  IdentityUnavailableError,
+  WalletCoolingDownError,
   toProfile,
   type UserRow,
 } from "@/lib/server/accounts";
@@ -93,10 +95,27 @@ export type UserResult =
 export async function resolveRewardsUser(
   caller: RewardsCaller,
 ): Promise<UserResult> {
-  const result = await getOrCreateUser({
-    did: caller.did,
-    wallet: caller.wallet,
-  });
+  let result: Awaited<ReturnType<typeof getOrCreateUser>>;
+  try {
+    result = await getOrCreateUser({
+      did: caller.did,
+      wallet: caller.wallet,
+    });
+  } catch (error) {
+    if (error instanceof IdentityUnavailableError) {
+      // Never guess who this is (as with a failed Privy lookup).
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "identity lookup failed" }, { status: 503 }),
+      };
+    }
+    if (!(error instanceof WalletCoolingDownError)) throw error;
+    // An address unlinked from an account days ago: it joins nothing yet.
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "wallet cooling down" }, { status: 409 }),
+    };
+  }
   if (!result) {
     return {
       ok: false,

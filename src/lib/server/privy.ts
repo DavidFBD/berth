@@ -56,6 +56,14 @@ export type PrivyLinkedAccount = {
   chain_type?: string;
   wallet_client_type?: string;
   connector_type?: string;
+  /**
+   * Unix SECONDS (Privy's REST API, @privy-io/api-types `number | null`):
+   * when the person last proved this account. It moves on each fresh proof
+   * (an email code entered, an OAuth login), not on a silent session
+   * refresh: production on 2026-09-29 showed email accounts with
+   * first_verified_at 2026-07-31 and latest_verified_at 2026-09-21.
+   */
+  latest_verified_at?: number | null;
 };
 
 /**
@@ -105,6 +113,30 @@ async function fetchPrivyUser(
   } catch {
     return null;
   }
+}
+
+/**
+ * When the person last proved their email to Privy (entered a code, or an
+ * OAuth login), in epoch ms, or null when unknown or on any API hiccup. The
+ * account's wallet acts (lib/server/account-wallets-route) ask for this to
+ * be recent: a lingering session on a shared browser is not the person.
+ */
+export async function fetchPrivyEmailVerifiedAt(did: string): Promise<number | null> {
+  const accounts = await fetchPrivyUser(did);
+  return accounts ? latestEmailProof(accounts) : null;
+}
+
+/** The newest latest_verified_at of the email ish accounts, in epoch ms (Privy gives seconds). */
+export function latestEmailProof(accounts: readonly PrivyLinkedAccount[]): number | null {
+  let latest: number | null = null;
+  for (const account of accounts) {
+    if (account.type !== "email" && !account.email) continue;
+    const seconds = account.latest_verified_at;
+    if (typeof seconds !== "number" || !Number.isFinite(seconds)) continue;
+    const ms = seconds * 1000;
+    if (latest === null || ms > latest) latest = ms;
+  }
+  return latest;
 }
 
 export async function fetchPrivyEmail(did: string): Promise<string | null> {

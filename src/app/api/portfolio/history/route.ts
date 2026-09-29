@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { DEFAULT_BENCHMARK, findBenchmark } from "@/lib/benchmarks";
+import { accountEvmAddresses } from "@/lib/server/identities";
 import { loadPortfolioHistory } from "@/lib/server/portfolio-view";
 import { readRewardsCaller, resolveRewardsUser } from "@/lib/server/rewards-route";
 
@@ -30,9 +31,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unknown benchmark" }, { status: 400 });
   }
 
+  // Every EVM address linked to the account (each has its own hub wallet),
+  // plus the caller's own as before: a Privy session's embedded wallet.
+  const linked = await accountEvmAddresses(resolved.user.id, resolved.user.wallet_address);
+  const own = read.caller.wallet ?? resolved.user.wallet_address;
+  const spokes = [...new Set([...linked.all, ...(own && /^0x[0-9a-f]{40}$/.test(own) ? [own] : [])])];
   const response = await loadPortfolioHistory({
     userId: resolved.user.id,
-    spoke: read.caller.wallet ?? resolved.user.wallet_address,
+    spokes,
     benchmark,
   });
   return NextResponse.json(response, {

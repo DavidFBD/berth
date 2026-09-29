@@ -26,7 +26,7 @@ import { EASE_LIFT } from "@/lib/motion";
 import { getChainName } from "@/lib/chains";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
-import { formatTokenAmount, parseAmount } from "@/lib/format";
+import { formatTokenAmount, parseAmount, shortenAddress } from "@/lib/format";
 import {
   SHARE_DECIMALS,
   amountText,
@@ -74,6 +74,9 @@ export function WithdrawDrawer({
   totalShares,
   onConnectWallet,
   prefill,
+  sellFrom,
+  signerLinked,
+  onAddWallet,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -99,6 +102,21 @@ export function WithdrawDrawer({
    * than `availableShares`. Filled in once; never submitted.
    */
   prefill?: { usd?: number; quantity?: number } | null;
+  /**
+   * A listing sell from an account with more than one hub wallet holding it
+   * (lib/account-wallets sellSources): the drawer asks which, and a hub
+   * wallet only its own address can sign for says so on the button.
+   * `availableShares` is then the chosen one's holding.
+   */
+  sellFrom?: {
+    sources: { spoke: string; isHome: boolean; balance: bigint; canSign: boolean }[];
+    chosen: string;
+    onChoose: (spoke: string) => void;
+  };
+  /** False when the signing wallet is connected but not on the account yet. */
+  signerLinked?: boolean;
+  /** Adds the connected wallet to the account (hooks/use-account-wallets). */
+  onAddWallet?: () => void;
 }) {
   const [dstChainKey, setDstChainKey] = useState<SpokeChainKey | null>(null);
   const [outputToken, setOutputToken] = useState<XToken | null>(null);
@@ -175,12 +193,19 @@ export function WithdrawDrawer({
   // only once the listing has a price to read them by, either capped at
   // what can be sold. Render-time adjustment, per house pattern.
   const [prefilled, setPrefilled] = useState(false);
-  if (!open && prefilled) setPrefilled(false);
+  // Set when the draft asked for more than can be sold from here: the
+  // drawer says so instead of shrinking the amount without a word.
+  const [capped, setCapped] = useState(false);
+  if (!open && prefilled) {
+    setPrefilled(false);
+    setCapped(false);
+  }
   if (open && !prefilled && prefill && amount === "") {
     if (prefill.quantity) {
       const asked = parseAmount(String(prefill.quantity), SHARE_DECIMALS);
       if (asked !== undefined && availableShares > 0n) {
         setPrefilled(true);
+        setCapped(asked > availableShares);
         setDenom("token");
         setAmount(formatUnits(asked > availableShares ? availableShares : asked, SHARE_DECIMALS));
       }
@@ -190,6 +215,7 @@ export function WithdrawDrawer({
       const worthUsd = Number(formatUnits(availableShares, SHARE_DECIMALS)) * sharePriceUsd;
       const step = 10 ** money.fractionDigits;
       setPrefilled(true);
+      setCapped(prefill.usd > worthUsd);
       setDenom("money");
       setAmount((Math.floor(Math.min(prefill.usd, worthUsd) * money.rate * step) / step).toFixed(money.fractionDigits));
     }
@@ -318,6 +344,7 @@ export function WithdrawDrawer({
     busy?: boolean;
     onClick?: () => void;
   };
+  const chosenSource = sellFrom?.sources.find((source) => source.spoke === sellFrom.chosen);
   // The gate (pour-amount module) decides why the withdrawal can't go yet;
   // this map only speaks it plainly.
   const gate = withdrawGate({
@@ -334,9 +361,18 @@ export function WithdrawDrawer({
     quoted: quote.quoted,
     minOut: quote.minOut,
     hasWalletProvider: !!walletProvider,
+    signerLinked,
+    canSignSource: chosenSource ? chosenSource.canSign : undefined,
   });
   const cta: Cta = (() => {
     switch (gate.kind) {
+      case "walletNotLinked":
+        return { label: copy.ctaAddWalletFirst, disabled: !onAddWallet, onClick: onAddWallet };
+      case "signWithOther":
+        return {
+          label: copy.ctaSellSwitchWallet(shortenAddress(chosenSource?.spoke ?? "", 4)),
+          disabled: true,
+        };
       case "connectSource":
         return {
           label: copy.connectChainWallet(getChainName(srcChainKey)),
@@ -524,6 +560,37 @@ export function WithdrawDrawer({
                         : `≈ ${money.format(sharesWorthUsd(buildAmount ?? 0n) ?? 0)}`}
                     </button>
                   )}
+                  {sellFrom && sellFrom.sources.length > 1 && (
+                    <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={copy.sellFromLabel}>
+                      <span className="text-xs text-muted-foreground">{copy.sellFromLabel}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {sellFrom.sources.map((source) => {
+                          const selected = source.spoke === sellFrom.chosen;
+                          return (
+                            <button
+                              key={source.spoke}
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              onClick={() => {
+                                sellFrom.onChoose(source.spoke);
+                                setAmount("");
+                                setCapped(false);
+                              }}
+                              className={cn(
+                                "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs tabular-nums transition-[background-color,border-color] duration-150 ease-lift",
+                                selected ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted",
+                              )}
+                            >
+                              <span className="money">{shortenAddress(source.spoke, 4)}</span>
+                              {source.isHome && <span className="text-[11px] text-muted-foreground">{copy.sellFromHomeTag}</span>}
+                              <span>{formatTokenAmount(source.balance, SHARE_DECIMALS, 4)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
                       {(isSell ? copy.youHold : copy.vaultHolds)(
@@ -538,6 +605,15 @@ export function WithdrawDrawer({
                       </Button>
                     )}
                   </div>
+                  {capped && isSell && (
+                    <p className="text-xs text-muted-foreground">
+                      {copy.sellUpToFromWallet(
+                        sharePriceUsd !== undefined
+                          ? money.format(sharesWorthUsd(availableShares) ?? 0)
+                          : `${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol}`,
+                      )}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {isSell
                       ? copy.sellSignOnce(getChainName(srcChainKey))

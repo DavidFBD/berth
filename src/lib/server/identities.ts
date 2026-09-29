@@ -1,5 +1,5 @@
 import { getSql } from "@/lib/server/db";
-import { detectFamily, normalizeEmail, toCaip10, type WalletFamily } from "@/lib/identity/caip";
+import { detectFamily, normalizeEmail, parseCaip10, toCaip10, type WalletFamily } from "@/lib/identity/caip";
 
 /**
  * The account's identifiers (`user_identities`, db/schema.sql): the one
@@ -12,6 +12,17 @@ import { detectFamily, normalizeEmail, toCaip10, type WalletFamily } from "@/lib
  * time phase 2 starts reading it. Reads stay
  * on users.email and users.wallet_address until then.
  */
+
+/**
+ * Phase 2: reads. How long an unlinked address waits before another
+ * account may take it (docs/plans/account-linking.md, Decisions). While it
+ * waits the old row keeps its place under unique (kind, value), with
+ * unlinked_at set, so no other account can insert it.
+ */
+export const UNLINK_COOLDOWN_DAYS = 7;
+
+/** SQL for "this row still holds its identifier": linked, or unlinked and still cooling down. */
+export const HOLDS_IDENTIFIER_SQL = `(unlinked_at is null or unlinked_at > now() - interval '${UNLINK_COOLDOWN_DAYS} days')`;
 
 export type IdentityProof = "privy_email" | "siwe" | "siws" | "bip322" | "privy_wallet" | "legacy";
 
@@ -63,7 +74,7 @@ export async function recordHomeWallet(
     await getSql().query(
       `insert into user_identities (user_id, kind, value, family, is_home, verified_at, proof)
        values ($1, 'wallet', $2, 'evm', true, now(), $3)
-       on conflict do nothing`,
+       ${RECLAIM_EXPIRED_SQL}`,
       [userId, value, proof],
     );
   } catch (error) {
@@ -111,6 +122,21 @@ export async function recordPrimaryEmail(userId: string, email: string): Promise
     warnIdentity("email", userId, error);
   }
 }
+
+/**
+ * The conflict clause of every wallet identity insert: an address unlinked
+ * more than UNLINK_COOLDOWN_DAYS ago is free, so its old row is taken over
+ * by the new account, as if it were new. Any other owner keeps it (the
+ * insert becomes a no-op).
+ */
+const RECLAIM_EXPIRED_SQL = `on conflict on constraint user_identities_kind_value do update set
+         user_id = excluded.user_id, is_home = excluded.is_home, is_primary = false,
+         verified_at = excluded.verified_at, proof = excluded.proof,
+         unlinked_at = null, created_at = now()
+       where user_identities.unlinked_at is not null
+         and user_identities.unlinked_at <= now() - interval '${UNLINK_COOLDOWN_DAYS} days'`;
+
+export { RECLAIM_EXPIRED_SQL };
 
 function warnIdentity(kind: string, userId: string, error: unknown): void {
   const code = (error as { code?: unknown })?.code;
@@ -252,4 +278,98 @@ export function backfillInsert(rows: readonly IdentityRow[]): { text: string; pa
            returning id`,
     params,
   };
+}
+
+export type WalletOwner =
+  | { state: "linked"; userId: string }
+  | { state: "cooling"; userId: string }
+  | { state: "free" };
+
+/**
+ * Who a wallet address belongs to, read from user_identities: the linked
+ * account, the account it was unlinked from while the cooldown runs, or
+ * nobody (never recorded, or unlinked more than UNLINK_COOLDOWN_DAYS ago).
+ * Undefined when the table cannot be read, so callers fall back to the
+ * users columns instead of failing a sign in.
+ */
+export async function walletOwner(wallet: string | null | undefined): Promise<WalletOwner | undefined> {
+  const family = wallet ? detectFamily(wallet) : null;
+  const value = family ? toCaip10(family, wallet) : null;
+  if (!value) return { state: "free" };
+  try {
+    const rows = (await getSql().query(
+      `select user_id, unlinked_at is null as linked, ${HOLDS_IDENTIFIER_SQL} as holds
+         from user_identities where kind = 'wallet' and value = $1`,
+      [value],
+    )) as { user_id: string; linked: boolean; holds: boolean }[];
+    const row = rows[0];
+    if (!row || !row.holds) return { state: "free" };
+    return row.linked ? { state: "linked", userId: row.user_id } : { state: "cooling", userId: row.user_id };
+  } catch (error) {
+    warnIdentity("wallet read", "-", error);
+    return undefined;
+  }
+}
+
+export type LinkedWallet = {
+  /** The canonical address (EVM lowercase). */
+  address: string;
+  family: WalletFamily;
+  isHome: boolean;
+  proof: IdentityProof;
+  linkedAt: string;
+};
+
+/**
+ * Every wallet linked to the account now, home first, then in the order they
+ * were linked. When the table cannot be read, or holds nothing for an
+ * account that has a users.wallet_address (an account the backfill has not
+ * reached), that one address stands in as the home: the account reads
+ * exactly as it did before phase 2.
+ */
+export async function linkedWallets(
+  userId: string,
+  usersWallet?: string | null,
+): Promise<LinkedWallet[]> {
+  let rows: { value: string; family: WalletFamily; is_home: boolean; proof: IdentityProof; created_at: string | Date }[] = [];
+  try {
+    rows = (await getSql().query(
+      `select value, family, is_home, proof, created_at from user_identities
+        where user_id = $1 and kind = 'wallet' and unlinked_at is null
+        order by is_home desc, created_at, value`,
+      [userId],
+    )) as typeof rows;
+  } catch (error) {
+    warnIdentity("wallet list", userId, error);
+  }
+  const out: LinkedWallet[] = [];
+  for (const row of rows) {
+    const parsed = parseCaip10(row.value);
+    if (!parsed) continue;
+    out.push({
+      address: parsed.address,
+      family: parsed.family,
+      isHome: row.is_home,
+      proof: row.proof,
+      linkedAt: new Date(row.created_at).toISOString(),
+    });
+  }
+  const home = homeWalletValue(usersWallet);
+  if (home && !out.some((wallet) => wallet.family === "evm" && wallet.isHome)) {
+    const address = home.slice(home.indexOf(":") + 1);
+    const known = out.find((wallet) => wallet.family === "evm" && wallet.address === address);
+    if (known) known.isHome = true;
+    else out.unshift({ address, family: "evm", isHome: true, proof: "legacy", linkedAt: new Date(0).toISOString() });
+    out.sort((a, b) => Number(b.isHome) - Number(a.isHome));
+  }
+  return out;
+}
+
+/** The account's EVM addresses, home first: every one has its own hub wallet. */
+export async function accountEvmAddresses(
+  userId: string,
+  usersWallet?: string | null,
+): Promise<{ home: string | null; all: string[] }> {
+  const evm = (await linkedWallets(userId, usersWallet)).filter((wallet) => wallet.family === "evm");
+  return { home: evm.find((wallet) => wallet.isHome)?.address ?? null, all: evm.map((wallet) => wallet.address) };
 }

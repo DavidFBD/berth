@@ -52,12 +52,24 @@ export function judgePour({
   intent,
   vaultAddresses,
   accountWallet,
+  linkedWallets = [],
+  intentAt,
 }: {
   direction: "in" | "out";
   intent: Pick<Intent, "inputToken" | "outputToken" | "srcAddress">;
   /** Lowercased share-token addresses of the tea vaults. */
   vaultAddresses: ReadonlySet<string>;
   accountWallet: string | null;
+  /**
+   * Every EVM address linked to the account (lib/server/identities
+   * linkedWallets) and when it joined, epoch ms: an order paid from one is
+   * the account's own only from the moment it joined, never a pour made
+   * before (or while it belonged to someone else). `accountWallet`, the
+   * users.wallet_address home, keeps its old rule: any time.
+   */
+  linkedWallets?: readonly { address: string; linkedAt: number }[];
+  /** When the intent was placed (its block's time), epoch ms; needed only for a linked address. */
+  intentAt?: number;
 }): PourVerdict {
   const touched =
     direction === "in"
@@ -68,10 +80,11 @@ export function judgePour({
   }
 
   if (EVM_ADDRESS.test(intent.srcAddress)) {
-    if (
-      accountWallet === null ||
-      intent.srcAddress.toLowerCase() !== accountWallet.toLowerCase()
-    ) {
+    const src = intent.srcAddress.toLowerCase();
+    const isHome = accountWallet !== null && accountWallet.toLowerCase() === src;
+    const linked = linkedWallets.find((wallet) => wallet.address.toLowerCase() === src);
+    const own = isHome || (!!linked && intentAt !== undefined && intentAt >= linked.linkedAt);
+    if (!own) {
       return { ok: false, reason: "not your pour" };
     }
   }
@@ -87,7 +100,7 @@ const SONIC_RPC = "https://sonic-rpc.publicnode.com";
  * hash would hold the route open for minutes. A single eth_getTransactionReceipt
  * answers "does this exist at all, and did it succeed" instantly.
  */
-async function receiptSucceeded(txHash: string): Promise<boolean> {
+async function receiptSucceeded(txHash: string): Promise<false | { blockNumber: string | null }> {
   try {
     const response = await fetch(SONIC_RPC, {
       method: "POST",
@@ -102,11 +115,28 @@ async function receiptSucceeded(txHash: string): Promise<boolean> {
     });
     if (!response.ok) return false;
     const { result } = (await response.json()) as {
-      result?: { status?: string } | null;
+      result?: { status?: string; blockNumber?: string } | null;
     };
-    return result?.status === "0x1";
+    return result?.status === "0x1" ? { blockNumber: result.blockNumber ?? null } : false;
   } catch {
     return false;
+  }
+}
+
+/** A block's timestamp, epoch ms, or undefined when the read fails (the pour then does not count). */
+async function blockTime(blockNumber: string): Promise<number | undefined> {
+  try {
+    const response = await fetch(SONIC_RPC, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBlockByNumber", params: [blockNumber, false] }),
+      cache: "no-store",
+    });
+    if (!response.ok) return undefined;
+    const { result } = (await response.json()) as { result?: { timestamp?: string } | null };
+    return result?.timestamp ? Number(BigInt(result.timestamp)) * 1000 : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -115,12 +145,15 @@ export async function verifyPourTx({
   txHash,
   direction,
   accountWallet,
+  linkedWallets,
 }: {
   txHash: string;
   direction: "in" | "out";
   accountWallet: string | null;
+  linkedWallets?: readonly { address: string; linkedAt: number }[];
 }): Promise<VerifiedPour> {
-  if (!(await receiptSucceeded(txHash))) {
+  const receipt = await receiptSucceeded(txHash);
+  if (!receipt) {
     return { ok: false, reason: "not confirmed" };
   }
 
@@ -148,6 +181,12 @@ export async function verifyPourTx({
       listing.address.toLowerCase(),
     ),
   );
-  const verdict = judgePour({ direction, intent, vaultAddresses, accountWallet });
+  // The block's time only matters for a pour paid from a linked address
+  // that is not the home: one extra read, and only then.
+  const src = intent.srcAddress.toLowerCase();
+  const needsTime =
+    accountWallet?.toLowerCase() !== src && (linkedWallets ?? []).some((wallet) => wallet.address.toLowerCase() === src);
+  const intentAt = needsTime && receipt.blockNumber ? await blockTime(receipt.blockNumber) : undefined;
+  const verdict = judgePour({ direction, intent, vaultAddresses, accountWallet, linkedWallets, intentAt });
   return verdict.ok ? { ok: true, intent, sodax } : verdict;
 }

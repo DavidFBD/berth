@@ -66,7 +66,7 @@ export function ListingBoard({
   const moves = useMoves();
   const money = useMoney();
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallet);
+  const holdings = useHubHoldings(account.hubWallets);
   const prices = useListingPrices();
   const performance = useListingPerformance();
   // One row at a time, so twelve rows do not each carry their own state. A

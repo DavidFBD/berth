@@ -17,6 +17,56 @@ import { AssistantSection } from "@/components/assistant/assistant-section";
 import { ConsentCard } from "@/components/assistant/authorize-consent";
 import type { ConsentParty } from "@/lib/assistant-party";
 import { Panel } from "@/components/ui/panel";
+import { SignedInAsLine, UnlinkedWalletLine, WalletsList } from "@/components/account-wallets-list";
+import { SocialSection } from "@/components/social/social-section";
+
+const DEMO_HOME = "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be";
+const DEMO_SECOND = "0x71c7656ec7ab88b098defb751b7401b5f6d8976f";
+const DEMO_UNLINKED = "0xbe0eb53f46cd790cd13851d5eff43d12404d33e8";
+
+/** The Wallets list in one of its states, from fixtures; every act goes nowhere. */
+function WalletsGallery({ scene }: { scene: string }) {
+  const wallets = [
+    { address: DEMO_HOME, isHome: true, holds: true },
+    { address: DEMO_SECOND, isHome: false, holds: scene === "remove" },
+  ];
+  return (
+    <div className="flex flex-col gap-4">
+      {scene === "prompt" && <UnlinkedWalletLine address={DEMO_UNLINKED} busy={false} onAdd={() => {}} onDismiss={() => {}} />}
+      {scene === "drawer" && (
+        <Panel>
+          <SocialSection demo={{ me: { hasEmail: true, handle: "harbourfan", visible: true, nextChangeAt: null, requests: 1 } }} />
+        </Panel>
+      )}
+      {scene === "signed-in-as" && (
+        <SignedInAsLine signedIn={DEMO_HOME} connected={DEMO_UNLINKED} busy={false} onSignIn={() => {}} onAdd={() => {}} />
+      )}
+      <Panel>
+        <WalletsList
+          key={scene}
+          wallets={wallets}
+          signedInWith={scene === "email" ? null : DEMO_HOME}
+          unlinked={scene === "prompt" ? DEMO_UNLINKED : null}
+          homeCanSign={scene !== "home"}
+          allowHomeSwitch={scene !== "email"}
+          emailSession={scene === "email"}
+          busy={false}
+          initialConfirm={
+            scene === "home"
+              ? { kind: "home", address: DEMO_SECOND }
+              : scene === "remove"
+                ? { kind: "remove", address: DEMO_SECOND }
+                : null
+          }
+          onAdd={() => {}}
+          onDismiss={() => {}}
+          onMakeHome={() => {}}
+          onRemove={() => {}}
+        />
+      </Panel>
+    </div>
+  );
+}
 
 /**
  * Dev-only account inspector: the hub wallet an address derives to on the
@@ -38,6 +88,17 @@ import { Panel } from "@/components/ui/panel";
  *                                     =unknown or =loopback for the other
  *                                     two kinds of party; &leaving=1 holds
  *                                     it on "Going back to …"
+ *   /dev/account?wallets=two          the account drawer's Wallets list from
+ *                                     fixtures: two (home and a second),
+ *                                     prompt (a connected wallet not on the
+ *                                     account), home (confirming a new
+ *                                     home), remove (removing one that still
+ *                                     holds listings), email (an email
+ *                                     session, no Make home), signed-in-as
+ *                                     (the board line while an unproved
+ *                                     extension wallet is connected), drawer
+ *                                     (Your profile above Wallets, as in the
+ *                                     account drawer)
  *   /dev/account?assistant=claude     the "Your assistant" section with two
  *                                     connected assistants from fixtures,
  *                                     that one's steps unfolded (claude,
@@ -74,6 +135,8 @@ function Inspector() {
           : [{ kind: "known", assistant: "claude", name: "Claude" }, "claude.ai"];
     return <ConsentCard key={kind} request="dev-gallery" party={party} redirectHost={host} scopes={["berth.read", "berth.draft"]} initialLeaving={params.get("leaving") === "1"} />;
   }
+  const walletsScene = params.get("wallets");
+  if (walletsScene) return <WalletsGallery scene={walletsScene} />;
   const assistant = params.get("assistant");
   if (assistant) {
     const open = assistant === "claude" || assistant === "chatgpt" || assistant === "grok" ? assistant : null;

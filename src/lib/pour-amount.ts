@@ -199,7 +199,15 @@ export type PourGate =
   /** A buy needs a shelf to land on, and this browser has no email session. */
   | { kind: "noAccount" }
   /** The shelf is still being derived; a moment, not a refusal. */
-  | { kind: "accountPending" };
+  | { kind: "accountPending" }
+  /**
+   * The wallet that would pay (or sign a sell) is connected but not on the
+   * account (lib/account-wallets): an order from it would not count as the
+   * account's, so it is added first.
+   */
+  | { kind: "walletNotLinked" }
+  /** A sell from a hub wallet another of the account's addresses owns: only that address can sign it. */
+  | { kind: "signWithOther" };
 
 /**
  * Whether the destination's account is ready. Cups deliver to the signing
@@ -221,10 +229,13 @@ export function depositGate(state: {
   hasWalletProvider: boolean;
   /** Defaults to ready: cups never wait on the account. */
   account?: AccountReadiness;
+  /** False when the paying wallet is connected but not on the account. Defaults to true. */
+  payerLinked?: boolean;
 }): PourGate {
   // Before anything else: a buy with nowhere to land is not a pour yet, and
   // the fix (sign in) is a different door from every other reason below.
   if (state.account === "none") return { kind: "noAccount" };
+  if (state.payerLinked === false) return { kind: "walletNotLinked" };
   // Token-first: a user whose only wallet is on another family (e.g.
   // Phantom) must be routed to the picker, not told to "connect" while
   // already connected — the source chain defaults to Ethereum until they pick.
@@ -265,8 +276,18 @@ export function withdrawGate(state: {
   quoted: bigint | undefined;
   minOut: bigint | undefined;
   hasWalletProvider: boolean;
+  /**
+   * Whether this session can sign for the hub wallet the sell comes from:
+   * false when the account holds the listing behind another of its
+   * addresses. Defaults to true.
+   */
+  canSignSource?: boolean;
+  /** False when the signing wallet is connected but not on the account. Defaults to true. */
+  signerLinked?: boolean;
 }): PourGate {
   if (!state.address) return { kind: "connectSource" };
+  if (state.signerLinked === false) return { kind: "walletNotLinked" };
+  if (state.canSignSource === false) return { kind: "signWithOther" };
   if (!state.hasDestination) return { kind: "pickDestination" };
   if (!state.recipient) {
     return state.usingCustomRecipient

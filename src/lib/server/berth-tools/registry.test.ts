@@ -13,6 +13,14 @@ vi.mock("@/lib/server/portfolio", () => ({
   liveListingPrices: vi.fn(async () => ({ NVDA: 180.5, TSLA: 400 })),
   hubWalletFor: vi.fn(async () => "0x00000000000000000000000000000000000000bb"),
   readListingBalances: vi.fn(async () => ({ TSLA: 0.5 })),
+  readAccountBalances: vi.fn(async (spokes: string[]) => ({
+    total: { TSLA: 0.5 * spokes.length },
+    byWallet: spokes.map((spoke, index) => ({
+      spoke,
+      hubWallet: index === 0 ? "0x00000000000000000000000000000000000000bb" : "0x00000000000000000000000000000000000000cc",
+      balances: { TSLA: 0.5 },
+    })),
+  })),
 }));
 vi.mock("@/lib/server/listing-performance", () => ({ loadPerformance: vi.fn(async () => ({ performance: {} })) }));
 vi.mock("@/lib/server/moves", () => ({ loadMoves: vi.fn(async () => ({ moves: [] })) }));
@@ -68,7 +76,7 @@ vi.mock("@/lib/server/berth-tools/account", async (importOriginal) => {
       xp: 175,
       created_at: "2026-09-01T00:00:00Z",
     })),
-    spokeOf: vi.fn(async () => "0x00000000000000000000000000000000000000aa"),
+    spokesOf: vi.fn(async () => ({ home: "0x00000000000000000000000000000000000000aa", all: ["0x00000000000000000000000000000000000000aa"] })),
   };
 });
 
@@ -294,5 +302,37 @@ describe("chat tools", () => {
     expect(output.draft).toMatchObject({ symbol: "NVDA", usd: 25 });
     expect(draft.toModelOutput({ output })).toEqual({ type: "text", value: output.text });
     expect(draft.toModelOutput({ output: { text: "no", isError: true } })).toEqual({ type: "error-text", value: "no" });
+  });
+});
+
+describe("an account with more than one linked EVM address", () => {
+  const ctx = chatToolContext("u1", "https://www.berthmarkets.com");
+  const tools = Object.fromEntries(BERTH_TOOLS.map((tool) => [tool.name, tool]));
+  const HOME = "0x00000000000000000000000000000000000000aa";
+  const SECOND = "0x00000000000000000000000000000000000000a2";
+
+  it("one address reads exactly as before", async () => {
+    const out = await tools.get_account.run({} as never, ctx);
+    expect(out.text).toContain(`Derived from ${HOME} on Base.\nAccount on Sonic: 0x00000000000000000000000000000000000000bb.`);
+    const holdings = await tools.get_holdings.run({} as never, ctx);
+    expect(holdings.text).toContain("Holdings, $200.00 in total at current prices:");
+  });
+
+  it("sums every hub wallet and names the home", async () => {
+    const { spokesOf } = await import("@/lib/server/berth-tools/account");
+    vi.mocked(spokesOf).mockResolvedValue({ home: HOME, all: [HOME, SECOND] });
+    const account = await tools.get_account.run({} as never, ctx);
+    expect(account.text).toContain(`Derived from ${HOME} on Base, its home address, where buys land. 1 more linked address: ${SECOND}.`);
+    expect(account.text).toContain(
+      "Accounts on Sonic: 0x00000000000000000000000000000000000000bb, 0x00000000000000000000000000000000000000cc, the first is home.",
+    );
+    const holdings = await tools.get_holdings.run({} as never, ctx);
+    // 0.5 TSLA in each of the two hub wallets, at $400.
+    expect(holdings.text).toContain("Holdings, $400.00 in total at current prices:");
+    expect(holdings.text).toContain("Tesla (TSLA): 1");
+    // A sell may draft up to the whole account's holding.
+    const sell = await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 1 } as never, ctx);
+    expect(sell.isError).toBeUndefined();
+    vi.mocked(spokesOf).mockReset();
   });
 });

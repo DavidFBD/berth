@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { setSqlClient, type SqlClient } from "./db";
 import { makeTestDb } from "./pglite-test-db";
-import { getOrCreateUser, setEmail } from "./accounts";
+import { getOrCreateUser, IdentityUnavailableError, setEmail } from "./accounts";
 import { backfillInsert, planIdentityBackfill, type BackfillUser } from "./identities";
 
 /**
@@ -128,12 +128,15 @@ describe("a broken identities table never fails the users write", () => {
     }
   };
 
-  it("account creation, wallet linking and email save still land", async () => {
+  it("an existing wallet account, Privy wallet linking and email save still land; a new wallet account waits (fail closed)", async () => {
+    const known = evm();
+    const before = (await getOrCreateUser({ did: null, wallet: known }))!;
     await withTableGone(async () => {
-      const wallet = evm();
-      const created = (await getOrCreateUser({ did: null, wallet }))!;
-      expect(created.created).toBe(true);
-      expect(created.user.wallet_address).toBe(wallet);
+      const again = (await getOrCreateUser({ did: null, wallet: known }))!;
+      expect(again.user.id).toBe(before.user.id);
+      // Unknown to the users columns too: it might be an address still
+      // cooling down after an unlink, so no account is made on a guess.
+      await expect(getOrCreateUser({ did: null, wallet: evm() })).rejects.toBeInstanceOf(IdentityUnavailableError);
       const privy = (await getOrCreateUser({ did: "did:privy:broken", wallet: null }))!;
       const linkedWallet = evm();
       const linked = (await getOrCreateUser({ did: "did:privy:broken", wallet: linkedWallet }))!;
@@ -144,7 +147,7 @@ describe("a broken identities table never fails the users write", () => {
     });
   });
 
-  it("the profile route still answers 200 for a new wallet account", async () => {
+  it("the profile route answers 503 for a new wallet account, never a guessed one", async () => {
     process.env.SESSION_SECRET ??= "test-session-secret-identities";
     const { issueWalletSession } = await import("./wallet-session");
     const { POST } = await import("@/app/api/profile/route");
@@ -158,14 +161,10 @@ describe("a broken identities table never fails the users write", () => {
           body: "{}",
         }),
       );
-      expect(response.status).toBe(200);
-      const body = await response.json();
-      expect(body.hasEmail).toBe(false);
-      expect(body.rewards).toEqual([expect.objectContaining({ kind: "account_created" })]);
+      expect(response.status).toBe(503);
     });
     const row = (await sql.query(`select id from users where wallet_address = $1`, [wallet])) as { id: string }[];
-    expect(row).toHaveLength(1);
-    expect(await identitiesOf(row[0].id)).toHaveLength(0); // missed, and the backfill will find it
+    expect(row).toHaveLength(0);
   });
 });
 

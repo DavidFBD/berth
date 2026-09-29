@@ -43,6 +43,8 @@ export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
         and not exists (select 1 from oauth_codes k where k.client_id = c.client_id and k.expires_at > $1::timestamptz)`,
   );
   const rateWindows = await count(`delete from oauth_rate_limits where window_start < $1::timestamptz - interval '1 day'`, [at]);
+  // Spent account nonces (lib/server/account-wallets-route); before db:push the table may not exist.
+  await count(`delete from account_nonces where spent_at < $1::timestamptz - interval '1 day'`, [at]).catch(() => 0);
   // Before db:push the table may not exist yet; the rest of the prune still counts.
   const mcpCalls = await count(`delete from mcp_calls where created_at < $1::timestamptz - make_interval(days => $2::int)`, [
     at,

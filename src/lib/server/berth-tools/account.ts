@@ -3,7 +3,8 @@ import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import type { Range } from "@/lib/portfolio-history";
 import { getSql } from "@/lib/server/db";
 import { fetchPrivyWallet } from "@/lib/server/privy";
-import { hubWalletFor, liveListingPrices, readListingBalances } from "@/lib/server/portfolio";
+import { accountEvmAddresses } from "@/lib/server/identities";
+import { liveListingPrices, readAccountBalances } from "@/lib/server/portfolio";
 
 /**
  * The account reads the Berth tools share (lib/server/berth-tools/registry):
@@ -45,29 +46,42 @@ export async function loadAccountRow(userId: string): Promise<AccountRow | null>
 const isEvmAddress = (value: string | null | undefined): value is string => !!value && /^0x[0-9a-f]{40}$/i.test(value);
 
 /**
- * The home chain address an account is derived from, resolved the way the
- * app's own account routes do (app/api/portfolio/history): for a Privy
- * account, the wallet Privy says is linked to it now (lib/server/privy
- * fetchPrivyWallet, cached), else the address stored on the row; for a
- * wallet account, its stored address. Null when there is none to read.
+ * The EVM addresses an account's holdings live behind, home first: every
+ * wallet linked to it (lib/server/identities accountEvmAddresses), each
+ * with its own hub wallet. An account with none recorded falls back to
+ * what it read before phase 2: for a Privy account, the wallet Privy says
+ * is linked to it now (lib/server/privy fetchPrivyWallet, cached), else the
+ * address stored on the row. Empty when there is none to read.
  */
-export async function spokeOf(row: AccountRow): Promise<string | null> {
+export async function spokesOf(row: AccountRow): Promise<{ home: string | null; all: string[] }> {
+  const linked = await accountEvmAddresses(row.id, isEvmAddress(row.wallet_address) ? row.wallet_address : null);
+  if (linked.all.length > 0) return linked;
   if (row.privy_did) {
     const lookup = await withTimeout(fetchPrivyWallet(row.privy_did), CHAIN_READ_MS, "account lookup").catch(() => null);
-    if (lookup?.ok && isEvmAddress(lookup.address)) return lookup.address.toLowerCase();
+    if (lookup?.ok && isEvmAddress(lookup.address)) {
+      const address = lookup.address.toLowerCase();
+      return { home: address, all: [address] };
+    }
   }
-  return isEvmAddress(row.wallet_address) ? row.wallet_address : null;
+  return { home: null, all: [] };
 }
 
 export type HoldingLine = { listing: TokenListing; quantity: number; price?: number; value?: number };
 
-/** What the account holds right now, read on chain, valued at the solver oracle's prices. */
-export async function readHoldings(spoke: string): Promise<{ hubWallet: string; lines: HoldingLine[]; total: number; unpriced: number }> {
-  const [hubWallet, prices] = await Promise.all([
-    withTimeout(hubWalletFor(spoke), CHAIN_READ_MS, "account lookup"),
+/**
+ * What the account holds right now across every linked address's hub
+ * wallet, read on chain, valued at the solver oracle's prices. `hubWallets`
+ * is every hub wallet read, home first; one failed read fails the whole.
+ */
+export async function readHoldings(
+  spokes: string | readonly string[],
+): Promise<{ hubWallet: string; hubWallets: string[]; lines: HoldingLine[]; total: number; unpriced: number }> {
+  const list = typeof spokes === "string" ? [spokes] : spokes;
+  const [read, prices] = await Promise.all([
+    withTimeout(readAccountBalances(list), CHAIN_READ_MS, "balance read"),
     liveListingPrices().catch(() => ({}) as Record<string, number>),
   ]);
-  const balances = await withTimeout(readListingBalances(hubWallet), CHAIN_READ_MS, "balance read");
+  const balances = read.total;
   const lines: HoldingLine[] = [];
   let total = 0;
   let unpriced = 0;
@@ -81,7 +95,8 @@ export async function readHoldings(spoke: string): Promise<{ hubWallet: string; 
     lines.push({ listing, quantity, price, value });
   }
   lines.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-  return { hubWallet, lines, total, unpriced };
+  const hubWallets = read.byWallet.map((wallet) => wallet.hubWallet);
+  return { hubWallet: hubWallets[0], hubWallets, lines, total, unpriced };
 }
 
 export const PERIODS: Record<string, { range: Range; words: string }> = {

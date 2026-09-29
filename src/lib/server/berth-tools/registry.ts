@@ -24,7 +24,7 @@ import {
   STATUS_WORDS,
   loadAccountRow,
   readHoldings,
-  spokeOf,
+  spokesOf,
 } from "@/lib/server/berth-tools/account";
 
 /**
@@ -268,16 +268,23 @@ const getAccount = defineTool({
       `Rank: ${rank.name}, level ${rank.level} of 10, ${row.xp} XP${rank.nextName ? `, ${rank.span - rank.into} XP to ${rank.nextName}` : ""}.`,
       `Member since ${day(row.created_at)}. Signed in with ${row.email ? "email" : "a wallet"}.`,
     ];
-    const spoke = await spokeOf(row);
-    if (!spoke) {
+    const spokes = await spokesOf(row);
+    if (!spokes.home) {
       out.push("This account has no EVM address, so it holds nothing on Berth yet.");
       return ok(out.join("\n"));
     }
-    out.push(`Derived from ${spoke} on Base.`);
+    const others = spokes.all.filter((address) => address !== spokes.home);
+    out.push(
+      others.length === 0
+        ? `Derived from ${spokes.home} on Base.`
+        : `Derived from ${spokes.home} on Base, its home address, where buys land. ${others.length} more linked address${others.length === 1 ? "" : "es"}: ${others.join(", ")}. Each has its own account on Sonic, and the totals add them all.`,
+    );
     try {
-      const holdings = await readHoldings(spoke);
+      const holdings = await readHoldings(spokes.all);
       out.push(
-        `Account on Sonic: ${holdings.hubWallet}.`,
+        holdings.hubWallets.length === 1
+          ? `Account on Sonic: ${holdings.hubWallet}.`
+          : `Accounts on Sonic: ${holdings.hubWallets.join(", ")}, the first is home.`,
         holdings.lines.length === 0
           ? "It holds no listings right now."
           : `It holds ${holdings.lines.length} listing${holdings.lines.length === 1 ? "" : "s"} worth ${usd(holdings.total)} in total${holdings.unpriced ? `, plus ${holdings.unpriced} without a live price` : ""}. get_holdings has the detail.`,
@@ -299,9 +306,9 @@ const getHoldings = defineTool({
   scope: SCOPE_READ,
   run: async (_args, ctx) => {
     const row = await loadAccountRow(userOf(ctx));
-    const spoke = row ? await spokeOf(row) : null;
-    if (!spoke) return ok("This account holds nothing on Berth yet.");
-    const holdings = await readHoldings(spoke);
+    const spokes = row ? (await spokesOf(row)).all : [];
+    if (spokes.length === 0) return ok("This account holds nothing on Berth yet.");
+    const holdings = await readHoldings(spokes);
     if (holdings.lines.length === 0) return ok("The account holds no listings right now.");
     const out = [`Holdings, ${usd(holdings.total)} in total at current prices:`];
     for (const line of holdings.lines) {
@@ -335,7 +342,7 @@ const getPerformance = defineTool({
     const row = await loadAccountRow(userOf(ctx));
     if (!row) return no("This Berth account no longer exists.");
     const benchmark = findBenchmark(BENCHMARK_CHOICES[choice])!;
-    const history = await loadPortfolioHistory({ userId: row.id, spoke: await spokeOf(row), benchmark });
+    const history = await loadPortfolioHistory({ userId: row.id, spokes: (await spokesOf(row)).all, benchmark });
     const wanted = PERIODS[period];
     const result = history.ranges[wanted.range];
     if (!result || result.days.length === 0) {
@@ -514,11 +521,11 @@ const draftOrderTool = defineTool({
     let held: number | undefined;
     if (side === "sell") {
       const row = await loadAccountRow(userId);
-      const spoke = row ? await spokeOf(row) : null;
-      if (!spoke) held = 0;
+      const spokes = row ? (await spokesOf(row)).all : [];
+      if (spokes.length === 0) held = 0;
       else {
         try {
-          const holdings = await readHoldings(spoke);
+          const holdings = await readHoldings(spokes);
           held = holdings.lines.find((line) => line.listing.symbol === listing.symbol)?.quantity ?? 0;
         } catch {
           held = undefined;

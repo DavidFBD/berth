@@ -8,6 +8,7 @@ import { fillOrderMarks, loadOrderFacts, loadOrderLog, ordersMissingMarks } from
 import { recordOrderMarks } from "./orders";
 import {
   loadPortfolioDays,
+  readAccountBalances,
   runPortfolioSnapshot,
   savePortfolioDay,
   snapshotAccounts,
@@ -162,6 +163,40 @@ describe("portfolio days", () => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     expect(await loadPortfolioDays(slow.id)).toEqual([]);
     expect(await loadPortfolioDays(quick.id)).toHaveLength(1);
+  });
+
+  it("sums every linked address's hub wallet into one day, and fails whole when one read fails", async () => {
+    const user = await account(1);
+    await placeOrder(user.id);
+    await sql.query(
+      `insert into user_identities (user_id, kind, value, family, is_home, verified_at, proof)
+       values ($1, 'wallet', $2, 'evm', false, now(), 'siwe')`,
+      [user.id, `eip155:${wallet(91)}`],
+    );
+    const accounts = await snapshotAccounts();
+    expect(accounts).toEqual([{ id: user.id, wallet: wallet(1), wallets: [wallet(1), wallet(91)] }]);
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    const summary = await runPortfolioSnapshot({
+      now: FRIDAY_EVENING,
+      accounts,
+      deriveHubWallet: async (spoke) => `hub-${spoke}`,
+      readBalances: async (hub): Promise<Record<string, number>> => (hub === `hub-${wallet(1)}` ? { NVDA: 2 } : { NVDA: 1, SGOV: 1 }),
+      livePrices: async () => ({ NVDA: 200, SGOV: 100 }),
+    });
+    expect(summary).toMatchObject({ written: 1, failed: 0 });
+    const [row] = await loadPortfolioDays(user.id);
+    expect(row.value).toBeCloseTo(700, 10);
+    expect(row.holdings).toEqual([
+      { symbol: "NVDA", quantity: 3, price: 200, source: "mark" },
+      { symbol: "SGOV", quantity: 1, price: 100, source: "oracle" },
+    ]);
+
+    await expect(
+      readAccountBalances([wallet(1), wallet(91)], async (hub) => {
+        if (hub === wallet(91)) throw new Error("rpc down");
+        return { NVDA: 1 };
+      }, async (spoke) => spoke),
+    ).rejects.toThrow("rpc down");
   });
 
   it("reads only accounts with an order or a row", async () => {

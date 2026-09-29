@@ -99,6 +99,18 @@ describe("judgePour", () => {
     ).toEqual({ ok: false, reason: "not your pour" });
   });
 
+  it("accepts a pour paid from a second linked address only from when it joined", () => {
+    const linked = [{ address: WALLET.toLowerCase(), linkedAt: 1_000 }];
+    const judge = (intentAt: number | undefined) =>
+      judgePour({ direction: "in", intent: intent({}), vaultAddresses, accountWallet: STRANGER, linkedWallets: linked, intentAt });
+    expect(judge(1_000)).toEqual({ ok: true });
+    expect(judge(999)).toEqual({ ok: false, reason: "not your pour" });
+    expect(judge(undefined)).toEqual({ ok: false, reason: "not your pour" });
+    expect(
+      judgePour({ direction: "in", intent: intent({}), vaultAddresses, accountWallet: STRANGER, linkedWallets: [], intentAt: 5_000 }),
+    ).toEqual({ ok: false, reason: "not your pour" });
+  });
+
   it("lets a non-EVM source through the ownership gate (recorded residual)", () => {
     expect(
       judgePour({

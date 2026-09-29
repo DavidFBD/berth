@@ -5,6 +5,7 @@ import { TOKEN_LISTINGS } from "@/lib/listings";
 import { snapshotDay, valueHoldings, type Holding, type ValuedDay } from "@/lib/portfolio-days";
 import type { PortfolioDay } from "@/lib/portfolio-history";
 import { getSql } from "@/lib/server/db";
+import { accountEvmAddresses } from "@/lib/server/identities";
 import { loadListingPrices } from "@/lib/server/listing-prices";
 import { readMarks } from "@/lib/server/marks";
 import { loadOrderFacts } from "@/lib/server/order-marks";
@@ -53,6 +54,39 @@ export const readListingBalances: ListingBalanceReader = async (hubWallet) => {
   });
   return balances;
 };
+
+/** One hub wallet's part of an account: the address it is derived from, the hub wallet, its balances. */
+export type WalletBalances = { spoke: string; hubWallet: string; balances: Record<string, number> };
+
+/**
+ * An account's listing balances summed over every linked EVM address's hub
+ * wallet (lib/server/identities accountEvmAddresses), with each hub
+ * wallet's own part. One failed read throws: a total missing a wallet
+ * would read low, and unknown is never zero.
+ */
+export async function readAccountBalances(
+  spokes: readonly string[],
+  readBalances: ListingBalanceReader = readListingBalances,
+  deriveHubWallet: (spokeAddress: string) => Promise<string> = hubWalletFor,
+): Promise<{ total: Record<string, number>; byWallet: WalletBalances[] }> {
+  const unique = [...new Set(spokes.map((spoke) => spoke.toLowerCase()))];
+  const byWallet = await Promise.all(
+    unique.map(async (spoke) => {
+      const hubWallet = await deriveHubWallet(spoke);
+      return { spoke, hubWallet, balances: await readBalances(hubWallet) };
+    }),
+  );
+  return { total: sumBalances(byWallet.map((wallet) => wallet.balances)), byWallet };
+}
+
+/** Listing balances added up by symbol. */
+export function sumBalances(parts: readonly Record<string, number>[]): Record<string, number> {
+  const total: Record<string, number> = {};
+  for (const part of parts) {
+    for (const [symbol, quantity] of Object.entries(part)) total[symbol] = (total[symbol] ?? 0) + quantity;
+  }
+  return total;
+}
 
 /** The solver's live prices, by listing symbol. Empty when the oracle is down. */
 export async function liveListingPrices(): Promise<Record<string, number>> {
@@ -126,7 +160,7 @@ export async function savePortfolioDay(
  * each evening would outgrow the run. Oldest accounts first, so the newest
  * are the ones a run cut short would miss.
  */
-export async function snapshotAccounts(): Promise<{ id: string; wallet: string }[]> {
+export async function snapshotAccounts(): Promise<SnapshotAccount[]> {
   const rows = (await getSql().query(
     `select u.id, u.wallet_address from users u
       where u.wallet_address ~ '^0x[0-9a-f]{40}$'
@@ -134,8 +168,19 @@ export async function snapshotAccounts(): Promise<{ id: string; wallet: string }
              or exists (select 1 from portfolio_days p where p.user_id = u.id))
       order by u.created_at`,
   )) as { id: string; wallet_address: string }[];
-  return rows.map((row) => ({ id: row.id, wallet: row.wallet_address }));
+  // Every linked EVM address has its own hub wallet, and the day's value is
+  // all of them together.
+  return Promise.all(
+    rows.map(async (row) => ({
+      id: row.id,
+      wallet: row.wallet_address,
+      wallets: (await accountEvmAddresses(row.id, row.wallet_address)).all,
+    })),
+  );
 }
+
+/** An account the snapshot reads: its home address, and every linked EVM address (home included). */
+export type SnapshotAccount = { id: string; wallet: string; wallets?: string[] };
 
 /**
  * Run `task` over `items`, at most `limit` at once, starting none after
@@ -229,7 +274,7 @@ export async function runPortfolioSnapshot({
   readBalances?: ListingBalanceReader;
   deriveHubWallet?: (spokeAddress: string) => Promise<string>;
   livePrices?: () => Promise<Record<string, number>>;
-  accounts?: { id: string; wallet: string }[];
+  accounts?: SnapshotAccount[];
 } = {}): Promise<SnapshotSummary> {
   const day = snapshotDay(now);
   const summary: SnapshotSummary = {
@@ -263,8 +308,9 @@ export async function runPortfolioSnapshot({
     ).map((row) => row.user_id),
   );
 
-  const snapshotOne = async (account: { id: string; wallet: string }, expired: () => boolean) => {
-    const balances = await readBalances(await deriveHubWallet(account.wallet));
+  const snapshotOne = async (account: SnapshotAccount, expired: () => boolean) => {
+    const wallets = account.wallets && account.wallets.length > 0 ? account.wallets : [account.wallet];
+    const { total: balances } = await readAccountBalances(wallets, readBalances, deriveHubWallet);
     const live = Object.keys(balances).length > 0 ? await oraclePrices() : {};
     const valued = valueHoldings(balances, (symbol) => {
       const marks = closes[symbol];

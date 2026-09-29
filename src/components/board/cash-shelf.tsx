@@ -28,7 +28,7 @@ type Actions = { onPark: () => void; onTakeOut: () => void };
  */
 export function CashShelf(actions: Actions) {
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallet);
+  const holdings = useHubHoldings(account.hubWallets);
   const prices = useListingPrices();
   const rate = useTreasuryRate();
 

@@ -71,3 +71,37 @@ export async function verifyWalletSession(
     return null;
   }
 }
+
+/**
+ * What an account nonce is for (lib/server/account-wallets): linking a new
+ * address, making a linked address home, or removing one. Each proof is a
+ * SIWE signed over a nonce that only the account that asked for it, and
+ * only for that act, can spend.
+ */
+export type AccountAct = "link" | "home" | "unlink";
+
+const ACCOUNT_ACTS: readonly AccountAct[] = ["link", "home", "unlink"];
+
+/**
+ * A 10 minute nonce bound to one account, one act and one target address
+ * (the wallet to link, to make home, or to remove), so a proof is always
+ * fresh and says what it is for. Spent once (account_nonces).
+ */
+export async function issueAccountNonceToken(nonce: string, userId: string, act: AccountAct, target: string): Promise<string> {
+  return sign({ purpose: "account-nonce", nonce, sub: userId, act, target }, NONCE_TTL);
+}
+
+export async function readAccountNonceToken(
+  token: string,
+): Promise<{ nonce: string; userId: string; act: AccountAct; target: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, sessionKey());
+    if (payload.purpose !== "account-nonce") return null;
+    const { nonce, sub, act, target } = payload as { nonce?: unknown; sub?: unknown; act?: unknown; target?: unknown };
+    if (typeof nonce !== "string" || typeof sub !== "string" || typeof target !== "string") return null;
+    if (!ACCOUNT_ACTS.includes(act as AccountAct)) return null;
+    return { nonce, userId: sub, act: act as AccountAct, target };
+  } catch {
+    return null;
+  }
+}

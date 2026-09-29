@@ -14,10 +14,15 @@ export type HubHolding = {
 };
 
 export type HubHoldings = {
-  /** Every listing, in registry order, zero balances included. */
+  /** Every listing, in registry order, zero balances included, summed over every hub wallet read. */
   holdings: HubHolding[];
   /** Only what the account actually holds. */
   held: HubHolding[];
+  /**
+   * Each hub wallet's own raw balances, in registry order: a sell spends
+   * from one hub wallet, never the sum. Empty until the read settles.
+   */
+  byWallet: { hubWallet: Address; balances: bigint[] }[];
   /** True while the first read is in flight. */
   isLoading: boolean;
   /**
@@ -41,53 +46,60 @@ export const LISTINGS_QUERY_KEY = ["listings"] as const;
 
 /**
  * What the account holds on the hub: one `balanceOf` per listing (the cups
- * and the token listings alike) against the hub wallet, in ONE multicall to
- * the SDK's hub client. Seventeen reads for the price of one request, where
- * the share-balance hook fans out one POST per holder row per cup.
+ * and the token listings alike) against each hub wallet, in ONE multicall to
+ * the SDK's hub client. An account with more than one linked EVM address
+ * has a hub wallet per address (hooks/use-hub-account `hubWallets`), and the
+ * totals add them all; one address reads exactly as before.
  *
  * Plain ERC-20 balances, which is all a stock or SGOV is. Vault shares are
  * read the same way here (the share token is an ERC-20 too), but valuing
  * them still goes through `previewRedeem`, the cup hooks' job.
  */
-export function useHubHoldings(hubWallet: Address | undefined): HubHoldings {
+export function useHubHoldings(hubWallet: Address | readonly Address[] | undefined): HubHoldings {
   const { sodax } = useSodaxContext();
   // The registry is static per SDK instance; listVaults() is a sync read.
   const listings = useMemo(
     () => listListings(sodax.leverageYield.listVaults()),
     [sodax],
   );
+  const wallets: Address[] = hubWallet === undefined ? [] : typeof hubWallet === "string" ? [hubWallet] : [...hubWallet];
 
   const query = useQuery({
-    queryKey: [...LISTINGS_QUERY_KEY, "holdings", hubWallet],
-    enabled: Boolean(hubWallet),
+    // One wallet keeps its old key, so its cache and invalidations stay put.
+    queryKey: [...LISTINGS_QUERY_KEY, "holdings", ...(wallets.length <= 1 ? [wallets[0]] : [wallets.join(",")])],
+    enabled: wallets.length > 0,
     refetchInterval: HOLDINGS_REFETCH_MS,
-    queryFn: async (): Promise<bigint[]> => {
-      if (!hubWallet) throw new Error("hub wallet required");
+    queryFn: async (): Promise<bigint[][]> => {
+      if (wallets.length === 0) throw new Error("hub wallet required");
       const results = await sodax.hubProvider.publicClient.multicall({
         allowFailure: false,
-        contracts: listings.map((listing) => ({
-          address: listing.address,
-          abi: erc20Abi,
-          functionName: "balanceOf",
-          args: [hubWallet],
-        })),
+        contracts: wallets.flatMap((wallet) =>
+          listings.map((listing) => ({
+            address: listing.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [wallet],
+          })),
+        ),
       });
       // viem can't narrow a mapped contracts array past the ABI's union of
       // return types; balanceOf is uint256, so this is a no-op at runtime.
-      return results.map((value) => BigInt(value));
+      const flat = results.map((value) => BigInt(value));
+      return wallets.map((_, index) => flat.slice(index * listings.length, (index + 1) * listings.length));
     },
   });
 
-  const balances = query.data;
+  const perWallet = query.data;
   const holdings: HubHolding[] = listings.map((listing, index) => ({
     listing,
-    balance: balances?.[index] ?? 0n,
+    balance: perWallet ? perWallet.reduce((sum, balances) => sum + (balances[index] ?? 0n), 0n) : 0n,
   }));
 
   return {
     holdings,
-    held: balances ? holdings.filter((holding) => holding.balance > 0n) : [],
-    isLoading: Boolean(hubWallet) && query.isLoading,
+    held: perWallet ? holdings.filter((holding) => holding.balance > 0n) : [],
+    byWallet: perWallet ? wallets.map((wallet, index) => ({ hubWallet: wallet, balances: perWallet[index] ?? [] })) : [],
+    isLoading: wallets.length > 0 && query.isLoading,
     settled: query.isSuccess,
     error: query.error,
   };

@@ -356,6 +356,18 @@ create unique index if not exists user_identities_one_home_evm
 
 create index if not exists user_identities_user_idx on user_identities (user_id);
 
+-- Phase 2 (docs/plans/account-linking.md): an account may hold several
+-- wallets. Unlinking keeps the row, with unlinked_at set, so the address
+-- still belongs to nobody else for seven days (lib/server/identities
+-- UNLINK_COOLDOWN_DAYS); after that the next account to prove it takes the
+-- row over. Every read of "the account's wallets" skips unlinked rows.
+alter table user_identities add column if not exists unlinked_at timestamptz;
+
+-- An unlinked row is never the home: the one-home index counts linked rows only.
+alter table user_identities drop constraint if exists user_identities_unlinked_not_home;
+alter table user_identities add constraint user_identities_unlinked_not_home
+  check (unlinked_at is null or not is_home);
+
 -- What happened to an account and why, for the linking, unlinking and merge
 -- phases that follow. `detail` never holds a secret: no token, no code, no
 -- signature.
@@ -368,6 +380,17 @@ create table if not exists account_audit (
 );
 
 create index if not exists account_audit_user_idx on account_audit (user_id, created_at desc);
+
+-- Every nonce an account wallet act spent (lib/server/account-wallets-route):
+-- a proof is accepted once, never replayed inside its ten minutes. The
+-- evening prune deletes rows older than a day (the token itself is dead
+-- after ten minutes, so an old row guards nothing).
+create table if not exists account_nonces (
+  nonce text primary key,
+  user_id uuid references users(id) on delete cascade,
+  act text not null,
+  spent_at timestamptz not null default now()
+);
 
 -- Social, phase 1 (docs/plans/social.md, ADR-0005): usernames, the public
 -- card, Salutes, friends, blocks, reports. Nothing here holds money, a

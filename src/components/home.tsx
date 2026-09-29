@@ -26,6 +26,9 @@ import { VaultPositions } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useAddConnectedWallet } from "@/hooks/use-account-wallets";
+import { UnlinkedWalletPrompt } from "@/components/account-wallets";
+import { sellSources } from "@/lib/account-wallets";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -110,7 +113,7 @@ export function Home() {
   // that is what a returning person comes to see; before the first buy
   // the funds lead, since pouring in is the first thing to do.
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallet);
+  const holdings = useHubHoldings(account.hubWallets);
   // The answer is remembered per account, so a returning holder's panel
   // opens in its settled order instead of reordering when holdings land.
   const [rememberedOwns, rememberOwns] = useStoredChoice(
@@ -225,6 +228,7 @@ export function Home() {
         <div className={BOARD_GRID}>
           <div className={BOARD_TRACK}>
             <AccountTotal />
+            <UnlinkedWalletPrompt hidden={accountOpen} />
             <NudgeLine
               onAddFunds={() => openAccount()}
               onParkCash={() => openBuy(CASH_LISTING)}
@@ -362,32 +366,52 @@ function SellHost({
   onConnectWallet?: () => void;
 }) {
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallet);
-  const [snapshot, setSnapshot] = useState<bigint | null>(null);
+  const holdings = useHubHoldings(account.hubWallets);
+  const addWallet = useAddConnectedWallet();
+  // Snapshotted on open, like the single balance was: balances refetch
+  // during the flow, and deriving live would unmount the drawer mid-sell.
+  const [snapshot, setSnapshot] = useState<ReturnType<typeof sellSources> | null>(null);
+  const [chosen, setChosen] = useState<string | null>(null);
 
-  const held = listing
-    ? holdings.holdings.find(
-        (holding) => holding.listing.address === listing.address,
-      )?.balance
-    : undefined;
+  const index = listing ? holdings.holdings.findIndex((holding) => holding.listing.address === listing.address) : -1;
+  const sources = () =>
+    sellSources(
+      account.wallets,
+      (hubWallet) =>
+        holdings.byWallet.find((wallet) => wallet.hubWallet.toLowerCase() === hubWallet.toLowerCase())?.balances[index] ?? 0n,
+      account.signerHubWallet,
+    );
 
   if (!open && snapshot !== null) {
     setSnapshot(null);
-  } else if (open && snapshot === null && holdings.settled && held !== undefined) {
-    setSnapshot(held);
+    setChosen(null);
+  } else if (open && snapshot === null && holdings.settled && index >= 0) {
+    const found = sources();
+    setSnapshot(found);
+    // The one this session can sign for, else the home, else the first.
+    setChosen((found.find((source) => source.canSign) ?? found.find((source) => source.isHome) ?? found[0])?.spoke ?? null);
   }
 
   if (!listing || snapshot === null) return null;
+  const source = snapshot.find((candidate) => candidate.spoke === chosen);
 
   return (
     <WithdrawDrawer
       listing={listing}
       open={open}
       onOpenChange={onOpenChange}
-      availableShares={snapshot}
+      availableShares={source?.balance ?? 0n}
       srcChainKey={HOME_CHAIN}
       onConnectWallet={onConnectWallet}
       prefill={prefill}
+      sellFrom={
+        // One hub wallet, the session's own: the drawer reads as it always did.
+        snapshot.length > 1 || (source && !source.canSign)
+          ? { sources: snapshot, chosen: chosen ?? "", onChoose: setChosen }
+          : undefined
+      }
+      signerLinked={account.signerLinked}
+      onAddWallet={addWallet.canSign ? () => void addWallet.add() : undefined}
     />
   );
 }
