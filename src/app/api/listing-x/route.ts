@@ -8,5 +8,10 @@ export type { ListingXResponse } from "@/lib/server/listing-x";
  * rate limit all reach the reader as the same calm line.
  */
 export async function GET(request: Request): Promise<Response> {
-  return Response.json(await loadListingX(new URL(request.url).searchParams.get("symbol")));
+  const params = new URL(request.url).searchParams;
+  // `fresh=1` is the column's refresh button: at most one fetch per five
+  // minutes for everyone (lib/feed-refresh), otherwise the shared cache.
+  return Response.json(
+    await loadListingX(params.get("symbol"), undefined, { fresh: params.get("fresh") === "1" }),
+  );
 }

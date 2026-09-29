@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+import { HEADLINES_WINDOW_MS, REFRESH_WINDOW_MS, slotOf } from "@/lib/feed-refresh";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import {
   looksLikeTickerList,
@@ -62,11 +64,13 @@ import { cachedVerdict, jevConfigured } from "@/lib/server/jev";
  */
 
 const NASDAQ_FEED = "https://www.nasdaq.com/feed/rssoutbound?symbol=";
-const REVALIDATE_SECONDS = 900;
 /**
  * Nasdaq's feed answers a browser and times out on anything that announces
  * itself as a robot, so this is what actually gets a document back. One
- * request per ticker per quarter hour serves every visitor.
+ * request per ticker per quarter hour serves every visitor (lib/feed-refresh:
+ * slot-keyed, so the first visitor of a morning gets this morning's feed, not
+ * the last one fetched overnight), and the refresh button's five minutes at
+ * most.
  */
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
@@ -79,18 +83,23 @@ const SYMBOL_LIMIT = 8;
 
 export type ListingNewsResponse = {
   items: NewsItem[];
+  /** When the oldest of the feeds behind this was fetched, epoch ms. */
+  updatedAt?: number;
   /** Present only when something degraded, for the console. */
   reason?: string;
 };
 
-async function readFeed(listing: TokenListing): Promise<NewsItem[]> {
+async function fetchFeed(listing: TokenListing): Promise<{ fetchedAt: number; items: NewsItem[] }> {
+  const fetchedAt = Date.now();
   const response = await fetch(`${NASDAQ_FEED}${listing.symbol}`, {
     headers: { "user-agent": USER_AGENT, accept: "application/rss+xml, text/xml" },
-    next: { revalidate: REVALIDATE_SECONDS },
+    // The slot's cache entry below is the only cache; an age-based one
+    // underneath it would hand a new slot an old feed.
+    cache: "no-store",
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`Nasdaq answered ${response.status}`);
-  return parseFeedItems(await response.text())
+  const items = parseFeedItems(await response.text())
     .filter((item) => !looksLikeTickerList(item.title))
     .map((item) => ({
       ...item,
@@ -98,6 +107,17 @@ async function readFeed(listing: TokenListing): Promise<NewsItem[]> {
       symbol: listing.symbol,
       name: listing.name,
     }));
+  return { fetchedAt, items };
+}
+
+/** One feed, once per slot for every visitor. A failure throws, so it is not kept. */
+function readFeed(listing: TokenListing, fresh: boolean, now: number) {
+  const windowMs = fresh ? REFRESH_WINDOW_MS : HEADLINES_WINDOW_MS;
+  return unstable_cache(
+    () => fetchFeed(listing),
+    ["nasdaq-feed", listing.symbol, fresh ? "refresh" : "slot", String(slotOf(now, windowMs))],
+    { revalidate: Math.ceil((windowMs * 2) / 1000) },
+  )();
 }
 
 /** The newest this many per listing are read; a card never reaches further back. */
@@ -126,7 +146,10 @@ async function judgeHeadlines(items: readonly NewsItem[]): Promise<NewsItem[]> {
 }
 
 /** Headlines for every listing, or for one when `symbol` names it. Never throws. */
-export async function loadListingNews(symbol?: string | null): Promise<ListingNewsResponse> {
+export async function loadListingNews(
+  symbol?: string | null,
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<ListingNewsResponse> {
   const wanted = symbol?.toUpperCase();
   const listings = wanted
     ? TOKEN_LISTINGS.filter((listing) => listing.symbol === wanted)
@@ -136,11 +159,16 @@ export async function loadListingNews(symbol?: string | null): Promise<ListingNe
     return { items: [], reason: `no listing called ${wanted}` };
   }
 
-  const results = await Promise.allSettled(listings.map(readFeed));
+  const now = Date.now();
+  const results = await Promise.allSettled(listings.map((listing) => readFeed(listing, fresh, now)));
   const gathered: NewsItem[] = [];
   const failures: string[] = [];
+  const fetched: number[] = [];
   for (const result of results) {
-    if (result.status === "fulfilled") gathered.push(...result.value);
+    if (result.status === "fulfilled") {
+      gathered.push(...result.value.items);
+      fetched.push(result.value.fetchedAt);
+    }
     else {
       failures.push(
         result.reason instanceof Error
@@ -158,6 +186,8 @@ export async function loadListingNews(symbol?: string | null): Promise<ListingNe
       // One listing asked about may fill its own card entirely.
       perSymbol: wanted ? SYMBOL_LIMIT : PER_SYMBOL_LIMIT,
     }),
+    // The oldest, so "Updated" never claims more freshness than every feed has.
+    updatedAt: fetched.length ? Math.min(...fetched) : undefined,
   };
   if (failures.length > 0) payload.reason = [...new Set(failures)].join("; ");
   return payload;

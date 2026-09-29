@@ -481,19 +481,53 @@ export function relativeReach(
 }
 
 /**
- * Age, as a multiplier. A day halves a post's standing, so this morning's
- * news of the same substance and reach as yesterday's clearly wins, while a
- * post that carried genuinely far (several times its author's normal) still
- * holds its place for two or three days. It was three days until 2026-09-24,
- * when the column refreshed every six hours and a slow fade suited it; with
- * an hourly refresh the fresher reading is the honest one. This is the dial
- * to turn if the column feels stale or feels twitchy.
+ * Age, as a multiplier. Half a day halves a post's standing, so this
+ * morning's news of the same substance and reach as last night's clearly
+ * wins, and a post needs four times its author's normal reach to hold level
+ * with a fresh one a day later. It was three days until 2026-09-24 and a day
+ * until 2026-09-29, when David had been reading the same posts for days: the
+ * column now also fetches the newest posts every half hour (lib/server/
+ * x-column), so there is always something fresh for this to prefer. This is
+ * the dial to turn if the column feels stale or feels twitchy.
  */
-export const HALF_LIFE_MS = 24 * 60 * 60 * 1000;
+export const HALF_LIFE_MS = 12 * 60 * 60 * 1000;
 
 export function recencyWeight(publishedAt: number, now: number): number {
   const age = Math.max(0, now - publishedAt);
   return 2 ** (-age / HALF_LIFE_MS);
+}
+
+/**
+ * How long a post stays eligible at all. Inside two days any post may rank;
+ * past that only a very strong one (see `STRONG_STANDING`), and nothing past
+ * five days, however far it carried. Without the cut the rotation's reserve
+ * turned week-old posts back in, because recent search reaches back seven
+ * days and the decay alone never quite reaches zero.
+ */
+export const FRESH_WINDOW_MS = 48 * 60 * 60 * 1000;
+export const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000;
+/**
+ * Reach times substance, before age: four times the author's normal reach on
+ * a plain report, or two and a half on material news. The level of a story
+ * people are still reading two days on.
+ */
+export const STRONG_STANDING = 4;
+
+/** Whether a post may still be shown, from its age and its ageless standing. */
+export function stillCurrent(publishedAt: number, standing: number, now: number): boolean {
+  const age = now - publishedAt;
+  if (age <= FRESH_WINDOW_MS) return true;
+  return age <= MAX_AGE_MS && standing >= STRONG_STANDING;
+}
+
+/**
+ * Newest first, for the cards on screen. The ranking decides WHICH posts are
+ * shown; once chosen, a reader expects the latest at the top, as in any
+ * timeline, and a strong post from yesterday sitting above this hour's reads
+ * as stale even when it deserved its place.
+ */
+export function newestFirst<T extends { publishedAt: number }>(posts: readonly T[]): T[] {
+  return [...posts].sort((a, b) => b.publishedAt - a.publishedAt);
 }
 
 /**
@@ -529,11 +563,16 @@ export function newsScore(
   /** Jev's reading of the post, when it gave one; replaces the regex guess. */
   substance?: number,
 ): number {
-  return (
-    relativeReach(post, baselines) *
-    recencyWeight(post.publishedAt, now) *
-    (substance ?? substanceWeight(post.text))
-  );
+  return standingOf(post, baselines, substance) * recencyWeight(post.publishedAt, now);
+}
+
+/** Reach times substance: a post's standing before age is counted. */
+export function standingOf(
+  post: XPost,
+  baselines: Map<string, number>,
+  substance?: number,
+): number {
+  return relativeReach(post, baselines) * (substance ?? substanceWeight(post.text));
 }
 
 export function rankPosts(
@@ -558,14 +597,19 @@ export function rankPosts(
     seen.add(post.id);
     unique.push(post);
   }
+  // Baselines from every post in hand, the stale ones too: an author's normal
+  // is measured over the week, whatever is still shown.
   const baselines = authorBaselines(unique);
+  const current = unique.filter((post) =>
+    stillCurrent(post.publishedAt, standingOf(post, baselines, substance?.get(post.id)), now),
+  );
   const scored = new Map(
-    unique.map((post) => [
+    current.map((post) => [
       post,
       newsScore(post, baselines, now, substance?.get(post.id)),
     ]),
   );
-  unique.sort(
+  current.sort(
     (a, b) => (scored.get(b) ?? 0) - (scored.get(a) ?? 0) || b.publishedAt - a.publishedAt,
   );
 
@@ -573,7 +617,7 @@ export function rankPosts(
   const counts = new Map<string, number>();
   const taken = new Set<XPost>();
   const kept: XPost[] = [];
-  for (const post of unique) {
+  for (const post of current) {
     if (kept.length >= room) break;
     const count = counts.get(post.symbol) ?? 0;
     if (count >= perSymbol) continue;
@@ -582,7 +626,7 @@ export function rankPosts(
     kept.push(post);
   }
   const fillCap = perSymbol * 2;
-  for (const post of unique) {
+  for (const post of current) {
     if (kept.length >= room) break;
     if (taken.has(post)) continue;
     const count = counts.get(post.symbol) ?? 0;

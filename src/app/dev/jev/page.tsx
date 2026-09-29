@@ -12,8 +12,9 @@ import type { ListingXResponse } from "@/app/api/listing-x/route";
  * curation by Jev" line can be looked at without spending X or Jev credit.
  * Not linked anywhere; 404 in prod.
  *
- *   /dev/jev                   settled: Jev's still mark
- *   /dev/jev?state=refreshing  a refresh in flight that never lands: the orb
+ *   /dev/jev                   settled: Jev's still mark, "Updated 3 minutes ago"
+ *   /dev/jev?state=refreshing  a background fetch that never lands: the orb by Jev
+ *   /dev/jev?state=pressed     the refresh button pressed, never landing: its orb
  */
 
 const FIXTURE: ListingXResponse = {
@@ -47,6 +48,7 @@ const FIXTURE: ListingXResponse = {
   ],
   reserve: [],
   curation: { seen: 412, accounts: 96, read: 58, kept: 12 },
+  updatedAt: Date.now() - 3 * 60_000,
 };
 
 export default function JevGalleryPage() {
@@ -59,14 +61,33 @@ export default function JevGalleryPage() {
 }
 
 function Gallery() {
-  const refreshing = useSearchParams().get("state") === "refreshing";
+  const state = useSearchParams().get("state");
+  const refreshing = state === "refreshing";
+  const pressed = state === "pressed";
   const [client] = useState(() => {
     const seeded = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     seeded.setQueryData(["listings", "x", "all"], FIXTURE);
     // News and performance stay empty and settled; only the posts matter here.
-    seeded.setQueryData(["listings", "news", "all"], []);
+    seeded.setQueryData(["listings", "news", "all"], { items: [] });
     return seeded;
   });
+  useEffect(() => {
+    if (!pressed) return;
+    // The button's own fetch, held open so the orb can be looked at without
+    // spending a call on X. Dev only, and only on this page.
+    const real = window.fetch;
+    window.fetch = (input, init) =>
+      String(input instanceof Request ? input.url : input).includes("/api/listing-")
+        ? new Promise<Response>(() => {})
+        : real(input, init);
+    const timer = window.setTimeout(() => {
+      document.querySelector<HTMLButtonElement>("[data-news-refresh]")?.click();
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      window.fetch = real;
+    };
+  }, [pressed]);
   useEffect(() => {
     if (!refreshing) return;
     void client.fetchQuery({ queryKey: ["listings", "x", "all"], queryFn: () => new Promise<ListingXResponse>(() => {}), staleTime: 0 });

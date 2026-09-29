@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  ArrowClockwise,
   ArrowUpRight,
   ChatCircle,
   Heart,
@@ -24,7 +25,7 @@ import { useSeenPosts } from "@/hooks/use-seen-posts";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT } from "@/lib/motion";
 import { formatTimeAgo } from "@/lib/news";
-import { formatCount, type Verdict } from "@/lib/x-feed";
+import { formatCount, newestFirst, type Verdict } from "@/lib/x-feed";
 import {
   changeDirection,
   formatPercentChange,
@@ -63,6 +64,19 @@ const JEV_URL = "https://typesafe.ai";
 /** Cards a collapsible column shows closed, and open. */
 const COLLAPSED_LIMIT = 2;
 const EXPANDED_LIMIT = 8;
+
+/**
+ * The time now, again every half minute, so "Updated 3 minutes ago" and the
+ * cards' own ages keep up with a column left open.
+ */
+function useClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
 
 /** Posts lead, because they are the livelier half and the reason to look. */
 type Tab = "posts" | "headlines";
@@ -129,9 +143,21 @@ export function NewsFeed({
   const news = useListingNews(filter?.symbol);
   const posts = useListingX(filter?.symbol);
   const performance = useListingPerformance();
+  const now = useClock();
+  const refreshing = posts.isRefreshing || news.isRefreshing;
+  // What "Updated" said when refresh was pressed, per tab. If a press comes
+  // back with the same time, the throttle answered from the shared cache:
+  // there is nothing newer, and the line says so rather than looking stuck.
+  const [pressed, setPressed] = useState<{ at: number; posts?: number; news?: number } | null>(null);
+  const refresh = () => {
+    setPressed({ at: Date.now(), posts: posts.updatedAt, news: news.updatedAt });
+    void Promise.all([posts.refresh(), news.refresh()]);
+  };
   // Posts turn slowly through everything Jev kept this refresh; headlines
   // and the loading state stand still.
-  const shownPosts = limit ? posts.items.slice(0, limit) : posts.items;
+  // The ranking chose these; they start newest first (lib/x-feed), and the
+  // rotation then brings each new card in at the top without re-sorting.
+  const shownPosts = newestFirst(limit ? posts.items.slice(0, limit) : posts.items);
   const reservePosts = limit ? [...posts.items.slice(limit), ...posts.reserve] : posts.reserve;
   const river = useRotatingFeed(shownPosts, reservePosts, tab === "posts");
   // "New" on the cards this browser has not been shown before (lib/seen-posts).
@@ -142,6 +168,13 @@ export function NewsFeed({
     river.node,
   );
   const headlines = limit ? news.items.slice(0, limit) : news.items;
+  const updatedAt = tab === "posts" ? posts.updatedAt : news.updatedAt;
+  const upToDate =
+    pressed !== null &&
+    !refreshing &&
+    updatedAt !== undefined &&
+    updatedAt === (tab === "posts" ? pressed.posts : pressed.news) &&
+    now - pressed.at < 60_000;
   const verdictWord: Record<Verdict, string> = {
     material: copy.jevVerdictMaterial,
     fact: copy.jevVerdictFact,
@@ -197,37 +230,56 @@ export function NewsFeed({
           ) : undefined
         }
         action={
-          <div
-            role="tablist"
-            aria-label={copy.newsTabsLabel}
-            className="flex shrink-0 gap-0.5 rounded-full bg-muted p-0.5"
-          >
-            {tabs.map((entry) => {
-              const active = entry.id === tab;
-              return (
-                <button
-                  key={entry.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setTab(entry.id)}
-                  className={`relative rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-150 ease-lift ${
-                    active
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="news-tab"
-                      transition={{ duration: 0.22, ease: EASE_LIFT }}
-                      className="absolute inset-0 rounded-full bg-background shadow-xs"
-                    />
-                  )}
-                  <span className="relative">{entry.label}</span>
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-1.5">
+            {/* One refresh for the column, beside the tabs it refreshes. The
+                orb takes its place while the fetch is out, in the same box. */}
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              data-news-refresh
+              aria-label={refreshing ? copy.newsRefreshing : copy.newsRefresh}
+              title={copy.newsRefresh}
+              className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-lift hover:bg-muted hover:text-foreground disabled:hover:bg-transparent"
+            >
+              {refreshing ? (
+                <ThinkingOrb state="searching" size={20} decorative />
+              ) : (
+                <ArrowClockwise weight="duotone" className="size-4" aria-hidden />
+              )}
+            </button>
+            <div
+              role="tablist"
+              aria-label={copy.newsTabsLabel}
+              className="flex shrink-0 gap-0.5 rounded-full bg-muted p-0.5"
+            >
+              {tabs.map((entry) => {
+                const active = entry.id === tab;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setTab(entry.id)}
+                    className={`relative rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-150 ease-lift ${
+                      active
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="news-tab"
+                        transition={{ duration: 0.22, ease: EASE_LIFT }}
+                        className="absolute inset-0 rounded-full bg-background shadow-xs"
+                      />
+                    )}
+                    <span className="relative">{entry.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         }
       />
@@ -263,17 +315,28 @@ export function NewsFeed({
         </AnimatePresence>
       </div>
 
-      {tab === "posts" && posts.curation && (
-        <div className="flex items-center gap-1.5 px-4 pb-3 text-[11px]">
-          {/* A 20px slot either way: Jev's still mark, or an orb while the feed is being fetched. */}
-          {posts.isFetching ? (
-            <ThinkingOrb state="searching" size={20} decorative />
-          ) : (
-            <span className="flex size-5 items-center justify-center" aria-hidden>
-              <JevMark className="size-3.5 text-foreground" />
+      {((tab === "posts" && posts.curation) || updatedAt !== undefined) && (
+        <div className="flex min-h-5 items-center gap-1.5 px-4 pb-3 text-[11px]">
+          {tab === "posts" && posts.curation && (
+            <>
+              {/* A 20px slot either way: Jev's still mark, or an orb while
+                  the feed is fetched in the background. A refresh the reader
+                  asked for shows its orb on the button instead. */}
+              {posts.isFetching && !refreshing ? (
+                <ThinkingOrb state="searching" size={20} decorative />
+              ) : (
+                <span className="flex size-5 items-center justify-center" aria-hidden>
+                  <JevMark className="size-3.5 text-foreground" />
+                </span>
+              )}
+              <span className="font-medium text-foreground">{copy.jevCuratedBy}</span>
+            </>
+          )}
+          {updatedAt !== undefined && (
+            <span className="ml-auto shrink-0 text-muted-foreground" aria-live="polite">
+              {(upToDate ? copy.newsUpToDate : copy.newsUpdated)(formatTimeAgo(updatedAt, now))}
             </span>
           )}
-          <span className="font-medium text-foreground">{copy.jevCuratedBy}</span>
         </div>
       )}
 
@@ -371,7 +434,7 @@ export function NewsFeed({
                               {"\u00a0"}
                             </span>
                             <span className="shrink-0 whitespace-nowrap text-muted-foreground">
-                              {formatTimeAgo(post.publishedAt)}
+                              {formatTimeAgo(post.publishedAt, now)}
                             </span>
                             {/* Ink, not accent, and a word rather than a
                                 chip: the Jev verdict below is the card's
@@ -507,7 +570,7 @@ export function NewsFeed({
                             <span aria-hidden="true"> · </span>
                             {copy.newsByline(
                               item.source,
-                              formatTimeAgo(item.publishedAt),
+                              formatTimeAgo(item.publishedAt, now),
                             )}
                           </p>
                         </div>

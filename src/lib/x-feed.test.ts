@@ -7,7 +7,13 @@ import {
   PRESS_SOURCES,
   looksEmpty,
   looksPromotional,
+  FRESH_WINDOW_MS,
   HALF_LIFE_MS,
+  MAX_AGE_MS,
+  STRONG_STANDING,
+  newestFirst,
+  standingOf,
+  stillCurrent,
   authorBaselines,
   engagementScore,
   formatCount,
@@ -155,11 +161,13 @@ describe("avatarAt", () => {
   });
 });
 
+const RANK_NOW = 1_700_000_000_000;
+
 describe("rankPosts", () => {
   const post = (id: string, symbol: string, likes: number): XPost => ({
     id,
     text: `post ${id}`,
-    publishedAt: 1_700_000_000_000 + Number(id),
+    publishedAt: RANK_NOW - 60_000,
     author: { name: "A", username: "a", avatarUrl: "https://x/a.jpg" },
     url: `https://x.com/a/status/${id}`,
     likes,
@@ -184,7 +192,7 @@ describe("rankPosts", () => {
     const rest = ["NVDA", "TSLA", "SPY", "USO"].map((symbol, index) =>
       post(`R${index}`, symbol, 500),
     );
-    const ranked = rankPosts([...loud, ...rest], { limit: 12, perSymbol: 2 });
+    const ranked = rankPosts([...loud, ...rest], { limit: 12, perSymbol: 2, now: RANK_NOW });
     const spacex = ranked.filter((entry) => entry.symbol === "SPCX");
     expect(spacex.length).toBeLessThanOrEqual(4);
     expect(new Set(ranked.map((entry) => entry.symbol)).size).toBeGreaterThan(1);
@@ -194,6 +202,7 @@ describe("rankPosts", () => {
     const ranked = rankPosts([post("1", "NVDA", 10), post("1", "NVDA", 10)], {
       limit: 12,
       perSymbol: 2,
+      now: RANK_NOW,
     });
     expect(ranked).toHaveLength(1);
   });
@@ -257,16 +266,16 @@ describe("news scoring", () => {
     expect(authorBaselines(sample).has("issuer")).toBe(false);
   });
 
-  it("halves a post's standing every day", () => {
-    expect(HALF_LIFE_MS).toBe(24 * 60 * 60 * 1000);
+  it("halves a post's standing every half day", () => {
+    expect(HALF_LIFE_MS).toBe(12 * 60 * 60 * 1000);
     expect(recencyWeight(NOW, NOW)).toBeCloseTo(1);
     expect(recencyWeight(NOW - HALF_LIFE_MS, NOW)).toBeCloseTo(0.5);
-    expect(recencyWeight(daysAgo(2), NOW)).toBeCloseTo(0.25);
+    expect(recencyWeight(daysAgo(1), NOW)).toBeCloseTo(0.25);
   });
 
   it("puts this morning's post clearly above yesterday's of equal weight", () => {
     // Same author, same reach, same substance: only the age differs, and a
-    // day of it is now a factor of two rather than a rounding error.
+    // day of it is now a factor of four rather than a rounding error.
     const sample = [300, 320, 280].map((likes) =>
       make({ username: "wire", likes }),
     );
@@ -275,7 +284,7 @@ describe("news scoring", () => {
     const today = make({ username: "wire", likes: 600, publishedAt: NOW, text });
     const baselines = authorBaselines([...sample, yesterday, today]);
     expect(newsScore(today, baselines, NOW)).toBeCloseTo(
-      2 * newsScore(yesterday, baselines, NOW),
+      4 * newsScore(yesterday, baselines, NOW),
     );
   });
 
@@ -332,16 +341,12 @@ describe("news scoring", () => {
     );
   });
 
-  it("still lets a genuinely big post beat a weak fresh one for days", () => {
+  it("lets a genuinely big post beat a weak fresh one for a day, and keeps it past two", () => {
     const sample = [300, 320, 280].map((likes) =>
       make({ username: "wire", likes }),
     );
-    const huge = make({
-      username: "wire",
-      likes: 9_000,
-      publishedAt: daysAgo(3),
-      text: "Fed cuts rates by 50 basis points, its largest move since 2020",
-    });
+    const text = "Fed cuts rates by 50 basis points, its largest move since 2020";
+    const huge = make({ username: "wire", likes: 9_000, publishedAt: daysAgo(1), text });
     const ordinary = make({
       username: "wire",
       likes: 340,
@@ -352,6 +357,62 @@ describe("news scoring", () => {
     expect(newsScore(huge, baselines, NOW)).toBeGreaterThan(
       newsScore(ordinary, baselines, NOW),
     );
+    // Three days on it is no longer ahead of today's, but it is still shown.
+    const later = NOW + 2 * 24 * 60 * 60 * 1000;
+    expect(stillCurrent(huge.publishedAt, standingOf(huge, baselines), later)).toBe(true);
+  });
+});
+
+describe("freshness", () => {
+  const NOW = Date.UTC(2026, 8, 29, 12, 0, 0);
+  const HOUR = 60 * 60 * 1000;
+  const make = (id: string, hoursAgo: number, likes = 300): XPost => ({
+    id,
+    text: "Oil settles higher as supply talks stall, with traders watching the weekly inventory data",
+    publishedAt: NOW - hoursAgo * HOUR,
+    author: { name: "Wire", username: "wire", avatarUrl: "https://x/a.jpg" },
+    url: `https://x.com/wire/status/${id}`,
+    likes,
+    retweets: 0,
+    quotes: 0,
+    replies: 0,
+    symbol: "USO",
+    name: "Oil fund",
+  });
+
+  it("keeps anything inside two days, past that only the very strong, past five nothing", () => {
+    expect(stillCurrent(NOW - 47 * HOUR, 0.5, NOW)).toBe(true);
+    expect(stillCurrent(NOW - FRESH_WINDOW_MS - HOUR, STRONG_STANDING - 0.01, NOW)).toBe(false);
+    expect(stillCurrent(NOW - FRESH_WINDOW_MS - HOUR, STRONG_STANDING, NOW)).toBe(true);
+    expect(stillCurrent(NOW - MAX_AGE_MS - HOUR, 100, NOW)).toBe(false);
+  });
+
+  it("lets this morning's posts outrank a week of the same wire's best", () => {
+    // The live shape on 2026-09-29: the column's top two were 33 and 36
+    // hours old, and its reserve reached back six days.
+    const week = [30, 36, 60, 100, 150].map((hours, index) => make(`old${index}`, hours, 600));
+    const today = [1, 3].map((hours, index) => make(`new${index}`, hours, 300));
+    const ranked = rankPosts([...week, ...today], { limit: 2, perSymbol: 2, now: NOW });
+    expect(ranked.map((post) => post.id)).toEqual(["new0", "new1"]);
+    const all = rankPosts([...week, ...today], { limit: 12, perSymbol: 12, now: NOW });
+    // Twice the wire's normal is not strong enough to outlive two days.
+    expect(all.map((post) => post.id)).not.toContain("old2");
+    expect(all.map((post) => post.id)).not.toContain("old4");
+  });
+
+  it("still ranks a fresh post whose author has only stale ones in hand", () => {
+    const ranked = rankPosts([make("a", 100), make("b", 120), make("c", 2)], {
+      limit: 12,
+      perSymbol: 12,
+      now: NOW,
+    });
+    expect(ranked.map((post) => post.id)).toEqual(["c"]);
+  });
+
+  it("puts the chosen cards newest first without changing which were chosen", () => {
+    const cards = [make("mid", 5), make("new", 1), make("old", 20)];
+    expect(newestFirst(cards).map((post) => post.id)).toEqual(["new", "mid", "old"]);
+    expect(cards.map((post) => post.id)).toEqual(["mid", "new", "old"]);
   });
 });
 

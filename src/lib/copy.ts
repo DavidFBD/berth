@@ -258,6 +258,13 @@ export type Copy = {
   newsTabHeadlines: string;
   /** Names what the tabs switch, for a screen reader. */
   newsTabsLabel: string;
+  /** The column's refresh control, for a screen reader, and while it works. */
+  newsRefresh: string;
+  newsRefreshing: string;
+  /** `when` is formatTimeAgo's phrase: "just now", "3 minutes ago". */
+  newsUpdated: (when: string) => string;
+  /** After a refresh the throttle answered from the cache: nothing newer yet. */
+  newsUpToDate: (when: string) => string;
   /** The posts tab's own hint, which promises something different. */
   postsHint: string;
   /** Shown when the accounts we follow have been quiet. */
@@ -1262,8 +1269,12 @@ export const COPY: Copy = {
   newsTabPosts: "Posts",
   newsTabHeadlines: "Headlines",
   newsTabsLabel: "What to read",
+  newsRefresh: "Refresh the news",
+  newsRefreshing: "Refreshing the news",
+  newsUpdated: (when) => `Updated ${when}`,
+  newsUpToDate: (when) => `Up to date, updated ${when}`,
   postsHint:
-    "What the companies and the market desks are posting on X. Tapping one opens the post. The list refreshes every hour, and the posts you have not seen yet are marked New.",
+    "What the companies and the market desks are posting on X. Tapping one opens the post. The list refreshes every half hour, or when you ask, and the posts you have not seen yet are marked New.",
   postsEmpty: "The accounts we follow have been quiet.",
   postsEmptyFor: (name) => `Nothing about ${name} on X right now.`,
   postsHandle: (handle) => `@${handle},`,

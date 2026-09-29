@@ -31,21 +31,28 @@ export type ListingXResponse = {
   reserve: XPost[];
   /** What Jev read this refresh, when it read anything. */
   curation?: Curation;
+  /** When the newest fetch behind this was made, epoch ms, for "Updated 3 minutes ago". */
+  updatedAt?: number;
   /** Present only when something degraded, for the console. */
   reason?: string;
 };
 
 /**
  * The ranked column for every listing, or for one when `symbol` names it.
- * `gathered` reuses a gathering the caller already has (get_listing).
+ * `gathered` reuses a gathering the caller already has (get_listing);
+ * `fresh` is the column's refresh button (throttled in lib/feed-refresh).
  */
-export async function loadListingX(symbol?: string | null, gathered?: Promise<GatheredPosts>): Promise<ListingXResponse> {
+export async function loadListingX(
+  symbol?: string | null,
+  gathered?: Promise<GatheredPosts>,
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<ListingXResponse> {
   const wanted = symbol?.toUpperCase();
   if (wanted && !NAME_BY_SYMBOL.has(wanted)) {
     return { items: [], reserve: [], reason: `no listing called ${wanted}` };
   }
 
-  const { posts, substance, failures, curation } = await (gathered ?? gatherPosts());
+  const { posts, substance, failures, curation, updatedAt } = await (gathered ?? gatherPosts({ fresh }));
   const mine = wanted ? posts.filter((post) => post.symbol === wanted) : posts;
 
   const visible = wanted ? SYMBOL_LIMIT : FEED_LIMIT;
@@ -64,6 +71,7 @@ export async function loadListingX(symbol?: string | null, gathered?: Promise<Ga
     items: ranked.slice(0, visible),
     reserve: ranked.slice(visible),
     curation,
+    updatedAt,
   };
   if (failures.length > 0) payload.reason = [...new Set(failures)].join("; ");
   return payload;
