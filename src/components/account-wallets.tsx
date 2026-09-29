@@ -1,13 +1,17 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useWalletModal, type ChainGroup } from "@sodax/wallet-sdk-react";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
-import { SignedInAsLine, UnlinkedWalletLine, WalletsList } from "@/components/account-wallets-list";
-import { useAddConnectedWallet, useSignerFor, walletActMessage } from "@/hooks/use-account-wallets";
+import { AddWalletList, SignedInAsLine, UnlinkedWalletLine, WalletsList } from "@/components/account-wallets-list";
+import { WalletDrawer } from "@/components/wallet";
+import { useAddConnectedWallet, useAddWallets, useSignerFor, walletActMessage } from "@/hooks/use-account-wallets";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useAccountWallets, useIdentityLabel, useWalletAct } from "@/hooks/use-profile";
+import { shortenAddress } from "@/lib/format";
 
 /**
  * "Wallets" in the account drawer, wired to the account: the list from
@@ -58,9 +62,14 @@ export function WalletsSection() {
   const add = useAddConnectedWallet();
   const signerFor = useSignerFor();
   const act = useWalletAct();
+  const addable = useAddWallets();
+  const connect = useConnectNetwork();
 
-  const evm = (list.data?.wallets ?? []).filter((wallet) => wallet.family === "evm");
-  if (evm.length === 0) return null;
+  const all = list.data?.wallets ?? [];
+  const evm = all.filter((wallet) => wallet.family === "evm");
+  // An account with no EVM row yet (an email account) still gets Add a
+  // wallet: a Solana address joins it with a recent email code.
+  if (!list.data) return null;
   const home = evm.find((wallet) => wallet.isHome);
   const holdsAt = (address: string) => {
     const hub = account.wallets.find((wallet) => wallet.spoke === address)?.hubWallet;
@@ -69,15 +78,20 @@ export function WalletsSection() {
   };
 
   const run = async (kind: "home" | "unlink", address: string) => {
-    // Home and remove are confirmed by the current home; a wallet may also
-    // confirm its own removal.
-    const signerAddress = signerFor(home?.address) ? home?.address : kind === "unlink" && signerFor(address) ? address : undefined;
+    // Home and remove are confirmed by the current home; an EVM wallet may
+    // also confirm its own removal. A Solana address is removed by the home.
+    const family = all.find((wallet) => wallet.address === address)?.family === "solana" ? "solana" : "evm";
+    const signerAddress = signerFor(home?.address)
+      ? home?.address
+      : kind === "unlink" && family === "evm" && signerFor(address)
+        ? address
+        : undefined;
     const sign = signerFor(signerAddress);
     if (!signerAddress || !sign) {
-      toast(copy.walletsFailed);
+      toast(family === "solana" && home ? copy.walletsNeedHomeSigner(shortenAddress(home.address, 4)) : copy.walletsFailed);
       return;
     }
-    const result = await act.mutateAsync({ act: kind, target: address, signer: signerAddress, sign });
+    const result = await act.mutateAsync({ act: kind, target: address, family, signer: signerAddress, sign });
     if (!result.ok) {
       toast(walletActMessage(result.reason, copy));
       return;
@@ -94,7 +108,14 @@ export function WalletsSection() {
   return (
     <Panel>
     <WalletsList
-      wallets={evm.map((wallet) => ({ address: wallet.address, isHome: wallet.isHome, holds: holdsAt(wallet.address) }))}
+      wallets={all
+        .filter((wallet) => wallet.family === "evm" || wallet.family === "solana")
+        .map((wallet) => ({
+          address: wallet.address,
+          family: wallet.family,
+          isHome: wallet.isHome,
+          holds: wallet.family === "evm" && holdsAt(wallet.address),
+        }))}
       signedInWith={list.data?.signedInWith ?? null}
       // The drawer carries the email prompt; wallet mode never reaches here
       // with a waiting wallet (no account shows until the person chooses).
@@ -109,7 +130,41 @@ export function WalletsSection() {
       onDismiss={add.keepApart}
       onMakeHome={(address) => void run("home", address)}
       onRemove={(address) => void run("unlink", address)}
+      addList={
+        <AddWalletList
+          rows={addable.rows}
+          comingSoon={addable.comingSoon}
+          busyAddress={addable.busyAddress}
+          onAdd={(row) => void addable.add(row)}
+          onConnect={(row) => connect.open(row.network as ChainGroup["chainType"])}
+        />
+      }
     />
+    {connect.drawer}
     </Panel>
   );
+}
+
+/**
+ * "Connect Solana" from the Add a wallet list: the app's own wallet drawer,
+ * opened straight at that network's wallets.
+ */
+function useConnectNetwork() {
+  const modal = useWalletModal();
+  const [target, setTarget] = useState<ChainGroup["chainType"] | null>(null);
+  const picked = useRef(false);
+  const { state, selectChain } = modal;
+  useEffect(() => {
+    if (target && !picked.current && state.kind === "chainSelect") {
+      picked.current = true;
+      selectChain(target);
+    }
+  }, [target, state.kind, selectChain]);
+  return {
+    open: (chainType: ChainGroup["chainType"]) => {
+      picked.current = false;
+      setTarget(chainType);
+    },
+    drawer: <WalletDrawer open={target !== null} onOpenChange={(next) => !next && setTarget(null)} />,
+  };
 }

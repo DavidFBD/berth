@@ -44,7 +44,7 @@ const FAMILY_BY_NAMESPACE: Record<string, WalletFamily> = {
 const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const BASE58_MAP = new Map([...BASE58].map((char, index) => [char, index]));
 
-function base58Decode(input: string): Uint8Array | null {
+export function base58Decode(input: string): Uint8Array | null {
   if (input.length === 0) return null;
   const bytes: number[] = [];
   for (const char of input) {
@@ -66,6 +66,30 @@ function base58Decode(input: string): Uint8Array | null {
     bytes.push(0);
   }
   return Uint8Array.from(bytes.reverse());
+}
+
+/** Base58 (the Bitcoin alphabet, as Solana uses it) of raw bytes. */
+export function base58Encode(bytes: Uint8Array): string {
+  const digits: number[] = [];
+  for (const byte of bytes) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i++) {
+      carry += digits[i] << 8;
+      digits[i] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = (carry / 58) | 0;
+    }
+  }
+  let out = "";
+  for (const byte of bytes) {
+    if (byte !== 0) break;
+    out += "1";
+  }
+  for (let i = digits.length - 1; i >= 0; i--) out += BASE58[digits[i]];
+  return out;
 }
 
 // ---------------------------------------------------------------- bech32

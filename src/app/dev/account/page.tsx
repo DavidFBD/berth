@@ -17,19 +17,48 @@ import { AssistantSection } from "@/components/assistant/assistant-section";
 import { ConsentCard } from "@/components/assistant/authorize-consent";
 import type { ConsentParty } from "@/lib/assistant-party";
 import { Panel } from "@/components/ui/panel";
-import { SignedInAsLine, UnlinkedWalletLine, WalletsList } from "@/components/account-wallets-list";
+import { AddWalletList, SignedInAsLine, UnlinkedWalletLine, WalletsList } from "@/components/account-wallets-list";
+import type { AddRow } from "@/lib/add-wallet-list";
+import { COPY } from "@/lib/copy";
 import { SocialSection } from "@/components/social/social-section";
 
 const DEMO_HOME = "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be";
 const DEMO_SECOND = "0x71c7656ec7ab88b098defb751b7401b5f6d8976f";
 const DEMO_UNLINKED = "0xbe0eb53f46cd790cd13851d5eff43d12404d33e8";
 
+const DEMO_SOLANA = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
+
+/** "Add a wallet" opened, one multichain extension (Hana) with every state a row can be in. */
+const DEMO_ADD_ROWS: AddRow[] = [
+  { network: "EVM", name: COPY.walletsNetworkEvm, address: DEMO_HOME, extension: "Hana", state: "added" },
+  { network: "SOLANA", name: "Solana", address: DEMO_SOLANA, extension: "Hana", state: "added" },
+  { network: "BITCOIN", name: "Bitcoin", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", extension: "Hana", state: "coming_soon" },
+  { network: "SUI", name: "Sui", address: "0x02a212de6a9dfa3a69e22387acfbafbb1a9e591bd9d636e7895dcfc8de05f331", extension: "Hana", state: "coming_soon" },
+];
+const DEMO_ADD_OTHER: AddRow[] = [
+  { network: "EVM", name: COPY.walletsNetworkEvm, address: DEMO_UNLINKED, extension: "MetaMask", state: "add" },
+  { network: "SOLANA", name: "Solana", address: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", extension: "Phantom", state: "other_account" },
+];
+const DEMO_ADD_CONNECT: AddRow[] = [
+  { network: "EVM", name: COPY.walletsNetworkEvm, address: DEMO_HOME, extension: "Rabby", state: "added" },
+  { network: "SOLANA", name: "Solana", address: null, extension: null, state: "connect" },
+];
+
 /** The Wallets list in one of its states, from fixtures; every act goes nowhere. */
 function WalletsGallery({ scene }: { scene: string }) {
   const wallets = [
     { address: DEMO_HOME, isHome: true, holds: true },
     { address: DEMO_SECOND, isHome: false, holds: scene === "remove" },
+    ...(scene.startsWith("add") ? [{ address: DEMO_SOLANA, family: "solana", isHome: false, holds: false }] : []),
   ];
+  const addRows =
+    scene === "add-other"
+      ? DEMO_ADD_OTHER
+      : scene === "add-cooling"
+        ? DEMO_ADD_OTHER.map((row) => (row.network === "SOLANA" ? { ...row, state: "cooling" as const } : row))
+        : scene === "add-connect"
+          ? DEMO_ADD_CONNECT
+          : DEMO_ADD_ROWS;
   return (
     <div className="flex flex-col gap-4">
       {scene === "prompt" && <UnlinkedWalletLine address={DEMO_UNLINKED} busy={false} onAdd={() => {}} onDismiss={() => {}} />}
@@ -62,6 +91,16 @@ function WalletsGallery({ scene }: { scene: string }) {
           onDismiss={() => {}}
           onMakeHome={() => {}}
           onRemove={() => {}}
+          initialAddOpen={scene.startsWith("add")}
+          addList={
+            <AddWalletList
+              rows={addRows}
+              comingSoon={scene === "add-connect" ? ["Bitcoin", "Sui", "Stellar", "ICON"] : ["Stellar", "ICON"]}
+              busyAddress={null}
+              onAdd={() => {}}
+              onConnect={() => {}}
+            />
+          }
         />
       </Panel>
     </div>
@@ -96,8 +135,13 @@ function WalletsGallery({ scene }: { scene: string }) {
  *                                     holds listings), email (an email
  *                                     session, no Make home), signed-in-as
  *                                     (the board line while an unproved
- *                                     extension wallet is connected), drawer
- *                                     (Your profile above Wallets, as in the
+ *                                     extension wallet is connected),
+ *                                     add, add-other, add-cooling, add-connect (Add a
+ *                                     wallet opened: one multichain
+ *                                     extension's networks and their
+ *                                     states, a wallet on another account,
+ *                                     Connect Solana),
+ *                                     drawer (Your profile above Wallets, as in the
  *                                     account drawer)
  *   /dev/account?assistant=claude     the "Your assistant" section with two
  *                                     connected assistants from fixtures,

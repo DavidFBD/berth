@@ -34,12 +34,19 @@ function hostAllowed(host: string): boolean {
  * message's own issuedAt comes from the person's clock, which may be off.
  */
 export function siweMadeForBerth(fields: Partial<SiweMessage>): boolean {
-  if (!fields.domain || !hostAllowed(fields.domain)) return false;
-  if (!fields.uri) return false;
+  return madeForBerthHost(fields.domain, fields.uri) && fields.chainId === SIWE_CHAIN_ID;
+}
+
+/**
+ * The host half of the check, shared with Sign-In With Solana
+ * (lib/server/siws): the domain is Berth's own, and the uri is on it.
+ */
+export function madeForBerthHost(domain: string | undefined, uri: string | undefined): boolean {
+  if (!domain || !hostAllowed(domain)) return false;
+  if (!uri) return false;
   try {
-    if (new URL(fields.uri).host.toLowerCase() !== fields.domain.toLowerCase()) return false;
+    return new URL(uri).host.toLowerCase() === domain.toLowerCase();
   } catch {
     return false;
   }
-  return fields.chainId === SIWE_CHAIN_ID;
 }

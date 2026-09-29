@@ -902,6 +902,19 @@ export type Copy = {
   /** An email account adds a wallet only with an email code entered in the last ten minutes. */
   walletsSignInAgain: string;
   walletsSignInAgainAction: string;
+  /** "Add a wallet", opened: every address the extensions have open, by network. */
+  walletsAddListSub: string;
+  walletsAdded: string;
+  walletsAddOne: string;
+  /** Shown only after the address signed. */
+  walletsBelongsElsewhere: string;
+  walletsCoolingShort: string;
+  walletsComingSoon: string;
+  walletsComingSoonList: (names: string) => string;
+  walletsConnectNetwork: (name: string) => string;
+  walletsNetworkSolana: string;
+  /** Under a linked Solana address: it pays, and what it buys lands at the home. */
+  walletsSolanaNote: string;
   /** A sell draft for more than the chosen hub wallet holds. */
   sellUpToFromWallet: (amount: string) => string;
   /** SIWE statements, shown inside the wallet next to the address. */
@@ -2189,9 +2202,9 @@ export const COPY: Copy = {
   walletsHomeTag: "Home",
   walletsHomeNote: "Buys land here.",
   walletsPayFromNote: "Pays for orders. Its holdings count.",
-  walletsNetworkEvm: "EVM",
+  walletsNetworkEvm: "Ethereum and similar networks",
   walletsAdd: "Add a wallet",
-  walletsAddHint: "Switch to the other wallet in your extension. Berth will ask to add it.",
+  walletsAddHint: "Another Ethereum account? Switch to it in your extension.",
   walletsAddHintEmail: "Connect the other wallet in this browser. Berth will ask to add it.",
   walletsMakeHome: "Make home",
   walletsRemove: "Remove",
@@ -2222,6 +2235,16 @@ export const COPY: Copy = {
   walletsSlowDown: "Too many tries. Wait a little and try again.",
   walletsSignInAgain: "To add a wallet, sign in with your email again.",
   walletsSignInAgainAction: "Sign in again",
+  walletsAddListSub: "What your wallet extensions have open now, by network.",
+  walletsAdded: "Added",
+  walletsAddOne: "Add",
+  walletsBelongsElsewhere: "Belongs to another account",
+  walletsCoolingShort: "It can be added again 7 days after it was removed.",
+  walletsComingSoon: "Coming soon",
+  walletsComingSoonList: (names) => `Coming soon: ${names}.`,
+  walletsConnectNetwork: (name) => `Connect ${name}`,
+  walletsNetworkSolana: "Solana",
+  walletsSolanaNote: "Pays for orders. What you buy lands at home.",
   sellUpToFromWallet: (amount) => `You can sell up to ${amount} from this wallet.`,
   walletLinkStatement: "Add this wallet to your Berth account. Signing is free and moves nothing.",
   walletLinkConfirmStatement: (short) => `Let ${short} join your Berth account. Signing is free and moves nothing.`,

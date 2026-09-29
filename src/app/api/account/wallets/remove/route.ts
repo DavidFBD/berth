@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { unlinkWallet, walletsOf } from "@/lib/server/account-wallets";
 import { holdingsAt, provedAct, walletsResponse } from "@/lib/server/account-wallets-route";
+import { parseTargetKey } from "@/lib/account-proof";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +13,17 @@ export const dynamic = "force-dynamic";
  * { state: unlinked | is_home | not_linked | signed_in | holds | failed,
  * wallets, signedInWith }. A wallet whose hub wallet still holds listings
  * is not removed (holds); nor is one whose holdings cannot be read (failed).
+ * A Solana address (target `solana:<base58>`, signed by the home or by its
+ * own SIWS) holds nothing Berth counts: buys land at the home, so it goes
+ * without a holdings read.
  */
 export async function POST(request: NextRequest) {
   const proved = await provedAct(request, "unlink");
   if (!proved.ok) return proved.response;
-  const address = proved.target;
+  const { family, address } = parseTargetKey(proved.target);
+  if (family === "solana") {
+    return walletsResponse(proved.account, { state: await unlinkWallet(proved.account.user.id, address, "solana") });
+  }
   const home = (await walletsOf(proved.account.user.id)).find((wallet) => wallet.family === "evm" && wallet.isHome);
   if (address === home?.address) return walletsResponse(proved.account, { state: "is_home" });
   if (!proved.account.caller.did && proved.account.caller.wallet === address) {

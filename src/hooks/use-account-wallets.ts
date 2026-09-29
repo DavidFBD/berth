@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { useXAccount, useXSignMessage } from "@sodax/wallet-sdk-react";
+import { useChainGroups, useConnectedChains, useXAccount, useXSignMessage, type ChainGroup } from "@sodax/wallet-sdk-react";
 import { toHex } from "viem";
 import { useCopy } from "@/components/settings-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -15,6 +15,15 @@ import {
 } from "@/hooks/use-wallet-session";
 import { shortenAddress } from "@/lib/format";
 import { walletActMessage } from "@/lib/account-wallets";
+import {
+  LINKABLE,
+  NETWORK_ORDER,
+  addWalletRows,
+  addressKey,
+  solanaSignatureBytes,
+  type AddRow,
+} from "@/lib/add-wallet-list";
+import { base58Encode } from "@/lib/identity/caip";
 
 /**
  * The account's wallet acts in the browser, over app/api/account/wallets:
@@ -216,4 +225,131 @@ export function useAddConnectedWallet() {
   }, [address]);
 
   return { waiting, address, add, keepApart, busy: act.isPending, canSign: !!signerFor(address ?? undefined) };
+}
+
+// ------------------------------------------------------------ Add a wallet
+
+/** What a link answered in this browser, by address key: shown only after that address signed. */
+const outcomes = new Map<string, "other_account" | "cooling">();
+const outcomeListeners = new Set<() => void>();
+let outcomesVersion = 0;
+function rememberOutcome(key: string, state: "other_account" | "cooling"): void {
+  outcomes.set(key, state);
+  outcomesVersion += 1;
+  for (const listener of outcomeListeners) listener();
+}
+function subscribeOutcomes(listener: () => void): () => void {
+  outcomeListeners.add(listener);
+  return () => outcomeListeners.delete(listener);
+}
+
+/**
+ * The drawer's "Add a wallet" list, wired: every network the wallet SDK
+ * has enabled, the address its extension has open there (a multichain
+ * extension shows up once per network), and the one press that adds it.
+ * EVM goes through the phase 2 flow (useAddConnectedWallet) when it is the
+ * waiting wallet; a Solana address signs Sign-In With Solana in its own
+ * extension and the account confirms with its home, or, for an email
+ * account, a recent code. `connect` opens the wallet drawer at a network.
+ */
+export function useAddWallets() {
+  const copy = useCopy();
+  useSyncExternalStore(subscribeOutcomes, () => outcomesVersion, () => 0);
+  const groups = useChainGroups({ order: NETWORK_ORDER as unknown as ChainGroup["chainType"][] });
+  const { chains } = useConnectedChains();
+  const list = useAccountWallets();
+  const add = useAddConnectedWallet();
+  const privy = usePrivyEmbeddedWallet();
+  const { signerFor, waitingSigner } = useSigners();
+  const act = useWalletAct();
+  const { mutateAsync: signMessage } = useXSignMessage();
+  const [busyAddress, setBusyAddress] = useState<string | null>(null);
+
+  const { rows, comingSoon } = addWalletRows({
+    networks: groups.map((group) => ({
+      network: group.chainType,
+      name: group.chainType === "EVM" ? copy.walletsNetworkEvm : group.displayName,
+      address: group.account?.address,
+      extension: chains.find((chain) => chain.chainType === group.chainType)?.connectorName ?? null,
+    })),
+    linked: list.data?.wallets ?? [],
+    outcomes,
+  });
+
+  const addRow = useCallback(
+    async (row: AddRow) => {
+      const address = row.address;
+      if (!address || busyAddress) return;
+      const family = LINKABLE[row.network];
+      if (!family) return;
+      if (family === "evm" && add.waiting && add.address === address.toLowerCase()) {
+        await add.add();
+        return;
+      }
+      const sign: Sign | null =
+        family === "solana"
+          ? async (message) => {
+              const bytes = solanaSignatureBytes(await signMessage({ xChainType: "SOLANA", message }));
+              return bytes ? base58Encode(bytes) : null;
+            }
+          : signerFor(address);
+      if (!sign) {
+        toast(copy.walletsFailed);
+        return;
+      }
+      // The account confirms with its home: signed here when it can be,
+      // else the extension is switched to it when asked. An email account
+      // with no home to sign with confirms with a recent code instead.
+      const home = list.data?.wallets.find((wallet) => wallet.family === "evm" && wallet.isHome)?.address ?? null;
+      let homeMissed = false;
+      const homeSigner = home ? signerFor(home) : null;
+      const confirm = home
+        ? {
+            signer: home,
+            sign:
+              homeSigner ??
+              waitingSigner(
+                home,
+                () => toast(copy.walletsConfirmWithHome(shortenAddress(home, 4)), { id: "wallet-switch", duration: SWITCH_WAIT_MS }),
+                () => toast.dismiss("wallet-switch"),
+                () => {
+                  homeMissed = true;
+                },
+              ),
+          }
+        : undefined;
+      setBusyAddress(address);
+      try {
+        const result = await act.mutateAsync({
+          act: "link",
+          target: address,
+          family,
+          signer: address,
+          signerFamily: family,
+          sign,
+          confirm,
+        });
+        if (!result.ok) {
+          if (result.reason === "reauth") {
+            toast(copy.walletsSignInAgain, {
+              action: { label: copy.walletsSignInAgainAction, onClick: () => void privy.logout().then(() => privy.login()) },
+            });
+          } else if (homeMissed && home) toast(copy.walletsHomeMissing(shortenAddress(home, 4)));
+          else toast(walletActMessage(result.reason, copy));
+          return;
+        }
+        const state = result.response.state;
+        if (state === "linked" || state === "already") toast.success(copy.walletsLinkedToast, { description: shortenAddress(address, 6) });
+        else if (state === "cooling" || state === "other_account") {
+          rememberOutcome(addressKey(row.network, address), state);
+          toast(state === "cooling" ? copy.walletsCooling : copy.walletsOtherAccount);
+        } else toast(copy.walletsFailed);
+      } finally {
+        setBusyAddress(null);
+      }
+    },
+    [act, add, busyAddress, copy, list.data?.wallets, privy, signMessage, signerFor, waitingSigner],
+  );
+
+  return { rows, comingSoon, busyAddress: busyAddress ?? (add.busy ? add.address : null), add: addRow };
 }

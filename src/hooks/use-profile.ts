@@ -7,7 +7,8 @@ import { useXAccount } from "@sodax/wallet-sdk-react";
 import { ChainKeys } from "@sodax/sdk";
 import { getAddress } from "viem";
 import { createSiweMessage } from "viem/siwe";
-import { proofResource, proofStatement, type ProofAct } from "@/lib/account-proof";
+import { proofResource, proofStatement, targetKey, type ProofAct, type ProofFamily } from "@/lib/account-proof";
+import { createSiwsMessage } from "@/lib/siws";
 import { walletActOutcome } from "@/lib/account-wallets";
 import type { AvatarId } from "@/lib/avatars";
 import type {
@@ -545,8 +546,12 @@ export function useWalletAct() {
       act: "link" | "home" | "unlink";
       /** The address acted on: the wallet to link, to make home, or to remove. */
       target: string;
+      /** The target's family: "evm" (default) or "solana" (link and remove only). */
+      family?: ProofFamily;
       /** The address that signs the act (for a link, the target). */
       signer: string;
+      /** The signer's family: a Solana signer signs Sign-In With Solana, and `sign` answers base58. */
+      signerFamily?: ProofFamily;
       sign: (message: string) => Promise<string | null>;
       /** A link's confirmation by the account's home, when it has one to sign with. */
       confirm?: { signer: string; sign: (message: string) => Promise<string | null> };
@@ -565,19 +570,30 @@ export function useWalletAct() {
         if (!key) return { status: 0, data: null };
         return callStatus<T>(path, body);
       };
-      const nonce = (await post<{ nonce: string; nonceToken: string }>("/api/account/wallets/nonce", { act: vars.act, target: vars.target })).data;
+      const family = vars.family ?? "evm";
+      const target = targetKey(family, vars.target);
+      const nonce = (
+        await post<{ nonce: string; nonceToken: string }>("/api/account/wallets/nonce", { act: vars.act, target: vars.target, family })
+      ).data;
       if (!nonce) return { ok: false, reason: "failed" };
-      const signOne = async (act: ProofAct, signer: string, sign: (message: string) => Promise<string | null>): Promise<Signed | null> => {
-        const message = createSiweMessage({
-          address: getAddress(signer),
-          chainId: 146,
+      const signOne = async (
+        act: ProofAct,
+        signer: string,
+        sign: (message: string) => Promise<string | null>,
+        signerFamily: ProofFamily = "evm",
+      ): Promise<Signed | null> => {
+        const fields = {
           domain: window.location.host,
           uri: window.location.origin,
           nonce: nonce.nonce,
-          version: "1",
-          statement: proofStatement(act, vars.target),
-          resources: [proofResource(act, vars.target)],
-        });
+          version: "1" as const,
+          statement: proofStatement(act, target),
+          resources: [proofResource(act, target)],
+        };
+        const message =
+          signerFamily === "solana"
+            ? createSiwsMessage({ ...fields, address: signer, chainId: "mainnet", issuedAt: new Date().toISOString() })
+            : createSiweMessage({ ...fields, address: getAddress(signer), chainId: 146 });
         try {
           const signature = await sign(message);
           return signature ? { message, signature } : null;
@@ -585,7 +601,7 @@ export function useWalletAct() {
           return null;
         }
       };
-      const own = await signOne(vars.act, vars.signer, vars.sign);
+      const own = await signOne(vars.act, vars.signer, vars.sign, vars.signerFamily);
       if (!own) return { ok: false, reason: "declined" };
       let accountProof: Signed | undefined;
       if (vars.act === "link" && vars.confirm) {

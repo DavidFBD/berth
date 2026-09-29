@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { PlusCircle, Wallet } from "@phosphor-icons/react";
+import { useState, type ReactNode } from "react";
+import { CheckCircle, PlusCircle, Wallet } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
 import { shortenAddress } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { AddRow } from "@/lib/add-wallet-list";
 
 /**
  * "Wallets" in the account drawer (docs/plans/account-linking.md, phase 2):
@@ -18,6 +19,8 @@ import { cn } from "@/lib/utils";
 
 export type WalletRow = {
   address: string;
+  /** "evm" or "solana"; EVM when left out. */
+  family?: string;
   isHome: boolean;
   /** Its hub wallet still holds listings (removing it warns). */
   holds: boolean;
@@ -34,6 +37,8 @@ export function WalletsList({
   emailSession,
   busy,
   initialConfirm = null,
+  initialAddOpen = false,
+  addList,
   onAdd,
   onDismiss,
   onMakeHome,
@@ -51,6 +56,9 @@ export function WalletsList({
   emailSession: boolean;
   busy: boolean;
   initialConfirm?: Confirming;
+  initialAddOpen?: boolean;
+  /** What "Add a wallet" opens: the connected addresses by network (AddWalletList). */
+  addList?: ReactNode;
   onAdd?: () => void;
   onDismiss?: () => void;
   onMakeHome?: (address: string) => void;
@@ -58,8 +66,12 @@ export function WalletsList({
 }) {
   const copy = useCopy();
   const [confirming, setConfirming] = useState<Confirming>(initialConfirm);
-  const [hintOpen, setHintOpen] = useState(false);
+  const [hintOpen, setHintOpen] = useState(initialAddOpen);
   const home = wallets.find((wallet) => wallet.isHome);
+  const groups = [
+    { heading: copy.walletsNetworkEvm, wallets: wallets.filter((wallet) => (wallet.family ?? "evm") === "evm") },
+    { heading: copy.walletsNetworkSolana, wallets: wallets.filter((wallet) => wallet.family === "solana") },
+  ].filter((group) => group.wallets.length > 0);
 
   return (
     <div>
@@ -72,11 +84,14 @@ export function WalletsList({
         <UnlinkedWalletLine address={unlinked} busy={busy} onAdd={onAdd} onDismiss={onDismiss} className="mx-3 my-2" />
       )}
 
+      {groups.map((group) => (
+      <div key={group.heading}>
       <div className="px-3 pt-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-        {copy.walletsNetworkEvm}
+        {group.heading}
       </div>
       <ul className="divide-y divide-border">
-        {wallets.map((wallet) => {
+        {group.wallets.map((wallet) => {
+          const solana = wallet.family === "solana";
           const short = shortenAddress(wallet.address, 4);
           const open = confirming?.address === wallet.address ? confirming.kind : null;
           return (
@@ -93,12 +108,12 @@ export function WalletsList({
                     )}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {wallet.isHome ? copy.walletsHomeNote : copy.walletsPayFromNote}
+                    {wallet.isHome ? copy.walletsHomeNote : solana ? copy.walletsSolanaNote : copy.walletsPayFromNote}
                   </span>
                 </div>
                 {!wallet.isHome && !open && (
                   <div className="flex shrink-0 gap-1">
-                    {allowHomeSwitch && (
+                    {allowHomeSwitch && !solana && (
                       <Button variant="ghost" size="xs" onClick={() => setConfirming({ kind: "home", address: wallet.address })}>
                         {copy.walletsMakeHome}
                       </Button>
@@ -135,23 +150,31 @@ export function WalletsList({
           );
         })}
       </ul>
+      </div>
+      ))}
 
       <button
         type="button"
         aria-expanded={hintOpen}
-        onClick={() => (unlinked ? onAdd?.() : setHintOpen((value) => !value))}
+        onClick={() => (unlinked && !addList ? onAdd?.() : setHintOpen((value) => !value))}
         className="flex min-h-12 w-full items-center gap-3 border-t border-border px-3 py-2.5 text-left transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
       >
         <PlusCircle className="size-5 shrink-0 text-primary" />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium text-foreground">{copy.walletsAdd}</span>
-          {hintOpen && !unlinked && (
-            <span className="text-xs text-muted-foreground">
-              {emailSession ? copy.walletsAddHintEmail : copy.walletsAddHint}
-            </span>
+          {hintOpen && addList ? (
+            <span className="text-xs text-muted-foreground">{copy.walletsAddListSub}</span>
+          ) : (
+            hintOpen &&
+            !unlinked && (
+              <span className="text-xs text-muted-foreground">
+                {emailSession ? copy.walletsAddHintEmail : copy.walletsAddHint}
+              </span>
+            )
           )}
         </div>
       </button>
+      {hintOpen && addList}
     </div>
   );
 }
@@ -279,4 +302,108 @@ export function SignedInAsLine({
       </span>
     </div>
   );
+}
+
+/**
+ * What "Add a wallet" opens: one row per network, the address the connected
+ * extension has open there and what adding it means (lib/add-wallet-list).
+ * A multichain extension's other addresses are simply here to add, no
+ * switching; switching is only for a second EVM account, one small hint.
+ */
+export function AddWalletList({
+  rows,
+  comingSoon,
+  busyAddress,
+  onAdd,
+  onConnect,
+}: {
+  rows: AddRow[];
+  comingSoon: string[];
+  /** The address whose signature is being asked for now. */
+  busyAddress: string | null;
+  onAdd?: (row: AddRow) => void;
+  onConnect?: (row: AddRow) => void;
+}) {
+  const copy = useCopy();
+  return (
+    <div className="border-t border-border">
+      <ul className="divide-y divide-border">
+        {rows.map((row) => (
+          <li key={`${row.network}:${row.address ?? ""}`} className="px-3 py-2.5">
+            <div className="flex min-h-10 items-center gap-3">
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm text-foreground">{row.name}</span>
+                {row.address && (
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="money">{shortenAddress(row.address, 4)}</span>
+                    {row.extension && <span className="truncate">{row.extension}</span>}
+                  </span>
+                )}
+              </div>
+              <AddRowControl
+                row={row}
+                busy={busyAddress !== null}
+                pending={busyAddress !== null && busyAddress === row.address}
+                onAdd={onAdd}
+                onConnect={onConnect}
+              />
+            </div>
+            {row.state === "cooling" && <p className="mt-1 text-xs text-muted-foreground">{copy.walletsCoolingShort}</p>}
+            {row.network === "EVM" && row.address && (
+              <p className="mt-1 text-xs text-muted-foreground">{copy.walletsAddHint}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+      {comingSoon.length > 0 && (
+        <p className="border-t border-border px-3 py-2.5 text-xs text-muted-foreground">
+          {copy.walletsComingSoonList(comingSoon.join(", "))}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AddRowControl({
+  row,
+  busy,
+  pending,
+  onAdd,
+  onConnect,
+}: {
+  row: AddRow;
+  busy: boolean;
+  pending: boolean;
+  onAdd?: (row: AddRow) => void;
+  onConnect?: (row: AddRow) => void;
+}) {
+  const copy = useCopy();
+  const quiet = "shrink-0 text-right text-xs text-muted-foreground";
+  switch (row.state) {
+    case "added":
+      return (
+        <span className={cn(quiet, "flex items-center gap-1")}>
+          <CheckCircle weight="duotone" className="size-3.5 text-good" aria-hidden />
+          {copy.walletsAdded}
+        </span>
+      );
+    case "add":
+      return (
+        <Button size="xs" className="shrink-0" disabled={busy || !onAdd} onClick={() => onAdd?.(row)}>
+          {pending ? copy.walletsSignToConfirm : copy.walletsAddOne}
+        </Button>
+      );
+    case "other_account":
+      return <span className={cn(quiet, "max-w-[45%]")}>{copy.walletsBelongsElsewhere}</span>;
+    case "cooling":
+      return null;
+    case "coming_soon":
+      return <span className={quiet}>{copy.walletsComingSoon}</span>;
+    case "connect":
+      return (
+        <Button size="xs" variant="outline" className="shrink-0" disabled={!onConnect} onClick={() => onConnect?.(row)}>
+          {copy.walletsConnectNetwork(row.name)}
+        </Button>
+      );
+  }
 }
