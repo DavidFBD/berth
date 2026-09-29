@@ -16,6 +16,7 @@
     "privy:config": "node scripts/privy-config.mjs",
     "orders:backfill": "node --no-warnings --experimental-strip-types scripts/orders-backfill.mjs",
     "marks:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/marks-backfill.mjs",
+    "multiplier:correct": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/multiplier-correct.mjs",
     "history:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/history-backfill.mjs",
     "portfolio:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/portfolio-backfill.mjs",
     "order-marks:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/order-marks-backfill.mjs",

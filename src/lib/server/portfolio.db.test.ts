@@ -6,6 +6,7 @@ import { readMarks, writeMarks } from "./marks";
 import { runEvening } from "./evening";
 import { fillOrderMarks, loadOrderFacts, loadOrderLog, ordersMissingMarks } from "./order-marks";
 import { recordOrderMarks } from "./orders";
+import { robinhoodRpcFake } from "./robinhood-rpc-fake";
 import {
   loadPortfolioDays,
   readAccountBalances,
@@ -269,14 +270,24 @@ describe("order marks", () => {
     }
   });
 
+  // DefiLlama quotes the share; the chain says SPY's token stood for
+  // 1.001717991 shares from 2026-09-18 and SGOV's for 1.00510177.
   const llama = (prices: Record<string, number>) =>
-    vi.fn(async (url: string) => {
-      const coins: Record<string, { price: number; timestamp: number }> = {};
-      for (const [id, price] of Object.entries(prices)) {
-        if (url.includes(`coingecko:${id}`)) coins[`coingecko:${id}`] = { price, timestamp: 1790340000 };
-      }
-      return new Response(JSON.stringify({ coins }));
-    });
+    vi.fn(
+      robinhoodRpcFake({
+        multipliers: { SPY: 1.001717991, SGOV: 1.00510177 },
+        changes: { SPY: [{ from: 1, to: 1.001717991, effectiveAt: Date.parse("2026-09-18T00:10:33Z") / 1000 }] },
+        genesisSeconds: Date.parse("2026-09-01T00:00:00Z") / 1000,
+        latestBlock: 5_000_000,
+        otherwise: async (url: string) => {
+          const coins: Record<string, { price: number; timestamp: number }> = {};
+          for (const [id, price] of Object.entries(prices)) {
+            if (url.includes(`coingecko:${id}`)) coins[`coingecko:${id}`] = { price, timestamp: 1790340000 };
+          }
+          return new Response(JSON.stringify({ coins }));
+        },
+      }),
+    );
 
   it("records every benchmark at the order's minute in one request, keeps what is stored, and hands them to the order", async () => {
     const user = await account(1);
@@ -289,8 +300,9 @@ describe("order marks", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     expect(await recordOrderMarks(id, new Date("2026-09-24T15:00:00Z"))).toBe(4);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain(`/prices/historical/${Date.parse("2026-09-24T15:00:00Z") / 1000}/`);
+    const llamaCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("coins.llama.fi"));
+    expect(llamaCalls).toHaveLength(1);
+    expect(String(llamaCalls[0][0])).toContain(`/prices/historical/${Date.parse("2026-09-24T15:00:00Z") / 1000}/`);
 
     // SGOV was missing: the order is still short, and the mend fills only that.
     expect((await ordersMissingMarks(10)).map((order) => order.id)).toEqual([id]);
@@ -299,7 +311,14 @@ describe("order marks", () => {
     expect(await ordersMissingMarks(10)).toEqual([]);
 
     const [facts] = await loadOrderFacts(user.id);
-    expect(facts.benchmarkMarks).toEqual({ SPY: 700, QQQ: 600, PAXG: 4000, BTC: 90000, SGOV: 100 });
+    // The listing benchmarks are the token's worth, the others DefiLlama's price as it is.
+    expect(facts.benchmarkMarks).toEqual({
+      SPY: expect.closeTo(700 * 1.001717991, 6),
+      QQQ: 600,
+      PAXG: 4000,
+      BTC: 90000,
+      SGOV: expect.closeTo(100 * 1.00510177, 6),
+    });
   });
 
   it("never throws when DefiLlama is down, and leaves an order without marks unmarked", async () => {

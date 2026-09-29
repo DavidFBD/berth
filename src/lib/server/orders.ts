@@ -12,6 +12,8 @@ import {
   readOrder,
   type OrderRecord,
 } from "@/lib/orders";
+import { cachedMultiplierHistories, toTokenPrices, type MultiplierReader } from "@/lib/server/token-multipliers";
+import { LLAMA_SHARE_QUOTES_FROM_MS } from "@/lib/token-multiplier";
 
 /**
  * Writing the order record at fill time: which listing, how much, what it
@@ -115,20 +117,55 @@ const ORDER_MARK_SEARCH_WIDTH = "4h";
  */
 export const POUR_ORDER_MARKS_MS = 3_000;
 
+/** How far before an order the multiplier window starts: past DefiLlama's search width, with room. */
+const MULTIPLIER_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export async function recordOrderMarks(
   orderId: string,
   placedAt: Date,
   /** How long DefiLlama may take; the pour route passes POUR_ORDER_MARKS_MS. */
   timeoutMs = 8_000,
+  readMultipliers: MultiplierReader = cachedMultiplierHistories,
 ): Promise<number> {
   try {
+    // A listing benchmark (the S&P 500, Nasdaq 100 and Treasury bill funds)
+    // is bought as the token, so its price is the token's: DefiLlama's
+    // share quote times the dividend multiplier (lib/token-multiplier). The
+    // chain read runs beside DefiLlama's, under the same time limit; a
+    // benchmark it misses stays unmarked and the evening mends it.
+    const since = placedAt.getTime() - MULTIPLIER_WINDOW_MS;
+    const listingSymbols = BENCHMARKS.filter((benchmark) => benchmark.listingAddress).map((benchmark) => benchmark.symbol);
+    let multipliers: ReturnType<MultiplierReader> | undefined;
+    if (placedAt.getTime() + MULTIPLIER_WINDOW_MS >= LLAMA_SHARE_QUOTES_FROM_MS) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      multipliers = Promise.race([
+        readMultipliers(listingSymbols, since),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("multiplier read timed out")), timeoutMs);
+        }),
+      ]).finally(() => clearTimeout(timer));
+      multipliers.catch(() => undefined);
+    }
     const prices = await pricesAt(
       BENCHMARKS.map((benchmark) => benchmark.marketId),
       placedAt,
       ORDER_MARK_SEARCH_WIDTH,
       timeoutMs,
     );
-    const found = BENCHMARKS.filter((benchmark) => prices[benchmark.marketId]);
+    const priced = Object.fromEntries(
+      BENCHMARKS.filter((benchmark) => prices[benchmark.marketId]).map((benchmark) => {
+        const { price, pricedAt } = prices[benchmark.marketId];
+        return [benchmark.symbol, [{ timestamp: pricedAt.getTime() / 1000, price, pricedAt }]];
+      }),
+    );
+    const { prices: tokenPrices, unread } = await toTokenPrices(priced, (symbols, sinceMs) =>
+      multipliers ?? readMultipliers(symbols, sinceMs),
+    );
+    if (unread.length > 0) console.warn("[orders] dividend multiplier unread, left unmarked", orderId, unread.join(","));
+    const found = BENCHMARKS.filter((benchmark) => tokenPrices[benchmark.symbol]?.[0]).map((benchmark) => ({
+      symbol: benchmark.symbol,
+      ...tokenPrices[benchmark.symbol][0],
+    }));
     if (found.length === 0) return 0;
     const rows = (await getSql().query(
       `insert into order_marks (order_id, symbol, price, priced_at, source)
@@ -138,9 +175,9 @@ export async function recordOrderMarks(
        returning symbol`,
       [
         orderId,
-        found.map((benchmark) => benchmark.symbol),
-        found.map((benchmark) => prices[benchmark.marketId].price),
-        found.map((benchmark) => prices[benchmark.marketId].pricedAt.toISOString()),
+        found.map((mark) => mark.symbol),
+        found.map((mark) => mark.price),
+        found.map((mark) => mark.pricedAt.toISOString()),
       ],
     )) as unknown[];
     return rows.length;

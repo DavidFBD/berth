@@ -47,6 +47,31 @@ export const MARKET_ID_BY_SYMBOL: Readonly<Record<string, string>> = {
   SLV: "ishares-silver-trust-robinhood-tokenized-stock",
 };
 
+/**
+ * Ticker → the same Robinhood token's contract on Robinhood Chain (chain
+ * 4663), where its `uiMultiplier()` lives: the shares one token stands for,
+ * which grows as dividends are reinvested (lib/token-multiplier). The token
+ * on Sonic is SODAX's wrapper of one of these, unit for unit, and has no
+ * multiplier of its own. Verified 2026-09-29 against Robinhood's
+ * `/rhj/assets` (each listing's one deployment) and on chain: every address
+ * answers the listing's `symbol()` and a `uiMultiplier()`.
+ */
+export const ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL: Readonly<Record<string, `0x${string}`>> = {
+  SPCX: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa",
+  NVDA: "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+  GME: "0x1b0E319c6A659F002271B69dB8A7df2F911c153E",
+  MSTR: "0xec262a75e413fAfD0dF80480274532C79D42da09",
+  AAPL: "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+  TSLA: "0x322F0929c4625eD5bAd873c95208D54E1c003b2d",
+  MU: "0xfF080c8ce2E5feadaCa0Da81314Ae59D232d4afD",
+  SNDK: "0xB90A19fF0Af67f7779afF50A882A9CfF42446400",
+  SPY: "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
+  QQQ: "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
+  SGOV: "0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5",
+  USO: "0xa30FA36Db767ad9eD3f7a60fC79526fB4d56D344",
+  SLV: "0x411eFb0E7f985935DAec3D4C3ebaEa0d0AD7D89f",
+};
+
 /** CoinGecko id → ticker, to read a keyed upstream response back. */
 export const SYMBOL_BY_MARKET_ID: Readonly<Record<string, string>> =
   Object.fromEntries(

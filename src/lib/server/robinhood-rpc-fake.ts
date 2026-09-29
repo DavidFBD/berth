@@ -1,0 +1,60 @@
+import { ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } from "@/lib/market-ids";
+import { MULTIPLIER_ONE, type MultiplierChange } from "@/lib/token-multiplier";
+
+/**
+ * A stand-in for Robinhood Chain's RPC in tests (lib/server/token-
+ * multipliers): answers the batched `eth_blockNumber`, `uiMultiplier()`,
+ * `eth_getBlockByNumber` and `eth_getLogs` calls from a table of
+ * multipliers, one block a second from `genesisSeconds`. Anything not an
+ * RPC request goes to `otherwise`.
+ */
+export function robinhoodRpcFake({
+  multipliers = {},
+  changes = {},
+  latestBlock = 25_000_000,
+  genesisSeconds = 1_765_000_000,
+  otherwise,
+}: {
+  multipliers?: Record<string, number>;
+  changes?: Record<string, MultiplierChange[]>;
+  latestBlock?: number;
+  genesisSeconds?: number;
+  otherwise?: (url: string, init?: RequestInit) => Promise<Response>;
+} = {}) {
+  const bySymbolAddress = new Map(
+    Object.entries(ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL).map(([symbol, address]) => [address.toLowerCase(), symbol]),
+  );
+  const word = (value: bigint) => value.toString(16).padStart(64, "0");
+  const fixed = (value: number) => BigInt(Math.round(value * 1e9)) * (MULTIPLIER_ONE / 1_000_000_000n);
+  return async (url: string | URL, init?: RequestInit): Promise<Response> => {
+    if (!String(url).includes("rpc.mainnet.chain.robinhood.com")) {
+      if (otherwise) return otherwise(String(url), init);
+      return new Response("not found", { status: 404 });
+    }
+    type Param = { to?: string; address?: string; fromBlock?: string; toBlock?: string };
+    const calls = JSON.parse(String(init?.body)) as { id: number; method: string; params: [Param | string, ...unknown[]] }[];
+    const answers = calls.map((call) => {
+      if (call.method === "eth_blockNumber") return { id: call.id, result: `0x${latestBlock.toString(16)}` };
+      if (call.method === "eth_getBlockByNumber") {
+        const number = Number.parseInt(String(call.params[0]), 16);
+        return { id: call.id, result: { timestamp: `0x${(genesisSeconds + number).toString(16)}` } };
+      }
+      const param = (typeof call.params[0] === "object" ? call.params[0] : {}) as Param;
+      const symbol = bySymbolAddress.get(String(param.to ?? param.address).toLowerCase()) ?? "";
+      if (call.method === "eth_call") return { id: call.id, result: `0x${word(fixed(multipliers[symbol] ?? 1))}` };
+      if (call.method === "eth_getLogs") {
+        const from = Number.parseInt(String(param.fromBlock), 16);
+        const to = Number.parseInt(String(param.toBlock), 16);
+        const logs = (changes[symbol] ?? [])
+          .filter((change) => {
+            const block = change.effectiveAt - genesisSeconds;
+            return block >= from && block <= to;
+          })
+          .map((change) => ({ data: `0x${word(fixed(change.from))}${word(fixed(change.to))}${word(BigInt(change.effectiveAt))}` }));
+        return { id: call.id, result: logs };
+      }
+      return { id: call.id, error: { message: "unknown method" } };
+    });
+    return new Response(JSON.stringify(answers));
+  };
+}

@@ -8,6 +8,7 @@ import {
   tradingDayCloses,
   withoutSpikes,
 } from "@/lib/performance";
+import { cachedMultiplierHistories, toTokenPrices, type MultiplierReader } from "@/lib/server/token-multipliers";
 
 /**
  * The listing-performance route's server half (the route in
@@ -19,7 +20,10 @@ import {
  * line and the change come from DefiLlama's keyless coins API, keyed by the
  * CoinGecko ids pinned in `lib/market-ids` (the same Robinhood token on
  * Robinhood's own chain: the same instrument, a different deployment). The
- * app already reaches DefiLlama for deposit token prices.
+ * app already reaches DefiLlama for deposit token prices. DefiLlama quotes
+ * the share, so each point is multiplied by the token's dividend
+ * multiplier at its moment (lib/token-multiplier) and the line is the
+ * token's, the same basis as the oracle's price beside it.
  *
  * One source, not two. An earlier draft took the change figures from
  * DefiLlama's own `/percentage` endpoint, which compares the price now
@@ -97,11 +101,13 @@ type ChartResponse = {
   >;
 };
 
-/** One `/chart` read: daily marks for as many listings as the budget allows. */
+type Point = { timestamp: number; price: number };
+
+/** One `/chart` read: daily points for as many listings as the budget allows, by symbol. */
 async function readChunk(
   ids: readonly string[],
   start: number,
-): Promise<Record<string, ListingPerformance>> {
+): Promise<Record<string, Point[]>> {
   const url =
     `${LLAMA_BASE}/chart/${ids.map((id) => `coingecko:${id}`).join(",")}` +
     `?start=${start}&span=${SERIES_SPAN_DAYS}&period=1d`;
@@ -112,33 +118,37 @@ async function readChunk(
   if (!response.ok) throw new Error(`DefiLlama answered ${response.status}`);
   const payload = (await response.json()) as ChartResponse;
 
-  const found: Record<string, ListingPerformance> = {};
+  const found: Record<string, Point[]> = {};
   for (const [key, value] of Object.entries(payload?.coins ?? {})) {
     const symbol = SYMBOL_BY_MARKET_ID[key.replace("coingecko:", "")];
     if (!symbol) continue;
-    const points = (value?.prices ?? []).filter(
-      (point): point is { timestamp: number; price: number } =>
+    found[symbol] = (value?.prices ?? []).filter(
+      (point): point is Point =>
         typeof point?.price === "number" && typeof point?.timestamp === "number",
     );
-    // Two passes, in this order: the calendar removes the weekend and
-    // holiday marks, which is most of the damage and needs no judgement,
-    // and the despike then catches what the thinnest listings print inside
-    // the week.
-    const open = tradingDayCloses(points);
-    const { dates, values } = withoutSpikes(open.dates, open.values);
-    // One close draws no line and measures no change.
-    if (values.length < 2) continue;
-    const previousDropped = dates[dates.length - 2] !== open.dates[open.dates.length - 2];
-    found[symbol] = {
-      series: values,
-      seriesFrom: dates[0],
-      seriesDates: dates,
-      ...(previousDropped
-        ? { noCleanClose: true }
-        : { changePct: percentChange(values[values.length - 2], values[values.length - 1]) }),
-    };
   }
   return found;
+}
+
+/** A listing's line and change from its daily points, or undefined when one close is all there is. */
+function performanceOf(points: readonly Point[]): ListingPerformance | undefined {
+  // Two passes, in this order: the calendar removes the weekend and
+  // holiday marks, which is most of the damage and needs no judgement,
+  // and the despike then catches what the thinnest listings print inside
+  // the week.
+  const open = tradingDayCloses([...points]);
+  const { dates, values } = withoutSpikes(open.dates, open.values);
+  // One close draws no line and measures no change.
+  if (values.length < 2) return undefined;
+  const previousDropped = dates[dates.length - 2] !== open.dates[open.dates.length - 2];
+  return {
+    series: values,
+    seriesFrom: dates[0],
+    seriesDates: dates,
+    ...(previousDropped
+      ? { noCleanClose: true }
+      : { changePct: percentChange(values[values.length - 2], values[values.length - 1]) }),
+  };
 }
 
 /**
@@ -146,7 +156,9 @@ async function readChunk(
  * lib/server/moves, which reads the same marks the board draws, from the
  * same fetch cache.
  */
-export async function loadPerformance(): Promise<ListingPerformanceResponse> {
+export async function loadPerformance(
+  readMultipliers: MultiplierReader = cachedMultiplierHistories,
+): Promise<ListingPerformanceResponse> {
   const ids = Object.values(MARKET_ID_BY_SYMBOL);
   const start = Math.floor(Date.now() / 1000) - SERIES_SPAN_DAYS * 86_400;
   const payload: ListingPerformanceResponse = {
@@ -163,9 +175,10 @@ export async function loadPerformance(): Promise<ListingPerformanceResponse> {
   );
 
   const failures: string[] = [];
+  const points: Record<string, Point[]> = {};
   for (const result of results) {
     if (result.status === "fulfilled") {
-      Object.assign(payload.performance, result.value);
+      Object.assign(points, result.value);
     } else {
       failures.push(
         result.reason instanceof Error
@@ -173,6 +186,17 @@ export async function loadPerformance(): Promise<ListingPerformanceResponse> {
           : "upstream request failed",
       );
     }
+  }
+
+  // The line is what a token was worth, so a dividend's reinvestment is
+  // not drawn as a fall. A listing whose multiplier could not be read
+  // keeps DefiLlama's share quotes: the shape differs only across a
+  // dividend, and a line is better than none.
+  const { prices, unread } = await toTokenPrices(points, readMultipliers);
+  if (unread.length > 0) failures.push(`dividend multiplier unread for ${unread.join(",")}`);
+  for (const [symbol, series] of Object.entries({ ...points, ...prices })) {
+    const performance = performanceOf(series);
+    if (performance) payload.performance[symbol] = performance;
   }
 
   // What the caption may claim: from the earliest close anyone returned to

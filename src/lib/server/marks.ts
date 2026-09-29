@@ -11,11 +11,14 @@ import {
 import { chunkByPointBudget } from "@/lib/performance";
 import { repriceHolding, type Holding } from "@/lib/portfolio-days";
 import { getSql } from "@/lib/server/db";
+import { cachedMultiplierHistories, toTokenPrices, type MultiplierReader } from "@/lib/server/token-multipliers";
 
 /**
  * The stored marks' IO: DefiLlama's `/chart` in, table `marks` out, and
  * the read the portfolio draws from. The rules (what time a mark is, what
- * is kept) are in lib/marks.
+ * is kept) are in lib/marks. A listing's mark is what one token is worth,
+ * so DefiLlama's share quote is multiplied by the token's dividend
+ * multiplier on the way in (lib/token-multiplier).
  */
 
 const LLAMA_BASE = "https://coins.llama.fi";
@@ -55,12 +58,16 @@ async function readChart(
 
 /**
  * Points for every symbol, `spanDays` from `fromDay`, cut to the point
- * budget. A chunk that fails costs its own symbols and is reported.
+ * budget, as token prices (lib/server/token-multipliers toTokenPrices). A
+ * chunk that fails costs its own symbols and is reported, and so does a
+ * listing whose multiplier could not be read: its points are the share's,
+ * and a mark stored from them would stand below the token's worth.
  */
 export async function fetchMarkPoints(
   symbols: readonly string[],
   fromDay: IsoDay,
   spanDays: number,
+  readMultipliers: MultiplierReader = cachedMultiplierHistories,
 ): Promise<{ points: Record<string, Point[]>; failures: string[] }> {
   const chunks = chunkByPointBudget(symbols, spanDays, MARKS_POINT_BUDGET);
   const results = await Promise.allSettled(
@@ -75,7 +82,9 @@ export async function fetchMarkPoints(
       failures.push(`${chunks[index].join(",")}: ${reason}`);
     }
   });
-  return { points, failures };
+  const { prices, unread } = await toTokenPrices(points, readMultipliers);
+  for (const symbol of unread) failures.push(`${symbol}: dividend multiplier unread`);
+  return { points: prices, failures };
 }
 
 /**
@@ -181,16 +190,18 @@ export async function refreshMarks({
   writeDays = 7,
   contextDays = 3,
   symbols = Object.keys(MARKS_MARKET_ID_BY_SYMBOL),
+  readMultipliers = cachedMultiplierHistories,
 }: {
   today?: IsoDay;
   writeDays?: number;
   contextDays?: number;
   symbols?: readonly string[];
+  readMultipliers?: MultiplierReader;
 } = {}): Promise<MarksRunSummary> {
   const span = writeDays + contextDays + 1;
   const fromDay = addDays(today, -(writeDays + contextDays));
   const writeFrom = addDays(today, -writeDays);
-  const { points, failures } = await fetchMarkPoints(symbols, fromDay, span);
+  const { points, failures } = await fetchMarkPoints(symbols, fromDay, span, readMultipliers);
   const summary: MarksRunSummary = {
     symbols: symbols.length,
     written: 0,
