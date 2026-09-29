@@ -49,7 +49,7 @@ export function EmailNudgeLineView({
           transition={{ duration: 0.24, ease: EASE_LIFT }}
           role="status"
           data-testid="email-nudge"
-          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-border bg-card px-3 py-2"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border bg-card py-2.5 pr-2.5 pl-[18px] lg:pl-5"
         >
           <EnvelopeSimple weight="duotone" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 text-sm text-foreground">{copy.emailNudgeText}</span>

@@ -55,10 +55,13 @@ export function FundsModule({
     connected && !isLoading && (holdings.length > 0 || erroredChains.length > 0);
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <Coins weight="duotone" className="size-[22px] shrink-0 text-secondary-foreground" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <h2 className="text-[15px] leading-tight font-medium text-foreground">
+    // On a phone the actions drop under the words, in line with them.
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-[18px] py-4 lg:px-6 lg:py-5">
+      <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-secondary-foreground">
+        <Coins weight="duotone" className="size-[18px]" />
+      </span>
+      <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-3rem)]">
+        <h2 className="font-display text-base leading-tight text-foreground">
           {worth ? (
             <MoneyName name={copy.fundsTitle} amount={money.format(totalUsd)} />
           ) : (
@@ -68,7 +71,7 @@ export function FundsModule({
         {connected && isLoading ? (
           <Skeleton className="mt-1 h-3.5 w-36" />
         ) : (
-          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+          <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
             {worth
               ? holdings.length > 0
                 ? copy.fundsReadyLine(holdings.length)
@@ -102,11 +105,11 @@ export function FundsModule({
           wallet holds its own funds and needs no button; a browser with
           neither is offered the sign in. */}
       {signedIn ? (
-        <Button variant="outline" size="xs" className="shrink-0" onClick={onTopUp}>
+        <Button variant="outline" size="sm" className="shrink-0 max-sm:ml-12" onClick={onTopUp}>
           {copy.topUp}
         </Button>
       ) : !connected ? (
-        <Button variant="outline" size="xs" className="shrink-0" onClick={privy.login}>
+        <Button variant="outline" size="sm" className="shrink-0 max-sm:ml-12" onClick={privy.login}>
           {copy.signIn}
         </Button>
       ) : null}

@@ -81,10 +81,10 @@ export function NudgeLineView({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.24, ease: EASE_LIFT }}
-          className="flex items-start gap-2.5 rounded-xl bg-muted py-2 pr-2 pl-3.5"
+          className="flex items-start gap-3 rounded-lg border border-border bg-card py-2.5 pr-2.5 pl-[18px] lg:pl-5"
           role="status"
         >
-          <Glyph weight="duotone" aria-hidden className="mt-1 size-[18px] shrink-0 text-secondary-foreground" />
+          <Glyph weight="duotone" aria-hidden className="mt-1 size-[17px] shrink-0 text-muted-foreground" />
           <p className="min-w-0 flex-1 py-0.5 text-sm text-foreground">
             {shown.text}
             {shown.action ? (
@@ -95,7 +95,7 @@ export function NudgeLineView({
                     href={shown.action.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-0.5 font-semibold text-foreground underline underline-offset-[3px]"
+                    className="inline-flex items-center gap-0.5 font-medium text-foreground underline decoration-input underline-offset-[3px] hover:decoration-foreground"
                   >
                     {shown.action.label}
                     <ArrowUpRight weight="duotone" className="size-3.5" aria-hidden />
@@ -104,7 +104,7 @@ export function NudgeLineView({
                   <button
                     type="button"
                     onClick={shown.action.run}
-                    className="font-semibold text-foreground underline underline-offset-[3px]"
+                    className="font-medium text-foreground underline decoration-input underline-offset-[3px] hover:decoration-foreground"
                   >
                     {shown.action.label}
                   </button>

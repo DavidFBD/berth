@@ -39,7 +39,7 @@ function Inspector() {
   return (
     <>
       <WalletDrawer open={drawerOpen} onOpenChange={() => {}} />
-      <section className="rounded-2xl border border-border bg-card p-4">
+      <section className="rounded-lg border border-border bg-card p-4">
         <div className="mb-2 text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
           Offered on the welcome screen
         </div>
@@ -56,7 +56,7 @@ function Inspector() {
         )}
       </section>
       {Object.entries(byChain).map(([family, connectors]) => (
-        <section key={family} className="rounded-2xl border border-border bg-card p-4">
+        <section key={family} className="rounded-lg border border-border bg-card p-4">
           <div className="mb-2 text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
             {family} · {connectors?.length ?? 0}
           </div>

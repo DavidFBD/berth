@@ -50,10 +50,10 @@ import type { ChatDraft } from "@/components/chat/chat-parts";
 import { draftOpening, type BuyPrefill, type SellPrefill } from "@/lib/draft-open";
 
 /** The board's frame, shared with the dev gallery (/dev/board?home=…) so the two cannot drift. */
-export const BOARD_PAGE = "mx-auto flex w-full max-w-lg flex-col px-4 pb-12 lg:max-w-[75rem] lg:px-8";
+export const BOARD_PAGE = "mx-auto flex w-full max-w-lg flex-col px-4 pb-12 lg:max-w-[80rem] lg:px-10";
 export const BOARD_GRID =
-  "flex flex-col gap-3.5 lg:grid lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-6";
-export const BOARD_TRACK = "flex min-w-0 flex-col gap-3.5";
+  "flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-5";
+export const BOARD_TRACK = "flex min-w-0 flex-col gap-3 lg:gap-4";
 
 const ChatHost = dynamic(() => import("@/components/chat/chat-sheet"), { ssr: false });
 
@@ -246,7 +246,7 @@ export function Home() {
         right track simply follows the left, and Ask docks at the foot.
       */}
       <div className={cn(BOARD_PAGE, askAvailable !== false && DOCK_CLEARANCE)}>
-        <HomeHeader onOpenChat={() => openChat()}>
+        <HomeHeader onOpenChat={askAvailable === false ? () => openChat() : undefined}>
           <AccountButton
             open={accountOpen}
             onOpenChange={onAccountOpenChange}
@@ -361,23 +361,23 @@ export function Home() {
 }
 
 /**
- * The sticky bar: the brand, Ask, the info button and the account pill
- * (passed in, so the dev gallery can shoot the bar without a session).
+ * The sticky bar: the brand, the info button and the account pill (passed
+ * in, so the dev gallery can shoot the bar without a session). Ask lives in
+ * the right column on a desktop and in the dock on a phone, so the bar only
+ * carries its button while neither is shown, for an account whose Assistant
+ * is still locked: the sheet it opens says what unlocks it.
  */
-export function HomeHeader({ onOpenChat, children }: { onOpenChat: () => void; children: React.ReactNode }) {
+export function HomeHeader({ onOpenChat, children }: { onOpenChat?: () => void; children: React.ReactNode }) {
   const copy = useCopy();
   return (
-    <header
-      data-glass="bar"
-      className="group/bar sticky top-0 z-10 -mx-4 mb-4 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur lg:-mx-8 lg:mb-5 lg:px-8 lg:py-4"
-    >
+    <header className="group/bar sticky top-0 z-10 -mx-4 mb-4 flex h-14 items-center justify-between border-b border-border bg-background px-4 lg:-mx-10 lg:mb-7 lg:h-[60px] lg:px-10">
       {/* Brand never shrinks; the account pill truncates instead. */}
       <div className="flex shrink-0 items-center gap-2">
-        <BerthMark className="size-[26px]" />
-        <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">{copy.brand}</h1>
+        <BerthMark className="size-[22px]" />
+        <h1 className="font-wordmark text-[19px] leading-none text-foreground">{copy.brand}</h1>
       </div>
-      <div className="flex min-w-0 items-center gap-1">
-        <ChatButton onOpen={onOpenChat} />
+      <div className="flex min-w-0 items-center gap-2">
+        {onOpenChat && <ChatButton onOpen={onOpenChat} />}
         <InfoDrawer />
         {children}
       </div>

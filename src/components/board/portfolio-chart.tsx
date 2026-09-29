@@ -104,7 +104,7 @@ export function PortfolioChart({
   const box = useRef<HTMLDivElement>(null);
   const shown = withBenchmark ? days : days.map((day) => ({ ...day, benchmark: null }));
   const scale = chartScale(shown);
-  if (!scale || days.length < 2) return <div className="h-24 lg:h-32" />;
+  if (!scale || days.length < 2) return <div className="h-[150px] lg:h-[190px]" />;
 
   const count = days.length;
   const valuePath = linePath(
@@ -127,7 +127,7 @@ export function PortfolioChart({
   return (
     <div
       ref={box}
-      className="relative h-24 cursor-crosshair touch-pan-y select-none lg:h-32"
+      className="relative h-[150px] cursor-crosshair touch-pan-y select-none lg:h-[190px]"
       onPointerDown={pick}
       onPointerMove={pick}
       onPointerLeave={leave}

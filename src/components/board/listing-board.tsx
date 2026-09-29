@@ -138,7 +138,7 @@ export function ListingBoard({
         <button
           type="button"
           onClick={() => onBuy(listing)}
-          className="grid min-h-14 min-w-0 flex-1 grid-cols-[2rem_minmax(0,1fr)_3rem_auto_2.75rem] items-center gap-2.5 px-4 lg:gap-3 py-2.5 text-left transition-[background-color,transform] duration-150 ease-lift hover:bg-muted/60 active:scale-[0.995] active:bg-muted lg:grid-cols-[2rem_minmax(0,1fr)_7rem_5.5rem_2.75rem]"
+          className="grid min-h-14 min-w-0 flex-1 grid-cols-[2.25rem_minmax(0,1fr)_3rem_auto_2.75rem] items-center gap-2.5 px-[18px] lg:px-6 lg:gap-3 py-2.5 text-left transition-[background-color,transform] duration-150 ease-lift hover:bg-muted/60 active:scale-[0.995] active:bg-muted lg:grid-cols-[2.25rem_minmax(0,1fr)_7rem_5.5rem_2.75rem]"
         >
           {/*
             The name takes what it needs and the line takes the rest.
@@ -149,7 +149,7 @@ export function ListingBoard({
           <TickerTile symbol={listing.symbol} />
           <div className="min-w-0">
             {/* No "Held" tag: every held row sits under "Yours". */}
-            <div className="truncate text-sm font-semibold text-foreground">{listing.name}</div>
+            <div className="truncate text-[14.5px] leading-snug font-medium text-foreground">{listing.name}</div>
             <div className="money text-xs text-muted-foreground">{listing.symbol}</div>
             {/* Only when there is something to say. Twelve rows reading
                 "Stock" under twelve company names is a column of noise,
@@ -213,7 +213,7 @@ export function ListingBoard({
           {/* Over the row's last track, beside the button rather than in
               it, so the name keeps the width a Buy would have taken. */}
           {hasPosition && onSell && (
-            <div className="absolute inset-y-0 right-4 flex items-center">
+            <div className="absolute inset-y-0 right-[18px] flex items-center lg:right-6">
               <motion.div whileTap={{ scale: 0.96 }} transition={SPRING_POP}>
                 <Button variant="outline" size="sm" onClick={() => onSell(listing)}>
                   {copy.sell}
@@ -232,7 +232,7 @@ export function ListingBoard({
           cursor that is about to click it.
         */}
         {onFilterNews && (
-          <div className="absolute inset-y-0 right-[19rem] hidden items-center lg:flex">
+          <div className="absolute inset-y-0 right-[19.5rem] hidden items-center lg:flex">
             <motion.button
               type="button"
               onClick={() => onFilterNews(listing)}
@@ -290,8 +290,8 @@ export function ListingBoard({
       {!ranked && performance.isLoading ? (
         <ul aria-hidden className="divide-y divide-border border-t border-border">
           {movers.map((listing) => (
-            <li key={listing.address} className="flex min-h-14 items-center gap-2.5 px-4 py-2.5 lg:gap-3">
-              <Skeleton className="size-8 rounded-lg" />
+            <li key={listing.address} className="flex min-h-14 items-center gap-2.5 px-[18px] lg:px-6 py-2.5 lg:gap-3">
+              <Skeleton className="size-9 rounded-full" />
               <div className="flex flex-1 flex-col gap-1.5">
                 <Skeleton className="h-4 w-24" />
                 <Skeleton className="h-3 w-12" />
@@ -326,5 +326,5 @@ export function ListingBoard({
 const MOVERS_SHOWN = 3;
 
 function GroupLabel({ children }: { children: string }) {
-  return <p className="px-4 pt-2.5 pb-2 text-xs text-muted-foreground">{children}</p>;
+  return <p className="border-t border-border bg-background px-[18px] pt-2.5 pb-1.5 text-xs text-muted-foreground lg:px-6">{children}</p>;
 }

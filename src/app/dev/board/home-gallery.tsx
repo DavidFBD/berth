@@ -97,7 +97,7 @@ export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeSce
       {/* The dev overlays sit over the dock; the gallery is for looking at it. */}
       <style>{`[data-wallet-diagnostics], nextjs-portal { display: none !important; }`}</style>
       <div className={cn(BOARD_PAGE, dock && DOCK_CLEARANCE)}>
-        <HomeHeader onOpenChat={noop}>
+        <HomeHeader>
           <RankChip onClick={noop} presence />
         </HomeHeader>
         <div className={BOARD_GRID}>

@@ -251,7 +251,7 @@ export function NewsFeed({
             <div
               role="tablist"
               aria-label={copy.newsTabsLabel}
-              className="flex shrink-0 gap-0.5 rounded-full bg-muted p-0.5"
+              className="flex shrink-0 gap-0.5 rounded-full border border-border bg-card p-0.5"
             >
               {tabs.map((entry) => {
                 const active = entry.id === tab;
@@ -262,9 +262,9 @@ export function NewsFeed({
                     role="tab"
                     aria-selected={active}
                     onClick={() => setTab(entry.id)}
-                    className={`relative rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors duration-150 ease-lift ${
+                    className={`relative inline-flex h-[26px] items-center rounded-full px-3 text-xs font-medium transition-colors duration-150 ease-lift ${
                       active
-                        ? "text-foreground"
+                        ? "text-background"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -272,7 +272,7 @@ export function NewsFeed({
                       <motion.span
                         layoutId="news-tab"
                         transition={{ duration: 0.22, ease: EASE_LIFT }}
-                        className="absolute inset-0 rounded-full bg-background shadow-xs"
+                        className="absolute inset-0 rounded-full bg-foreground"
                       />
                     )}
                     <span className="relative">{entry.label}</span>
@@ -293,7 +293,7 @@ export function NewsFeed({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18, ease: EASE_LIFT }}
-              className="flex items-center gap-2 px-4 pb-2.5"
+              className="flex items-center gap-2 px-[18px] lg:px-6 pb-2.5"
             >
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
                 {copy.newsFilteredTo(filter.name)}
@@ -316,7 +316,7 @@ export function NewsFeed({
       </div>
 
       {((tab === "posts" && posts.curation) || updatedAt !== undefined) && (
-        <div className="flex min-h-5 items-center gap-1.5 px-4 pb-3 text-[11px]">
+        <div className="flex min-h-5 items-center gap-1.5 px-[18px] lg:px-6 pb-3 text-[11px]">
           {tab === "posts" && posts.curation && (
             <>
               {/* A 20px slot either way: Jev's still mark, or an orb while
@@ -344,7 +344,7 @@ export function NewsFeed({
         <ul className="divide-y divide-border border-t border-border">
           {/* As many as will show, up to three, so nothing jumps when they land. */}
           {Array.from({ length: Math.min(limit ?? 3, 3) }, (_, row) => row).map((row) => (
-            <li key={row} className="flex items-start gap-3 px-4 py-3">
+            <li key={row} className="flex items-start gap-3 px-[18px] lg:px-6 py-3">
               <Skeleton
                 className={`size-11 shrink-0 ${tab === "posts" ? "rounded-full" : "rounded-lg"}`}
               />
@@ -356,7 +356,7 @@ export function NewsFeed({
           ))}
         </ul>
       ) : showing.items.length === 0 ? (
-        <p className="border-t border-border px-4 py-4 text-sm text-muted-foreground">
+        <p className="border-t border-border px-[18px] lg:px-6 py-4 text-sm text-muted-foreground">
           {tab === "posts"
             ? filter
               ? copy.postsEmptyFor(filter.name)
@@ -397,7 +397,7 @@ export function NewsFeed({
                         href={post.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-start gap-3 px-4 py-3 transition-[background-color] duration-150 ease-lift hover:bg-muted/60"
+                        className="flex items-start gap-3 px-[18px] py-4 transition-[background-color] duration-150 ease-lift hover:bg-muted/60 lg:px-6"
                       >
                         {/* Name, handle and face travel with the post, and
                             the whole card opens the original. That is what
@@ -451,7 +451,7 @@ export function NewsFeed({
                           </p>
                           {/* Verbatim, and clamped rather than cut: editing
                               a post to fit is not ours to do. */}
-                          <p className="mt-1 line-clamp-5 text-sm leading-snug whitespace-pre-line text-foreground">
+                          <p className="mt-1 line-clamp-5 text-sm leading-normal whitespace-pre-line text-foreground">
                             {post.text}
                           </p>
                           {/* Wraps rather than squeezes: at a narrow column
@@ -531,7 +531,7 @@ export function NewsFeed({
                         href={item.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-start gap-3 px-4 py-3 transition-[background-color] duration-150 ease-lift hover:bg-muted/60"
+                        className="flex items-start gap-3 px-[18px] py-4 transition-[background-color] duration-150 ease-lift hover:bg-muted/60 lg:px-6"
                       >
                         {/* The ticker, in the face the app reserves for
                             numbers, tinted by how the listing moved. It says

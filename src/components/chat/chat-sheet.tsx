@@ -102,7 +102,7 @@ export function ChatSheetFrame({
           <div className="flex shrink-0 items-start justify-between gap-3 px-4 pt-4 pb-2 group-data-[swipe-axis=x]/drawer-popup:pt-6">
             <div className="flex min-w-0 flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
-                <DrawerTitle className="font-display text-lg font-semibold">{copy.chatTitle}</DrawerTitle>
+                <DrawerTitle className="font-display text-lg">{copy.chatTitle}</DrawerTitle>
                 <InfoTip label={copy.chatTitle}>
                   <p>{copy.chatWhy}</p>
                 </InfoTip>

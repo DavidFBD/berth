@@ -22,13 +22,13 @@ export function AssistantCard({ onChoose }: { onChoose: (assistant: AssistantId)
   return (
     <Panel>
       <SectionHeading title={copy.assistantTitle} hint={copy.assistantWhy} className="pb-1" />
-      <p className="px-4 pb-3 text-sm text-secondary-foreground">{copy.assistantCardBody}</p>
-      <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+      <p className="px-[18px] pb-3.5 text-[13.5px] leading-relaxed text-muted-foreground lg:px-6">{copy.assistantCardBody}</p>
+      <div className="grid grid-cols-3 gap-1.5 px-[18px] pb-5 lg:px-6 lg:pb-[22px]">
         {assistants.map((assistant) => (
           <Button
             key={assistant.id}
             variant="outline"
-            className="h-9 min-w-0 gap-1.5"
+            className="h-9 min-w-0 gap-1.5 px-2"
             aria-label={copy.assistantSheetTitle(assistant.name)}
             onClick={() => onChoose(assistant.id)}
           >

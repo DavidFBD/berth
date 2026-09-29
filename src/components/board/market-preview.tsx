@@ -35,7 +35,7 @@ const SHOWN = STOCK_LISTINGS.slice(0, 6);
  * Read only on purpose. Nothing here opens a drawer, because everything
  * here happens before there is an account to buy into.
  */
-export function MarketPreview() {
+export function MarketPreview({ count = SHOWN.length }: { count?: number } = {}) {
   const copy = useCopy();
   const money = useMoney();
   const prices = useListingPrices();
@@ -45,7 +45,7 @@ export function MarketPreview() {
     <Panel surface="sheet" className="w-full text-left">
       <SectionHeading title={copy.welcomePreviewTitle} hint={copy.welcomePreviewHint} />
       <ul className="divide-y divide-border border-t border-border">
-        {SHOWN.map((listing) => {
+        {SHOWN.slice(0, count).map((listing) => {
           const price = prices.priceOf(listing);
           const moved = performance.performanceOf(listing);
           const series = moved?.series;
@@ -56,10 +56,10 @@ export function MarketPreview() {
           return (
             <li
               key={listing.address}
-              className="grid grid-cols-[minmax(0,1fr)_3.5rem_auto] items-center gap-3 px-4 py-2.5"
+              className="grid grid-cols-[minmax(0,1fr)_3.5rem_auto] items-center gap-3 px-[18px] lg:px-6 py-2.5"
             >
               <div className="flex min-w-0 items-baseline gap-2">
-                <span className="truncate text-sm font-semibold text-foreground">
+                <span className="truncate text-[14.5px] font-medium text-foreground">
                   {listing.name}
                 </span>
                 <span className="money text-xs text-muted-foreground">

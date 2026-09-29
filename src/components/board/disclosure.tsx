@@ -45,7 +45,7 @@ export function DisclosureRow({
       aria-controls={controls}
       onClick={onToggle}
       className={cn(
-        "flex min-h-11 w-full items-center justify-between gap-3 border-t border-border px-4 py-2.5 text-left text-sm font-medium text-secondary-foreground outline-none transition-colors duration-150 ease-lift hover:bg-muted/60 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset",
+        "flex min-h-12 w-full items-center justify-between gap-3 border-t border-border px-[18px] py-3 text-left text-[13.5px] text-secondary-foreground lg:px-6 outline-none transition-colors duration-150 ease-lift hover:bg-muted/60 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset",
         className,
       )}
     >
@@ -53,7 +53,7 @@ export function DisclosureRow({
       <CaretDown
         weight="duotone"
         aria-hidden
-        className={cn("size-4 transition-transform duration-200 ease-lift", open && "rotate-180")}
+        className={cn("size-3.5 text-muted-foreground transition-transform duration-200 ease-lift", open && "rotate-180")}
       />
     </button>
   );

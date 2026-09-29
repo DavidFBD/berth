@@ -87,10 +87,10 @@ export function WaitingStripView({ orders, onOpen }: { orders: readonly LimitOrd
       type="button"
       onClick={onOpen}
       data-testid="waiting-strip"
-      className="flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2 text-left outline-none transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:scale-[0.99] focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="flex min-h-12 w-full items-center gap-3 rounded-lg border border-border bg-card py-2.5 pr-4 pl-[18px] text-left lg:pl-5 outline-none transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:scale-[0.99] focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      <Hourglass weight="duotone" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-[13px] text-secondary-foreground">
+      <Hourglass weight="duotone" className="size-[17px] shrink-0 text-muted-foreground" aria-hidden />
+      <span className="min-w-0 flex-1 truncate text-[13.5px] text-secondary-foreground">
         <span className="money font-medium text-foreground tabular-nums">
           {waiting.usd > 0 ? copy.limitStripLead(formatUsd(waiting.usd)) : copy.limitWaitingTitle}
         </span>
@@ -128,9 +128,9 @@ function WaitingRow({ order, onCancel }: { order: LimitOrderView; onCancel: () =
   const price = formatUsd(order.limitPrice);
   const percent = Math.round(order.progress * 100);
   return (
-    <li className="flex flex-col gap-2 px-4 py-3" data-testid="waiting-row">
+    <li className="flex flex-col gap-2 px-[18px] lg:px-6 py-3" data-testid="waiting-row">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[15px] font-semibold text-foreground">
+        <span className="text-[15px] font-medium text-foreground">
           {order.direction === "buy" ? copy.limitRowBuy(name) : copy.limitRowSell(name)}
         </span>
         <span className="money shrink-0 text-sm text-foreground tabular-nums">
@@ -217,7 +217,7 @@ export function WaitingOrdersDrawer({
           ) : (
             <>
               <WaitingListView orders={orders} onCancel={setCancelling} />
-              {!unpriced ? null : <p className="px-4 pt-2 text-xs text-muted-foreground">{copy.limitUnpricedNote}</p>}
+              {!unpriced ? null : <p className="px-[18px] lg:px-6 pt-2 text-xs text-muted-foreground">{copy.limitUnpricedNote}</p>}
             </>
           )}
         </div>

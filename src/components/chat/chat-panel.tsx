@@ -97,7 +97,7 @@ export function ChatPanel({
       <Shell footer={null}>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <LockSimple className="size-8 text-muted-foreground" aria-hidden />
-          <p className="font-display text-lg font-semibold text-foreground">{copy.chatLockedTitle(status?.unlockRankName ?? RANKS[CHAT_UNLOCK_LEVEL - 1].name)}</p>
+          <p className="font-display text-lg text-foreground">{copy.chatLockedTitle(status?.unlockRankName ?? RANKS[CHAT_UNLOCK_LEVEL - 1].name)}</p>
           <p className="max-w-xs text-sm text-muted-foreground">{copy.chatLockedBody(status?.xpToUnlock ?? 0)}</p>
         </div>
       </Shell>

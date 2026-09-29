@@ -12,6 +12,8 @@
   --font-heading: var(--font-display);
   --font-display: var(--font-display);
   --font-money: var(--font-money);
+  --font-wordmark: var(--font-wordmark);
+  --color-faint: var(--faint);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,10 +54,12 @@
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Flatter than shadcn's scale on purpose (the Seline pass): a card is
+     12px and nothing inside one is rounder than the card itself. */
+  --radius-xl: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.2);
+  --radius-3xl: calc(var(--radius) * 1.5);
+  --radius-4xl: calc(var(--radius) * 2);
 
   /* Motion easings — in @theme so ease-* utilities exist. Roles:
      tea = loops and on-screen morphs (flat start, wrong for entrances) —
@@ -70,63 +74,66 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* ————— Berth tokens ————— plain brokerage palette, light and dark. */
+/* ————— Berth tokens ————— warm stone canvas, flat white hairline cards,
+   one blue accent (2026-09-29, the Seline pass). Light and dark. */
 :root {
   /* Font slots: bind straight to the next/font variables declared in
-     layout.tsx. */
-  --font-display: var(--font-archivo);
-  --font-body: var(--font-public-sans);
+     layout.tsx. Inter Tight for headings, Inter for sentences, Plex Mono for
+     numbers, Archivo only for the wordmark. */
+  --font-display: var(--font-inter-tight);
+  --font-body: var(--font-inter);
   --font-money: var(--font-plex-mono);
+  --font-wordmark: var(--font-archivo);
 
-  --background: #f4f5f2; /* bg */
-  --foreground: #151b1a; /* ink */
-  --card: #ffffff; /* surface */
-  --card-foreground: #151b1a;
+  --background: #f7f6f4; /* canvas, warm stone */
+  --foreground: #1c1917; /* ink */
+  --card: #ffffff; /* card */
+  --card-foreground: #1c1917;
   --popover: #ffffff;
-  --popover-foreground: #151b1a;
-  --primary: #1f4ed8; /* accent */
+  --popover-foreground: #1c1917;
+  --primary: #1f4ed8; /* accent, Berth blue */
   --primary-foreground: #ffffff; /* accent-ink */
-  --secondary: #eceeea; /* surface-2 */
-  --secondary-foreground: #4a5553; /* ink-2 */
-  --muted: #eceeea; /* surface-2 */
-  --muted-foreground: #5f6a67; /* muted, darkened from the sheet's #7F8986 for 4.6:1 on bg */
-  --accent: #e3e9fb; /* accent-soft */
-  --accent-foreground: #151b1a; /* ink */
+  --secondary: #f2f1ee; /* card-2 */
+  --secondary-foreground: #44403c; /* ink-2 */
+  --muted: #f2f1ee; /* card-2 */
+  --muted-foreground: #6f6964; /* muted, 5.0:1 on canvas, 5.4:1 on card */
+  --faint: #a8a29e; /* icons and rules only, never text */
+  --accent: #e3e9fb; /* accent-soft, the headline wash */
+  --accent-foreground: #1c1917; /* ink */
   --destructive: #b3261e; /* bad */
-  --border: #d6dbd8; /* line */
-  --input: #d6dbd8; /* line */
+  --border: #e8e6e5; /* line, the hairline */
+  --input: #d6d3d1; /* line-2, fields and ghost pills */
   --ring: #1f4ed8; /* accent */
   --radius: 0.75rem;
 
   /* Status colors, plus a soft (background-tint) variant of each. */
   --good: #1e7a4c;
-  --good-soft: #e3f3ea;
+  --good-soft: #e5f2ea;
   --warn: #8f5e00;
-  --warn-soft: #fbf0dc;
+  --warn-soft: #f8efdf;
   --bad: #b3261e;
-  --bad-soft: #fbe5e3;
+  --bad-soft: #f8e6e4;
   /* The disc a face is drawn on, and the ink drawn over a face (the lock
      on a locked one). The face SVGs are fixed brand ink on accent-soft with
-     no ground of their own, so their disc is light in BOTH appearances:
-     surface-2 from the light sheet, ink from the light sheet. Defined
-     identically in .dark on purpose. */
-  --avatar-disc: #eceeea;
-  --avatar-ink: #151b1a;
+     no ground of their own, so their disc is light in BOTH appearances.
+     Defined identically in .dark on purpose. */
+  --avatar-disc: #f2f1ee;
+  --avatar-ink: #1c1917;
 
   /* Chart palette: accent plus the status colors, then ink-2. */
   --chart-1: #1f4ed8;
   --chart-2: #1e7a4c;
   --chart-3: #8f5e00;
   --chart-4: #b3261e;
-  --chart-5: #4a5553;
+  --chart-5: #44403c;
 
   --sidebar: #ffffff;
-  --sidebar-foreground: #151b1a;
+  --sidebar-foreground: #1c1917;
   --sidebar-primary: #1f4ed8;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eceeea;
-  --sidebar-accent-foreground: #151b1a;
-  --sidebar-border: #d6dbd8;
+  --sidebar-accent: #f2f1ee;
+  --sidebar-accent-foreground: #1c1917;
+  --sidebar-border: #e8e6e5;
   --sidebar-ring: #1f4ed8;
 
   /* Motion durations. Class-side durations stick to the same scale
@@ -139,52 +146,48 @@
 }
 
 .dark {
-  --background: #0f1413; /* bg */
-  --foreground: #e8ecea; /* ink */
-  --card: #171d1c; /* surface */
-  --card-foreground: #e8ecea;
-  --popover: #171d1c;
-  --popover-foreground: #e8ecea;
+  --background: #0f0e0d; /* canvas */
+  --foreground: #f2f0ee; /* ink */
+  --card: #1a1817; /* card */
+  --card-foreground: #f2f0ee;
+  --popover: #1a1817;
+  --popover-foreground: #f2f0ee;
   --primary: #86a3ff; /* accent */
-  --primary-foreground: #0b1220; /* accent-ink */
-  --secondary: #1f2624; /* surface-2 */
-  --secondary-foreground: #b0bab6; /* ink-2 */
-  --muted: #1f2624; /* surface-2 */
-  --muted-foreground: #7d8884; /* muted */
+  --primary-foreground: #0b1220; /* accent-ink, 7.6:1 on the accent */
+  --secondary: #232120; /* card-2 */
+  --secondary-foreground: #d6d3d1; /* ink-2 */
+  --muted: #232120; /* card-2 */
+  --muted-foreground: #a39d98; /* muted, 6.6:1 on card, 7.1:1 on canvas */
+  --faint: #78716c;
   --accent: #1b2540; /* accent-soft */
-  --accent-foreground: #e8ecea; /* ink */
+  --accent-foreground: #f2f0ee; /* ink */
   --destructive: #f09189; /* bad */
-  --border: #2a3230; /* line */
-  --input: #2a3230; /* line */
+  --border: #2b2826; /* line */
+  --input: #3a3633; /* line-2 */
   --ring: #86a3ff; /* accent */
 
   --good: #7bd3a0;
-  --good-soft: #16281f;
+  --good-soft: #15241b;
   --warn: #e5b85b;
-  --warn-soft: #2e2510;
+  --warn-soft: #2a2211;
   --bad: #f09189;
-  --bad-soft: #301c1a;
-  /* The disc a face is drawn on, and the ink drawn over a face (the lock
-     on a locked one). The face SVGs are fixed brand ink on accent-soft with
-     no ground of their own, so their disc is light in BOTH appearances:
-     surface-2 from the light sheet, ink from the light sheet. Defined
-     identically in .dark on purpose. */
-  --avatar-disc: #eceeea;
-  --avatar-ink: #151b1a;
+  --bad-soft: #2d1b19;
+  --avatar-disc: #f2f1ee;
+  --avatar-ink: #1c1917;
 
   --chart-1: #86a3ff;
   --chart-2: #7bd3a0;
   --chart-3: #e5b85b;
   --chart-4: #f09189;
-  --chart-5: #b0bab6;
+  --chart-5: #d6d3d1;
 
-  --sidebar: #171d1c;
-  --sidebar-foreground: #e8ecea;
+  --sidebar: #1a1817;
+  --sidebar-foreground: #f2f0ee;
   --sidebar-primary: #86a3ff;
   --sidebar-primary-foreground: #0b1220;
-  --sidebar-accent: #1f2624;
-  --sidebar-accent-foreground: #e8ecea;
-  --sidebar-border: #2a3230;
+  --sidebar-accent: #232120;
+  --sidebar-accent-foreground: #f2f0ee;
+  --sidebar-border: #2b2826;
   --sidebar-ring: #86a3ff;
 }
 
@@ -329,20 +332,21 @@ p {
 }
 
 /* ————— Elevation —————
-   Two depths, not one, and tinted with the ink hue rather than pure black:
-   a shadow on this bg that is neutral grey reads as dirt. A sheet is a
-   surface holding a list; raised is a thing that sits above the page. */
+   Cards are flat: a white surface and a hairline, no shadow. `sheet` is kept
+   as a name for code that still asks for it and now draws nothing. Raised is
+   for what truly floats above the page (menus, popovers, the welcome
+   screen's preview), one soft shadow tinted with the ink hue. */
 :root {
-  --shadow-sheet:
-    0 1px 2px -1px rgb(21 27 26 / 0.07), 0 3px 10px -4px rgb(21 27 26 / 0.07);
+  --shadow-sheet: none;
   --shadow-raised:
-    0 2px 4px -2px rgb(21 27 26 / 0.09), 0 12px 28px -10px rgb(21 27 26 / 0.14);
+    0 2px 6px -2px rgb(28 25 23 / 0.08), 0 12px 32px -12px rgb(17 12 46 / 0.14);
+  --shadow-float: 0 12px 45px 0 rgb(17 12 46 / 0.12);
 }
 .dark {
-  --shadow-sheet:
-    0 1px 2px -1px rgb(0 0 0 / 0.5), 0 3px 10px -4px rgb(0 0 0 / 0.45);
+  --shadow-sheet: none;
   --shadow-raised:
-    0 2px 4px -2px rgb(0 0 0 / 0.55), 0 14px 32px -10px rgb(0 0 0 / 0.5);
+    0 2px 6px -2px rgb(0 0 0 / 0.55), 0 14px 32px -10px rgb(0 0 0 / 0.5);
+  --shadow-float: 0 12px 45px 0 rgb(0 0 0 / 0.5);
 }
 
 .shadow-sheet {
@@ -351,62 +355,24 @@ p {
 .shadow-raised {
   box-shadow: var(--shadow-raised);
 }
-
-/* ————— Grain and glass —————
-   Both were banned by the brand sheet until 2026-09-17, tried behind a flag,
-   and then adopted; the sheet records the rule they now live under. They are
-   unconditional from here, so the trial flag and its query parameter are
-   gone.
-
-   Glass is PLACED, not applied, and the placement is the whole rule: it goes
-   on the bar the page scrolls under and on the scrim a drawer sits on, and
-   nowhere else. It is deliberately NOT on the drawer itself. That was built,
-   screenshotted and reverted the same hour, because the board showed through
-   the sheet: "Buy NVIDIA" sat on top of GameStop's price and the confirm
-   button had two rows of someone else's numbers running through it. A
-   surface a person reads money on is opaque. */
-:root {
-  /* Above the drawer (z-50) so one tooth covers the whole screen rather
-     than stopping at the edge of an open sheet. */
-  --z-grain: 100;
-  /* Fine noise at low opacity averages back to flat colour on a retina
-     screen; these are the values that actually read at arm's length. */
-  --grain-opacity: 0.11;
-  --glass-tint: 72%;
-}
-.dark {
-  /* Dark surfaces swallow noise, and they are where banding shows. */
-  --grain-opacity: 0.16;
-  --glass-tint: 64%;
+.shadow-float {
+  box-shadow: var(--shadow-float);
 }
 
-/* One fixed layer of monochrome turbulence over everything, never in the way
-   of a pointer. Fixed rather than repeated per surface, so it does not travel
-   with scroll and reads as the screen's own tooth. */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-grain);
-  pointer-events: none;
-  opacity: var(--grain-opacity);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
-  background-size: 160px 160px;
+/* Headings: Inter Tight at weight 400, tight tracking. The wordmark:
+   Archivo SemiBold, tracked -1.2%, and nothing else in it. In the base
+   layer so a utility on the element still wins. */
+@layer base {
+  .font-display {
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+  .font-wordmark {
+    font-weight: 600;
+    letter-spacing: -0.012em;
+  }
 }
 
-/* The bar the page scrolls under. The inner hairline is the edge refraction
-   that separates glass from a blurred rectangle. `data-glass` names the
-   surface so the rule cannot be carried off by an edit to a utility class. */
-[data-glass="bar"] {
-  background: color-mix(in oklab, var(--background) var(--glass-tint), transparent);
-  backdrop-filter: blur(16px) saturate(1.6);
-  -webkit-backdrop-filter: blur(16px) saturate(1.6);
-  box-shadow: inset 0 1px 0 0 color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-
-/* The scrim under an open drawer: the one surface whose whole job is
-   separating a sheet from the page behind it. */
-[data-slot="drawer-overlay"] {
-  backdrop-filter: blur(14px) saturate(1.25);
-  -webkit-backdrop-filter: blur(14px) saturate(1.25);
-}
+/* No grain, no glass (2026-09-29). The bar the page scrolls under is the
+   opaque canvas with a hairline under it, and a drawer's scrim is a plain
+   tint. Every surface a person reads money on is opaque. */

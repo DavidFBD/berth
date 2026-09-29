@@ -158,7 +158,7 @@ export function LevelUpCard({
       initial={{ scale: 0.88, y: 14, opacity: 0 }}
       animate={{ scale: 1, y: 0, opacity: 1 }}
       transition={{ type: "spring", stiffness: 360, damping: 20 }}
-      className="relative flex w-fit items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-lg"
+      className="relative flex w-fit items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-lg"
     >
       <div aria-hidden className="absolute -top-2 left-5 flex gap-1.5">
         {[0, 1, 2].map((wisp) => (

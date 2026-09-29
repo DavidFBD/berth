@@ -226,7 +226,7 @@ function HubInspector() {
 
   return (
     <>
-      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
         <Row label={`Spoke address on ${getChainName(HOME_CHAIN)}`}>
           {directHub ? (
             <span className="text-muted-foreground">read directly</span>
@@ -251,7 +251,7 @@ function HubInspector() {
         </Row>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card shadow-sm">
+      <section className="rounded-lg border border-border bg-card shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <span className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">
             Holdings on the hub

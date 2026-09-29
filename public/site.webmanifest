@@ -4,8 +4,8 @@
   "description": "Stocks for the money that already lives onchain.",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#F4F5F2",
-  "background_color": "#F4F5F2",
+  "theme_color": "#F7F6F4",
+  "background_color": "#F7F6F4",
   "icons": [
     {
       "src": "/icons/icon-192.png",

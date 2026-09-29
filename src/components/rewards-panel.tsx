@@ -1021,9 +1021,18 @@ export function RankChip({
       {rank && hasFace && (
         <RankGlyph level={rank.level} className="-mr-0.5 size-3.5 text-foreground" />
       )}
-      <span className="text-xs font-medium text-foreground">
-        {rank ? copy.rankLevelShort(rank.level) : placeholder}
-      </span>
+      {rank ? (
+        <span className="text-xs font-medium text-foreground">
+          <span className="lg:hidden">{copy.rankLevelShort(rank.level)}</span>
+          {/* A desktop bar has the room to say the rank in words. */}
+          <span className="hidden lg:inline">
+            {copy.rankLevelLong(rank.level)}
+            <span className="ml-1.5 font-normal text-muted-foreground">{rank.name}</span>
+          </span>
+        </span>
+      ) : (
+        <span className="text-xs font-medium text-foreground">{placeholder}</span>
+      )}
     </motion.span>
   );
 

@@ -66,11 +66,11 @@ export function ProfileCardView({
   const other = viewer.relation !== "self";
 
   return (
-    <div className="flex flex-col items-center gap-5 rounded-2xl border border-border bg-card px-5 pt-7 pb-5 shadow-sheet">
+    <div className="flex flex-col items-center gap-5 rounded-lg border border-border bg-card px-5 pt-7 pb-5">
       <div className="flex flex-col items-center gap-3">
         <AvatarWithRank avatarId={card.avatarId} level={rank.level} size={88} />
         <div className="flex flex-col items-center gap-0.5">
-          <h1 className="font-display text-2xl leading-tight font-semibold tracking-[-0.015em] break-all text-foreground">{card.handle}</h1>
+          <h1 className="font-display text-2xl leading-tight tracking-[-0.02em] break-all text-foreground">{card.handle}</h1>
           <p className="text-sm text-muted-foreground">{rank.name}</p>
         </div>
       </div>
@@ -275,8 +275,8 @@ function MoreMenu({ onBlock, onReport }: { onBlock: () => void; onReport: () => 
 export function SignInCard({ href = "/" }: { href?: string }) {
   const copy = useCopy().social;
   return (
-    <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-5 py-10 text-center shadow-sheet">
-      <p className="font-display text-lg font-semibold text-foreground">{copy.signInLine}</p>
+    <div className="flex flex-col items-center gap-4 rounded-lg border border-border bg-card px-5 py-10 text-center">
+      <p className="font-display text-lg text-foreground">{copy.signInLine}</p>
       <Button render={<Link href={href} />} nativeButton={false} className="h-10 w-full max-w-64">
         {copy.signIn}
       </Button>
@@ -288,8 +288,8 @@ export function SignInCard({ href = "/" }: { href?: string }) {
 export function NotFoundCard() {
   const copy = useCopy().social;
   return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card px-5 py-10 text-center shadow-sheet">
-      <p className="font-display text-lg font-semibold text-foreground">{copy.notFound}</p>
+    <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card px-5 py-10 text-center">
+      <p className="font-display text-lg text-foreground">{copy.notFound}</p>
       <p className="max-w-64 text-sm text-muted-foreground">{copy.notFoundSub}</p>
     </div>
   );

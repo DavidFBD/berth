@@ -94,7 +94,7 @@ export function AccountTotalView({ figures }: { figures: AccountFigures }) {
   ];
 
   return (
-    <section className="px-1 lg:rounded-2xl lg:border lg:border-border lg:bg-card lg:px-6 lg:pt-5 lg:pb-3 lg:shadow-sheet">
+    <section className="rounded-lg border border-border bg-card px-[18px] pt-[18px] pb-4 lg:px-6 lg:pt-[22px] lg:pb-5">
       <div className="flex items-center gap-1 text-[13px] text-muted-foreground">
         <span>{copy.accountTotalLabel}</span>
         {/* The one (i) for the figure and the chart under it. */}
@@ -104,17 +104,18 @@ export function AccountTotalView({ figures }: { figures: AccountFigures }) {
         </InfoTip>
       </div>
       {total === undefined ? (
-        <Skeleton className="mt-1 h-11 w-44" />
+        <Skeleton className="mt-1.5 mb-3.5 h-11 w-44 lg:mb-[18px] lg:h-14" />
       ) : (
-        <p className="money mt-0.5 text-[2.75rem] leading-[1.05] font-medium tracking-[-0.03em] tabular-nums text-foreground lg:text-[3.25rem]">
+        <p className="money mt-1.5 mb-3.5 text-[2.75rem] leading-[1.05] font-normal tracking-[-0.035em]! tabular-nums text-foreground lg:mt-2 lg:mb-[18px] lg:text-[3.5rem]">
           {money.format(total)}
         </p>
       )}
-      <dl className="mt-2.5 flex gap-5 text-[13px] text-muted-foreground">
+      {/* The parts as ruled boxes that always add up to the figure above. */}
+      <dl className="flex divide-x divide-border overflow-hidden rounded-[10px] border border-border">
         {parts.map((part) => (
-          <div key={part.label} className="flex flex-col">
-            <dt>{part.label}</dt>
-            <dd className="money text-sm font-medium tabular-nums text-foreground">
+          <div key={part.label} className="flex min-w-0 flex-1 flex-col px-3 py-2 lg:px-3.5 lg:py-2.5">
+            <dt className="truncate text-xs text-muted-foreground">{part.label}</dt>
+            <dd className="money text-[15px] leading-[1.4] font-medium tabular-nums text-foreground">
               {part.value === undefined ? <Skeleton className="mt-0.5 h-4 w-12" /> : money.format(part.value)}
             </dd>
           </div>

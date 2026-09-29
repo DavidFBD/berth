@@ -92,8 +92,8 @@ export function RewardsGallery({ level }: { level: number }) {
     <Seeded level={level}>
       <div className="flex flex-col gap-4">
         {/* The header strip, as the board wears it. */}
-        <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-3 py-2">
-          <span className="font-display text-base text-foreground">Berth</span>
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+          <span className="font-wordmark text-base text-foreground">Berth</span>
           <div className="flex items-center gap-1.5">
             <RankChip onClick={() => {}} />
             <RankChip onClick={() => {}} presence placeholder="Account" />

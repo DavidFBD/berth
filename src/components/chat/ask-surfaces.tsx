@@ -19,7 +19,7 @@ import { useLimitOrders } from "@/hooks/use-limit-orders";
 
 /** The field's look, shared by the card and the dock. */
 const FIELD =
-  "flex w-full items-center gap-2 rounded-xl border border-border pr-1.5 pl-3.5 text-left text-[15px] text-muted-foreground outline-none transition-colors duration-150 ease-lift hover:border-foreground/30 focus-visible:ring-3 focus-visible:ring-ring/50";
+  "flex w-full items-center gap-2.5 rounded-full border border-input pr-1.5 pl-4 text-left text-[15px] text-muted-foreground outline-none transition-colors duration-150 ease-lift hover:border-foreground/30 focus-visible:ring-3 focus-visible:ring-ring/50";
 
 /** Desktop: a card in the right column, with three things to ask. */
 export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
@@ -32,15 +32,16 @@ export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
   return (
     <Panel>
       <SectionHeading title={copy.chatTitle} hint={copy.chatWhy} />
-      <div className="px-4 pb-4">
-        <button type="button" onClick={() => onOpen()} aria-label={copy.chatOpenLabel} className={cn(FIELD, "h-11 bg-background")}>
+      <div className="px-[18px] pb-5 lg:px-6 lg:pb-[22px]">
+        <button type="button" onClick={() => onOpen()} aria-label={copy.chatOpenLabel} className={cn(FIELD, "mt-1 h-[46px] bg-card")}>
           <ChatCircleText weight="duotone" className="size-[18px] shrink-0" aria-hidden />
           <span className="min-w-0 flex-1 truncate">{copy.askPlaceholder}</span>
-          <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-secondary-foreground">
-            <ArrowUp weight="duotone" className="size-4" />
+          {/* The card's one accent: the way to send. */}
+          <span aria-hidden className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <ArrowUp weight="bold" className="size-4" />
           </span>
         </button>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {suggestions.map((prompt) => (
             <button
               key={prompt}
@@ -52,7 +53,7 @@ export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
             </button>
           ))}
         </div>
-        <p className="mt-2.5 text-xs text-muted-foreground">{copy.askFine}</p>
+        <p className="mt-3 text-[12.5px] text-muted-foreground">{copy.askFine}</p>
       </div>
     </Panel>
   );
@@ -61,9 +62,9 @@ export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
 /** The card's place while it is not yet known whether Ask is open here. */
 export function AskCardPlaceholder() {
   return (
-    <Panel className="flex flex-col gap-3 px-4 pt-4 pb-4" aria-hidden>
+    <Panel className="flex flex-col gap-3 px-[18px] lg:px-6 pt-4 pb-4" aria-hidden>
       <Skeleton className="h-4 w-12" />
-      <Skeleton className="h-11 w-full rounded-xl" />
+      <Skeleton className="h-[46px] w-full rounded-full" />
       <div className="flex gap-1.5">
         <Skeleton className="h-8 w-32 rounded-full" />
         <Skeleton className="h-8 w-32 rounded-full" />
@@ -139,16 +140,15 @@ export function AskDock({ onOpen, hidden, busy = false }: { onOpen: () => void; 
   const gone = hidden || keyboard || dialog;
   return (
     <div
-      data-glass="bar"
       aria-hidden={gone}
       inert={gone}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-20 border-t border-border/60 bg-background/85 px-4 pt-2.5 pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur transition-[transform,opacity] duration-200 ease-lift lg:hidden",
+        "fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background px-4 pt-2.5 pb-[max(env(safe-area-inset-bottom),0.625rem)] transition-[transform,opacity] duration-200 ease-lift lg:hidden",
         gone && "pointer-events-none translate-y-full opacity-0",
       )}
     >
       <div className="mx-auto max-w-lg">
-        <button type="button" onClick={onOpen} aria-label={copy.chatOpenLabel} className={cn(FIELD, "h-12 bg-card")}>
+        <button type="button" onClick={onOpen} aria-label={copy.chatOpenLabel} className={cn(FIELD, "h-[46px] bg-card")}>
           {/* The chat glyph, and an orb in its 20px place only while an answer is coming in, so the orb's code loads only then. */}
           {busy ? (
             <ThinkingOrb state="composing" size={20} decorative fallback={<ChatCircleText weight="duotone" className="size-5" />} />
@@ -156,14 +156,15 @@ export function AskDock({ onOpen, hidden, busy = false }: { onOpen: () => void; 
             <ChatCircleText weight="duotone" className="size-5 shrink-0" aria-hidden />
           )}
           <span className="min-w-0 flex-1 truncate">{copy.askPlaceholder}</span>
-          <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-secondary-foreground">
-            <ArrowUp weight="duotone" className="size-4" />
+          <span aria-hidden className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <ArrowUp weight="bold" className="size-4" />
           </span>
         </button>
+        <p className="mt-1.5 text-center text-[11.5px] text-muted-foreground">{copy.askFine}</p>
       </div>
     </div>
   );
 }
 
 /** Bottom padding the page keeps on a phone while the dock shows. */
-export const DOCK_CLEARANCE = "max-lg:pb-[calc(6rem+env(safe-area-inset-bottom))]";
+export const DOCK_CLEARANCE = "max-lg:pb-[calc(7rem+env(safe-area-inset-bottom))]";

@@ -48,11 +48,11 @@ export default async function AssistantsPage() {
     <main className="mx-auto w-full max-w-2xl px-5 pt-10 pb-[max(env(safe-area-inset-bottom),3rem)] sm:px-8 sm:pt-14">
       <Link href="/" className="inline-flex items-center gap-2.5 text-foreground" aria-label={help.backHome}>
         <BerthMark className="size-7" title="Berth" />
-        <span className="font-display text-lg font-semibold tracking-[-0.012em]">{COPY.brand}</span>
+        <span className="font-wordmark text-lg">{COPY.brand}</span>
       </Link>
 
       <header className="mt-10 flex flex-col gap-3 border-b border-border pb-8">
-        <h1 className="font-display text-3xl font-semibold tracking-[-0.01em] text-foreground sm:text-4xl">{help.title}</h1>
+        <h1 className="font-display text-3xl tracking-[-0.02em] text-foreground sm:text-4xl">{help.title}</h1>
         {help.intro.map((line) => (
           <p key={line} className="text-base leading-relaxed text-foreground">
             {line}
@@ -61,7 +61,7 @@ export default async function AssistantsPage() {
       </header>
 
       <section id="connect" className="scroll-mt-6 border-b border-border py-8">
-        <h2 className="font-display text-xl font-semibold tracking-[-0.005em] text-foreground">{help.connectHeading}</h2>
+        <h2 className="font-display text-xl tracking-[-0.02em] text-foreground">{help.connectHeading}</h2>
         <p className="mt-3 text-[15px] leading-relaxed text-foreground">{help.connectBody}</p>
         <div className="mt-5 flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">{COPY.assistantAddressLabel}</span>
@@ -73,7 +73,7 @@ export default async function AssistantsPage() {
         <div className="mt-6 flex flex-col gap-4">
           {assistants.map((assistant) => (
             <div key={assistant.id} id={assistant.id} className="flex scroll-mt-6 flex-col gap-3 rounded-xl border border-border p-4">
-              <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <h3 className="flex items-center gap-2 font-display text-base text-foreground">
                 <ProviderMark id={assistant.id} className="size-5" />
                 {assistant.name}
               </h3>
@@ -112,13 +112,13 @@ export default async function AssistantsPage() {
         { id: "disconnect", heading: help.disconnectHeading, items: help.disconnect },
       ].map((section) => (
         <section key={section.id} id={section.id} className="scroll-mt-6 border-b border-border py-8">
-          <h2 className="font-display text-xl font-semibold tracking-[-0.005em] text-foreground">{section.heading}</h2>
+          <h2 className="font-display text-xl tracking-[-0.02em] text-foreground">{section.heading}</h2>
           <div className="mt-3 text-[15px] leading-relaxed text-foreground">{list(section.items)}</div>
         </section>
       ))}
 
       <section id="privacy" className="scroll-mt-6 border-b border-border py-8">
-        <h2 className="font-display text-xl font-semibold tracking-[-0.005em] text-foreground">{help.moreHeading}</h2>
+        <h2 className="font-display text-xl tracking-[-0.02em] text-foreground">{help.moreHeading}</h2>
         <div className="mt-3 flex flex-col gap-3 text-[15px] leading-relaxed text-foreground">
           {help.more.map((line) => (
             <p key={line}>{line}</p>

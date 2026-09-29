@@ -13,11 +13,11 @@ export function LegalPage({ doc, related = [] }: { doc: LegalDocument; related?:
     <main className="mx-auto w-full max-w-2xl px-5 pt-10 pb-[max(env(safe-area-inset-bottom),3rem)] sm:px-8 sm:pt-14">
       <Link href="/" className="inline-flex items-center gap-2.5 text-foreground" aria-label={doc.backHome}>
         <BerthMark className="size-7" title="Berth" />
-        <span className="font-display text-lg font-semibold tracking-[-0.012em]">{COPY.brand}</span>
+        <span className="font-wordmark text-lg">{COPY.brand}</span>
       </Link>
 
       <header className="mt-10 flex flex-col gap-3 border-b border-border pb-8">
-        <h1 className="font-display text-3xl font-semibold tracking-[-0.01em] text-foreground sm:text-4xl">
+        <h1 className="font-display text-3xl tracking-[-0.02em] text-foreground sm:text-4xl">
           {doc.title}
         </h1>
         <p className="text-sm text-muted-foreground">{doc.status}</p>
@@ -43,7 +43,7 @@ export function LegalPage({ doc, related = [] }: { doc: LegalDocument; related?:
       <div className="flex flex-col">
         {doc.sections.map((section) => (
           <section key={section.id} id={section.id} className="scroll-mt-6 border-b border-border py-8">
-            <h2 className="font-display text-xl font-semibold tracking-[-0.005em] text-foreground">{section.heading}</h2>
+            <h2 className="font-display text-xl tracking-[-0.02em] text-foreground">{section.heading}</h2>
             <div className="mt-3 flex flex-col gap-3 text-[15px] leading-relaxed text-foreground">
               {section.body.map((line) => (
                 <p key={line}>{line}</p>

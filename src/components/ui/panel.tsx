@@ -31,10 +31,11 @@ export function Panel({
   return (
     <Tag
       className={cn(
-        surface === "sheet" &&
-          "rounded-2xl border border-border bg-card shadow-raised",
-        surface === "panel" &&
-          "rounded-2xl border border-border bg-card shadow-sheet",
+        // Flat since 2026-09-29: both are a white card on the stone canvas
+        // with one hairline and no shadow. The two names stay so a section
+        // can still say which it is.
+        (surface === "sheet" || surface === "panel") &&
+          "rounded-lg border border-border bg-card",
         className,
       )}
     >
@@ -81,12 +82,12 @@ export function SectionHeading({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5",
+        "flex items-center justify-between gap-3 px-[18px] pt-[18px] pb-3 lg:px-6 lg:pt-[22px]",
         className,
       )}
     >
       <div className="flex min-w-0 items-center gap-1">
-        <h2 className="font-display text-[15px] leading-tight font-semibold tracking-[-0.012em] text-foreground">
+        <h2 className="font-display text-lg leading-tight tracking-[-0.02em] text-foreground">
           {title}
         </h2>
         {(hint || note || more) && (

@@ -136,9 +136,9 @@ function RangeControl({
 }) {
   const copy = useCopy();
   return (
-    // The last button's label sits flush with the chart's right edge: the
-    // row is pulled right by exactly one button's padding.
-    <div role="group" aria-label={copy.portfolioRangeLabel} className="-mr-2.5 flex flex-wrap justify-end gap-0.5">
+    // A pill group: the active range is the ink chip, so the board's one
+    // accent is never spent on a filter.
+    <div role="group" aria-label={copy.portfolioRangeLabel} className="inline-flex flex-wrap gap-0.5 rounded-full border border-border bg-card p-0.5">
       {RANGES.filter((range) => available.includes(range)).map((range) => (
         <button
           key={range}
@@ -148,9 +148,9 @@ function RangeControl({
           className={cn(
             // Numbers in the money font; "First buy" and "All" are words.
             WORD_RANGES.has(range) ? "" : "money tabular-nums",
-            "inline-flex min-h-8 items-center rounded-md px-2.5 text-[11px] leading-none outline-none transition-colors duration-150 ease-lift focus-visible:ring-3 focus-visible:ring-ring/50",
+            "inline-flex h-7 items-center rounded-full px-3 text-xs leading-none font-medium outline-none transition-colors duration-150 ease-lift focus-visible:ring-3 focus-visible:ring-ring/50",
             range === value
-              ? "bg-muted font-medium text-foreground"
+              ? "bg-foreground text-background"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -169,8 +169,8 @@ function Swatch({ dashed }: { dashed?: boolean }) {
     <span
       aria-hidden="true"
       className={cn(
-        "mr-1.5 inline-block w-3.5 translate-y-[-3px] border-t-2",
-        dashed ? "border-dashed border-muted-foreground" : "border-foreground",
+        "mr-1.5 inline-block w-4 translate-y-[-3px] border-t-[1.75px]",
+        dashed ? "border-dashed border-faint" : "border-foreground",
       )}
     />
   );
@@ -203,7 +203,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
     return (
       <div className="mt-4">
         <Skeleton className="h-4 w-56 max-w-full" />
-        <div className="mt-2 h-24 sm:h-32" />
+        <div className="mt-2 h-[150px] lg:h-[190px]" />
         <div className="mt-1 h-8" />
       </div>
     );
@@ -263,7 +263,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   const legend = (
     <p
       className={cn(
-        "flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm leading-5 text-secondary-foreground",
+        "flex flex-wrap items-baseline gap-x-[18px] gap-y-1 text-[13px] leading-5 text-foreground",
         readout && "invisible",
       )}
     >
@@ -293,7 +293,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   );
 
   return (
-    <div className="mt-4">
+    <div className="mt-5 lg:mt-[22px]">
       <div className="relative flex min-h-5 items-center">
         {legend}
         {readout}
@@ -309,8 +309,8 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
           drawKey={`${range}:${shownBenchmark}`}
         />
       </div>
-      <div className="mt-1 flex items-center justify-between gap-3">
-        <span className="text-xs text-muted-foreground">{copy.portfolioSameDays}</span>
+      <div className="mt-2.5 flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <span className="text-[12.5px] text-muted-foreground">{copy.portfolioSameDays}</span>
         <RangeControl
           available={data.available}
           value={range}

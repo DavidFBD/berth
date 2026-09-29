@@ -79,11 +79,14 @@ export function CashShelfView({
     : undefined;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <Bank weight="duotone" className="size-[22px] shrink-0 text-secondary-foreground" aria-hidden />
-      <div className="min-w-0 flex-1">
+    // On a phone the actions drop under the words, in line with them.
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-[18px] py-4 lg:px-6 lg:py-5">
+      <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-secondary-foreground">
+        <Bank weight="duotone" className="size-[18px]" />
+      </span>
+      <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-3rem)]">
         <div className="flex items-center gap-1">
-          <h2 className="text-[15px] leading-tight font-medium text-foreground">
+          <h2 className="font-display text-base leading-tight text-foreground">
             {figure ? <MoneyName name={copy.cashTitle} amount={figure} /> : copy.cashTitle}
           </h2>
           <InfoTip label={copy.cashTitle}>
@@ -94,7 +97,7 @@ export function CashShelfView({
         {loading ? (
           <Skeleton className="mt-1 h-3.5 w-36" />
         ) : (
-          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+          <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
             {hasCash ? (
               <>
                 {rateText && <>{copy.cashRate(rateText)} </>}
@@ -108,13 +111,13 @@ export function CashShelfView({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5 max-sm:ml-12">
         {hasCash && (
-          <Button size="xs" variant="outline" onClick={onTakeOut}>
+          <Button size="sm" variant="outline" onClick={onTakeOut}>
             {copy.cashTakeOut}
           </Button>
         )}
-        <Button size="xs" variant="outline" onClick={onPark}>
+        <Button size="sm" variant="outline" onClick={onPark}>
           {hasCash ? copy.cashParkMore : copy.cashPark}
         </Button>
       </div>

@@ -161,7 +161,7 @@ export function TickerTile({ symbol }: { symbol: string }) {
   return (
     <span
       aria-hidden="true"
-      className="money flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-medium tracking-tight text-secondary-foreground"
+      className="money flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-[9.5px] font-medium tracking-tight text-secondary-foreground"
     >
       {mark ? <CompanyMark id={mark} className="size-4.5" /> : symbol.slice(0, 4)}
     </span>
@@ -211,35 +211,35 @@ export function HoldingsView({
             total === undefined ? (
               <Skeleton className="h-5 w-16" />
             ) : (
-              <span className="money text-[15px] font-medium tabular-nums text-foreground">{money.format(total)}</span>
+              <span className="money text-[17px] font-medium tabular-nums text-foreground">{money.format(total)}</span>
             )
           ) : undefined
         }
       />
       {holdsAnything ? (
-        <p className="px-4 pt-0.5 pb-2.5 text-xs leading-5 text-muted-foreground">
+        <p className="px-[18px] pt-0 pb-4 text-[13px] leading-5 text-muted-foreground lg:px-6 lg:pb-[18px]">
           {includesCash ? `${copy.holdingsCashIncluded} ${copy.holdingsWalletsNote}` : copy.holdingsWalletsNote}
         </p>
       ) : (
         <div className="pb-2.5" />
       )}
       {loading ? (
-        <div className="flex flex-col gap-2 border-t border-border px-4 py-3">
+        <div className="flex flex-col gap-2 border-t border-border px-[18px] lg:px-6 py-3">
           <Skeleton className="h-5 w-40" />
           <Skeleton className="h-5 w-28" />
         </div>
       ) : rows.length === 0 ? (
-        <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
+        <p className="border-t border-border px-[18px] lg:px-6 py-3 text-sm text-muted-foreground">
           {copy.holdingsEmpty}
         </p>
       ) : (
         <>
           <ul id={listId} className="divide-y divide-border border-t border-border">
             {shown.map(({ listing, balance, worth, move, comparison }) => (
-              <li key={listing.address} className="flex items-center gap-3 px-4 py-2.5">
+              <li key={listing.address} className="flex items-center gap-3 px-[18px] py-[13px] lg:px-6">
                 <TickerTile symbol={listing.symbol} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold text-foreground">{listing.name}</div>
+                  <div className="truncate text-[14.5px] leading-snug font-medium text-foreground">{listing.name}</div>
                   <div className="money truncate text-xs text-muted-foreground">
                     {formatTokenAmount(balance, listing.decimals, 6)} {listing.symbol}
                   </div>

@@ -68,7 +68,7 @@ export default async function AuthorizePage({
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-6 py-10 text-center">
         <BerthMark className="size-12" title="Berth" />
-        <h1 className="font-display text-2xl font-semibold text-foreground">{COPY.authorizeTroubleTitle}</h1>
+        <h1 className="font-display text-2xl text-foreground">{COPY.authorizeTroubleTitle}</h1>
         <p className="text-sm leading-relaxed text-muted-foreground">{COPY.authorizeTroubleBody}</p>
         <a href={`/oauth/authorize?${again.toString()}`} className="text-sm font-medium text-foreground underline underline-offset-4">
           {COPY.authorizeTryAgain}
@@ -83,7 +83,7 @@ export default async function AuthorizePage({
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-6 py-10 text-center">
         <BerthMark className="size-12" title="Berth" />
-        <h1 className="font-display text-2xl font-semibold text-foreground">{COPY.authorizeErrorTitle}</h1>
+        <h1 className="font-display text-2xl text-foreground">{COPY.authorizeErrorTitle}</h1>
         <p className="text-sm leading-relaxed text-muted-foreground">
           {outcome.reason === "unknown_client" ? COPY.authorizeErrorUnknownClient : COPY.authorizeErrorRedirect}
         </p>

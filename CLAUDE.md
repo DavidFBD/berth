@@ -55,9 +55,14 @@ would offer).
 
 - Colours, type and the mark are in `public/berth-brand/brand-sheet.md`; the
   tokens live in `src/app/globals.css` (`:root` light, `.dark` dark), the
-  fonts in `src/app/layout.tsx` (Archivo display, Public Sans body, IBM Plex
-  Mono for numbers). Appearance is light, dark or system via next-themes.
-- The accent is for one thing per composition. No gradients, glow or glass.
+  fonts in `src/app/layout.tsx` (Inter Tight headings at weight 400 with
+  tight tracking, Inter body, IBM Plex Mono for numbers, Archivo only for
+  the wordmark). Appearance is light, dark or system via next-themes.
+- Since 2026-09-29 (the Seline pass): warm stone canvas, flat white cards
+  with one hairline and no shadow, pill buttons, the active chip of a
+  segmented control in ink. Berth's blue stays the one accent.
+- The accent is for one thing per composition. No gradients, glow, grain
+  or glass.
 - The one animated status element allowed is the thinking orb
   (`src/components/ui/thinking-orb.tsx`, MIT `thinking-orbs`), in ink or
   muted only, and only while something is actually working.

@@ -91,14 +91,14 @@ export function ConsentCard({
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-6 py-10">
       <div className="flex flex-col items-center gap-4 text-center">
         <BerthMark className="size-12" title="Berth" />
-        <h1 className="font-display text-2xl font-semibold tracking-[-0.01em] text-foreground">
+        <h1 className="font-display text-2xl tracking-[-0.02em] text-foreground">
           {copy.authorizeTitle(party)}
         </h1>
         {unverified && <p className="text-sm font-medium text-foreground">{unverified}</p>}
         {who && <p className="text-sm text-muted-foreground">{copy.authorizeAccount(who)}</p>}
       </div>
 
-      <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sheet">
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
         <p className="text-sm font-medium text-foreground">{copy.authorizeCanLead}</p>
         <ul className="flex flex-col gap-3">
           {scopes.includes("berth.read") && (
