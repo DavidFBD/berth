@@ -3,16 +3,17 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AddWalletList } from "@/components/account-wallets-list";
 import { COPY } from "@/lib/copy";
-import { addWalletRows, solanaSignatureBytes, type ConnectedNetwork } from "@/lib/add-wallet-list";
+import { addWalletRows, bitcoinSignatureBase64, solanaSignatureBytes, type ConnectedNetwork } from "@/lib/add-wallet-list";
 
 const HOME = "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be";
 const SOL = "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV";
 const SOL_OTHER = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+const BTC = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
 
 const hana: ConnectedNetwork[] = [
   { network: "SOLANA", name: "Solana", address: SOL, extension: "Hana" },
   { network: "EVM", name: "EVM", address: "0x3F5CE5FBFE3E9AF3971DD833D26BA9B5C936F0BE", extension: "Hana" },
-  { network: "BITCOIN", name: "Bitcoin", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", extension: "Hana" },
+  { network: "BITCOIN", name: "Bitcoin", address: BTC, extension: "Hana" },
   { network: "SUI", name: "Sui", address: undefined },
   { network: "STELLAR", name: "Stellar", address: undefined },
   { network: "ICON", name: "ICON", address: undefined },
@@ -24,7 +25,7 @@ describe("addWalletRows", () => {
     expect(rows.map((row) => [row.network, row.state])).toEqual([
       ["EVM", "added"],
       ["SOLANA", "add"],
-      ["BITCOIN", "coming_soon"],
+      ["BITCOIN", "add"],
     ]);
     expect(rows[1]).toMatchObject({ address: SOL, extension: "Hana" });
     expect(comingSoon).toEqual(["Sui", "Stellar", "ICON"]);
@@ -56,8 +57,33 @@ describe("addWalletRows", () => {
     expect(rows.map((row) => [row.network, row.state])).toEqual([
       ["EVM", "added"],
       ["SOLANA", "connect"],
+      ["BITCOIN", "connect"],
     ]);
-    expect(comingSoon).toEqual(["Bitcoin", "Sui", "Stellar", "ICON"]);
+    expect(comingSoon).toEqual(["Sui", "Stellar", "ICON"]);
+  });
+
+  it("a linked Bitcoin address reads Added in any case the wallet reports it: bech32 has one spelling", () => {
+    const linked = [{ address: BTC, family: "bitcoin" }];
+    expect(addWalletRows({ networks: hana, linked, outcomes: new Map() }).rows[2].state).toBe("added");
+    const upper = hana.map((entry) => (entry.network === "BITCOIN" ? { ...entry, address: BTC.toUpperCase() } : entry));
+    expect(addWalletRows({ networks: upper, linked, outcomes: new Map() }).rows[2].state).toBe("added");
+    // Linked in another family is not linked here.
+    expect(addWalletRows({ networks: hana, linked: [{ address: BTC, family: "solana" }], outcomes: new Map() }).rows[2].state).toBe("add");
+    expect(addWalletRows({ networks: hana, linked: [], outcomes: new Map([[BTC, "other_account"]]) }).rows[2].state).toBe("other_account");
+  });
+});
+
+describe("bitcoinSignatureBase64", () => {
+  it("passes the wallets' base64 through, turns bytes and BIP-137 hex into base64, refuses the rest", () => {
+    const bip137 = new Uint8Array(65).map((_, i) => (i === 0 ? 31 : i));
+    const b64 = Buffer.from(bip137).toString("base64");
+    expect(bitcoinSignatureBase64(b64)).toBe(b64);
+    expect(bitcoinSignatureBase64(bip137)).toBe(b64);
+    expect(bitcoinSignatureBase64(Buffer.from(bip137).toString("hex"))).toBe(b64);
+    expect(bitcoinSignatureBase64("not base64!")).toBeNull();
+    expect(bitcoinSignatureBase64("abc")).toBeNull();
+    expect(bitcoinSignatureBase64(undefined)).toBeNull();
+    expect(bitcoinSignatureBase64(new Uint8Array(0))).toBeNull();
   });
 });
 
@@ -114,6 +140,7 @@ describe("AddWalletList", () => {
       COPY.walletsAddHint,
       COPY.walletsBelongsElsewhere,
       COPY.walletsSolanaNote,
+      COPY.walletsBitcoinNote,
       COPY.walletsComingSoonList("Bitcoin, Sui"),
     ]) {
       expect(text).not.toMatch(/ [-–—] |—|–/);

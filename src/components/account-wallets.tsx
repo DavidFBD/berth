@@ -85,8 +85,9 @@ export function WalletsSection() {
 
   const run = async (kind: "home" | "unlink", address: string) => {
     // Home and remove are confirmed by the current home; an EVM wallet may
-    // also confirm its own removal. A Solana address is removed by the home.
-    const family = all.find((wallet) => wallet.address === address)?.family === "solana" ? "solana" : "evm";
+    // also confirm its own removal. A Solana or Bitcoin address is removed by the home.
+    const rowFamily = all.find((wallet) => wallet.address === address)?.family;
+    const family = rowFamily === "solana" || rowFamily === "bitcoin" ? rowFamily : "evm";
     const signerAddress = signerFor(home?.address)
       ? home?.address
       : kind === "unlink" && family === "evm" && signerFor(address)
@@ -94,7 +95,7 @@ export function WalletsSection() {
         : undefined;
     const sign = signerFor(signerAddress);
     if (!signerAddress || !sign) {
-      toast(family === "solana" && home ? copy.walletsNeedHomeSigner(shortenAddress(home.address, 4)) : copy.walletsFailed);
+      toast(family !== "evm" && home ? copy.walletsNeedHomeSigner(shortenAddress(home.address, 4)) : copy.walletsFailed);
       return;
     }
     const result = await act.mutateAsync({ act: kind, target: address, family, signer: signerAddress, sign });
@@ -116,7 +117,7 @@ export function WalletsSection() {
     <MergeCard />
     <WalletsList
       wallets={all
-        .filter((wallet) => wallet.family === "evm" || wallet.family === "solana")
+        .filter((wallet) => wallet.family === "evm" || wallet.family === "solana" || wallet.family === "bitcoin")
         .map((wallet) => ({
           address: wallet.address,
           family: wallet.family,

@@ -1,4 +1,5 @@
 import type { ProofFamily } from "@/lib/account-proof";
+import { normalizeAddress } from "@/lib/identity/caip";
 
 /**
  * "Add a wallet" in the account drawer: every address the connected
@@ -13,8 +14,8 @@ import type { ProofFamily } from "@/lib/account-proof";
 /** The wallet SDK's chain types (wallet-sdk-react ChainType), as the drawer knows them. */
 export type NetworkType = "EVM" | "SOLANA" | "BITCOIN" | "SUI" | "STELLAR" | "ICON" | "INJECTIVE" | "NEAR" | "STACKS";
 
-/** The families an address can be proved in today. Bitcoin waits for BIP-322. */
-export const LINKABLE: Partial<Record<NetworkType, ProofFamily>> = { EVM: "evm", SOLANA: "solana" };
+/** The families an address can be proved in today. */
+export const LINKABLE: Partial<Record<NetworkType, ProofFamily>> = { EVM: "evm", SOLANA: "solana", BITCOIN: "bitcoin" };
 
 /** Display order: EVM first, then the networks people hold most. */
 export const NETWORK_ORDER: readonly NetworkType[] = ["EVM", "SOLANA", "BITCOIN", "SUI", "STELLAR", "ICON", "INJECTIVE", "NEAR", "STACKS"];
@@ -49,9 +50,15 @@ export type ConnectedNetwork = {
   extension?: string | null;
 };
 
-/** The one spelling of an address for comparison: EVM lowercase, everything else as is. */
+/**
+ * The one spelling of an address for comparison: EVM lowercase, Bitcoin
+ * its canonical mainnet form (bech32 lowercase, base58 as it is),
+ * everything else as is.
+ */
 export function addressKey(network: string, address: string): string {
-  return network === "EVM" ? address.toLowerCase() : address;
+  if (network === "EVM") return address.toLowerCase();
+  if (network === "BITCOIN") return normalizeAddress("bitcoin", address) ?? address;
+  return address;
 }
 
 export function addWalletRows({
@@ -98,6 +105,23 @@ export function addWalletRows({
     });
   }
   return { rows, comingSoon };
+}
+
+/**
+ * A Bitcoin wallet's message signature as the server reads it: base64,
+ * which every wallet the SDK connects answers (Unisat, Xverse, OKX and Hana
+ * give BIP-322 witnesses for bc1q and bc1p, BIP-137 for 1… and 3…). Raw
+ * bytes, or a 65 byte BIP-137 signature in hex, are turned into base64.
+ * Null for anything else.
+ */
+export function bitcoinSignatureBase64(signature: unknown): string | null {
+  const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+  if (signature instanceof Uint8Array) return signature.length > 0 ? toBase64(signature) : null;
+  if (typeof signature !== "string") return null;
+  if (/^[0-9a-fA-F]{130}$/.test(signature)) {
+    return toBase64(Uint8Array.from(signature.match(/../g)!, (pair) => parseInt(pair, 16)));
+  }
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(signature) && signature.length % 4 === 0 ? signature : null;
 }
 
 /**

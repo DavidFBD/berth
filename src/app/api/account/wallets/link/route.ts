@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 /**
  * Links the address that signed the proof to the caller's account.
  * Body: { message, signature, nonceToken, accountProof? }: the new address's
- * SIWE (a Solana address: its SIWS, signature base58) over a "link" nonce
+ * SIWE (a Solana address: its SIWS, signature base58; a Bitcoin address:
+ * its SIWB, signature base64 BIP-322 or BIP-137) over a "link" nonce
  * issued for it, and the account's own
  * confirmation (its home's SIWE over the same nonce, or for an email
  * account a code entered in the last ten minutes; else 403 "sign in again").
@@ -19,10 +20,10 @@ export const dynamic = "force-dynamic";
  * is linked, already, other_account or cooling, and only ever reaches the
  * address's proven owner. A linked EVM address gets its own wallet session,
  * so the browser can later sign in with it without a second signature. A
- * Solana address never does: sign in is EVM or email. An EVM address on
+ * Solana or Bitcoin address never does: sign in is EVM or email. An EVM address on
  * another account comes with `merge`, the offer to make the two accounts
  * one (lib/server/account-merge-route): both were just proved. A Solana
- * one never does.
+ * or Bitcoin one never does.
  */
 export async function POST(request: NextRequest) {
   const proved = await provedAct(request, "link");
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
   let merge = undefined;
   // Only a proof that can sign in may join two accounts: an EVM wallet's
   // SIWE (the account's own side is its home's SIWE or a fresh email code,
-  // provedAct). A Solana signature proves the address but opens nothing.
+  // provedAct). A Solana or Bitcoin signature proves the address but opens nothing.
   if (state === "other_account" && family === "evm") {
     const other = await accountForWallet(address);
     if (other) merge = (await offerView(proved.account.user.id, other.id, "wallet", address)) ?? undefined;

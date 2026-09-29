@@ -22,10 +22,16 @@ import {
  * - A Solana address (proved with Sign-In With Solana) joins the same way,
  *   never as home: its rows are family 'solana', proof 'siws', value
  *   `solana:<base58>` with the case as signed.
+ * - A Bitcoin mainnet address (proved with Sign-In With Bitcoin, BIP-322 or
+ *   BIP-137, lib/server/siwb) likewise: family 'bitcoin', proof 'bip322',
+ *   value `bip122:<address>` (bech32 lowercase, base58 as it is).
  */
 
-/** The families an address can be linked in (Bitcoin waits for BIP-322). */
-export type LinkFamily = Extract<WalletFamily, "evm" | "solana">;
+/** The families an address can be linked in. */
+export type LinkFamily = WalletFamily;
+
+/** The proof each family's link is recorded with (user_identities.proof). */
+const LINK_PROOF: Record<LinkFamily, "siwe" | "siws" | "bip322"> = { evm: "siwe", solana: "siws", bitcoin: "bip322" };
 
 export type LinkOutcome =
   /** Now on this account. */
@@ -71,7 +77,7 @@ export async function linkWallet(userId: string, address: string, family: LinkFa
      select $1, 'wallet', $2, '${family}',
             ${!evm ? "false" : `${mayBeHome ? "" : "false and "}not exists (select 1 from user_identities h where h.user_id = $1 and h.is_home)
               and exists (select 1 from users u where u.id = $1 and (u.wallet_address is null or u.wallet_address = $3))`},
-            now(), '${evm ? "siwe" : "siws"}'
+            now(), '${LINK_PROOF[family]}'
       where ${evm ? "not exists (select 1 from users u where u.wallet_address = $3 and u.id <> $1)" : "$3::text is not null"}
      on conflict on constraint user_identities_kind_value do update set
        user_id = excluded.user_id, is_home = excluded.is_home, is_primary = false,
@@ -100,7 +106,7 @@ export async function linkWallet(userId: string, address: string, family: LinkFa
         [userId, wallet],
       );
     }
-    await audit(userId, "wallet_linked", { family, wallet: value, home: rows[0].is_home, proof: evm ? "siwe" : "siws" });
+    await audit(userId, "wallet_linked", { family, wallet: value, home: rows[0].is_home, proof: LINK_PROOF[family] });
     return "linked";
   }
 

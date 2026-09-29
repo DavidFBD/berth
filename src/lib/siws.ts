@@ -22,11 +22,23 @@ export type SiwsFields = {
   resources: string[];
 };
 
-const HEADER = " wants you to sign in with your Solana account:";
+/** The networks a Berth sign-in message is written for besides EVM (SIWE, viem/siwe). */
+export type SignInAccount = "Solana" | "Bitcoin";
+
+const headerOf = (account: SignInAccount) => ` wants you to sign in with your ${account} account:`;
 
 export function createSiwsMessage(fields: SiwsFields): string {
+  return createSignInMessage("Solana", fields);
+}
+
+/**
+ * The same text for another network's account: only the header's network
+ * name differs, so a Solana message can never be read as a Bitcoin one or
+ * the other way round.
+ */
+export function createSignInMessage(account: SignInAccount, fields: SiwsFields): string {
   const lines = [
-    `${fields.domain}${HEADER}`,
+    `${fields.domain}${headerOf(account)}`,
     fields.address,
     "",
     fields.statement,
@@ -56,7 +68,13 @@ function field(line: string | undefined, label: string): string | null {
  * (extra lines, other order, trailing text) is refused.
  */
 export function parseSiwsMessage(message: string): SiwsFields | null {
+  return parseSignInMessage("Solana", message);
+}
+
+/** parseSiwsMessage for another network's account (createSignInMessage). */
+export function parseSignInMessage(account: SignInAccount, message: string): SiwsFields | null {
   if (typeof message !== "string" || message.length > 4000) return null;
+  const HEADER = headerOf(account);
   const lines = message.split("\n");
   const header = lines[0] ?? "";
   if (!header.endsWith(HEADER)) return null;
@@ -79,5 +97,5 @@ export function parseSiwsMessage(message: string): SiwsFields | null {
     }
   }
   const fields: SiwsFields = { domain, address, statement, uri, version, chainId, nonce, issuedAt, resources };
-  return createSiwsMessage(fields) === message ? fields : null;
+  return createSignInMessage(account, fields) === message ? fields : null;
 }

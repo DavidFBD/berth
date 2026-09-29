@@ -957,6 +957,9 @@ export type Copy = {
   walletsComingSoonList: (names: string) => string;
   walletsConnectNetwork: (name: string) => string;
   walletsNetworkSolana: string;
+  walletsNetworkBitcoin: string;
+  /** Under a linked Bitcoin address: it pays (the Bitcoin relay), and what it buys lands with the signed in wallet. */
+  walletsBitcoinNote: string;
   /** Under a linked Solana address: it pays, and what it buys lands with the signed in wallet. */
   walletsSolanaNote: string;
   /** A sell draft for more than the chosen hub wallet holds. */
@@ -2330,6 +2333,8 @@ export const COPY: Copy = {
   walletsConnectNetwork: (name) => `Connect ${name}`,
   walletsNetworkSolana: "Solana",
   walletsSolanaNote: "Pays for orders. What you buy lands in the wallet you sign in with.",
+  walletsNetworkBitcoin: "Bitcoin",
+  walletsBitcoinNote: "Pays for orders. What you buy lands in the wallet you sign in with.",
   sellUpToFromWallet: (amount) => `You can sell up to ${amount} from this wallet.`,
   walletLinkStatement: "Add this wallet to your Berth account. Signing is free and moves nothing.",
   walletLinkConfirmStatement: (short) => `Let ${short} join your Berth account. Signing is free and moves nothing.`,

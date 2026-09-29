@@ -200,7 +200,7 @@ describe("linking a Solana address", () => {
     expect(await call(linkRoute, session, body)).toEqual(REFUSED);
   });
 
-  it("case-sensitive: the linked value is the one signed, a miscased spelling is not it; never home, never Bitcoin yet", async () => {
+  it("case-sensitive: the linked value is the one signed, a miscased spelling is not it; never home, not a Bitcoin address", async () => {
     const { session, home, userId } = await accountWith(evmKey());
     const wallet = solanaKey();
     await call(linkRoute, session, await linkBody(session, wallet, home));

@@ -3,6 +3,7 @@ import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
 import { parseTargetKey, proofResource, proofStatement, targetKey, type ProofAct, type ProofFamily } from "@/lib/account-proof";
 import { normalizeAddress } from "@/lib/identity/caip";
 import { parseSiwsMessage } from "@/lib/siws";
+import { parseSiwbMessage } from "@/lib/siwb";
 import { getSql } from "@/lib/server/db";
 import { hubWalletFor, readListingBalances } from "@/lib/server/portfolio";
 import { fetchPrivyEmailVerifiedAt, fetchPrivyEmbeddedWallet } from "@/lib/server/privy";
@@ -13,6 +14,7 @@ import { takeRatePlace } from "@/lib/server/oauth/rate-limit";
 import { readRewardsCaller, resolveRewardsUser, type RewardsCaller } from "@/lib/server/rewards-route";
 import { verifySiwe, type SiweVerifier } from "@/lib/server/siwe";
 import { verifySiws, type SiwsVerifier } from "@/lib/server/siws";
+import { verifySiwb, type SiwbVerifier } from "@/lib/server/siwb";
 import {
   issueAccountNonceToken,
   readAccountNonceToken,
@@ -85,6 +87,12 @@ export function setSiwsVerifier(next: SiwsVerifier | null): void {
   solanaVerifier = next ?? verifySiws;
 }
 
+let bitcoinVerifier: SiwbVerifier = verifySiwb;
+/** Test-only: swap the SIWB check (null restores the real one). */
+export function setSiwbVerifier(next: SiwbVerifier | null): void {
+  bitcoinVerifier = next ?? verifySiwb;
+}
+
 export const NOT_VERIFIED = () => NextResponse.json({ error: "not verified" }, { status: 401 });
 const SLOW_DOWN = () => NextResponse.json({ error: "slow down" }, { status: 429 });
 
@@ -118,20 +126,26 @@ export async function walletsResponse(account: Account, extra: Record<string, un
 
 const ACTS: readonly AccountAct[] = ["link", "home", "unlink"];
 /** What each family may do. A home is EVM by definition (the hub wallet is derived from it). */
-const FAMILY_ACTS: Record<ProofFamily, readonly AccountAct[]> = { evm: ACTS, solana: ["link", "unlink"] };
+const FAMILY_ACTS: Record<ProofFamily, readonly AccountAct[]> = {
+  evm: ACTS,
+  solana: ["link", "unlink"],
+  bitcoin: ["link", "unlink"],
+};
 
 /**
  * The target key (lib/account-proof targetKey) for an address in a family:
  * EVM lowercase, Solana base58 exactly as given (case-sensitive, so a
- * miscased address is a different key and is refused, never "fixed").
+ * miscased address is a different key and is refused, never "fixed"),
+ * Bitcoin mainnet exactly in its canonical spelling (bech32 lowercase,
+ * base58 as it is; an uppercase bech32 is refused, not lowered).
  */
 function keyFor(family: ProofFamily, raw: unknown): string | null {
   if (family === "evm") {
     const address = normalizeWallet(raw);
     return address && /^0x[0-9a-f]{40}$/.test(address) ? address : null;
   }
-  const address = typeof raw === "string" ? normalizeAddress("solana", raw) : null;
-  return address && address === raw ? targetKey("solana", address) : null;
+  const address = typeof raw === "string" ? normalizeAddress(family, raw) : null;
+  return address && address === raw ? targetKey(family, address) : null;
 }
 
 /** How recently an email account must have proved its email to act on its wallets. */
@@ -140,14 +154,14 @@ export const PRIVY_FRESH_MS = 10 * 60_000;
 /**
  * POST /api/account/wallets/nonce { act, target, family? }: a nonce this
  * account can spend once, on one act, for one target address. `family` is
- * "evm" (the default) or "solana"; a Solana address may be linked or
- * removed, never made home.
+ * "evm" (the default), "solana" or "bitcoin"; a Solana or Bitcoin address
+ * may be linked or removed, never made home.
  */
 export async function issueNonce(request: NextRequest): Promise<NextResponse> {
   const got = await accountOf(request);
   if (!got.ok) return got.response;
   const { act, target, family: rawFamily = "evm" } = got.account.caller.body;
-  const family = rawFamily === "evm" || rawFamily === "solana" ? (rawFamily as ProofFamily) : null;
+  const family = rawFamily === "evm" || rawFamily === "solana" || rawFamily === "bitcoin" ? (rawFamily as ProofFamily) : null;
   const address = family ? keyFor(family, target) : null;
   if (typeof act !== "string" || !family || !FAMILY_ACTS[family].includes(act as AccountAct) || !address) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
@@ -171,8 +185,9 @@ export function asProof(value: unknown): Proof | null {
 
 /**
  * The signer of `proof`, as a target key, when it is a SIWE (or, for a
- * Solana address, a SIWS) over `nonce` made for Berth (lib/server/siwe and
- * lib/server/siws check the host and the chain) whose statement and one
+ * Solana address, a SIWS; for a Bitcoin address, a SIWB) over `nonce` made
+ * for Berth (lib/server/siwe, siws and siwb check the host and the chain)
+ * whose statement and one
  * resource are exactly the ones this act on this target must carry
  * (lib/account-proof). Null otherwise.
  */
@@ -183,6 +198,13 @@ export async function signerOf(proof: Proof, nonce: string, act: ProofAct, targe
     if (siws.resources.length !== 1 || siws.resources[0] !== proofResource(act, target)) return null;
     const signer = await solanaVerifier({ message: proof.message, signature: proof.signature, nonce });
     return signer ? targetKey("solana", signer) : null;
+  }
+  const siwb = parseSiwbMessage(proof.message);
+  if (siwb) {
+    if (siwb.statement !== proofStatement(act, target)) return null;
+    if (siwb.resources.length !== 1 || siwb.resources[0] !== proofResource(act, target)) return null;
+    const signer = await bitcoinVerifier({ message: proof.message, signature: proof.signature, nonce });
+    return signer ? targetKey("bitcoin", signer) : null;
   }
   let fields: ReturnType<typeof parseSiweMessage>;
   try {
@@ -219,7 +241,7 @@ export async function privyFresh(did: string): Promise<boolean> {
 }
 
 export type ProvedAct =
-  /** `signer` and `target` are target keys (lib/account-proof): EVM lowercase, `solana:<base58>`. */
+  /** `signer` and `target` are target keys (lib/account-proof): EVM lowercase, `solana:<base58>`, `bitcoin:<address>`. */
   | { ok: true; account: Account; signer: string; target: string }
   | { ok: false; response: NextResponse };
 

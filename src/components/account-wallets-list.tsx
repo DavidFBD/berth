@@ -19,7 +19,7 @@ import type { AddRow } from "@/lib/add-wallet-list";
 
 export type WalletRow = {
   address: string;
-  /** "evm" or "solana"; EVM when left out. */
+  /** "evm", "solana" or "bitcoin"; EVM when left out. */
   family?: string;
   isHome: boolean;
   /** Its hub wallet still holds listings (removing it warns). */
@@ -71,6 +71,7 @@ export function WalletsList({
   const groups = [
     { heading: copy.walletsNetworkEvm, wallets: wallets.filter((wallet) => (wallet.family ?? "evm") === "evm") },
     { heading: copy.walletsNetworkSolana, wallets: wallets.filter((wallet) => wallet.family === "solana") },
+    { heading: copy.walletsNetworkBitcoin, wallets: wallets.filter((wallet) => wallet.family === "bitcoin") },
   ].filter((group) => group.wallets.length > 0);
 
   return (
@@ -91,7 +92,8 @@ export function WalletsList({
       </div>
       <ul className="divide-y divide-border">
         {group.wallets.map((wallet) => {
-          const solana = wallet.family === "solana";
+          // A Solana or Bitcoin address pays; it is never home.
+          const payOnly = wallet.family === "solana" || wallet.family === "bitcoin";
           const short = shortenAddress(wallet.address, 4);
           const open = confirming?.address === wallet.address ? confirming.kind : null;
           return (
@@ -108,12 +110,18 @@ export function WalletsList({
                     )}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {wallet.isHome ? copy.walletsHomeNote : solana ? copy.walletsSolanaNote : copy.walletsPayFromNote}
+                    {wallet.isHome
+                      ? copy.walletsHomeNote
+                      : wallet.family === "solana"
+                        ? copy.walletsSolanaNote
+                        : wallet.family === "bitcoin"
+                          ? copy.walletsBitcoinNote
+                          : copy.walletsPayFromNote}
                   </span>
                 </div>
                 {!wallet.isHome && !open && (
                   <div className="flex shrink-0 gap-1">
-                    {allowHomeSwitch && !solana && (
+                    {allowHomeSwitch && !payOnly && (
                       <Button variant="ghost" size="xs" onClick={() => setConfirming({ kind: "home", address: wallet.address })}>
                         {copy.walletsMakeHome}
                       </Button>

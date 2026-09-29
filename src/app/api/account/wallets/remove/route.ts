@@ -13,16 +13,17 @@ export const dynamic = "force-dynamic";
  * { state: unlinked | is_home | not_linked | signed_in | holds | failed,
  * wallets, signedInWith }. A wallet whose hub wallet still holds listings
  * is not removed (holds); nor is one whose holdings cannot be read (failed).
- * A Solana address (target `solana:<base58>`, signed by the home or by its
- * own SIWS) holds nothing Berth counts: buys land at the home, so it goes
- * without a holdings read.
+ * A Solana or Bitcoin address (target `solana:<base58>` or
+ * `bitcoin:<address>`, signed by the home or by its own SIWS or SIWB)
+ * holds nothing Berth counts: buys land at the home, so it goes without a
+ * holdings read.
  */
 export async function POST(request: NextRequest) {
   const proved = await provedAct(request, "unlink");
   if (!proved.ok) return proved.response;
   const { family, address } = parseTargetKey(proved.target);
-  if (family === "solana") {
-    return walletsResponse(proved.account, { state: await unlinkWallet(proved.account.user.id, address, "solana") });
+  if (family !== "evm") {
+    return walletsResponse(proved.account, { state: await unlinkWallet(proved.account.user.id, address, family) });
   }
   const home = (await walletsOf(proved.account.user.id)).find((wallet) => wallet.family === "evm" && wallet.isHome);
   if (address === home?.address) return walletsResponse(proved.account, { state: "is_home" });

@@ -9,6 +9,7 @@ import { getAddress } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import { proofResource, proofStatement, targetKey, type ProofAct, type ProofFamily } from "@/lib/account-proof";
 import { createSiwsMessage } from "@/lib/siws";
+import { createSiwbMessage } from "@/lib/siwb";
 import { walletActOutcome } from "@/lib/account-wallets";
 import type { AvatarId } from "@/lib/avatars";
 import type {
@@ -567,11 +568,15 @@ export function useWalletAct() {
       act: "link" | "home" | "unlink";
       /** The address acted on: the wallet to link, to make home, or to remove. */
       target: string;
-      /** The target's family: "evm" (default) or "solana" (link and remove only). */
+      /** The target's family: "evm" (default), "solana" or "bitcoin" (link and remove only). */
       family?: ProofFamily;
       /** The address that signs the act (for a link, the target). */
       signer: string;
-      /** The signer's family: a Solana signer signs Sign-In With Solana, and `sign` answers base58. */
+      /**
+       * The signer's family: a Solana signer signs Sign-In With Solana, and
+       * `sign` answers base58; a Bitcoin signer signs Sign-In With Bitcoin,
+       * and `sign` answers base64. `signer` is then its canonical spelling.
+       */
       signerFamily?: ProofFamily;
       sign: (message: string) => Promise<string | null>;
       /** A link's confirmation by the account's home, when it has one to sign with. */
@@ -614,7 +619,9 @@ export function useWalletAct() {
         const message =
           signerFamily === "solana"
             ? createSiwsMessage({ ...fields, address: signer, chainId: "mainnet", issuedAt: new Date().toISOString() })
-            : createSiweMessage({ ...fields, address: getAddress(signer), chainId: 146 });
+            : signerFamily === "bitcoin"
+              ? createSiwbMessage({ ...fields, address: signer, chainId: "mainnet", issuedAt: new Date().toISOString() })
+              : createSiweMessage({ ...fields, address: getAddress(signer), chainId: 146 });
         try {
           const signature = await sign(message);
           return signature ? { message, signature } : null;

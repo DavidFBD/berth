@@ -21,10 +21,11 @@ import {
   NETWORK_ORDER,
   addWalletRows,
   addressKey,
+  bitcoinSignatureBase64,
   solanaSignatureBytes,
   type AddRow,
 } from "@/lib/add-wallet-list";
-import { base58Encode } from "@/lib/identity/caip";
+import { base58Encode, normalizeAddress } from "@/lib/identity/caip";
 
 /**
  * The account's wallet acts in the browser, over app/api/account/wallets:
@@ -273,9 +274,10 @@ function subscribeOutcomes(listener: () => void): () => void {
  * has enabled, the address its extension has open there (a multichain
  * extension shows up once per network), and the one press that adds it.
  * EVM goes through the phase 2 flow (useAddConnectedWallet) when it is the
- * waiting wallet; a Solana address signs Sign-In With Solana in its own
- * extension and the account confirms with its home, or, for an email
- * account, a recent code. `connect` opens the wallet drawer at a network.
+ * waiting wallet; a Solana address signs Sign-In With Solana, a Bitcoin
+ * address Sign-In With Bitcoin (the SDK picks BIP-322 or BIP-137 by address
+ * type), in its own extension, and the account confirms with its home, or,
+ * for an email account, a recent code. `connect` opens the wallet drawer at a network.
  */
 export function useAddWallets() {
   const copy = useCopy();
@@ -304,10 +306,10 @@ export function useAddWallets() {
   const addRowAgain = useRef<(row: AddRow) => Promise<void>>(async () => {});
   const addRow = useCallback(
     async (row: AddRow) => {
-      const address = row.address;
-      if (!address || busyAddress) return;
       const family = LINKABLE[row.network];
-      if (!family) return;
+      // A Bitcoin address travels in its canonical spelling (bech32 lowercase).
+      const address = family === "bitcoin" && row.address ? normalizeAddress("bitcoin", row.address) : row.address;
+      if (!address || busyAddress || !family) return;
       if (family === "evm" && add.waiting && add.address === address.toLowerCase()) {
         await add.add();
         return;
@@ -318,7 +320,9 @@ export function useAddWallets() {
               const bytes = solanaSignatureBytes(await signMessage({ xChainType: "SOLANA", message }));
               return bytes ? base58Encode(bytes) : null;
             }
-          : signerFor(address);
+          : family === "bitcoin"
+            ? async (message) => bitcoinSignatureBase64(await signMessage({ xChainType: "BITCOIN", message }))
+            : signerFor(address);
       if (!sign) {
         toast(copy.walletsFailed);
         return;
