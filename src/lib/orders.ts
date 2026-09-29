@@ -109,6 +109,17 @@ export function decodeFee(data: string): bigint {
   return BigInt(`0x${hex.slice(2, 66)}`);
 }
 
+/**
+ * Who the partner fee in an intent's `data` is paid to, lowercased, or null
+ * when the data carries no fee (the same layout decodeFee reads: the
+ * receiver is the low 20 bytes of the second word).
+ */
+export function decodeFeeReceiver(data: string): string | null {
+  const hex = data.startsWith("0x") ? data.slice(2) : data;
+  if (hex.length < 2 + 128 || hex.slice(0, 2) !== "01") return null;
+  return `0x${hex.slice(66 + 24, 130)}`.toLowerCase();
+}
+
 export type IntentFacts = {
   inputToken: string;
   outputToken: string;

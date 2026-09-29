@@ -20,7 +20,8 @@
     "order-marks:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/order-marks-backfill.mjs",
     "chat:eval": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/chat-eval.mjs",
     "chat:usage": "node scripts/chat-usage.mjs",
-    "identities:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/identities-backfill.mjs"
+    "identities:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/identities-backfill.mjs",
+    "orders:recover": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/orders-recover.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.78",
