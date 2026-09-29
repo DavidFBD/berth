@@ -1,6 +1,7 @@
 import { Sodax, type Intent } from "@sodax/sdk";
 import { sodaxConfig } from "@/lib/sodax-config";
 import { listListings } from "@/lib/listings";
+import { HOME_CHAIN } from "@/lib/account";
 
 /**
  * Pour verification, hardened (replaces the old hub-tx.ts status check).
@@ -52,11 +53,18 @@ export function judgePour({
   intent,
   vaultAddresses,
   accountWallet,
+  accountHubWallet,
   linkedWallets = [],
   intentAt,
 }: {
   direction: "in" | "out";
   intent: Pick<Intent, "inputToken" | "outputToken" | "srcAddress">;
+  /**
+   * The hub wallet the account's wallet derives on the home chain. A sell
+   * from the account (hubWalletSwap) is created by that hub wallet on
+   * Sonic, so its intent's source address is the hub wallet, not the EOA.
+   */
+  accountHubWallet?: string | null;
   /** Lowercased share-token addresses of the tea vaults. */
   vaultAddresses: ReadonlySet<string>;
   accountWallet: string | null;
@@ -81,7 +89,9 @@ export function judgePour({
 
   if (EVM_ADDRESS.test(intent.srcAddress)) {
     const src = intent.srcAddress.toLowerCase();
-    const isHome = accountWallet !== null && accountWallet.toLowerCase() === src;
+    const isHome =
+      (accountWallet !== null && accountWallet.toLowerCase() === src) ||
+      (!!accountHubWallet && accountHubWallet.toLowerCase() === src);
     const linked = linkedWallets.find((wallet) => wallet.address.toLowerCase() === src);
     const own = isHome || (!!linked && intentAt !== undefined && intentAt >= linked.linkedAt);
     if (!own) {
@@ -100,7 +110,7 @@ const SONIC_RPC = "https://sonic-rpc.publicnode.com";
  * hash would hold the route open for minutes. A single eth_getTransactionReceipt
  * answers "does this exist at all, and did it succeed" instantly.
  */
-async function receiptSucceeded(txHash: string): Promise<false | { blockNumber: string | null }> {
+export async function receiptSucceeded(txHash: string): Promise<false | { blockNumber: string | null }> {
   try {
     const response = await fetch(SONIC_RPC, {
       method: "POST",
@@ -182,11 +192,29 @@ export async function verifyPourTx({
     ),
   );
   // The block's time only matters for a pour paid from a linked address
-  // that is not the home: one extra read, and only then.
+  // that is not the home: one extra read, and only then. A sell from the
+  // account is created by a hub wallet (hubWalletSwap), so its source is
+  // the hub wallet of the home or of a linked address: derived only when
+  // the source is none of the addresses themselves.
   const src = intent.srcAddress.toLowerCase();
-  const needsTime =
-    accountWallet?.toLowerCase() !== src && (linkedWallets ?? []).some((wallet) => wallet.address.toLowerCase() === src);
+  const direct =
+    accountWallet?.toLowerCase() === src || (linkedWallets ?? []).some((wallet) => wallet.address.toLowerCase() === src);
+  let accountHubWallet: string | null = null;
+  let candidates = linkedWallets ?? [];
+  if (!direct) {
+    const hubOf = (address: string) =>
+      sodax.hubProvider
+        .getUserHubWalletAddress(address, HOME_CHAIN)
+        .then((wallet) => wallet.toLowerCase())
+        .catch(() => null);
+    accountHubWallet = accountWallet ? await hubOf(accountWallet) : null;
+    const linkedHubs = await Promise.all(
+      (linkedWallets ?? []).map(async (wallet) => ({ address: (await hubOf(wallet.address)) ?? "", linkedAt: wallet.linkedAt })),
+    );
+    candidates = [...candidates, ...linkedHubs.filter((wallet) => wallet.address)];
+  }
+  const needsTime = accountWallet?.toLowerCase() !== src && accountHubWallet !== src && candidates.some((wallet) => wallet.address.toLowerCase() === src);
   const intentAt = needsTime && receipt.blockNumber ? await blockTime(receipt.blockNumber) : undefined;
-  const verdict = judgePour({ direction, intent, vaultAddresses, accountWallet, linkedWallets, intentAt });
+  const verdict = judgePour({ direction, intent, vaultAddresses, accountWallet, accountHubWallet, linkedWallets: candidates, intentAt });
   return verdict.ok ? { ok: true, intent, sodax } : verdict;
 }

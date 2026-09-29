@@ -178,6 +178,11 @@ export function DraftCard({ draft, onOpen, className }: { draft: ChatDraft; onOp
             <span className="shrink-0 font-mono text-[15px] font-medium text-foreground tabular-nums">{amount}</span>
           </div>
           {about && <span className="self-end font-mono text-xs text-muted-foreground tabular-nums">{about}</span>}
+          {draft.limitPrice !== undefined && (
+            <span className="self-end font-mono text-xs text-foreground tabular-nums" data-testid="chat-draft-limit">
+              {draft.side === "buy" ? copy.chatDraftAtBuy(formatUsd(draft.limitPrice)) : copy.chatDraftAtSell(formatUsd(draft.limitPrice))}
+            </span>
+          )}
           <span className="text-xs text-muted-foreground">{copy.chatDraftNothingYet}</span>
         </div>
       </div>

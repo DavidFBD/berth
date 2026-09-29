@@ -2,6 +2,8 @@ import { refreshMarks, type MarksRunSummary } from "@/lib/server/marks";
 import { fillOrderMarks, type OrderMarksSummary } from "@/lib/server/order-marks";
 import { runPortfolioSnapshot, type SnapshotSummary } from "@/lib/server/portfolio";
 import { pruneOAuth, type OAuthPruneSummary } from "@/lib/server/oauth/prune";
+import { syncWaitingOrders, type LimitSyncSummary } from "@/lib/server/limit-orders";
+import { settlePourClaims, type ClaimSummary } from "@/lib/server/pour-claims";
 
 /**
  * The one evening cron (vercel.json, 22:00 UTC on weekdays; the Hobby plan
@@ -23,7 +25,10 @@ import { pruneOAuth, type OAuthPruneSummary } from "@/lib/server/oauth/prune";
  * Alongside the marks, and within their budget, the authorization server's
  * housekeeping (lib/server/oauth/prune): expired codes, long dead tokens,
  * clients nobody ever granted. It is reported but never counts as a
- * failure of the run.
+ * failure of the run. So is the limit order pass (lib/server/limit-orders
+ * syncWaitingOrders): every waiting limit order checked against SODAX's
+ * backend, so a fill or an expiry is recorded for a person who never came
+ * back to look. It rides this cron because Hobby allows no third.
  *
  * A stage that throws or runs out of budget is reported as that and the
  * next one runs. The route answers 500 only when nothing at all was
@@ -42,6 +47,9 @@ export type EveningSummary = {
   orderMarks: Stage<OrderMarksSummary>;
   snapshot: Stage<SnapshotSummary>;
   oauthPrune: Stage<OAuthPruneSummary>;
+  limitOrders: Stage<LimitSyncSummary>;
+  /** Pours whose fill was not confirmed when XP was asked for (lib/server/pour-claims): paid once filled. */
+  pourClaims: Stage<ClaimSummary>;
   /** Marks written or dropped, order prices written, portfolio days written. */
   written: number;
   failed: boolean;
@@ -70,6 +78,8 @@ export async function runEvening({
   orderMarks = () => fillOrderMarks(),
   snapshot = (deadline: number) => runPortfolioSnapshot({ now, deadline }),
   prune = () => pruneOAuth(now),
+  limits = () => syncWaitingOrders({ now }),
+  claims = () => settlePourClaims({ now }),
   budgets = { marks: MARKS_BUDGET_MS, orderMarks: ORDER_MARKS_BUDGET_MS, snapshotDeadline: SNAPSHOT_DEADLINE_MS },
 }: {
   now?: Date;
@@ -77,10 +87,18 @@ export async function runEvening({
   orderMarks?: () => Promise<OrderMarksSummary>;
   snapshot?: (deadline: number) => Promise<SnapshotSummary>;
   prune?: () => Promise<OAuthPruneSummary>;
+  limits?: () => Promise<LimitSyncSummary>;
+  claims?: () => Promise<ClaimSummary>;
   budgets?: { marks: number; orderMarks: number; snapshotDeadline: number };
 } = {}): Promise<EveningSummary> {
   const started = Date.now();
-  const [marksStage, pruneStage] = await Promise.all([stage(marks, budgets.marks), stage(prune, budgets.marks)]);
+  const [marksStage, pruneStage, limitStage] = await Promise.all([
+    stage(marks, budgets.marks),
+    stage(prune, budgets.marks),
+    stage(limits, budgets.marks),
+  ]);
+  // After the limit pass, which records the fills the claims wait on.
+  const claimStage = await stage(claims, budgets.orderMarks);
   const orderStage = await stage(orderMarks, budgets.orderMarks);
   const deadline = started + budgets.snapshotDeadline;
   // The snapshot's own deadline stops new accounts; the budget is the
@@ -105,5 +123,16 @@ export async function runEvening({
     !snapshotStage.ok ||
     snapshotStage.result.failed > 0;
   if (!pruneStage.ok) console.warn("[cron/evening] oauth prune failed:", pruneStage.error);
-  return { marks: marksStage, orderMarks: orderStage, snapshot: snapshotStage, oauthPrune: pruneStage, written, failed };
+  if (!limitStage.ok) console.warn("[cron/evening] limit orders failed:", limitStage.error);
+  if (!claimStage.ok) console.warn("[cron/evening] pour claims failed:", claimStage.error);
+  return {
+    marks: marksStage,
+    orderMarks: orderStage,
+    snapshot: snapshotStage,
+    oauthPrune: pruneStage,
+    limitOrders: limitStage,
+    pourClaims: claimStage,
+    written,
+    failed,
+  };
 }

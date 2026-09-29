@@ -8,9 +8,14 @@ import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
  * drawer; a sell opens only when the holdings have been read and hold the
  * listing, so both paths refuse the same way. Pure.
  */
+/** A drafted limit order's price and last day, as the drawers take them (hooks/use-limit-draft). */
+export type DraftLimit = { price: number; expires?: string };
+export type BuyPrefill = { usd?: number; limit?: DraftLimit };
+export type SellPrefill = { usd?: number; quantity?: number; limit?: DraftLimit };
+
 export type DraftOpening =
-  | { kind: "buy"; listing: TokenListing; prefill: { usd?: number } }
-  | { kind: "sell"; listing: TokenListing; prefill: { usd?: number; quantity?: number } }
+  | { kind: "buy"; listing: TokenListing; prefill: BuyPrefill }
+  | { kind: "sell"; listing: TokenListing; prefill: SellPrefill }
   | { kind: "unknown" }
   | { kind: "cannot_check"; listing: TokenListing }
   | { kind: "nothing_to_sell"; listing: TokenListing };
@@ -21,9 +26,13 @@ export function draftOpening(
 ): DraftOpening {
   const listing = TOKEN_LISTINGS.find((candidate) => candidate.symbol === draft.symbol.toUpperCase());
   if (!listing) return { kind: "unknown" };
-  if (draft.side === "buy") return { kind: "buy", listing, prefill: { usd: draft.usd } };
+  const limit: DraftLimit | undefined =
+    draft.limitPrice !== undefined
+      ? { price: draft.limitPrice, ...(draft.expires && { expires: draft.expires }) }
+      : undefined;
+  if (draft.side === "buy") return { kind: "buy", listing, prefill: { usd: draft.usd, ...(limit && { limit }) } };
   if (!holdings.settled) return { kind: "cannot_check", listing };
   const address = listing.address.toLowerCase();
   if (!holdings.heldAddresses.some((held) => held.toLowerCase() === address)) return { kind: "nothing_to_sell", listing };
-  return { kind: "sell", listing, prefill: { usd: draft.usd, quantity: draft.quantity } };
+  return { kind: "sell", listing, prefill: { usd: draft.usd, quantity: draft.quantity, ...(limit && { limit }) } };
 }

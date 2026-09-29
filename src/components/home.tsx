@@ -14,6 +14,7 @@ import {
   ListingBoard,
   NewsFeed,
   NudgeLine,
+  WaitingOrders,
 } from "@/components/board";
 import { AskCard, AskCardPlaceholder, AskDock, DOCK_CLEARANCE } from "@/components/chat/ask-surfaces";
 import { useAskAvailable } from "@/components/chat/chat-status";
@@ -44,7 +45,7 @@ import { DraftLinkOpener, showDraftOpening } from "@/components/assistant/draft-
 import dynamic from "next/dynamic";
 import { ChatButton } from "@/components/chat/chat-button";
 import type { ChatDraft } from "@/components/chat/chat-parts";
-import { draftOpening } from "@/lib/draft-open";
+import { draftOpening, type BuyPrefill, type SellPrefill } from "@/lib/draft-open";
 
 /** The board's frame, shared with the dev gallery (/dev/board?home=…) so the two cannot drift. */
 export const BOARD_PAGE = "mx-auto flex w-full max-w-lg flex-col px-4 pb-12 lg:max-w-[75rem] lg:px-8";
@@ -69,8 +70,8 @@ export function Home() {
   const [sellOpen, setSellOpen] = useState(false);
   // An amount from an assistant's draft (DraftLinkOpener), for the next
   // opening only; any other way of opening a drawer starts empty.
-  const [buyPrefill, setBuyPrefill] = useState<{ usd?: number } | null>(null);
-  const [sellPrefill, setSellPrefill] = useState<{ usd?: number; quantity?: number } | null>(null);
+  const [buyPrefill, setBuyPrefill] = useState<BuyPrefill | null>(null);
+  const [sellPrefill, setSellPrefill] = useState<SellPrefill | null>(null);
   const [withdrawVault, setWithdrawVault] =
     useState<LeverageYieldVault | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -151,12 +152,12 @@ export function Home() {
     setSellListing(listing);
     setSellOpen(true);
   };
-  const openDraftBuy = useCallback((listing: TokenListing, prefill: { usd?: number }) => {
+  const openDraftBuy = useCallback((listing: TokenListing, prefill: BuyPrefill) => {
     setBuyPrefill(prefill);
     setBuyListing(listing);
     setBuyOpen(true);
   }, []);
-  const openDraftSell = useCallback((listing: TokenListing, prefill: { usd?: number; quantity?: number }) => {
+  const openDraftSell = useCallback((listing: TokenListing, prefill: SellPrefill) => {
     setSellPrefill(prefill);
     setSellListing(listing);
     setSellOpen(true);
@@ -164,7 +165,14 @@ export function Home() {
 
   const openChatDraft = (draft: ChatDraft) => {
     const opening = draftOpening(
-      { symbol: draft.symbol, side: draft.side, usd: draft.usd, quantity: draft.quantity },
+      {
+        symbol: draft.symbol,
+        side: draft.side,
+        usd: draft.usd,
+        quantity: draft.quantity,
+        limitPrice: draft.limitPrice,
+        expires: draft.expires,
+      },
       { settled: holdings.settled, heldAddresses: holdings.held.map((holding) => holding.listing.address) },
     );
     if (opening.kind === "buy" || opening.kind === "sell") {
@@ -228,6 +236,8 @@ export function Home() {
         <div className={BOARD_GRID}>
           <div className={BOARD_TRACK}>
             <AccountTotal />
+            {/* Only while a limit order waits, and only behind its switch. */}
+            <WaitingOrders />
             <UnlinkedWalletPrompt hidden={accountOpen} />
             <NudgeLine
               onAddFunds={() => openAccount()}
@@ -360,7 +370,7 @@ function SellHost({
   onConnectWallet,
 }: {
   listing: TokenListing | null;
-  prefill?: { usd?: number; quantity?: number } | null;
+  prefill?: SellPrefill | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConnectWallet?: () => void;
@@ -410,6 +420,7 @@ function SellHost({
           ? { sources: snapshot, chosen: chosen ?? "", onChoose: setChosen }
           : undefined
       }
+      sourceIsHome={source?.isHome !== false}
       signerLinked={account.signerLinked}
       onAddWallet={addWallet.canSign ? () => void addWallet.add() : undefined}
     />

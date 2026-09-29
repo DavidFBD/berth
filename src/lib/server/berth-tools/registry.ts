@@ -11,6 +11,7 @@ import { gatherPosts } from "@/lib/server/x-column";
 import { loadMoves } from "@/lib/server/moves";
 import { SCOPE_DRAFT, SCOPE_READ } from "@/lib/server/oauth/config";
 import { loadOrderLog } from "@/lib/server/order-marks";
+import { limitOrdersOn } from "@/lib/server/limit-orders";
 import { liveListingPrices } from "@/lib/server/portfolio";
 import { loadPortfolioHistory } from "@/lib/server/portfolio-view";
 import { ago, clip, day, moment, named, pct, units, usd } from "@/lib/server/mcp/text";
@@ -498,12 +499,25 @@ const draftOrderTool = defineTool({
   name: "draft_order",
   title: "Draft a buy or sell",
   description:
-    "Prepare a buy or a sell for the person to approve in Berth. Returns a link that opens Berth's order screen with the listing and amount filled in, and a plain summary. Nothing is placed, reserved or sent: the person checks it, chooses what to pay with, and signs in Berth, or closes it. Give usd_amount for a buy; for a sell give usd_amount or quantity, never more than the account holds. The person opens the link to review it in Berth.",
+    "Prepare a buy or a sell for the person to approve in Berth. Returns a link that opens Berth's order screen with the listing and amount filled in, and a plain summary. Nothing is placed, reserved or sent: the person checks it, chooses what to pay with, and signs in Berth, or closes it. Give usd_amount for a buy; for a sell give usd_amount or quantity, never more than the account holds. The person opens the link to review it in Berth. Where the account has limit orders switched on, order_type \"limit\" with limit_price drafts an order that waits for that price instead of filling now, until cancelled or until expires.",
   input: z.object({
     listing: LISTING_ARG,
     side: z.enum(["buy", "sell"]).describe("buy to spend dollars on the listing, sell to turn some of it back into dollars."),
     usd_amount: z.number().positive().optional().describe("Dollars to spend (buy) or to receive before fees (sell)."),
     quantity: z.number().positive().optional().describe("Units of the listing to sell. Sells only."),
+    order_type: z
+      .enum(["market", "limit"])
+      .optional()
+      .describe('"market" (the default) fills now at the market. "limit" waits for limit_price; only on accounts with limit orders switched on, refused elsewhere.'),
+    limit_price: z
+      .number()
+      .positive()
+      .optional()
+      .describe("Limit orders only: dollars per share. A buy fills at this price or lower, a sell at this price or higher."),
+    expires: z
+      .string()
+      .optional()
+      .describe('Limit orders only: the last day the order waits, as "YYYY-MM-DD". Leave it out to wait until cancelled.'),
   }),
   annotations: {
     title: "Draft a buy or sell",
@@ -513,11 +527,17 @@ const draftOrderTool = defineTool({
     openWorldHint: false,
   },
   scope: SCOPE_DRAFT,
-  run: async ({ listing: query, side, usd_amount, quantity }, ctx) => {
+  run: async ({ listing: query, side, usd_amount, quantity, order_type, limit_price, expires }, ctx) => {
     const userId = userOf(ctx);
     const listing = findTokenListing(query);
     if (!listing) return unknownListing(query);
     const prices = await liveListingPrices().catch(() => ({}) as Record<string, number>);
+    // The switch (LIMIT_ORDERS_USERS): read only when a limit is asked for.
+    let limitAllowed = false;
+    if (order_type === "limit") {
+      const row = await loadAccountRow(userId).catch(() => null);
+      limitAllowed = !!row && limitOrdersOn([row.id, row.wallet_address]);
+    }
     let held: number | undefined;
     if (side === "sell") {
       const row = await loadAccountRow(userId);
@@ -533,22 +553,30 @@ const draftOrderTool = defineTool({
       }
     }
     const draft = draftOrder(
-      { listing: listing.symbol, side, usd: usd_amount, quantity },
-      { origin: ctx.origin, price: prices[listing.symbol], held, mayReadHoldings: ctx.scopes.includes(SCOPE_READ) },
+      { listing: listing.symbol, side, usd: usd_amount, quantity, orderType: order_type, limitPrice: limit_price, expires },
+      { origin: ctx.origin, price: prices[listing.symbol], held, mayReadHoldings: ctx.scopes.includes(SCOPE_READ), limitAllowed },
     );
     if (!draft.ok) return no(draft.reason);
-    const what =
+    const isLimit = draft.limitPrice !== undefined;
+    const market =
       draft.side === "buy"
         ? `Buy ${usd(draft.usd)} of ${named(draft.listing)}`
         : draft.quantity !== undefined
-          ? `Sell ${units(draft.quantity)} ${named(draft.listing)}${draft.approxUsd !== undefined ? `, about ${usd(draft.approxUsd)} at ${usd(prices[listing.symbol])}` : ""}`
+          ? `Sell ${units(draft.quantity)} ${named(draft.listing)}${!isLimit && draft.approxUsd !== undefined ? `, about ${usd(draft.approxUsd)} at ${usd(prices[listing.symbol])}` : ""}`
           : `Sell ${usd(draft.usd)} of ${named(draft.listing)}`;
+    const what = isLimit
+      ? `${market} at ${usd(draft.limitPrice!)} or ${draft.side === "buy" ? "lower" : "higher"}, ${draft.expires ? `until the end of ${day(draft.expires)}` : "until cancelled"}${prices[listing.symbol] !== undefined ? ` (now ${usd(prices[listing.symbol])})` : ""}`
+      : market;
+    const nothingYet = isLimit
+      ? "Nothing has happened yet. The order is only placed if the person opens it, checks the price, the amount and what they pay with, and signs in Berth. It then waits in SODAX's contract until the price is reached or they cancel it, and a Berth fee applies."
+      : undefined;
     if (ctx.surface === "chat") {
       return {
         text: [
           `Draft: ${what}.`,
           "The person sees it as a card under your answer, with a button that opens Berth's order screen filled in. Do not write a link.",
-          "Nothing has happened yet. The order is only placed if the person opens the card, checks the amount and what they pay with, and signs. The price is set when they sign, and a Berth fee applies.",
+          nothingYet ??
+            "Nothing has happened yet. The order is only placed if the person opens the card, checks the amount and what they pay with, and signs. The price is set when they sign, and a Berth fee applies.",
         ].join("\n"),
         draft: {
           symbol: draft.listing.symbol,
@@ -557,6 +585,7 @@ const draftOrderTool = defineTool({
           usd: draft.usd,
           quantity: draft.quantity,
           approxUsd: draft.approxUsd,
+          ...(isLimit && { limitPrice: draft.limitPrice, ...(draft.expires && { expires: draft.expires }) }),
         },
       };
     }
@@ -564,7 +593,8 @@ const draftOrderTool = defineTool({
       [
         `Draft: ${what}.`,
         `Open in Berth to review and sign: ${draft.url}`,
-        "Nothing has happened yet. The order is only placed if the person opens this link, checks the amount and what they pay with, and signs in Berth. The price is set when they sign, and a Berth fee applies.",
+        nothingYet ??
+          "Nothing has happened yet. The order is only placed if the person opens this link, checks the amount and what they pay with, and signs in Berth. The price is set when they sign, and a Berth fee applies.",
       ].join("\n"),
     );
   },

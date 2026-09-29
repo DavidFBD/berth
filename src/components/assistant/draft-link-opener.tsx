@@ -6,11 +6,11 @@ import { useCopy } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { readDraftParams, type DraftParams } from "@/lib/draft-order";
-import { draftOpening, type DraftOpening } from "@/lib/draft-open";
+import { draftOpening, type BuyPrefill, type DraftOpening, type SellPrefill } from "@/lib/draft-open";
 import type { Copy } from "@/lib/copy";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 
-const DRAFT_KEYS = ["open", "side", "usd", "qty"] as const;
+const DRAFT_KEYS = ["open", "side", "usd", "qty", "price", "until"] as const;
 
 /** How long a sell waits for the holdings before saying it could not check them. */
 export const DRAFT_SELL_WAIT_MS = 20_000;
@@ -32,8 +32,8 @@ export function DraftLinkOpener({
   onBuy,
   onSell,
 }: {
-  onBuy: (listing: TokenListing, prefill: { usd?: number }) => void;
-  onSell: (listing: TokenListing, prefill: { usd?: number; quantity?: number }) => void;
+  onBuy: (listing: TokenListing, prefill: BuyPrefill) => void;
+  onSell: (listing: TokenListing, prefill: SellPrefill) => void;
 }) {
   const copy = useCopy();
   const account = useHubAccount();
@@ -86,8 +86,8 @@ export function showDraftOpening(
   opening: DraftOpening,
   copy: Pick<Copy, "draftUnknownListing" | "draftCouldNotCheck" | "draftNothingToSell">,
   open: {
-    onBuy: (listing: TokenListing, prefill: { usd?: number }) => void;
-    onSell: (listing: TokenListing, prefill: { usd?: number; quantity?: number }) => void;
+    onBuy: (listing: TokenListing, prefill: BuyPrefill) => void;
+    onSell: (listing: TokenListing, prefill: SellPrefill) => void;
   },
 ): boolean {
   switch (opening.kind) {

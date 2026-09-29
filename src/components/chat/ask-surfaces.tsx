@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { useCopy } from "@/components/settings-provider";
 import { cn } from "@/lib/utils";
+import { useLimitOrders } from "@/hooks/use-limit-orders";
 
 /**
  * The board's two ways into Ask besides the header's button. Neither is a
@@ -23,6 +24,11 @@ const FIELD =
 /** Desktop: a card in the right column, with three things to ask. */
 export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
   const copy = useCopy();
+  // Where limit orders are switched on, the buy suggestion waits for a price.
+  const limitsOn = useLimitOrders({ poll: false }).enabled;
+  const suggestions = limitsOn
+    ? copy.askSuggestions.map((prompt, index) => (index === copy.askSuggestions.length - 1 ? copy.askSuggestionLimit : prompt))
+    : copy.askSuggestions;
   return (
     <Panel>
       <SectionHeading title={copy.chatTitle} hint={copy.chatWhy} />
@@ -35,7 +41,7 @@ export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
           </span>
         </button>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {copy.askSuggestions.map((prompt) => (
+          {suggestions.map((prompt) => (
             <button
               key={prompt}
               type="button"

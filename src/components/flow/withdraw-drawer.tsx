@@ -26,7 +26,7 @@ import { EASE_LIFT } from "@/lib/motion";
 import { getChainName } from "@/lib/chains";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
-import { formatTokenAmount, parseAmount, shortenAddress } from "@/lib/format";
+import { formatTokenAmount, formatUsd, parseAmount, shortenAddress } from "@/lib/format";
 import {
   SHARE_DECIMALS,
   amountText,
@@ -34,8 +34,20 @@ import {
   belowMinimum,
   minPourUsd,
   pourAmounts,
+  quoteInputFor,
   withdrawGate,
 } from "@/lib/pour-amount";
+import {
+  dayLabel,
+  fillsNow,
+  limitCta,
+  limitMinOutput,
+  limitTokenOk,
+  priceNumber,
+  priceText as limitPriceText,
+} from "@/lib/limit-orders";
+import { useLimitDraft, type LimitPrefill } from "@/hooks/use-limit-draft";
+import { LimitPlaced, LimitPriceFields, LimitSummary } from "./limit-price";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
@@ -74,7 +86,9 @@ export function WithdrawDrawer({
   totalShares,
   onConnectWallet,
   prefill,
+  devLimit,
   sellFrom,
+  sourceIsHome = true,
   signerLinked,
   onAddWallet,
 }: {
@@ -101,7 +115,9 @@ export function WithdrawDrawer({
    * (lib/draft-order): dollars to take out, or units to sell, never more
    * than `availableShares`. Filled in once; never submitted.
    */
-  prefill?: { usd?: number; quantity?: number } | null;
+  prefill?: { usd?: number; quantity?: number; limit?: LimitPrefill } | null;
+  /** Dev galleries only: show "Set a price" as if the switch were on. */
+  devLimit?: boolean;
   /**
    * A listing sell from an account with more than one hub wallet holding it
    * (lib/account-wallets sellSources): the drawer asks which, and a hub
@@ -113,6 +129,8 @@ export function WithdrawDrawer({
     chosen: string;
     onChoose: (spoke: string) => void;
   };
+  /** False when the one hub wallet selling is not the home's: no limit sell then (v1 is home only). */
+  sourceIsHome?: boolean;
   /** False when the signing wallet is connected but not on the account yet. */
   signerLinked?: boolean;
   /** Adds the connected wallet to the account (hooks/use-account-wallets). */
@@ -260,6 +278,33 @@ export function WithdrawDrawer({
       ? prices.usdValue(outputToken, quote.minOut)
       : undefined;
 
+  // A limit sell (lib/limit-orders): the price sets the minimum payout,
+  // on the shares actually swapped after the fee, rounded up.
+  const limit = useLimitDraft({ side: "sell",
+    open,
+    listing,
+    marketPrice: isSell ? sharePriceUsd : undefined,
+    prefill: prefill?.limit,
+    force: devLimit,
+    // v1 limit sells come from the home hub wallet only: its record,
+    // sweep and cancel all know that one (lib/server/limit-orders).
+    unavailable:
+      !sourceIsHome || (!!sellFrom && sellFrom.sources.find((source) => source.spoke === sellFrom.chosen)?.isHome !== true),
+  });
+  const limitTokenFits = limitTokenOk(outputToken, dstChainKey ? isEvmChainKeyType(dstChainKey) : false);
+  const swapShares = quoteInputFor(buildAmount);
+  const limitMin =
+    limit.active && outputToken
+      ? limitMinOutput({
+          side: "sell",
+          swapInput: swapShares,
+          inputDecimals: SHARE_DECIMALS,
+          outputDecimals: outputToken.decimals,
+          price: limit.price,
+        })
+      : undefined;
+  const limitPriceLabel = limit.price ? formatUsd(priceNumber(limit.price)) : "";
+
   const finish = () => {
     action.reset();
     setAmount("");
@@ -304,12 +349,14 @@ export function WithdrawDrawer({
   };
 
   const handleWithdraw = async () => {
+    const minOut = limit.active ? limitMin : quote.minOut;
     if (
+      (limit.active && (limit.deadline === undefined || !limit.price || !limitTokenFits || limit.recheck() !== null)) ||
       !listing ||
       !dstChainKey ||
       !outputToken ||
       !buildAmount ||
-      quote.minOut === undefined ||
+      minOut === undefined ||
       !address ||
       !recipient ||
       !walletProvider
@@ -325,8 +372,13 @@ export function WithdrawDrawer({
       outputToken: outputToken.address,
       outputTokenSymbol: outputToken.symbol,
       inputAmount: buildAmount,
-      minOutputAmount: quote.minOut,
+      minOutputAmount: minOut,
       recipient,
+      ...(limit.active &&
+        limit.deadline !== undefined &&
+        limit.price && {
+          limit: { deadline: limit.deadline, limitPrice: limitPriceText(limit.price) },
+        }),
       walletProvider,
       walletMode: mode,
       fillToasts: {
@@ -358,8 +410,9 @@ export function WithdrawDrawer({
     isWrongChain,
     noRoute: quote.noRoute,
     belowDust: dustBlocked,
-    quoted: quote.quoted,
-    minOut: quote.minOut,
+    // A limit order needs no quote to be placed: its price is the minimum.
+    quoted: limit.active ? 1n : quote.quoted,
+    minOut: limit.active ? 1n : quote.minOut,
     hasWalletProvider: !!walletProvider,
     signerLinked,
     canSignSource: chosenSource ? chosenSource.canSign : undefined,
@@ -422,12 +475,36 @@ export function WithdrawDrawer({
         return { label: copy.ctaTooSmallForBtc, disabled: true };
       case "quotePending":
         return { label: copy.ctaGettingQuote, disabled: true, busy: true };
-      default:
+      default: {
+        if (limit.active) {
+          const reason = limitCta({ tokenOk: limitTokenFits, problem: limit.problem, minOut: limitMin });
+          switch (reason) {
+            case "review":
+              return { label: copy.limitCtaReview, disabled: false, onClick: () => limit.setReviewing(true) };
+            case "needsDollars":
+              return { label: copy.limitCtaDollarsSell, disabled: false, onClick: () => setPickerOpen(true) };
+            case "enterPrice":
+              return { label: copy.limitCtaEnterPrice, disabled: true };
+            case "pickDate":
+              return { label: copy.limitCtaPickDate, disabled: true };
+            case "pastDate":
+              return { label: copy.limitCtaPastDate, disabled: true };
+            case "tooFar":
+              return { label: copy.limitCtaTooFar, disabled: true };
+            case "noPrice":
+              return { label: copy.limitCtaNoPrice, disabled: true };
+            case "throughMarket":
+              return { label: copy.limitCtaThroughSell, disabled: true };
+            default:
+              return { label: copy.limitCtaEnterPrice, disabled: true };
+          }
+        }
         return {
           label: isSell ? copy.sell : copy.vaultWithdraw,
           disabled: false,
           onClick: () => void handleWithdraw(),
         };
+      }
     }
   })();
 
@@ -456,7 +533,15 @@ export function WithdrawDrawer({
           <AnimatePresence initial={false} mode="popLayout">
           <motion.div
             key={
-              action.fillPhase ? "settling" : action.pending ? "stepper" : "form"
+              action.step === "resting"
+                ? "resting"
+                : action.fillPhase
+                  ? "settling"
+                  : action.pending
+                    ? "stepper"
+                    : limit.reviewing
+                      ? "review"
+                      : "form"
             }
             className="flex min-h-0 flex-1 flex-col"
             initial={{
@@ -476,7 +561,19 @@ export function WithdrawDrawer({
             }}
             transition={{ duration: 0.22, ease: EASE_LIFT }}
           >
-          {listing && action.fillPhase ? (
+          {listing && action.step === "resting" ? (
+            <div className="p-4">
+              <LimitPlaced
+                name={listing.name}
+                priceLabel={limitPriceLabel}
+                unsaved={action.limitUnsaved}
+                onDone={() => {
+                  onOpenChange(false);
+                  finish();
+                }}
+              />
+            </div>
+          ) : listing && action.fillPhase ? (
             <div className="p-4">
               <IntentTracking
                 reportState={action.reportState}
@@ -503,6 +600,28 @@ export function WithdrawDrawer({
           ) : listing && action.pending ? (
             <div className="p-4">
               <ActionStepper step={action.step} approveNeeded={false} />
+            </div>
+          ) : listing && limit.reviewing && outputToken && dstChainKey && buildAmount && limitMin ? (
+            <div className="flex flex-col gap-4 overflow-y-auto p-4">
+              <LimitSummary
+                side="sell"
+                name={listing.name}
+                priceLabel={limitPriceLabel}
+                putLabel={`${formatTokenAmount(buildAmount, SHARE_DECIMALS, 6)} ${listing.name}`}
+                getLabel={`${formatTokenAmount(limitMin, outputToken.decimals)} ${outputToken.symbol} on ${getChainName(dstChainKey)}`}
+                feeLabel={
+                  swapShares !== undefined
+                    ? `${formatTokenAmount(buildAmount - swapShares, SHARE_DECIMALS, 6)} ${listing.name}`
+                    : undefined
+                }
+                expiryDay={limit.expiry.kind === "date" ? dayLabel(limit.expiry.day) : undefined}
+                placeLabel={copy.limitPlace}
+                onBack={() => limit.setReviewing(false)}
+                onPlace={() => void handleWithdraw()}
+              />
+              {action.step === "error" && action.error && (
+                <ActionError message={action.error} reportState={action.reportState} />
+              )}
             </div>
           ) : listing ? (
             <>
@@ -637,6 +756,23 @@ export function WithdrawDrawer({
                     )}
                 </div>
 
+                {limit.allowed && (
+                  <LimitPriceFields
+                    side="sell"
+                    mode={limit.mode}
+                    onMode={limit.setMode}
+                    priceText={limit.priceText}
+                    onPriceText={limit.setPriceText}
+                    marketLabel={sharePriceUsd !== undefined ? formatUsd(sharePriceUsd) : undefined}
+                    expiry={limit.expiry}
+                    onExpiry={limit.setExpiry}
+                    tokenOk={!outputToken || limitTokenFits}
+                    throughHint={limit.problem === "throughMarket"}
+                    noPriceHint={limit.problem === "noPrice"}
+                    fillsNow={fillsNow("sell", limit.price, sharePriceUsd)}
+                  />
+                )}
+
                 {/* Destination chain + token */}
                 <button
                   type="button"
@@ -716,7 +852,7 @@ export function WithdrawDrawer({
                 )}
 
                 {/* Live quote */}
-                {dstChainKey && outputToken && buildAmount ? (
+                {dstChainKey && outputToken && buildAmount && !limit.active ? (
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
                     {tooSmall ? (
                       <span className="text-destructive">

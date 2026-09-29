@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { RewardList } from "@/lib/profile-types";
-import { awardXp, flushUnannounced } from "@/lib/server/accounts";
+import { flushUnannounced } from "@/lib/server/accounts";
 import { linkedWallets } from "@/lib/server/identities";
+import { awardFilledPour, closePourClaim, fillVerdict, savePourClaim } from "@/lib/server/pour-claims";
 import { recordOrder } from "@/lib/server/orders";
 import { verifyPourTx } from "@/lib/server/pour-verify";
 import {
@@ -13,8 +14,10 @@ import {
 /**
  * Reward a filled pour, and record it as an order. Body: direction
  * ('in' | 'out'), the intent's hub tx hash, and optionally the solver's fill
- * tx hash, which only ever helps the order record pick between two fills
- * (lib/orders pickFill) and is never trusted on its own.
+ * tx hash, which is only where to look: the fill must be on chain, for this
+ * intent, whole (lib/server/pour-claims), before anything is paid. An
+ * intent not yet known to have filled is kept as a claim the evening pass
+ * settles; one that closed unfilled earns nothing.
  */
 export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
   // The hash must be a real intent on the canonical contract, must touch a
   // tea vault on the claimed side, and (when its source speaks EVM) must
   // have been poured by this account's own wallet. See pour-verify.ts.
-  const verdict = await verifyPourTx({
+  const verified = await verifyPourTx({
     txHash,
     direction: kind === "pour_out" ? "out" : "in",
     accountWallet: user.wallet_address,
@@ -44,8 +47,8 @@ export async function POST(request: NextRequest) {
       .filter((wallet) => wallet.family === "evm")
       .map((wallet) => ({ address: wallet.address, linkedAt: Date.parse(wallet.linkedAt) })),
   });
-  if (!verdict.ok) {
-    return NextResponse.json({ error: verdict.reason }, { status: 422 });
+  if (!verified.ok) {
+    return NextResponse.json({ error: verified.reason }, { status: 422 });
   }
 
   const claimedFill =
@@ -53,37 +56,38 @@ export async function POST(request: NextRequest) {
     /^0x[0-9a-f]{64}$/i.test(read.caller.body.fillTxHash)
       ? read.caller.body.fillTxHash
       : null;
-  // Awaited, not fired and forgotten: a serverless function may be frozen
-  // the moment it answers. recordOrder never throws, so the award is safe.
-  await recordOrder({
-    sodax: verdict.sodax,
-    userId: user.id,
-    intentTx: txHash,
-    direction: kind === "pour_out" ? "sell" : "buy",
-    intent: verdict.intent,
-    claimedFillTx: claimedFill,
-  });
+  const direction = kind === "pour_out" ? "sell" : "buy";
 
+  // XP only for an order that filled (lib/server/pour-claims): a created
+  // then cancelled or expired intent earns nothing. When the fill cannot
+  // be confirmed yet, a claim is kept and the evening pass pays it.
+  const verdict = await fillVerdict({ intentTx: txHash, intent: verified.intent, claimedFillTx: claimedFill });
+  if (verdict === "notFilled") {
+    return NextResponse.json({ error: "not filled" }, { status: 422 });
+  }
   const rewards: RewardList = [];
-  const pour = await awardXp(user.id, kind, txHash);
-  let xp = pour.xp;
-  if (pour.awarded > 0) rewards.push({ kind, amount: pour.awarded });
-
-  // The referral payoff lives here, not at signup: a verified pour is the
-  // moment an invited account proves it's a person with real funds, not a
-  // farm. Both awards are index-deduped (invite_accepted once per account,
-  // friend_poured once per referred id), so replays and later pours no-op.
-  if (user.referred_by) {
-    const accepted = await awardXp(user.id, "invite_accepted", null);
-    xp = accepted.xp;
-    if (accepted.awarded > 0) {
-      rewards.push({ kind: "invite_accepted", amount: accepted.awarded });
-    }
-    // The referrer's reward lands on their row now, parked unannounced; their
-    // next profile sync flushes it into a visible toast (see profile route).
-    await awardXp(user.referred_by, "friend_poured", user.id, {
-      announced: false,
+  let xp = user.xp;
+  if (verdict === "unknown") {
+    await savePourClaim(user.id, txHash, direction, claimedFill);
+  } else {
+    // Awaited, not fired and forgotten: a serverless function may be frozen
+    // the moment it answers. recordOrder never throws, so the award is safe.
+    await recordOrder({
+      sodax: verified.sodax,
+      userId: user.id,
+      intentTx: txHash,
+      direction,
+      intent: verified.intent,
+      claimedFillTx: claimedFill,
     });
+    // The referral payoff lives here, not at signup: a filled pour is the
+    // moment an invited account proves it's a person with real funds, not a
+    // farm. Every award is index-deduped, so replays and later pours no-op.
+    const paid = await awardFilledPour(user, kind, txHash);
+    // An earlier call may have left a claim for this intent: it is paid now.
+    await closePourClaim(txHash);
+    rewards.push(...paid.rewards);
+    xp = paid.xp;
   }
 
   // Anything parked for this account (a hold paid by the cron) rides along

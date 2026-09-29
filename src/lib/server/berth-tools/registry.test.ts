@@ -305,6 +305,51 @@ describe("chat tools", () => {
   });
 });
 
+describe("limit drafts, on both doors", () => {
+  const mcp = Object.fromEntries(mcpTools().map((tool) => [tool.name, tool]));
+  const ctx = chatToolContext("u1", "https://www.berthmarkets.com");
+  const draftTool = BERTH_TOOLS.find((tool) => tool.name === "draft_order")!;
+  const args = { listing: "NVDA", side: "buy", usd_amount: 50, order_type: "limit", limit_price: 175 };
+
+  it("refuse an account the switch leaves off, in the same words", async () => {
+    vi.stubEnv("LIMIT_ORDERS_USERS", "someone-else");
+    const viaMcp = await mcp.draft_order.handler(args, mcpCtx(["berth.read", "berth.draft"]));
+    const viaChat = await draftTool.run(args as never, ctx);
+    expect(viaMcp.isError).toBe(true);
+    expect(viaChat.isError).toBe(true);
+    expect(viaChat.text).toBe(viaMcp.content[0].text);
+    expect(viaChat.text).toBe("Limit orders are not open on this account. Draft a market order instead.");
+    expect(viaChat.draft).toBeUndefined();
+    vi.unstubAllEnvs();
+  });
+
+  it("draft a waiting order for a switched on account: a link on MCP, a card in the chat, the same summary", async () => {
+    vi.stubEnv("LIMIT_ORDERS_USERS", "0x00000000000000000000000000000000000000AA");
+    const tooFar = (await mcp.draft_order.handler({ ...args, expires: "2099-01-01" }, mcpCtx(["berth.read", "berth.draft"]))).content[0].text;
+    expect(tooFar).toContain("at most a year");
+    const open = (await mcp.draft_order.handler(args, mcpCtx(["berth.read", "berth.draft"]))).content[0].text;
+    expect(open.split("\n")[0]).toBe("Draft: Buy $50.00 of NVIDIA (NVDA) at $175.00 or lower, until cancelled (now $180.50).");
+    const soon = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    const linked = (await mcp.draft_order.handler({ ...args, expires: soon }, mcpCtx(["berth.read", "berth.draft"]))).content[0].text;
+    expect(linked).toContain(`https://www.berthmarkets.com/?open=NVDA&side=buy&price=175&until=${soon}&usd=50`);
+    expect(linked).toContain("It then waits in SODAX's contract until the price is reached or they cancel it");
+    expect(linked).toContain("signs in Berth");
+
+    const card = await draftTool.run({ ...args, expires: soon } as never, ctx);
+    expect(card.draft).toEqual({ symbol: "NVDA", name: "NVIDIA", side: "buy", usd: 50, quantity: undefined, approxUsd: 50, limitPrice: 175, expires: soon });
+    expect(card.text.split("\n")[0]).toBe(linked.split("\n")[0]);
+    expect(card.text).not.toContain("http");
+    vi.unstubAllEnvs();
+  });
+
+  it("leave a market draft exactly as it was", async () => {
+    vi.stubEnv("LIMIT_ORDERS_USERS", "u1");
+    const out = await draftTool.run({ listing: "NVDA", side: "buy", usd_amount: 20 } as never, ctx);
+    expect(out.draft).toEqual({ symbol: "NVDA", name: "NVIDIA", side: "buy", usd: 20, quantity: undefined, approxUsd: 20 });
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("an account with more than one linked EVM address", () => {
   const ctx = chatToolContext("u1", "https://www.berthmarkets.com");
   const tools = Object.fromEntries(BERTH_TOOLS.map((tool) => [tool.name, tool]));

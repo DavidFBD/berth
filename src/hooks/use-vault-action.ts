@@ -15,6 +15,8 @@ import {
   DEFAULT_RELAY_TX_TIMEOUT,
   getIntentRelayChainId,
   isBitcoinChainKeyType,
+  isHubChainKeyType,
+  relayTxAndWaitPacket,
   submitTransaction,
   waitUntilIntentExecuted,
   type Address,
@@ -68,6 +70,8 @@ import { useErrorReporter } from "@/hooks/use-error-reporter";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 import type { PourReadiness } from "@/hooks/use-privy-evm-wallet";
 import { useAwardPour } from "@/hooks/use-profile";
+import { useRecordLimitOrder } from "@/hooks/use-limit-orders";
+import { addPending } from "@/lib/limit-pending";
 
 // Re-exported so existing consumers keep one import site for error copy and
 // the step union.
@@ -102,6 +106,21 @@ export interface FillToastCopy {
   successTitle: string;
   successDescription: string;
   failureDescription: string;
+}
+
+/**
+ * A limit order (lib/limit-orders): the same build with the intent's
+ * `deadline` set to 0n (until cancelled) or the chosen day's end, and a
+ * `minOutputAmount` from the price instead of a quote. The SDK's
+ * leverageYield builders take `deadline` verbatim (resolveDeadline returns
+ * a supplied value as is, and deposit/withdraw put it on the intent's
+ * params). Once on the hub the order rests: the machine records it and
+ * stops, with no fill poll and no unsettled report.
+ */
+export interface LimitRun {
+  deadline: bigint;
+  /** The price the person typed, as a decimal string, for the record. */
+  limitPrice: string;
 }
 
 export interface RunDepositArgs {
@@ -140,6 +159,8 @@ export interface RunDepositArgs {
    * "0x"), so nothing else in the payload depends on it.
    */
   deliverTo?: string;
+  /** Set for a limit buy; see LimitRun. */
+  limit?: LimitRun;
 }
 
 export interface RunWithdrawArgs {
@@ -172,6 +193,8 @@ export interface RunWithdrawArgs {
   fillToasts: FillToastCopy;
   /** See RunDepositArgs.ensureReady. */
   ensureReady?: () => Promise<PourReadiness>;
+  /** Set for a limit sell; see LimitRun. */
+  limit?: LimitRun;
 }
 
 export interface UseVaultActionResult {
@@ -211,6 +234,8 @@ export interface UseVaultActionResult {
    * closed, so a reopened drawer can say so before the user pays twice.
    */
   earlierOrder: { spokeTxHash: string; spokeTxUrl?: string } | null;
+  /** Set when a limit order rests on the hub but its record did not save; the page retries on its next load. */
+  limitUnsaved: boolean;
   /** True mid-pipeline: between first tap and signature. */
   pending: boolean;
   /** True while the drawer must refuse dismissal. */
@@ -243,6 +268,8 @@ type SentOrder = {
   slow?: boolean;
   /** The drawer may close at every step from here on. */
   closable?: boolean;
+  /** A limit order resting on the hub: nothing to poll, nothing to announce. */
+  limit?: boolean;
 };
 
 /** A slow order still travelling, and which run sent it. */
@@ -277,6 +304,7 @@ export function useVaultAction(options?: {
   const vaultSwap = useLeverageYieldVaultSwap();
   const approve = useSwapApprove();
   const { mutate: awardPour } = useAwardPour();
+  const recordLimitOrder = useRecordLimitOrder();
 
   const [step, setStep] = useState<PourStep>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -284,6 +312,8 @@ export function useVaultAction(options?: {
   /** The solver's latest answer for a slow order, as its own watch saw it. */
   const [slowStatus, setSlowStatus] = useState<FillStatus>({});
   const [earlierOrder, setEarlierOrder] = useState<InFlight | null>(null);
+  /** A limit order that rests on the hub but that Berth could not save yet. */
+  const [limitUnsaved, setLimitUnsaved] = useState(false);
   /** The slow order still travelling, if any, whatever the screen shows. */
   const inFlightRef = useRef<InFlight | null>(null);
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
@@ -369,9 +399,10 @@ export function useVaultAction(options?: {
   const slow = sent?.slow === true;
   const statusQuery = useStatus({
     params: {
-      intentTxHash: slow
-        ? undefined
-        : (sent?.hubTxHash as `0x${string}` | undefined),
+      intentTxHash:
+        slow || sent?.limit
+          ? undefined
+          : (sent?.hubTxHash as `0x${string}` | undefined),
     },
   });
   const statusCode = slow
@@ -847,6 +878,123 @@ export function useVaultAction(options?: {
     [advance, fail, queryClient, settleFailed, settleFilled, sodax],
   );
 
+  /**
+   * A limit order reached the hub: it rests there until its price, so the
+   * machine records it (hooks/use-limit-orders) and stops at "resting".
+   * The balance that paid, and a sell's holding, moved now.
+   */
+  const restLimit = useCallback(
+    (
+      direction: "buy" | "sell",
+      srcChainKey: SpokeChainKey,
+      limit: LimitRun,
+      swapped: {
+        intent: { intentId: bigint };
+        intentDeliveryInfo: { srcTxHash: string; dstTxHash: string };
+        solverExecutionResponse: { intent_hash?: string };
+      },
+    ) => {
+      const hubTxHash = swapped.intentDeliveryInfo.dstTxHash;
+      setSent({
+        spokeTxHash: swapped.intentDeliveryInfo.srcTxHash,
+        intentId: swapped.intent.intentId.toString(),
+        hubTxHash,
+        intentHash: swapped.solverExecutionResponse.intent_hash,
+        limit: true,
+        closable: true,
+      });
+      advance("resting");
+      void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
+      const run = runRef.current;
+      setLimitUnsaved(false);
+      void recordLimitOrder({
+        intentTxHash: hubTxHash,
+        spokeTxHash: swapped.intentDeliveryInfo.srcTxHash,
+        direction,
+        limitPrice: limit.limitPrice,
+        intentHash: swapped.solverExecutionResponse.intent_hash,
+        srcChain: srcChainKey,
+      }).then((saved) => {
+        // Said plainly on the placed screen rather than promising the list.
+        if (!saved && runRef.current === run) setLimitUnsaved(true);
+      });
+    },
+    [advance, queryClient, recordLimitOrder],
+  );
+
+  /**
+   * Send a limit order: the SDK's vaultSwap split open, as sendSlow does,
+   * because a limit intent must never be lost between the signature and
+   * its record. vaultSwap reports a relay timeout or a failed solver
+   * notify as a plain failure, after the intent may already be on its way;
+   * a market order in that spot expires in five minutes and is refunded,
+   * a limit order would rest unseen. So: once the hub transaction is known
+   * the order is recorded and rests, whatever the solver notify says (a
+   * failed notify is reported, and the solver still reads the orderbook);
+   * a payment that left the wallet but never reached the hub is shown as
+   * sent and not arrived, with its hash, reported, and never retried.
+   */
+  const sendLimit = useCallback(
+    async (input: {
+      payload: LeverageYieldSwapPayload;
+      walletProvider: AnyWalletProvider;
+      srcChainKey: SpokeChainKey;
+      direction: "buy" | "sell";
+      limit: LimitRun;
+    }): Promise<boolean> => {
+      const { payload, walletProvider, srcChainKey } = input;
+      const created = await sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false });
+      if (!created.ok) {
+        fail(friendlyError(created.error, COPY.errOrderFailed, gasContextFor(srcChainKey)), created.error);
+        return false;
+      }
+      const tx = String(created.value.tx);
+      const intentId = created.value.intent.intentId.toString();
+      void queryClient.invalidateQueries({ queryKey: ["shared", "xBalances", srcChainKey] });
+      const notArrived = (why: unknown) => {
+        console.error("[vault-action] limit order not on the hub", why);
+        // It may still arrive and rest: kept in this browser until the
+        // sweep (lib/server/limit-orders sweepMissing) records it.
+        addPending({ spokeTxHash: tx, direction: input.direction, limitPrice: input.limit.limitPrice, srcChain: srcChainKey, at: Date.now() });
+        setSent({ spokeTxHash: tx, spokeTxUrl: spokeTxUrl(srcChainKey, tx), intentId, limit: true, closable: true });
+        advance("unsettled");
+        return true;
+      };
+      const verified = await sodax.spoke.verifyTxHash({ txHash: tx, chainKey: srcChainKey });
+      if (!verified.ok) return notArrived(verified.error);
+      let hubTxHash = tx;
+      if (!isHubChainKeyType(srcChainKey)) {
+        const packet = await relayTxAndWaitPacket({
+          srcTxHash: tx,
+          data: created.value.relayData,
+          chainKey: srcChainKey,
+          relayerApiEndpoint: sodax.swaps.relayerApiEndpoint,
+          timeout: undefined,
+        });
+        if (!packet.ok) return notArrived(packet.error);
+        hubTxHash = packet.value.dst_tx_hash;
+      }
+      const notified = await sodax.leverageYield.notifySolver({ intent_tx_hash: hubTxHash as `0x${string}` });
+      if (!notified.ok && pourRef.current) {
+        report(
+          solverNotNotifiedReport(pourRef.current.context, {
+            intentId,
+            spokeTxHash: tx,
+            hubTxHash,
+            notifyError: errorLine(notified.error),
+          }),
+        );
+      }
+      restLimit(input.direction, srcChainKey, input.limit, {
+        intent: { intentId: created.value.intent.intentId },
+        intentDeliveryInfo: { srcTxHash: tx, dstTxHash: hubTxHash },
+        solverExecutionResponse: { intent_hash: notified.ok ? notified.value.intent_hash : undefined },
+      });
+      return true;
+    },
+    [advance, fail, queryClient, report, restLimit, sodax],
+  );
+
   const runDeposit = useCallback(
     async (args: RunDepositArgs): Promise<boolean> => {
       if (runningRef.current) return false;
@@ -896,7 +1044,13 @@ export function useVaultAction(options?: {
         // A slow source chain's payment can take an hour to reach Sonic, far
         // past the SDK's five minute default, and an intent that arrives
         // expired cannot be filled. Its window is set from hub time here.
-        let deadline: bigint | undefined;
+        let deadline: bigint | undefined = args.limit?.deadline;
+        if (args.limit && slow) {
+          // A limit order is priced in dollars on an EVM network only
+          // (lib/limit-orders limitTokenOk); the drawer never offers it here.
+          fail(COPY.errCouldNotPrepare);
+          return false;
+        }
         if (slow) {
           try {
             const block = await sodax.hubProvider.publicClient.getBlock({
@@ -1015,6 +1169,15 @@ export function useVaultAction(options?: {
             relayWaitMs: slow.relayWaitMs,
           });
         }
+        if (args.limit) {
+          return await sendLimit({
+            payload,
+            walletProvider: args.walletProvider,
+            srcChainKey: args.srcChainKey,
+            direction: "buy",
+            limit: args.limit,
+          });
+        }
         const swapped = await vaultSwap.mutateAsyncSafe({
           ...payload,
           walletProvider: args.walletProvider,
@@ -1041,7 +1204,7 @@ export function useVaultAction(options?: {
         runningRef.current = false;
       }
     },
-    [advance, approve, buildDeposit, fail, queryClient, resetReport, sendSlow, sodax, vaultSwap, waitForAllowance],
+    [advance, approve, buildDeposit, fail, queryClient, resetReport, sendLimit, sendSlow, sodax, vaultSwap, waitForAllowance],
   );
 
   const runWithdraw = useCallback(
@@ -1094,6 +1257,7 @@ export function useVaultAction(options?: {
           inputAmount: args.inputAmount,
           minOutputAmount: args.minOutputAmount,
           recipient: args.recipient,
+          ...(args.limit && { deadline: args.limit.deadline }),
         });
         if (!built.ok) {
           fail(
@@ -1112,12 +1276,25 @@ export function useVaultAction(options?: {
         advance("signing");
         if (!(await onRightChain())) return false;
         const slow = slowSource(args.srcChainKey);
+        if (slow && args.limit) {
+          fail(COPY.errCouldNotPrepare);
+          return false;
+        }
         if (slow) {
           return await sendSlow({
             payload: built.value,
             walletProvider: args.walletProvider,
             srcChainKey: args.srcChainKey,
             relayWaitMs: slow.relayWaitMs,
+          });
+        }
+        if (args.limit) {
+          return await sendLimit({
+            payload: built.value,
+            walletProvider: args.walletProvider,
+            srcChainKey: args.srcChainKey,
+            direction: "sell",
+            limit: args.limit,
           });
         }
         const swapped = await vaultSwap.mutateAsyncSafe({
@@ -1150,7 +1327,7 @@ export function useVaultAction(options?: {
         runningRef.current = false;
       }
     },
-    [advance, buildWithdraw, fail, queryClient, resetReport, sendSlow, vaultSwap],
+    [advance, buildWithdraw, fail, queryClient, resetReport, sendLimit, sendSlow, vaultSwap],
   );
 
   const reset = useCallback(() => {
@@ -1162,6 +1339,7 @@ export function useVaultAction(options?: {
       setEarlierOrder(travelling);
     }
     runRef.current += 1;
+    setLimitUnsaved(false);
     setStep("idle");
     setError(null);
     resetReport();
@@ -1184,6 +1362,7 @@ export function useVaultAction(options?: {
     hubTxHash: sent?.hubTxHash,
     spokeTxUrl: sent?.spokeTxUrl,
     spokeTxHash: sent?.spokeTxUrl ? sent.spokeTxHash : undefined,
+    limitUnsaved,
     earlierOrder: earlierOrder
       ? { spokeTxHash: earlierOrder.spokeTxHash, spokeTxUrl: earlierOrder.spokeTxUrl }
       : null,

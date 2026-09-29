@@ -23,7 +23,14 @@ export type PourStep =
   | "unsettled"
   | "filled"
   | "fillFailed"
-  | "error";
+  | "error"
+  /**
+   * A limit order placed and waiting in the Intents contract for its price
+   * (lib/limit-orders). Terminal for the drawer: nothing is polled, nothing
+   * is announced, the drawer may close. The waiting orders list follows it
+   * from here (hooks/use-limit-orders).
+   */
+  | "resting";
 
 /**
  * What the settling screen should show. Null: no intent handed off yet.

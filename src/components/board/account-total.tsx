@@ -8,12 +8,21 @@ import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useListingPrices } from "@/hooks/use-listing-prices";
+import { useLimitOrders } from "@/hooks/use-limit-orders";
+import { TOKEN_LISTINGS } from "@/lib/listings";
+import { accountTotalWith, waitingUsd } from "@/lib/limit-orders";
 
 /** The account's figure in its three parts; undefined while a part loads. */
 export type AccountFigures = {
   holdings: number | undefined;
   cash: number | undefined;
   funds: number | undefined;
+  /**
+   * Money waiting in limit orders (lib/limit-orders waitingUsd): the
+   * person's, locked in SODAX's contract until a fill or a cancel, so it is
+   * in the total under its own name, never under holdings. 0 when none.
+   */
+  waiting?: number;
   /** Whether the account owns any stock or fund, which is when the comparison is drawn. */
   holdsAnything: boolean;
 };
@@ -31,8 +40,13 @@ export function AccountTotal() {
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
   const prices = useListingPrices();
+  const limits = useLimitOrders({ poll: false });
 
   if (!account.spokeAddress) return null;
+  const waiting = waitingUsd(limits.waiting, (symbol) => {
+    const listing = TOKEN_LISTINGS.find((entry) => entry.symbol === symbol);
+    return listing ? prices.priceOf(listing) : undefined;
+  }).usd;
 
   const pricing = holdings.held.some((holding) => holding.listing.kind !== "vault") && prices.isLoading;
   const sum = (kind: "stock" | "cash") =>
@@ -52,6 +66,7 @@ export function AccountTotal() {
         holdings: sum("stock"),
         cash: sum("cash"),
         funds: funds.isLoading ? undefined : (funds.totalUsd ?? 0),
+        waiting,
         holdsAnything: holdings.settled && holdings.held.some((holding) => holding.listing.kind === "stock"),
       }}
     />
@@ -68,12 +83,14 @@ export function AccountTotalView({ figures }: { figures: AccountFigures }) {
   const copy = useCopy();
   const money = useMoney();
   const { holdings, cash, funds } = figures;
-  const total =
-    holdings !== undefined && cash !== undefined && funds !== undefined ? holdings + cash + funds : undefined;
+  const waiting = figures.waiting ?? 0;
+  // What the person owns plus what waits in orders: the parts below always add up to it.
+  const total = accountTotalWith([holdings, cash, funds, waiting]);
   const parts: { label: string; value: number | undefined }[] = [
     { label: copy.accountSplitHoldings, value: holdings },
     { label: copy.cashTitle, value: cash },
     { label: copy.fundsTitle, value: funds },
+    ...(waiting > 0 ? [{ label: copy.limitWaitingPart, value: waiting }] : []),
   ];
 
   return (

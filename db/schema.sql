@@ -124,6 +124,91 @@ create index if not exists orders_hold_due_idx
   on orders ((coalesce(filled_at, placed_at, created_at)))
   where direction = 'buy' and hold_checked_at is null;
 
+-- Limit orders (lib/limit-orders, lib/server/limit-orders), behind the
+-- LIMIT_ORDERS_USERS switch. A limit order is an intent that waits in the
+-- hub Intents contract until a solver fills it at the price or better, or
+-- its owner cancels it. While it waits it lives only here, never in
+-- `orders`, so no holding, performance, hold check or benchmark reader
+-- can count money that has not bought anything. When it fills, the fill
+-- is written to `orders` like any other, marked order_type 'limit' with
+-- the price it was placed at.
+alter table orders add column if not exists order_type text not null default 'market'
+  check (order_type in ('market', 'limit'));
+alter table orders add column if not exists limit_price numeric;
+
+-- One row per limit order placed. Amounts are raw integers in the token's
+-- smallest units (input_decimals, output_decimals say which), read from
+-- the intent on chain, never from the client: `input_raw` is what the
+-- solver receives (after the partner fee), `min_output_raw` the least it
+-- may pay. `limit_price` is the dollar price the person named.
+-- `expires_at` is the intent's own deadline, null for until cancelled.
+-- `status` follows the backend's record of the intent (resting, partial,
+-- filled, cancelled, expired); `cancel_asked_at` is when the person asked
+-- to cancel, so a cancel after the deadline reads as theirs. `announced_at`
+-- is when the page last told the person about a fill it found.
+create table if not exists limit_orders (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  intent_tx text not null unique,
+  intent_hash text,
+  direction text not null check (direction in ('buy', 'sell')),
+  listing_symbol text not null,
+  listing_address text not null,
+  pay_symbol text,
+  pay_chain text,
+  src_chain text,
+  input_raw numeric not null,
+  input_decimals int not null,
+  min_output_raw numeric not null,
+  output_decimals int not null,
+  limit_price numeric not null check (limit_price > 0),
+  expires_at timestamptz,
+  status text not null default 'resting'
+    check (status in ('resting', 'partial', 'filled', 'cancelled', 'expired')),
+  remaining_raw numeric,
+  received_raw numeric,
+  fill_tx text,
+  close_tx text,
+  cancel_asked_at timestamptz,
+  announced_at timestamptz,
+  checked_at timestamptz,
+  placed_at timestamptz not null default now(),
+  closed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- `fill_recorded_at`: when a fill was written into `orders`; a filled row
+-- without it is retried by the next sync. `cancel_tx`: the cancel the
+-- person signed, the only thing that sets cancel_asked_at.
+alter table limit_orders add column if not exists fill_recorded_at timestamptz;
+alter table limit_orders add column if not exists cancel_tx text;
+
+create index if not exists limit_orders_user_idx on limit_orders (user_id, placed_at desc);
+create index if not exists limit_orders_waiting_idx
+  on limit_orders (checked_at nulls first) where status in ('resting', 'partial');
+
+-- A pour whose fill could not be confirmed when the client asked for its
+-- XP (lib/server/pour-claims): the backend had not indexed it yet, or it
+-- is a limit order still waiting. XP is only ever paid for a filled
+-- order, so the claim waits here and the evening pass pays it once it
+-- fills, or drops it when it closed unfilled. `outcome` is 'paid' or
+-- 'dropped' once settled.
+create table if not exists pour_claims (
+  intent_tx text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  direction text not null check (direction in ('buy', 'sell')),
+  fill_tx text,
+  created_at timestamptz not null default now(),
+  settled_at timestamptz,
+  outcome text check (outcome in ('paid', 'dropped'))
+);
+
+create index if not exists pour_claims_open_idx on pour_claims (created_at) where settled_at is null;
+
+-- When the evening pass last looked at an open claim without settling it:
+-- it takes the least recently looked at first, so a stuck one rotates.
+alter table pour_claims add column if not exists last_checked_at timestamptz;
+
 -- Daily closes per listing and benchmark (lib/marks), kept past DefiLlama's
 -- ninety day reach so a portfolio can be drawn for as long as it existed.
 -- One row per market day, taken at 21:30 UTC, after the New York close;

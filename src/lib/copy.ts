@@ -742,6 +742,84 @@ export type Copy = {
   chatDraftAbout: (usd: string) => string;
   chatDraftNothingYet: string;
   chatDraftOpen: string;
+
+  /* — limit orders (behind LIMIT_ORDERS_USERS) — */
+  limitModeNow: string;
+  limitModePrice: string;
+  limitBuyAt: string;
+  limitSellAt: string;
+  limitPriceNow: (price: string) => string;
+  limitUntilCancelled: string;
+  limitUntilDate: string;
+  limitDateLabel: string;
+  limitPriceLabel: string;
+  limitFillsNow: string;
+  limitNeedsDollarsBuy: string;
+  limitNeedsDollarsSell: string;
+  limitCtaEnterPrice: string;
+  limitCtaPickDate: string;
+  limitCtaPastDate: string;
+  limitCtaTooFar: string;
+  limitCtaReview: string;
+  limitCtaThroughBuy: string;
+  limitCtaNoPrice: string;
+  limitNoPrice: string;
+  limitCtaThroughSell: string;
+  limitThroughBuy: string;
+  limitThroughSell: string;
+  limitCtaDollarsBuy: string;
+  limitCtaDollarsSell: string;
+  limitReviewTitle: string;
+  limitSummaryBuy: (name: string, price: string) => string;
+  limitSummarySell: (name: string, price: string) => string;
+  limitSummaryPay: (amount: string) => string;
+  limitSummaryPut: (amount: string) => string;
+  limitSummaryGet: (amount: string) => string;
+  limitSummaryLocked: string;
+  limitSummaryWhole: string;
+  limitSummaryUntilCancelled: string;
+  limitSummaryUntilDate: (day: string) => string;
+  limitSummaryFee: (fee: string) => string;
+  limitPlace: string;
+  limitBack: string;
+  limitPlacedTitle: string;
+  limitUnsaved: string;
+  limitPlacedBody: (name: string, price: string) => string;
+  limitWaitingTitle: string;
+  limitWaitingPart: string;
+  limitUnpricedNote: string;
+  limitStripLead: (usd: string) => string;
+  limitStripItem: (name: string, price: string) => string;
+  limitStripPartial: (count: number) => string;
+  limitListSub: string;
+  limitRowBuy: (name: string) => string;
+  limitRowSell: (name: string) => string;
+  limitRowAtBuy: (price: string) => string;
+  limitRowAtSell: (price: string) => string;
+  limitRowUntil: (day: string) => string;
+  limitRowUntilCancelled: string;
+  limitRowFilled: (percent: string) => string;
+  limitRowNotFilled: string;
+  limitRowSetAside: (amount: string) => string;
+  limitRowCancelAsked: string;
+  limitCancel: string;
+  limitCancelConfirm: (name: string) => string;
+  limitCancelBodyBuy: string;
+  limitCancelBodySell: string;
+  limitCancelKeep: string;
+  limitCancelling: string;
+  limitCancelledToast: string;
+  limitCancelKept: string;
+  limitCancelFailed: string;
+  limitCancelNotYours: string;
+  limitFilledBuy: (name: string) => string;
+  limitFilledSell: (name: string) => string;
+  limitExpiredToast: (name: string) => string;
+  limitRefundBuy: string;
+  limitRefundSell: string;
+  askSuggestionLimit: string;
+  chatDraftAtBuy: (price: string) => string;
+  chatDraftAtSell: (price: string) => string;
   chatThinking: string;
   chatFailed: string;
   chatRetry: string;
@@ -1659,6 +1737,83 @@ export const COPY: Copy = {
   chatDraftAbout: (usd) => `about ${usd} now`,
   chatDraftNothingYet: "Nothing is placed until you sign.",
   chatDraftOpen: "Open the order",
+
+  limitModeNow: "Now",
+  limitModePrice: "Set a price",
+  limitBuyAt: "Buy at",
+  limitSellAt: "Sell at",
+  limitPriceNow: (price) => `Now ${price}`,
+  limitUntilCancelled: "Until cancelled",
+  limitUntilDate: "Until a date",
+  limitDateLabel: "Last day of the order",
+  limitPriceLabel: "Price in dollars",
+  limitFillsNow: "At this price it may fill right away.",
+  limitNeedsDollarsBuy: "To set a price, pay with a dollar coin on an EVM network.",
+  limitNeedsDollarsSell: "To set a price, take the money out in a dollar coin.",
+  limitCtaEnterPrice: "Enter a price",
+  limitCtaPickDate: "Pick a date",
+  limitCtaPastDate: "Pick a later date",
+  limitCtaTooFar: "Pick a date within a year",
+  limitCtaReview: "Review order",
+  limitCtaThroughBuy: "Above today's price",
+  limitCtaNoPrice: "No live price",
+  limitNoPrice: "No live price right now. Try again in a moment.",
+  limitCtaThroughSell: "Below today's price",
+  limitThroughBuy: "This is above today's price, so it would fill now at your price. Use Now for today's price.",
+  limitThroughSell: "This is below today's price, so it would fill now at your price. Use Now for today's price.",
+  limitCtaDollarsBuy: "Pay with a dollar coin",
+  limitCtaDollarsSell: "Take out a dollar coin",
+  limitReviewTitle: "Check your order",
+  limitSummaryBuy: (name, price) => `Buy ${name} when it is ${price} or lower.`,
+  limitSummarySell: (name, price) => `Sell ${name} when it is ${price} or higher.`,
+  limitSummaryPay: (amount) => `You pay ${amount} now.`,
+  limitSummaryPut: (amount) => `You set aside ${amount} now.`,
+  limitSummaryGet: (amount) => `You get at least ${amount}.`,
+  limitSummaryLocked: "It waits in SODAX's contract until it fills or you cancel it.",
+  limitSummaryWhole: "It fills whole, never in part.",
+  limitSummaryUntilCancelled: "It waits until you cancel it.",
+  limitSummaryUntilDate: (day) => `If it has not filled by the end of ${day}, it comes back to you.`,
+  limitSummaryFee: (fee) => `Fee ${fee}, plus the network fee.`,
+  limitPlace: "Place order",
+  limitBack: "Back",
+  limitPlacedTitle: "Your order is waiting",
+  limitUnsaved: "Your order was placed but Berth hasn't saved it yet. It will appear shortly.",
+  limitPlacedBody: (name, price) => `It fills when ${name} reaches ${price}. You can follow it or cancel it under your total.`,
+  limitWaitingTitle: "Waiting orders",
+  limitWaitingPart: "Waiting",
+  limitUnpricedNote: "Some waiting orders have no dollar price right now, so they are not in your total.",
+  limitStripLead: (usd) => `${usd} waiting in orders`,
+  limitStripItem: (name, price) => `${name} at ${price}`,
+  limitStripPartial: (count) => `${count} partly filled`,
+  limitListSub: "Each fills when its price is reached, or waits until you cancel it.",
+  limitRowBuy: (name) => `Buy ${name}`,
+  limitRowSell: (name) => `Sell ${name}`,
+  limitRowAtBuy: (price) => `at ${price} or lower`,
+  limitRowAtSell: (price) => `at ${price} or higher`,
+  limitRowUntil: (day) => `Until ${day}`,
+  limitRowUntilCancelled: "Until cancelled",
+  limitRowFilled: (percent) => `${percent} filled`,
+  limitRowNotFilled: "Not filled yet",
+  limitRowSetAside: (amount) => `${amount} set aside`,
+  limitRowCancelAsked: "Cancel sent. It clears in a minute or two.",
+  limitCancel: "Cancel order",
+  limitCancelConfirm: (name) => `Cancel your ${name} order?`,
+  limitCancelBodyBuy: "The money goes back to the wallet that paid. One signature.",
+  limitCancelBodySell: "Your shares go back to your account. One signature.",
+  limitCancelKeep: "Keep it",
+  limitCancelling: "Cancelling",
+  limitCancelledToast: "Cancel sent",
+  limitCancelKept: "Nothing changed. The order still waits.",
+  limitCancelFailed: "Could not cancel. The order still waits. Try again.",
+  limitCancelNotYours: "This order was not placed from this account.",
+  limitFilledBuy: (name) => `Your ${name} order filled.`,
+  limitFilledSell: (name) => `Your ${name} sell filled.`,
+  limitExpiredToast: (name) => `Your ${name} order expired.`,
+  limitRefundBuy: "The money goes back to the wallet that paid.",
+  limitRefundSell: "Your shares are back in your account.",
+  askSuggestionLimit: "Buy NVIDIA if it drops to $200",
+  chatDraftAtBuy: (price) => `at ${price} or lower`,
+  chatDraftAtSell: (price) => `at ${price} or higher`,
   chatThinking: "Thinking",
   chatFailed: "That did not go through. Try again.",
   chatRetry: "Try again",

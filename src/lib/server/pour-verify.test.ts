@@ -121,4 +121,12 @@ describe("judgePour", () => {
       }),
     ).toEqual({ ok: true });
   });
+
+  it("accepts a sell from the account, whose source is the account's hub wallet", () => {
+    const HUB = "0x00000000000000000000000000000000000000cc";
+    const sell = intent({ inputToken: VAULT, outputToken: "0x00000000000000000000000000000000000000dd", srcAddress: HUB });
+    expect(judgePour({ direction: "out", intent: sell, vaultAddresses, accountWallet: WALLET, accountHubWallet: HUB })).toEqual({ ok: true });
+    expect(judgePour({ direction: "out", intent: sell, vaultAddresses, accountWallet: WALLET })).toEqual({ ok: false, reason: "not your pour" });
+    expect(judgePour({ direction: "out", intent: sell, vaultAddresses, accountWallet: WALLET, accountHubWallet: "0x00000000000000000000000000000000000000ee" })).toEqual({ ok: false, reason: "not your pour" });
+  });
 });

@@ -32,7 +32,7 @@ import {
 } from "@/lib/chains";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
-import { formatTokenAmount } from "@/lib/format";
+import { formatTokenAmount, formatUsd } from "@/lib/format";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import {
   amountText,
@@ -41,7 +41,19 @@ import {
   depositMax,
   minPourUsd,
   pourAmounts,
+  quoteInputFor,
 } from "@/lib/pour-amount";
+import {
+  dayLabel,
+  fillsNow,
+  limitCta,
+  limitMinOutput,
+  limitTokenOk,
+  priceNumber,
+  priceText as limitPriceText,
+} from "@/lib/limit-orders";
+import { useListingPrices } from "@/hooks/use-listing-prices";
+import { useLimitDraft, type LimitPrefill } from "@/hooks/use-limit-draft";
 import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
@@ -68,6 +80,7 @@ import {
   IntentTracking,
 } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
+import { LimitPlaced, LimitPriceFields, LimitSummary } from "./limit-price";
 
 /**
  * Full mobile deposit flow in one bottom drawer: pick source chain + token,
@@ -89,6 +102,7 @@ export function DepositDrawer({
   onPoured,
   prefill,
   devHoldings,
+  devLimit,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -106,7 +120,7 @@ export function DepositDrawer({
    * assistant made (lib/draft-order). Filled in once the pay token is
    * priced, so it is always read as money; never submitted.
    */
-  prefill?: { usd?: number } | null;
+  prefill?: { usd?: number; limit?: LimitPrefill } | null;
   /**
    * Dev galleries only: stands in for the wallet sweep, so the drawer's
    * waiting and picked states can be reviewed without a session.
@@ -115,6 +129,8 @@ export function DepositDrawer({
     EmbeddedHoldingsResult,
     "connected" | "holdings" | "gasShortChains" | "isLoading"
   >;
+  /** Dev galleries only: show "Set a price" as if the switch were on. */
+  devLimit?: boolean;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
     DEPOSIT_SOURCE_CHAINS[0],
@@ -279,6 +295,26 @@ export function DepositDrawer({
     buildAmount,
   });
 
+  // A limit buy (lib/limit-orders): the price, not a quote, sets the
+  // minimum, computed on what is actually swapped after the fee and
+  // rounded up so the fill is never worse than the price named.
+  const listingPrices = useListingPrices();
+  const marketPrice = listing?.kind === "stock" ? listingPrices.priceOf(listing) : undefined;
+  const limit = useLimitDraft({ side: "buy", open, listing, marketPrice, prefill: prefill?.limit, force: devLimit });
+  const limitTokenFits = limitTokenOk(token, isEvmChainKeyType(srcChainKey));
+  const swapInput = quoteInputFor(buildAmount);
+  const limitMin =
+    limit.active && token && listing
+      ? limitMinOutput({
+          side: "buy",
+          swapInput,
+          inputDecimals: token.decimals,
+          outputDecimals: listing.decimals,
+          price: limit.price,
+        })
+      : undefined;
+  const limitPriceLabel = limit.price ? formatUsd(priceNumber(limit.price)) : "";
+
   const finish = () => {
     action.reset();
     setAmount("");
@@ -331,15 +367,18 @@ export function DepositDrawer({
   };
 
   const handleDeposit = async () => {
+    const minOut = limit.active ? limitMin : quote.minOut;
     if (
       !listing ||
       !token ||
       !buildAmount ||
-      quote.minOut === undefined ||
+      minOut === undefined ||
       !address ||
       !walletProvider ||
-      (isBuy && !deliverTo)
+      (isBuy && !deliverTo) ||
+      (limit.active && (limit.deadline === undefined || !limit.price || !limitTokenFits || limit.recheck() !== null))
     ) {
+      limit.setReviewing(false);
       return;
     }
     await action.runDeposit({
@@ -350,9 +389,14 @@ export function DepositDrawer({
       srcAddress: address,
       token,
       inputAmount: buildAmount,
-      minOutputAmount: quote.minOut,
+      minOutputAmount: minOut,
       walletProvider,
       walletMode: mode,
+      ...(limit.active &&
+        limit.deadline !== undefined &&
+        limit.price && {
+          limit: { deadline: limit.deadline, limitPrice: limitPriceText(limit.price) },
+        }),
       fillToasts: {
         successTitle: copy.buyFilledTitle,
         successDescription: copy.buyFilledBody,
@@ -378,8 +422,9 @@ export function DepositDrawer({
     belowMinimum: tooSmall,
     isWrongChain,
     noRoute: quote.noRoute,
-    quoted: quote.quoted,
-    minOut: quote.minOut,
+    // A limit order needs no quote to be placed: its price is the minimum.
+    quoted: limit.active ? 1n : quote.quoted,
+    minOut: limit.active ? 1n : quote.minOut,
     hasWalletProvider: !!walletProvider,
     account: accountState,
     // An EVM payer is the session's signer; one not on the account yet is
@@ -441,12 +486,36 @@ export function DepositDrawer({
         return { label: copy.ctaNoRoute, disabled: true };
       case "quotePending":
         return { label: copy.ctaGettingQuote, disabled: true, busy: true };
-      default:
+      default: {
+        if (limit.active) {
+          const reason = limitCta({ tokenOk: limitTokenFits, problem: limit.problem, minOut: limitMin });
+          switch (reason) {
+            case "review":
+              return { label: copy.limitCtaReview, disabled: false, onClick: () => limit.setReviewing(true) };
+            case "needsDollars":
+              return { label: copy.limitCtaDollarsBuy, disabled: false, onClick: () => setPickerOpen(true) };
+            case "enterPrice":
+              return { label: copy.limitCtaEnterPrice, disabled: true };
+            case "pickDate":
+              return { label: copy.limitCtaPickDate, disabled: true };
+            case "pastDate":
+              return { label: copy.limitCtaPastDate, disabled: true };
+            case "tooFar":
+              return { label: copy.limitCtaTooFar, disabled: true };
+            case "noPrice":
+              return { label: copy.limitCtaNoPrice, disabled: true };
+            case "throughMarket":
+              return { label: copy.limitCtaThroughBuy, disabled: true };
+            default:
+              return { label: copy.limitCtaEnterPrice, disabled: true };
+          }
+        }
         return {
           label: copy.buy,
           disabled: false,
           onClick: () => void handleDeposit(),
         };
+      }
     }
   })();
 
@@ -473,7 +542,15 @@ export function DepositDrawer({
           <AnimatePresence initial={false} mode="popLayout">
           <motion.div
             key={
-              action.fillPhase ? "settling" : action.pending ? "stepper" : "form"
+              action.step === "resting"
+                ? "resting"
+                : action.fillPhase
+                  ? "settling"
+                  : action.pending
+                    ? "stepper"
+                    : limit.reviewing
+                      ? "review"
+                      : "form"
             }
             className="flex min-h-0 flex-1 flex-col"
             initial={{
@@ -493,7 +570,19 @@ export function DepositDrawer({
             }}
             transition={{ duration: 0.22, ease: EASE_LIFT }}
           >
-          {listing && action.fillPhase ? (
+          {listing && action.step === "resting" ? (
+            <div className="p-4">
+              <LimitPlaced
+                name={listing.name}
+                priceLabel={limitPriceLabel}
+                unsaved={action.limitUnsaved}
+                onDone={() => {
+                  onOpenChange(false);
+                  finish();
+                }}
+              />
+            </div>
+          ) : listing && action.fillPhase ? (
             <div className="p-4">
               <IntentTracking
                 reportState={action.reportState}
@@ -518,6 +607,32 @@ export function DepositDrawer({
                 step={action.step}
                 approveNeeded={action.approveRequired ?? true}
               />
+            </div>
+          ) : listing && limit.reviewing && token && buildAmount && limitMin ? (
+            <div className="flex flex-col gap-4 overflow-y-auto p-4">
+              <LimitSummary
+                side="buy"
+                name={listing.name}
+                priceLabel={limitPriceLabel}
+                putLabel={
+                  worthUsd !== undefined
+                    ? `${money.format(worthUsd)} (${formatTokenAmount(buildAmount, token.decimals)} ${token.symbol})`
+                    : `${formatTokenAmount(buildAmount, token.decimals)} ${token.symbol}`
+                }
+                getLabel={`${formatTokenAmount(limitMin, listing.decimals, 6)} ${listing.name}`}
+                feeLabel={
+                  swapInput !== undefined
+                    ? `${formatTokenAmount(buildAmount - swapInput, token.decimals, 4)} ${token.symbol}`
+                    : undefined
+                }
+                expiryDay={limit.expiry.kind === "date" ? dayLabel(limit.expiry.day) : undefined}
+                placeLabel={copy.limitPlace}
+                onBack={() => limit.setReviewing(false)}
+                onPlace={() => void handleDeposit()}
+              />
+              {action.step === "error" && action.error && (
+                <ActionError message={action.error} reportState={action.reportState} />
+              )}
             </div>
           ) : listing ? (
             <>
@@ -673,8 +788,25 @@ export function DepositDrawer({
                   </div>
                 </div>
 
+                {limit.allowed && (
+                  <LimitPriceFields
+                    side="buy"
+                    mode={limit.mode}
+                    onMode={limit.setMode}
+                    priceText={limit.priceText}
+                    onPriceText={limit.setPriceText}
+                    marketLabel={marketPrice !== undefined ? formatUsd(marketPrice) : undefined}
+                    expiry={limit.expiry}
+                    onExpiry={limit.setExpiry}
+                    tokenOk={!token || limitTokenFits}
+                    throughHint={limit.problem === "throughMarket"}
+                    noPriceHint={limit.problem === "noPrice"}
+                    fillsNow={fillsNow("buy", limit.price, marketPrice)}
+                  />
+                )}
+
                 {/* Live quote */}
-                {token && buildAmount ? (
+                {token && buildAmount && !limit.active ? (
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
                     {tooSmall ? (
                       <span className="text-destructive">
