@@ -21,15 +21,16 @@ export type AccountHubWallet = {
 
 export type HubAccount = {
   /**
-   * The home address: where the account is derived from and every buy
-   * lands. The account's linked home once the server has said, else the
-   * session's own address (the Privy EVM address in an email session, the
-   * connected EVM wallet otherwise). Undefined when neither.
+   * Where this session's buys land: the signing wallet when it is linked to
+   * the account (so what it buys, it can sell), else the account's linked
+   * home once the server has said, else the session's own address (the
+   * Privy EVM address in an email session, the connected EVM wallet
+   * otherwise). Undefined when neither.
    */
   spokeAddress: string | undefined;
   /**
-   * The home hub wallet on Sonic: where every buy delivers. Undefined until
-   * derived, or when signed out.
+   * The hub wallet on Sonic where this session's buys deliver
+   * (`spokeAddress`'s). Undefined until derived, or when signed out.
    */
   hubWallet: Address | undefined;
   /** Every linked EVM address's hub wallet, home first: the totals add them all. */

@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { fetchPrivyWallet, verifyPrivyAuth } from "@/lib/server/privy";
-import { verifyWalletSession } from "@/lib/server/wallet-session";
+import { readWalletSession } from "@/lib/server/wallet-session";
+import { getSql } from "@/lib/server/db";
+import { detectFamily, toCaip10 } from "@/lib/identity/caip";
 import {
   awardXp,
   flushUnannounced,
@@ -72,10 +74,9 @@ export async function readRewardsCaller(
   }
 
   const sessionToken = request.headers.get("x-wallet-session");
-  const wallet = sessionToken
-    ? normalizeWallet(await verifyWalletSession(sessionToken))
-    : null;
-  if (!wallet) {
+  const session = sessionToken ? await readWalletSession(sessionToken) : null;
+  const wallet = session ? normalizeWallet(session.address) : null;
+  if (!wallet || (session && (await signedBeforeMerge(wallet, session.issuedAt)))) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -85,6 +86,32 @@ export async function readRewardsCaller(
     };
   }
   return { ok: true, caller: { did: null, wallet, body } };
+}
+
+/**
+ * Whether a merge moved this wallet onto another account after the session
+ * was signed (user_identities.merged_at): such a session was made for the
+ * absorbed account, and it ends here. The browser signs in again and lands
+ * on the survivor. Seconds, as the token's iat is. A failed read lets the
+ * session through, as before phase 3: the account it resolves to is the
+ * survivor either way.
+ */
+async function signedBeforeMerge(wallet: string, issuedAt: number): Promise<boolean> {
+  const family = detectFamily(wallet);
+  const value = family ? toCaip10(family, wallet) : null;
+  if (!value) return false;
+  try {
+    const rows = (await getSql().query(
+      `select merged_at from user_identities where kind = 'wallet' and value = $1 and merged_at is not null`,
+      [value],
+    )) as { merged_at: string | Date }[];
+    const mergedAt = rows[0] ? new Date(rows[0].merged_at).getTime() : null;
+    // The same second counts as before: refusing a session signed in the
+    // merge's own second costs one more signature, never an account.
+    return mergedAt !== null && Math.floor(issuedAt / 1000) <= Math.floor(mergedAt / 1000);
+  } catch {
+    return false;
+  }
 }
 
 export type UserResult =

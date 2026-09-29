@@ -19,6 +19,7 @@ import {
 import { HOME_CHAIN } from "@/lib/account";
 import { useAccount } from "@/hooks/use-account";
 import { useLinkEmail } from "@/hooks/use-link-email";
+import { MergeCardView } from "@/components/account-merge";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -242,7 +243,7 @@ export function RewardsPanel({
           a gate that read it would unmount the form mid-flow, which is
           exactly what happened on 2026-09-21. `mode === "external"` already
           means there is no email session here. See hooks/use-link-email. */}
-      {(!hasEmail || link.state === "done") &&
+      {(!hasEmail || link.state === "done" || link.state === "mergeDone") &&
         privy.enabled &&
         account.mode === "external" &&
         account.address && (
@@ -263,6 +264,66 @@ export function RewardsPanel({
                 </span>
               </span>
             </button>
+          ) : (link.state === "mergeConfirm" || link.state === "mergeDone") && link.merge ? (
+            // Both sides proved: the email's own account was opened with its
+            // code, and this browser holds the wallet's session.
+            <MergeCardView
+              plain
+              kind="email"
+              survivor={link.merge.survivor}
+              together={link.merge.together}
+              usernameComes={link.merge.usernameComes}
+              step={link.mergeStep}
+              xp={link.mergeXp}
+              onConfirm={() => void link.confirmMerge()}
+              onKeep={
+                link.state === "mergeDone"
+                  ? link.cancel
+                  : () => {
+                      toast(copy.mergeKeptSeparate);
+                      link.cancel();
+                    }
+              }
+              onRestart={() => void link.restartMerge()}
+            />
+          ) : link.state === "mergeAsk" || link.state === "mergeSending" || link.state === "mergeSigning" ? (
+            <div className="flex flex-col gap-2">
+              <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <EnvelopeSimple className="size-5 shrink-0 text-primary" />
+                {copy.mergeEmailTitle}
+              </p>
+              <p className="text-sm text-foreground">{copy.mergeEmailAsk}</p>
+              <p className="text-xs text-muted-foreground">{copy.mergeOneMoreCode}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" disabled={link.state !== "mergeAsk"} onClick={() => void link.startMerge()}>
+                  {copy.mergeContinue}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    toast(copy.mergeKeptSeparate);
+                    link.cancel();
+                  }}
+                >
+                  {copy.mergeKeepSeparate}
+                </Button>
+              </div>
+              {link.state === "mergeSending" || link.state === "mergeSigning" ? (
+                <p role="status" className="text-xs text-muted-foreground">
+                  {link.state === "mergeSigning" ? copy.mergeSigning : copy.addEmailSending}
+                </p>
+              ) : link.mergeStep === "expired" ? (
+                <p role="alert" className="text-xs text-bad">
+                  {copy.mergeExpired}
+                </p>
+              ) : link.error === "failed" ? (
+                <p role="alert" className="text-xs text-bad">
+                  {copy.addEmailFailed}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <div className="flex flex-col gap-2">
               <p className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -292,7 +353,7 @@ export function RewardsPanel({
                   }}
                 >
                   <p className="text-xs text-muted-foreground">
-                    {copy.addEmailCodeSent(link.pendingEmail)}
+                    {link.secondCode ? copy.mergeCodeSent(link.pendingEmail) : copy.addEmailCodeSent(link.pendingEmail)}
                   </p>
                   <Input
                     name="code"
@@ -341,13 +402,13 @@ export function RewardsPanel({
                     defaultValue={link.pendingEmail}
                     placeholder={copy.addEmailPlaceholder}
                     aria-label={copy.addEmailTitle}
-                    disabled={link.state !== "email" && link.state !== "taken"}
+                    disabled={link.state !== "email"}
                   />
                   <div className="flex gap-2">
                     <Button
                       type="submit"
                       size="sm"
-                      disabled={link.state !== "email" && link.state !== "taken"}
+                      disabled={link.state !== "email"}
                     >
                       {copy.addEmailContinue}
                     </Button>
@@ -371,9 +432,7 @@ export function RewardsPanel({
                         ? copy.addEmailVerifying
                         : link.state === "saving"
                           ? copy.addEmailSaving
-                          : link.state === "taken"
-                            ? copy.addEmailTaken
-                            : link.state === "done"
+                          : link.state === "done"
                               ? copy.addEmailDone
                               : link.state === "saveFailed"
                                 ? copy.addEmailSaveFailed
@@ -385,7 +444,7 @@ export function RewardsPanel({
                                     ? copy.addEmailResent
                                     : null;
                 if (!line) return null;
-                const bad = link.state === "taken" || link.error !== null;
+                const bad = link.error !== null;
                 return (
                   <p
                     role={bad ? "alert" : "status"}

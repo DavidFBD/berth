@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Envelope, HandHeart, Wallet } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { isUserRejectedError } from "@sodax/dapp-kit";
@@ -15,7 +15,7 @@ import { BerthMark } from "@/components/berth-mark";
 import { MarketPreview, NewsFeed } from "@/components/board";
 import { WalletDrawer } from "@/components/wallet";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
-import { useLinkInProgress } from "@/hooks/use-link-email";
+import { useInterruptedMerge, useLinkInProgress } from "@/hooks/use-link-email";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useCopy } from "@/components/settings-provider";
 import { COPY } from "@/lib/copy";
@@ -46,6 +46,8 @@ export function AuthGate({
   const connected = useConnectedChains();
   const linking = useLinkInProgress();
   const copy = useCopy();
+  const mergeInterrupted = useCallback(() => toast(copy.mergeInterrupted), [copy.mergeInterrupted]);
+  useInterruptedMerge(mergeInterrupted);
 
   // A Privy session belonging to a wallet account is only ever scaffolding
   // for adding an email (hooks/use-link-email). Found outside that flow it

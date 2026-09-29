@@ -8,6 +8,8 @@ import { useCopy } from "@/components/settings-provider";
 import { AddWalletList, SignedInAsLine, UnlinkedWalletLine, WalletsList } from "@/components/account-wallets-list";
 import { WalletDrawer } from "@/components/wallet";
 import { useAddConnectedWallet, useAddWallets, useSignerFor, walletActMessage } from "@/hooks/use-account-wallets";
+import { MergeCard } from "@/components/account-merge";
+import { useWalletMerge } from "@/hooks/use-account-merge";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useAccountWallets, useIdentityLabel, useWalletAct } from "@/hooks/use-profile";
@@ -30,7 +32,11 @@ import { shortenAddress } from "@/lib/format";
  */
 export function UnlinkedWalletPrompt({ hidden = false }: { hidden?: boolean }) {
   const add = useAddConnectedWallet();
-  if (!add.waiting || hidden) return null;
+  const merge = useWalletMerge();
+  if (hidden) return null;
+  // A link that found the wallet on another account: the merge offer takes the line's place.
+  if (merge.step !== "idle") return <MergeCard />;
+  if (!add.waiting) return null;
   if (add.waiting.mode === "wallet" && add.waiting.anchor) {
     return (
       <SignedInAsLine
@@ -107,6 +113,7 @@ export function WalletsSection() {
 
   return (
     <Panel>
+    <MergeCard />
     <WalletsList
       wallets={all
         .filter((wallet) => wallet.family === "evm" || wallet.family === "solana")

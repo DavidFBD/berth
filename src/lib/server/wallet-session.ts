@@ -59,6 +59,17 @@ export async function issueWalletSession(address: string): Promise<string> {
   return sign({ purpose: "wallet-session", sub: normalizeWallet(address) ?? address }, SESSION_TTL);
 }
 
+/** The address a session token proves and when it was signed (epoch ms), or null for anything less. */
+export async function readWalletSession(token: string): Promise<{ address: string; issuedAt: number } | null> {
+  try {
+    const { payload } = await jwtVerify(token, sessionKey());
+    if (payload.purpose !== "wallet-session" || typeof payload.sub !== "string") return null;
+    return { address: payload.sub, issuedAt: typeof payload.iat === "number" ? payload.iat * 1000 : 0 };
+  } catch {
+    return null;
+  }
+}
+
 /** The address a session token proves, or null for anything less. */
 export async function verifyWalletSession(
   token: string,
@@ -101,6 +112,84 @@ export async function readAccountNonceToken(
     if (typeof nonce !== "string" || typeof sub !== "string" || typeof target !== "string") return null;
     if (!ACCOUNT_ACTS.includes(act as AccountAct)) return null;
     return { nonce, userId: sub, act: act as AccountAct, target };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A merge offer (lib/server/account-merge): issued only once both accounts
+ * were proved in the same ten minutes, to the account that asked
+ * (`requester`), naming the other one, which way the proof went (`kind`:
+ * an email code and a wallet session, or a wallet's link signature) and,
+ * for a wallet, the address that was proved. The survivor it was offered
+ * with is carried so a merge that would now go the other way is refused.
+ */
+export type MergeOffer = {
+  requester: string;
+  other: string;
+  kind: "email" | "wallet";
+  survivor: string;
+  /** The wallet whose fresh signature proved its side (lowercase EVM). */
+  wallet?: string;
+  /** Kind 'email': the Privy DID whose fresh code proved the email side. */
+  did?: string;
+};
+
+export async function issueMergeOfferToken(offer: MergeOffer): Promise<string> {
+  const claims: Record<string, string> = {
+    purpose: "merge-offer",
+    sub: offer.requester,
+    other: offer.other,
+    kind: offer.kind,
+    survivor: offer.survivor,
+  };
+  if (offer.wallet) claims.wallet = offer.wallet;
+  if (offer.did) claims.did = offer.did;
+  return sign(claims, NONCE_TTL);
+}
+
+export async function readMergeOfferToken(token: unknown): Promise<MergeOffer | null> {
+  if (typeof token !== "string") return null;
+  try {
+    const { payload } = await jwtVerify(token, sessionKey());
+    if (payload.purpose !== "merge-offer") return null;
+    const { sub, other, kind, survivor, wallet, did } = payload as Record<string, unknown>;
+    if (typeof sub !== "string" || typeof other !== "string" || typeof survivor !== "string") return null;
+    if (kind !== "email" && kind !== "wallet") return null;
+    if (survivor !== sub && survivor !== other) return null;
+    if (kind === "email" && (typeof did !== "string" || typeof wallet !== "string")) return null;
+    return {
+      requester: sub,
+      other,
+      kind,
+      survivor,
+      wallet: typeof wallet === "string" ? wallet : undefined,
+      did: typeof did === "string" ? did : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The nonce for an email merge's wallet signature: issued to a Privy DID
+ * with a fresh email code, for one wallet address, ten minutes, spent once
+ * (account_nonces, act 'merge'). It names no account, so asking for one
+ * says nothing about whether the wallet has one.
+ */
+export async function issueMergeNonceToken(nonce: string, did: string, wallet: string): Promise<string> {
+  return sign({ purpose: "merge-nonce", nonce, sub: did, target: wallet }, NONCE_TTL);
+}
+
+export async function readMergeNonceToken(token: unknown): Promise<{ nonce: string; did: string; wallet: string } | null> {
+  if (typeof token !== "string") return null;
+  try {
+    const { payload } = await jwtVerify(token, sessionKey());
+    if (payload.purpose !== "merge-nonce") return null;
+    const { nonce, sub, target } = payload as Record<string, unknown>;
+    if (typeof nonce !== "string" || typeof sub !== "string" || typeof target !== "string") return null;
+    return { nonce, did: sub, wallet: target };
   } catch {
     return null;
   }

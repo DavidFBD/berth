@@ -81,6 +81,8 @@ describe("latestEmailProof", () => {
     expect(new Date(latestEmailProof(accounts)!).toISOString()).toBe("2026-09-21T13:32:42.000Z");
     expect(latestEmailProof([{ type: "email", address: "a@example.com", latest_verified_at: null }])).toBeNull();
     expect(latestEmailProof([])).toBeNull();
+    // A Google login carries an email, but no code was entered: never fresh.
+    expect(latestEmailProof([{ type: "google_oauth", email: "a@example.com", latest_verified_at: 1799999999 }])).toBeNull();
   });
 
   it("a code entered nine minutes ago is fresh for the ten minute rule, eleven is not", async () => {

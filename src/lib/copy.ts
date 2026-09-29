@@ -567,8 +567,6 @@ export type Copy = {
   addEmailVerifying: string;
   addEmailDone: string;
   addEmailCancel: string;
-  /** The honest ending: that address is somebody else's account already. */
-  addEmailTaken: string;
   addEmailFailed: string;
   /** After the code is accepted, while the rewards row is told. */
   addEmailSaving: string;
@@ -578,6 +576,47 @@ export type Copy = {
   /** The email is on the account but the rewards side did not hear of it. */
   addEmailSaveFailed: string;
   addEmailRetrySave: string;
+  /**
+   * Account merge (lib/server/account-merge). Shown only after both
+   * accounts were proved. `survivor` is relative to the account in hand.
+   */
+  mergeEmailTitle: string;
+  mergeEmailAsk: string;
+  mergeWalletTitle: string;
+  mergeWalletAsk: string;
+  /** Before the second code: the email's own account must be opened once. */
+  mergeOneMoreCode: string;
+  mergeContinue: string;
+  /** Above the second code field. */
+  mergeCodeSent: (email: string) => string;
+  mergeStays: (survivor: "this" | "other", kind: "email" | "wallet") => string;
+  mergeWhatMoves: string;
+  /** What does not come along from the joining account. */
+  mergeLeftBehind: (usernameComes: boolean) => string;
+  mergeTogether: (xp: string, orders: number) => string;
+  mergeChart: string;
+  mergeConfirm: string;
+  mergeKeepSeparate: string;
+  mergeWorking: string;
+  mergeDone: (xp: string) => string;
+  /** Under the done line: how to sign in now, and where buys land. */
+  mergeDoneHow: string;
+  /** The email flow: what the email's own wallet holds sells from an email sign in. */
+  mergeDoneEmailWallet: string;
+  /** The wallet flow, this account joined the other: this browser is signed out. */
+  mergeDoneSignedOut: string;
+  mergeFailed: string;
+  mergeChanged: string;
+  mergeClose: string;
+  /** Keep separate, in the email flow: nothing was added. */
+  mergeKeptSeparate: string;
+  /** The page reloaded mid merge; the flow's session was ended. */
+  mergeInterrupted: string;
+  /** The wallet is asked to sign that its account may join the email's. */
+  mergeSigning: string;
+  /** An offer or a code older than ten minutes. */
+  mergeExpired: string;
+  mergeStartAgain: string;
   /**
    * Someone signed in with the email of a wallet account. The funds are on
    * the wallet, so the email alone opens nothing; say so and send them to it.
@@ -918,7 +957,7 @@ export type Copy = {
   walletsComingSoonList: (names: string) => string;
   walletsConnectNetwork: (name: string) => string;
   walletsNetworkSolana: string;
-  /** Under a linked Solana address: it pays, and what it buys lands at the home. */
+  /** Under a linked Solana address: it pays, and what it buys lands with the signed in wallet. */
   walletsSolanaNote: string;
   /** A sell draft for more than the chosen hub wallet holds. */
   sellUpToFromWallet: (amount: string) => string;
@@ -928,10 +967,14 @@ export type Copy = {
   /** Signed by the account's home wallet to confirm a new wallet joins it. */
   walletLinkConfirmStatement: (short: string) => string;
   walletRemoveStatement: (short: string) => string;
+  /** The signature a wallet gives to join its account to an email's (lib/server/account-merge-route). */
+  walletMergeStatement: (short: string) => string;
   /** A buy paid from a wallet that is not on the account yet. */
   ctaAddWalletFirst: string;
   /** A sell from a hub wallet another address of the account owns. */
   ctaSellSwitchWallet: (short: string) => string;
+  /** The holding sits in the account's email wallet, which only an email sign in signs for. */
+  ctaSellSignInEmail: string;
   sellFromLabel: string;
   sellFromHomeTag: string;
   social: SocialCopy;
@@ -1554,8 +1597,6 @@ export const COPY: Copy = {
   addEmailVerifying: "Checking the code.",
   addEmailDone: "Email added.",
   addEmailCancel: "Cancel",
-  addEmailTaken:
-    "That email already belongs to another account. Try a different one.",
   addEmailFailed: "That did not go through. Try again.",
   addEmailSaving: "Saving it to your account.",
   addEmailCodeWrong: "That code did not work. Check it, or send a new one.",
@@ -1563,6 +1604,41 @@ export const COPY: Copy = {
   addEmailResent: "A new code is on its way.",
   addEmailSaveFailed: "Your email was added, but saving it here did not go through.",
   addEmailRetrySave: "Try again",
+  mergeEmailTitle: "This email already has a Berth account.",
+  mergeEmailAsk: "Bring this wallet into it?",
+  mergeWalletTitle: "This wallet already has a Berth account.",
+  mergeWalletAsk: "Make them one account?",
+  mergeOneMoreCode: "We will send one more code to that email, to open its account.",
+  mergeContinue: "Continue",
+  mergeCodeSent: (email) => `Enter the new code we sent to ${email}.`,
+  mergeStays: (survivor, kind) =>
+    survivor === "this"
+      ? "This account stays, and the other one joins it."
+      : kind === "email"
+        ? "The account with this email stays. This wallet joins it."
+        : "The other account stays, and this one joins it.",
+  mergeWhatMoves: "Your XP, orders and friends come along. Nothing moves on chain.",
+  mergeLeftBehind: (usernameComes) =>
+    usernameComes
+      ? "Assistants connected to the joining account don't come along."
+      : "The joining account's username and connected assistants don't come along.",
+  mergeTogether: (xp, orders) => `Together: ${xp} XP and ${orders} ${orders === 1 ? "order" : "orders"}.`,
+  mergeChart: "Your chart is redrawn overnight.",
+  mergeConfirm: "Make them one",
+  mergeKeepSeparate: "Keep separate",
+  mergeWorking: "Joining the accounts.",
+  mergeDone: (xp) => `Done. One account now, with ${xp} XP.`,
+  mergeDoneHow: "Sign in with your email or any of its wallets. Each buy lands in the wallet you signed in with.",
+  mergeDoneEmailWallet: "To sell what your email's wallet holds, sign in with your email.",
+  mergeDoneSignedOut: "You are signed out. Sign in with the other account's email or any of its wallets.",
+  mergeFailed: "That did not go through. Try again.",
+  mergeChanged: "Something changed. Start again.",
+  mergeClose: "Close",
+  mergeKeptSeparate: "The email was not added. Both accounts stay as they were.",
+  mergeInterrupted: "The accounts were not joined. Nothing changed.",
+  mergeSigning: "Confirm in your wallet that its account is yours.",
+  mergeExpired: "That took too long. Send a new code.",
+  mergeStartAgain: "Start again",
   walletAccountEmailSignIn: "That email belongs to a wallet account. Connect the wallet to sign in.",
   inviteLockedTitle: (rankName) => `Invites unlock at ${rankName}`,
   inviteLockedSub: (level) =>
@@ -2209,7 +2285,7 @@ export const COPY: Copy = {
   accountWalletsTitle: "Wallets",
   accountWalletsSub: "Each wallet stays the key to its own money. Your totals add them up.",
   walletsHomeTag: "Home",
-  walletsHomeNote: "Buys land here.",
+  walletsHomeNote: "Your main wallet. A buy lands in the wallet you sign in with.",
   walletsPayFromNote: "Pays for orders. Its holdings count.",
   walletsNetworkEvm: "Ethereum and similar networks",
   walletsAdd: "Add a wallet",
@@ -2218,7 +2294,7 @@ export const COPY: Copy = {
   walletsMakeHome: "Make home",
   walletsRemove: "Remove",
   walletsCancel: "Cancel",
-  walletsMakeHomeConfirm: (short) => `Make ${short} your home? Future buys land there. Nothing you hold moves.`,
+  walletsMakeHomeConfirm: (short) => `Make ${short} your home? Nothing you hold moves.`,
   walletsRemoveConfirm: (short) => `Remove ${short}? Its orders stay in your history.`,
   walletsRemoveHolds: "This wallet still holds stocks in Berth. Sell them or move them home first.",
   walletsRemoveHomeFirst: "This is your home. Make another wallet home first.",
@@ -2226,7 +2302,7 @@ export const COPY: Copy = {
   walletsSignToConfirm: "Sign to confirm",
   walletsNeedHomeSigner: (short) => `Switch to your home wallet, ${short}, to confirm.`,
   walletsLinkedToast: "Wallet added.",
-  walletsHomeToast: "Home changed. Future buys land there.",
+  walletsHomeToast: "Home changed.",
   walletsRemovedToast: "Wallet removed.",
   walletsOtherAccount: "This wallet belongs to another Berth account.",
   walletsCooling: "This wallet left another account recently. Try again in a week.",
@@ -2253,14 +2329,16 @@ export const COPY: Copy = {
   walletsComingSoonList: (names) => `Coming soon: ${names}.`,
   walletsConnectNetwork: (name) => `Connect ${name}`,
   walletsNetworkSolana: "Solana",
-  walletsSolanaNote: "Pays for orders. What you buy lands at home.",
+  walletsSolanaNote: "Pays for orders. What you buy lands in the wallet you sign in with.",
   sellUpToFromWallet: (amount) => `You can sell up to ${amount} from this wallet.`,
   walletLinkStatement: "Add this wallet to your Berth account. Signing is free and moves nothing.",
   walletLinkConfirmStatement: (short) => `Let ${short} join your Berth account. Signing is free and moves nothing.`,
   walletHomeStatement: (short) => `Make ${short} the home of your Berth account. Signing is free and moves nothing.`,
   walletRemoveStatement: (short) => `Remove ${short} from your Berth account. Signing is free and moves nothing.`,
+  walletMergeStatement: (short) => `Make the Berth account of ${short} one with your email's account. Signing is free and moves nothing.`,
   ctaAddWalletFirst: "Add this wallet to your account first",
   ctaSellSwitchWallet: (short) => `Switch to ${short} to sell from it`,
+  ctaSellSignInEmail: "Sign in with your email to sell these",
   sellFromLabel: "Sell from",
   sellFromHomeTag: "Home",
   social: {

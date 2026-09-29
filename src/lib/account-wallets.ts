@@ -11,7 +11,11 @@ import type { Copy } from "@/lib/copy";
 export type LinkedWalletView = { address: string; family: string; isHome: boolean };
 
 export type AccountHubPlan = {
-  /** Where buys land: the account's home, else the session's own address. */
+  /**
+   * Where buys land: the wallet this session signs with when it is linked
+   * to the account (its own hub wallet, which this session can also sell
+   * from), else the account's home, else the session's own address.
+   */
   home: string | undefined;
   /** Every EVM address whose hub wallet counts, home first, lowercase. */
   wallets: { spoke: string; isHome: boolean }[];
@@ -111,8 +115,14 @@ export function accountHubPlan({
   }
 
   const wallets = [...evm].sort((a, b) => Number(b.isHome) - Number(a.isHome));
-  const signerLinked = !signer || wallets.some((wallet) => wallet.spoke === signer) || (!pending && linkedLoading);
-  return { home: linkedHome, wallets, signer, signerLinked, homeKnown: true };
+  const signerListed = !!signer && wallets.some((wallet) => wallet.spoke === signer);
+  const signerLinked = !signer || signerListed || (!pending && linkedLoading);
+  // A buy lands where this session can sell it: in the signer's own hub
+  // wallet when the signer is on the account (a wallet signed in with its
+  // own key, or an email session's embedded wallet). The home is where it
+  // lands otherwise. After a merge this keeps a wallet's buys its own,
+  // rather than in an email account's wallet it cannot sign for.
+  return { home: signerListed ? signer : linkedHome, wallets, signer, signerLinked, homeKnown: true };
 }
 
 /**

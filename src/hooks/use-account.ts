@@ -8,13 +8,19 @@ import {
   type ResolvedAccount,
 } from "@/lib/account";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
+import { useLinkInProgress } from "@/hooks/use-link-email";
 
 /** The browser's session facts, as the account resolution rule needs them. */
 export function useAccountSession(): AccountSession {
   const privy = usePrivyEmbeddedWallet();
+  // While a wallet account adds an email, the Privy session is the flow's
+  // proof, never the account: opening an email's own account to merge it
+  // (hooks/use-link-email) brings its embedded wallet, which must not
+  // become where this browser's money is read or sent.
+  const linking = useLinkInProgress();
   return {
     emailSession:
-      privy.enabled && privy.authenticated && Boolean(privy.embedded),
+      privy.enabled && privy.authenticated && !linking && Boolean(privy.embedded),
     embeddedEvmAddress: privy.embedded?.address,
   };
 }

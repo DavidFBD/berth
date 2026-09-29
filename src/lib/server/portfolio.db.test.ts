@@ -9,6 +9,8 @@ import { recordOrderMarks } from "./orders";
 import {
   loadPortfolioDays,
   readAccountBalances,
+  combineAccountDays,
+  rebuildMergedPortfolios,
   runPortfolioSnapshot,
   savePortfolioDay,
   snapshotAccounts,
@@ -41,6 +43,7 @@ beforeEach(async () => {
   await sql.query("delete from orders");
   await sql.query("delete from portfolio_days");
   await sql.query("delete from marks");
+  await sql.query("delete from account_merges");
   await sql.query("delete from users");
 });
 
@@ -402,5 +405,157 @@ describe("the order log an assistant reads", () => {
     expect((await loadOrderLog(user.id, 1)).entries).toHaveLength(1);
     expect(await loadOrderFacts(user.id)).toHaveLength(2);
     expect(placed).toBeTruthy();
+  });
+});
+
+describe("a merged account's history, redrawn", () => {
+  const flag = (id: string) => sql.query(`update users set portfolio_rebuild_at = now() where id = $1`, [id]);
+  const flagOf = async (id: string) =>
+    ((await sql.query(`select portfolio_rebuild_at from users where id = $1`, [id])) as { portfolio_rebuild_at: string | null }[])[0]
+      .portfolio_rebuild_at;
+
+  it("from the joined orders when they explain what the account holds, then clears the flag", async () => {
+    const user = await account(81);
+    await placeOrder(user.id, "2026-09-23T15:00:00Z");
+    await writeMarks("NVDA", [{ day: "2026-09-23", close: 100 }, { day: "2026-09-24", close: 110 }], []);
+    await flag(user.id);
+    const summary = await rebuildMergedPortfolios({
+      now: new Date("2026-09-24T23:00:00Z"),
+      deriveHubWallet: async (spoke) => spoke,
+      readBalances: async () => ({ NVDA: 1 }),
+    });
+    expect(summary).toMatchObject({ accounts: 1, rebuilt: 1, written: 2 });
+    expect((await loadPortfolioDays(user.id)).map((d) => [d.day, d.value, d.source])).toEqual([
+      ["2026-09-23", 100, "ledger"],
+      ["2026-09-24", 110, "ledger"],
+    ]);
+    expect(await flagOf(user.id)).toBeNull();
+  });
+
+  it("writes nothing when the orders do not explain the holdings, and waits a day when the chain cannot be read", async () => {
+    const user = await account(82);
+    await placeOrder(user.id, "2026-09-23T15:00:00Z");
+    await flag(user.id);
+    const failed = await rebuildMergedPortfolios({
+      deriveHubWallet: async (spoke) => spoke,
+      readBalances: async () => {
+        throw new Error("rpc down");
+      },
+    });
+    expect(failed).toMatchObject({ accounts: 1, failed: 1 });
+    expect(await flagOf(user.id)).not.toBeNull();
+    const unexplained = await rebuildMergedPortfolios({
+      deriveHubWallet: async (spoke) => spoke,
+      readBalances: async () => ({ NVDA: 5 }),
+    });
+    expect(unexplained).toMatchObject({ accounts: 1, unexplained: 1, written: 0 });
+    expect(await loadPortfolioDays(user.id)).toEqual([]);
+    expect(await flagOf(user.id)).toBeNull();
+  });
+});
+
+describe("a merged account's history, read", () => {
+  const row = (day: string, value: number, createdAt: string, source: "snapshot" | "ledger" = "snapshot") => ({
+    day,
+    value,
+    holdings: [{ symbol: "NVDA", quantity: value / 100, price: 100, source: "mark" as const }],
+    source,
+    asOf: `${day}T21:30:00.000Z`,
+    createdAt,
+  });
+
+  it("adds the retired account's days, carries a missing day forward, and stops once the survivor's rows read every wallet", () => {
+    const merged = combineAccountDays(
+      {
+        rows: [
+          row("2026-09-01", 100, "2026-09-01T22:00:00Z"),
+          row("2026-09-03", 110, "2026-09-03T22:00:00Z"),
+          // Written after the merge: it reads both accounts' wallets.
+          row("2026-09-05", 400, "2026-09-05T22:00:00Z"),
+        ],
+      },
+      [{ rows: [row("2026-09-02", 200, "2026-09-02T22:00:00Z"), row("2026-09-04", 250, "2026-09-04T22:00:00Z")], retiredAt: "2026-09-05T12:00:00Z" }],
+    );
+    expect(merged.map((day) => [day.day, day.value, day.source])).toEqual([
+      ["2026-09-01", 100, "snapshot"],
+      ["2026-09-02", 300, "ledger"],
+      ["2026-09-03", 310, "ledger"],
+      ["2026-09-04", 360, "ledger"],
+      ["2026-09-05", 400, "snapshot"],
+    ]);
+    expect(merged[3].holdings).toEqual([{ symbol: "NVDA", quantity: 3.6, price: 100, source: "mark" }]);
+  });
+
+  it("a chain of merges counts each wallet once: C joined A, then A joined S", () => {
+    // C (10) joined A on 09-10; A's rows after that read C's wallets too (30).
+    // A joined S on 09-12; S's rows are its own (100).
+    const merged = combineAccountDays({ id: "S", rows: [row("2026-09-09", 100, "2026-09-09T22:00:00Z"), row("2026-09-15", 100, "2026-09-11T22:00:00Z")] }, [
+      { id: "A", parent: "S", retiredAt: "2026-09-12T12:00:00Z", rows: [row("2026-09-09", 20, "2026-09-09T22:00:00Z"), row("2026-09-15", 30, "2026-09-11T22:00:00Z")] },
+      { id: "C", parent: "A", retiredAt: "2026-09-10T12:00:00Z", rows: [row("2026-09-09", 10, "2026-09-09T22:00:00Z")] },
+    ]);
+    expect(merged.map((day) => [day.day, day.value])).toEqual([
+      ["2026-09-09", 130],
+      ["2026-09-15", 130],
+    ]);
+    // Once S has a row written after A joined, neither A nor C adds anything.
+    const later = combineAccountDays({ id: "S", rows: [row("2026-09-16", 140, "2026-09-16T22:00:00Z")] }, [
+      { id: "A", parent: "S", retiredAt: "2026-09-12T12:00:00Z", rows: [row("2026-09-15", 30, "2026-09-11T22:00:00Z")] },
+      { id: "C", parent: "A", retiredAt: "2026-09-10T12:00:00Z", rows: [row("2026-09-09", 10, "2026-09-09T22:00:00Z")] },
+    ]);
+    expect(later.map((day) => [day.day, day.value])).toEqual([
+      ["2026-09-09", 10],
+      ["2026-09-15", 30],
+      ["2026-09-16", 140],
+    ]);
+  });
+
+  it("an account nobody merged into reads its own rows unchanged", () => {
+    const own = [row("2026-09-01", 100, "2026-09-01T22:00:00Z")];
+    expect(combineAccountDays({ rows: own }, [])).toEqual([
+      { day: "2026-09-01", value: 100, holdings: own[0].holdings, source: "snapshot", asOf: own[0].asOf },
+    ]);
+  });
+
+  it("reads a chain of merges from the database once per wallet (S=100, A with C=30, C=10)", async () => {
+    const { mergeAccounts } = await import("./account-merge");
+    const [s, a, c] = [await account(93), await account(94), await account(95)];
+    await sql.query(`update users set email = 'chain@example.com' where id = $1`, [s.id]);
+    expect((await mergeAccounts({ survivor: a.id, absorbed: c.id, reason: "wallet" })).ok).toBe(true);
+    expect((await mergeAccounts({ survivor: s.id, absorbed: a.id, reason: "email" })).ok).toBe(true);
+    await sql.query(`update users set retired_at = '2026-09-10T12:00:00Z' where id = $1`, [c.id]);
+    await sql.query(`update users set retired_at = '2026-09-12T12:00:00Z' where id = $1`, [a.id]);
+    const put = (id: string, day: string, value: number, createdAt: string) =>
+      sql.query(
+        `insert into portfolio_days (user_id, day, value_usd, source, as_of, created_at) values ($1, $2::date, $3, 'snapshot', $2::timestamptz, $4::timestamptz)`,
+        [id, day, value, createdAt],
+      );
+    await put(s.id, "2026-09-09", 100, "2026-09-09T22:00:00Z");
+    await put(s.id, "2026-09-15", 100, "2026-09-11T22:00:00Z");
+    await put(a.id, "2026-09-09", 20, "2026-09-09T22:00:00Z");
+    await put(a.id, "2026-09-15", 30, "2026-09-11T22:00:00Z");
+    await put(c.id, "2026-09-09", 10, "2026-09-09T22:00:00Z");
+    expect((await loadPortfolioDays(s.id)).map((day) => [day.day, day.value])).toEqual([
+      ["2026-09-09", 130],
+      ["2026-09-15", 130],
+    ]);
+  });
+
+  it("keeps every stored day of both accounts when the orders do not explain the holdings", async () => {
+    const { mergeAccounts } = await import("./account-merge");
+    const survivor = await account(91);
+    const absorbed = await account(92);
+    await sql.query(`update users set email = 'keep@example.com' where id = $1`, [survivor.id]);
+    await placeOrder(absorbed.id, "2026-09-22T15:00:00Z");
+    await savePortfolioDay(survivor.id, "2026-09-22", { value: 100, holdings: [] }, "snapshot", "2026-09-22T22:30:00Z");
+    await savePortfolioDay(absorbed.id, "2026-09-22", { value: 50, holdings: [] }, "snapshot", "2026-09-22T22:30:00Z");
+    await savePortfolioDay(absorbed.id, "2026-09-23", { value: 60, holdings: [] }, "snapshot", "2026-09-23T22:30:00Z");
+    expect((await mergeAccounts({ survivor: survivor.id, absorbed: absorbed.id, reason: "email" })).ok).toBe(true);
+    const summary = await rebuildMergedPortfolios({ deriveHubWallet: async (spoke) => spoke, readBalances: async () => ({ NVDA: 7 }) });
+    expect(summary).toMatchObject({ unexplained: 1, written: 0 });
+    expect(((await sql.query(`select count(*)::int as n from portfolio_days`)) as { n: number }[])[0].n).toBe(3);
+    expect((await loadPortfolioDays(survivor.id)).map((day) => [day.day, day.value])).toEqual([
+      ["2026-09-22", 150],
+      ["2026-09-23", 160],
+    ]);
   });
 });

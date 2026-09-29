@@ -224,6 +224,8 @@ describe("linking a Solana address", () => {
     expect(result.body.state).toBe("other_account");
     expect(result.body.wallets).toHaveLength(1);
     expect(JSON.stringify(result.body)).not.toContain(theirs.userId);
+    // A Solana signature cannot sign in, so it never offers to merge two accounts.
+    expect(result.body.merge).toBeUndefined();
   });
 
   it("is removed with the home's signature, and cools down for other accounts", async () => {

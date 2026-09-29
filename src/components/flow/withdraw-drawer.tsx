@@ -54,6 +54,7 @@ import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultAddress, useVaultWallet } from "@/hooks/use-vault-wallet";
+import { useAccountWallets } from "@/hooks/use-profile";
 import {
   ActionError,
   ActionStepper,
@@ -397,6 +398,12 @@ export function WithdrawDrawer({
     onClick?: () => void;
   };
   const chosenSource = sellFrom?.sources.find((source) => source.spoke === sellFrom.chosen);
+  // The account's email wallet signs only in an email sign in: say that,
+  // not an address the person may never have seen.
+  const accountWallets = useAccountWallets();
+  const chosenIsEmailWallet = !!accountWallets.data?.wallets.some(
+    (wallet) => wallet.embedded && wallet.address.toLowerCase() === chosenSource?.spoke.toLowerCase(),
+  );
   // The gate (pour-amount module) decides why the withdrawal can't go yet;
   // this map only speaks it plainly.
   const gate = withdrawGate({
@@ -423,7 +430,9 @@ export function WithdrawDrawer({
         return { label: copy.ctaAddWalletFirst, disabled: !onAddWallet, onClick: onAddWallet };
       case "signWithOther":
         return {
-          label: copy.ctaSellSwitchWallet(shortenAddress(chosenSource?.spoke ?? "", 4)),
+          label: chosenIsEmailWallet
+            ? copy.ctaSellSignInEmail
+            : copy.ctaSellSwitchWallet(shortenAddress(chosenSource?.spoke ?? "", 4)),
           disabled: true,
         };
       case "connectSource":

@@ -9,7 +9,7 @@ import { shortenAddress } from "@/lib/format";
  * for one act on one address can never be spent on another.
  */
 
-export type ProofAct = "link" | "link-confirm" | "home" | "unlink";
+export type ProofAct = "link" | "link-confirm" | "home" | "unlink" | "merge";
 
 /** The families an account can prove an address in today. */
 export type ProofFamily = "evm" | "solana";
@@ -40,6 +40,8 @@ export function proofStatement(act: ProofAct, target: string): string {
       return COPY.walletHomeStatement(short);
     case "unlink":
       return COPY.walletRemoveStatement(short);
+    case "merge":
+      return COPY.walletMergeStatement(short);
   }
 }
 

@@ -116,9 +116,11 @@ async function fetchPrivyUser(
 }
 
 /**
- * When the person last proved their email to Privy (entered a code, or an
- * OAuth login), in epoch ms, or null when unknown or on any API hiccup. The
- * account's wallet acts (lib/server/account-wallets-route) ask for this to
+ * When the person last entered a code sent to their email (Privy's own
+ * email account only; an OAuth login such as Google never counts, see
+ * latestEmailProof), in epoch ms, or null when unknown or on any API
+ * hiccup. The account's wallet acts and merges
+ * (lib/server/account-wallets-route, account-merge-route) ask for this to
  * be recent: a lingering session on a shared browser is not the person.
  */
 export async function fetchPrivyEmailVerifiedAt(did: string): Promise<number | null> {
@@ -126,11 +128,17 @@ export async function fetchPrivyEmailVerifiedAt(did: string): Promise<number | n
   return accounts ? latestEmailProof(accounts) : null;
 }
 
-/** The newest latest_verified_at of the email ish accounts, in epoch ms (Privy gives seconds). */
+/**
+ * The newest latest_verified_at of the user's email accounts, in epoch ms
+ * (Privy gives seconds): when a code sent to the inbox was last entered.
+ * Only Privy's own `email` account counts. A Google (or any other OAuth)
+ * login carries an email too, but proves a session at that provider, not a
+ * code entered here, so it never makes an email proof fresh.
+ */
 export function latestEmailProof(accounts: readonly PrivyLinkedAccount[]): number | null {
   let latest: number | null = null;
   for (const account of accounts) {
-    if (account.type !== "email" && !account.email) continue;
+    if (account.type !== "email") continue;
     const seconds = account.latest_verified_at;
     if (typeof seconds !== "number" || !Number.isFinite(seconds)) continue;
     const ms = seconds * 1000;
@@ -200,6 +208,27 @@ export function pickAccountWallet(
  * caller refuses the request instead (rewards-route answers 503).
  */
 export type PrivyWalletLookup = { ok: true; address: string | null } | { ok: false };
+
+const embeddedCache = new Map<string, { address: string | null; at: number }>();
+
+/**
+ * The EVM wallet Privy holds for this user (its embedded wallet), never an
+ * external one, lowercase; null when it has none or Privy cannot be asked.
+ * The wallets list uses it to say which linked address only an email sign
+ * in can sign for (after a merge, a wallet session cannot).
+ */
+export async function fetchPrivyEmbeddedWallet(did: string): Promise<string | null> {
+  const cached = embeddedCache.get(did);
+  if (cached && Date.now() - cached.at < WALLET_CACHE_MS && cached.address) return cached.address;
+  const accounts = await fetchPrivyUser(did);
+  if (accounts === null) return null;
+  const address =
+    accounts
+      .find((account) => account.type === "wallet" && account.chain_type === "ethereum" && account.address && isEmbeddedWallet(account))
+      ?.address?.toLowerCase() ?? null;
+  embeddedCache.set(did, { address, at: Date.now() });
+  return address;
+}
 
 export async function fetchPrivyWallet(did: string): Promise<PrivyWalletLookup> {
   const cached = walletCache.get(did);

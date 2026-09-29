@@ -24,10 +24,12 @@ export type UserRow = {
   xp: number;
   referral_code: string | null;
   referred_by: string | null;
+  /** Set once the account was merged into another (lib/server/account-merge): that one is the account now. */
+  retired_into?: string | null;
 };
 
 const USER_COLUMNS =
-  "id, privy_did, wallet_address, email, avatar_id, xp, referral_code, referred_by" as const;
+  "id, privy_did, wallet_address, email, avatar_id, xp, referral_code, referred_by, retired_into" as const;
 
 /**
  * The one spelling of a wallet address Berth stores and compares, per
@@ -83,6 +85,46 @@ async function userById(id: string): Promise<UserRow | undefined> {
 }
 
 /**
+ * The account a row stands for: itself, or, for a row merged into another
+ * (retired_into, lib/server/account-merge), the survivor. A merge points
+ * every row retired into the absorbed one at the survivor too, so one step
+ * is the rule; the loop only guards against a chain written by hand.
+ */
+export async function liveAccount(user: UserRow | undefined): Promise<UserRow | undefined> {
+  let current = user;
+  for (let hops = 0; current?.retired_into && hops < 4; hops += 1) {
+    current = await userById(current.retired_into);
+  }
+  return current?.retired_into ? undefined : current;
+}
+
+/**
+ * The account a Privy DID signs in to, without creating one: the row with
+ * that DID, or the survivor of a merge that absorbed it (its DID is kept
+ * as 'merged:<did>'). Undefined when neither exists.
+ */
+export async function accountForDid(did: string): Promise<UserRow | undefined> {
+  const rows = (await getSql().query(
+    `select ${USER_COLUMNS} from users where privy_did = $1 or privy_did = 'merged:' || $1
+      order by (privy_did = $1) desc limit 1`,
+    [did],
+  )) as UserRow[];
+  return liveAccount(rows[0]);
+}
+
+/**
+ * The account a wallet address belongs to, without creating one: the
+ * linked identity's account, else the row whose users.wallet_address it is.
+ */
+export async function accountForWallet(wallet: string): Promise<UserRow | undefined> {
+  const owner = await walletOwner(wallet);
+  if (owner?.state === "linked") return liveAccount(await userById(owner.userId));
+  if (owner?.state === "cooling") return undefined;
+  const rows = (await getSql().query(`select ${USER_COLUMNS} from users where wallet_address = $1`, [wallet])) as UserRow[];
+  return liveAccount(rows[0]);
+}
+
+/**
  * Finds or creates the account for this request's identity, linking the
  * wallet onto the Privy row when both are present. The one interesting case
  * is the incentive path: a wallet-only account that later signs in with
@@ -112,6 +154,11 @@ export async function getOrCreateUser({
         [did],
       )) as UserRow[]
     )[0];
+    // A DID whose account was merged into another signs in to the survivor.
+    if (!user) {
+      const merged = await accountForDid(did);
+      if (merged) return { user: merged, created: false };
+    }
     // Who the Privy wallet belongs to in user_identities (undefined when the
     // table cannot be read: the users columns decide).
     const owner = wallet ? await walletOwner(wallet) : undefined;
@@ -217,7 +264,7 @@ export async function getOrCreateUser({
   // joins nothing yet.
   const owner = await walletOwner(wallet);
   if (owner?.state === "linked") {
-    const linked = await userById(owner.userId);
+    const linked = await liveAccount(await userById(owner.userId));
     if (linked) return { user: linked, created: false };
   }
   if (owner?.state === "cooling") throw new WalletCoolingDownError();
@@ -341,6 +388,7 @@ export async function ensureReferralCode(user: UserRow): Promise<UserRow> {
  * Binds who invited this account. Callable only for rows created this
  * request (the route enforces that), and self-referral dies in the SQL: the
  * code must belong to a DIFFERENT user, and referred_by only writes once.
+ * The code of an account merged into another names the survivor.
  */
 export async function bindReferral(
   userId: string,
@@ -349,7 +397,7 @@ export async function bindReferral(
   const sql = getSql();
   const rows = (await sql.query(
     `update users set referred_by = referrer.id, updated_at = now()
-     from (select id from users where referral_code = $2) as referrer
+     from (select coalesce(retired_into, id) as id from users where referral_code = $2) as referrer
      where users.id = $1 and users.referred_by is null and referrer.id <> $1
      returning referrer.id as referrer_id`,
     [userId, code],
@@ -387,7 +435,7 @@ export async function claimReferral(
   const sql = getSql();
   const rows = (await sql.query(
     `update users set referred_by = referrer.id, updated_at = now()
-     from (select id from users where referral_code = $2) as referrer
+     from (select coalesce(retired_into, id) as id from users where referral_code = $2) as referrer
      where users.id = $1
        and referrer.id <> $1
        and ${CLAIMABLE_SQL}

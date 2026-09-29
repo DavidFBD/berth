@@ -103,6 +103,30 @@ export function storeWalletSession(address: string, token: string): void {
   changed();
 }
 
+/**
+ * Drop one pocketed session, by its address or by the token itself: a
+ * session the server refused (a merge moved its wallet after it was
+ * signed), so the next request signs in afresh instead of repeating it.
+ */
+export function forgetWalletSession(match: { address?: string; token?: string }): void {
+  try {
+    const all = readAll();
+    let changedAny = false;
+    for (const [key, stored] of Object.entries(all)) {
+      if ((match.address && key === match.address.toLowerCase()) || (match.token && stored.token === match.token)) {
+        delete all[key];
+        changedAny = true;
+      }
+    }
+    if (!changedAny) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    return;
+  }
+  changed();
+}
+
 export function clearWalletSession(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);

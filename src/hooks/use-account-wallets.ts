@@ -15,6 +15,7 @@ import {
 } from "@/hooks/use-wallet-session";
 import { shortenAddress } from "@/lib/format";
 import { walletActMessage } from "@/lib/account-wallets";
+import { offerWalletMerge, type MergeOfferWire } from "@/hooks/use-account-merge";
 import {
   LINKABLE,
   NETWORK_ORDER,
@@ -176,6 +177,9 @@ export function useAddConnectedWallet() {
   const act = useWalletAct();
   const address = waiting?.address ?? null;
 
+  // Start again, from an expired or changed merge offer, runs the link
+  // once more: new signatures, a new offer.
+  const addAgain = useRef<() => Promise<void>>(async () => {});
   const add = useCallback(async () => {
     const sign = signerFor(address ?? undefined);
     if (!waiting || !address || !sign) return;
@@ -227,8 +231,18 @@ export function useAddConnectedWallet() {
     const state = result.response.state;
     if (state === "linked" || state === "already") toast.success(copy.walletsLinkedToast, { description: shortenAddress(address, 6) });
     else if (state === "cooling") toast(copy.walletsCooling);
-    else toast(copy.walletsOtherAccount);
+    else {
+      // Both accounts were just proved (this wallet's signature, and the
+      // account's confirmation), so the server offers to make them one.
+      const merge = (result.response as { merge?: MergeOfferWire }).merge;
+      if (merge) offerWalletMerge(merge, address, waiting.mode === "wallet" ? anchor?.token : undefined, () => addAgain.current());
+      else toast(copy.walletsOtherAccount);
+    }
   }, [act, address, anchor, copy, privy, signerFor, waiting, waitingSigner]);
+
+  useEffect(() => {
+    addAgain.current = add;
+  }, [add]);
 
   /** Wallet mode: sign in as the new wallet (a signature, as before). Email mode: stop asking. */
   const keepApart = useCallback(() => {
@@ -287,6 +301,7 @@ export function useAddWallets() {
     outcomes,
   });
 
+  const addRowAgain = useRef<(row: AddRow) => Promise<void>>(async () => {});
   const addRow = useCallback(
     async (row: AddRow) => {
       const address = row.address;
@@ -353,7 +368,10 @@ export function useAddWallets() {
         if (state === "linked" || state === "already") toast.success(copy.walletsLinkedToast, { description: shortenAddress(address, 6) });
         else if (state === "cooling" || state === "other_account") {
           rememberOutcome(addressKey(row.network, address), state);
-          toast(state === "cooling" ? copy.walletsCooling : copy.walletsOtherAccount);
+          // Both accounts were just proved, so the server offers to make them one.
+          const merge = state === "other_account" ? (result.response as { merge?: MergeOfferWire }).merge : undefined;
+          if (merge) offerWalletMerge(merge, address, undefined, () => addRowAgain.current(row));
+          else toast(state === "cooling" ? copy.walletsCooling : copy.walletsOtherAccount);
         } else toast(copy.walletsFailed);
       } finally {
         setBusyAddress(null);
@@ -361,6 +379,10 @@ export function useAddWallets() {
     },
     [act, add, busyAddress, copy, list.data?.wallets, privy, signMessage, signerFor, waitingSigner],
   );
+
+  useEffect(() => {
+    addRowAgain.current = addRow;
+  }, [addRow]);
 
   return { rows, comingSoon, busyAddress: busyAddress ?? (add.busy ? add.address : null), add: addRow };
 }

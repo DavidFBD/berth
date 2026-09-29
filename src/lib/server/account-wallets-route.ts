@@ -5,7 +5,7 @@ import { normalizeAddress } from "@/lib/identity/caip";
 import { parseSiwsMessage } from "@/lib/siws";
 import { getSql } from "@/lib/server/db";
 import { hubWalletFor, readListingBalances } from "@/lib/server/portfolio";
-import { fetchPrivyEmailVerifiedAt } from "@/lib/server/privy";
+import { fetchPrivyEmailVerifiedAt, fetchPrivyEmbeddedWallet } from "@/lib/server/privy";
 import { normalizeWallet, type UserRow } from "@/lib/server/accounts";
 import { walletsOf } from "@/lib/server/account-wallets";
 import type { LinkedWallet } from "@/lib/server/identities";
@@ -34,7 +34,10 @@ export const NONCE_LIMIT_PER_HOUR = 20;
 /** Link, home and remove attempts an account may make in an hour. */
 export const ACT_LIMIT_PER_HOUR = 20;
 
-export type WalletView = Pick<LinkedWallet, "address" | "family" | "isHome" | "linkedAt">;
+export type WalletView = Pick<LinkedWallet, "address" | "family" | "isHome" | "linkedAt"> & {
+  /** The account's email wallet (Privy's embedded one): only an email sign in signs for it. */
+  embedded?: boolean;
+};
 
 export type WalletsResponse = {
   wallets: WalletView[];
@@ -97,9 +100,17 @@ export async function accountOf(request: NextRequest): Promise<{ ok: true; accou
 
 export async function walletsResponse(account: Account, extra: Record<string, unknown> = {}): Promise<NextResponse> {
   const wallets = await walletsOf(account.user.id);
+  const did = account.user.privy_did;
+  const embedded = did?.startsWith("did:privy:") ? await fetchPrivyEmbeddedWallet(did).catch(() => null) : null;
   const body: WalletsResponse & Record<string, unknown> = {
     ...extra,
-    wallets: wallets.map(({ address, family, isHome, linkedAt }) => ({ address, family, isHome, linkedAt })),
+    wallets: wallets.map(({ address, family, isHome, linkedAt, proof }) => ({
+      address,
+      family,
+      isHome,
+      linkedAt,
+      ...(proof === "privy_wallet" || (family === "evm" && address === embedded) ? { embedded: true } : {}),
+    })),
     signedInWith: account.caller.did ? null : account.caller.wallet,
   };
   return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
@@ -149,9 +160,9 @@ export async function issueNonce(request: NextRequest): Promise<NextResponse> {
   });
 }
 
-type Proof = { message: string; signature: string };
+export type Proof = { message: string; signature: string };
 
-function asProof(value: unknown): Proof | null {
+export function asProof(value: unknown): Proof | null {
   const candidate = value as { message?: unknown; signature?: unknown } | null;
   return candidate && typeof candidate.message === "string" && typeof candidate.signature === "string"
     ? { message: candidate.message, signature: candidate.signature }
@@ -165,7 +176,7 @@ function asProof(value: unknown): Proof | null {
  * resource are exactly the ones this act on this target must carry
  * (lib/account-proof). Null otherwise.
  */
-async function signerOf(proof: Proof, nonce: string, act: ProofAct, target: string): Promise<string | null> {
+export async function signerOf(proof: Proof, nonce: string, act: ProofAct, target: string): Promise<string | null> {
   const siws = parseSiwsMessage(proof.message);
   if (siws) {
     if (siws.statement !== proofStatement(act, target)) return null;
@@ -186,7 +197,7 @@ async function signerOf(proof: Proof, nonce: string, act: ProofAct, target: stri
 }
 
 /** Spends a nonce once; false when it was spent before. */
-async function spend(nonce: string, userId: string, act: AccountAct): Promise<boolean> {
+export async function spend(nonce: string, userId: string | null, act: AccountAct | "merge"): Promise<boolean> {
   const rows = (await getSql().query(
     `insert into account_nonces (nonce, user_id, act) values ($1, $2, $3) on conflict do nothing returning nonce`,
     [nonce, userId, act],
@@ -202,7 +213,7 @@ async function spend(nonce: string, userId: string, act: AccountAct): Promise<bo
  * production on 2026-09-29). The access token's iat would not do: it is
  * reissued on every refresh without the person doing anything.
  */
-async function privyFresh(did: string): Promise<boolean> {
+export async function privyFresh(did: string): Promise<boolean> {
   const at = await fetchPrivyEmailVerifiedAt(did);
   return at !== null && Date.now() - at <= PRIVY_FRESH_MS;
 }

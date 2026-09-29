@@ -199,6 +199,8 @@ describe("linking a second EVM wallet", () => {
     expect(await accountEvmAddresses(other.userId, addr(theirs))).toEqual({ home: addr(theirs), all: [addr(theirs)] });
     expect(await auditOf(userId)).toEqual([
       { action: "identity_conflict", detail: { kind: "wallet", family: "evm", otherUserId: other.userId } },
+      // Both were just proved, so the merge is offered (lib/server/account-merge-route), and audited.
+      { action: "merge_offered", detail: { kind: "wallet", otherUserId: other.userId, survivor: "requester" } },
     ]);
   });
 

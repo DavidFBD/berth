@@ -37,6 +37,7 @@ import {
   anchorWalletSession,
   keptSeparate,
   storedWalletSession,
+  forgetWalletSession,
   storeWalletSession,
   subscribeWalletSessions,
   useEnsureWalletSession,
@@ -90,6 +91,24 @@ function useIdentity() {
 }
 
 /**
+ * A wallet session the server refused (signed before a merge moved its
+ * wallet, lib/server/rewards-route) is dropped, so the next request asks
+ * for a fresh sign in signature instead of sending the dead one forever.
+ */
+function refusedSession(response: Response, auth: Record<string, string>): void {
+  const token = auth["x-wallet-session"];
+  if (response.status !== 401 || !token) return;
+  // Only this refusal: a 401 for a bad act signature keeps the session.
+  void response
+    .clone()
+    .json()
+    .then((body: { error?: unknown }) => {
+      if (body?.error === "wallet session required") forgetWalletSession({ token });
+    })
+    .catch(() => undefined);
+}
+
+/**
  * The one request core every rewards hook goes through: identity, the auth
  * ritual (Privy token when signed in, SIWE wallet session otherwise — guests
  * prove their address once with a free signature; the server takes nobody's
@@ -117,6 +136,7 @@ function useRewardsCall() {
       body: JSON.stringify(body),
     });
     if (response.status === 404 && notFound !== undefined) return notFound;
+    refusedSession(response, auth);
     if (!response.ok) return null;
     return response.json();
   };
@@ -134,6 +154,7 @@ function useRewardsCall() {
       headers: { "content-type": "application/json", ...auth },
       body: JSON.stringify(body),
     });
+    refusedSession(response, auth);
     return { status: response.status, data: response.ok ? ((await response.json()) as T) : null };
   };
 

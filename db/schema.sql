@@ -568,9 +568,12 @@ create index if not exists friends_b_idx on friends (b_id);
 -- account, in uuid order, then counts: a racing insert for the same person
 -- waits for the lock and, counting afresh, sees the other's row, so two
 -- accepts at once cannot take anyone past 50. The body sits on one line
--- because db:push splits statements at a semicolon that ends a line.
+-- because db:push splits statements at a semicolon that ends a line. An
+-- account merge (merge_accounts, below) sets berth.merging for its own
+-- transaction and skips the cap: two people's friends become one person's
+-- and none is dropped to fit; the cap then only stops new ones.
 create or replace function friends_cap() returns trigger language plpgsql as $$
-begin perform pg_advisory_xact_lock(hashtextextended('friends:' || new.a_id::text, 0)); perform pg_advisory_xact_lock(hashtextextended('friends:' || new.b_id::text, 0)); if (select count(*) from friends where a_id = new.a_id or b_id = new.a_id) > 50 or (select count(*) from friends where a_id = new.b_id or b_id = new.b_id) > 50 then raise exception 'friends cap reached' using errcode = 'check_violation'; end if; return null; end $$;
+begin if coalesce(current_setting('berth.merging', true), '') = 'on' then return null; end if; perform pg_advisory_xact_lock(hashtextextended('friends:' || new.a_id::text, 0)); perform pg_advisory_xact_lock(hashtextextended('friends:' || new.b_id::text, 0)); if (select count(*) from friends where a_id = new.a_id or b_id = new.a_id) > 50 or (select count(*) from friends where a_id = new.b_id or b_id = new.b_id) > 50 then raise exception 'friends cap reached' using errcode = 'check_violation'; end if; return null; end $$;
 
 drop trigger if exists friends_cap on friends;
 
@@ -646,3 +649,324 @@ create table if not exists social_audit (
 );
 
 create index if not exists social_audit_actor_idx on social_audit (actor_id, created_at desc);
+
+-- Phase 3 (docs/plans/account-linking.md): two accounts one person proved
+-- both of become one. The absorbed users row is never deleted: it is
+-- marked retired into the survivor (`retired_into`), keeps the few rows
+-- that would have been duplicates, and every sign in that names it (its
+-- Privy DID, now 'merged:<did>', or a wallet, now the survivor's) reaches
+-- the survivor instead (lib/server/accounts). `portfolio_rebuild_at` asks
+-- the evening cron to redraw the survivor's ledger days from the joined
+-- orders (lib/server/portfolio rebuildMergedPortfolios); cleared once it
+-- has. No stored day of either account is ever deleted by a merge.
+alter table users add column if not exists retired_into uuid references users(id);
+alter table users add column if not exists retired_at timestamptz;
+alter table users add column if not exists portfolio_rebuild_at timestamptz;
+
+-- When a merge moved this identifier onto its account: a wallet session
+-- signed before then was made for the absorbed account and is refused
+-- (lib/server/rewards-route), so the browser signs in afresh.
+alter table user_identities add column if not exists merged_at timestamptz;
+
+-- One row per merge, and at most one per absorbed account ever. `status`
+-- is 'pending' while it runs, 'failed' (with `error`, a code, never data)
+-- when the transaction rolled back, 'done' once it committed, with the row
+-- counts in `moved`. A retry of a pending or failed merge runs the whole
+-- transaction again; a retry of a done one changes nothing and answers the
+-- same counts.
+create table if not exists account_merges (
+  id uuid primary key default gen_random_uuid(),
+  survivor_id uuid not null references users(id),
+  absorbed_id uuid not null references users(id),
+  reason text not null check (reason in ('email', 'wallet')),
+  status text not null default 'pending' check (status in ('pending', 'failed', 'done')),
+  moved jsonb not null default '{}'::jsonb,
+  error text,
+  created_at timestamptz not null default now(),
+  done_at timestamptz,
+  constraint account_merges_absorbed_once unique (absorbed_id),
+  constraint account_merges_not_self check (survivor_id <> absorbed_id)
+);
+
+create index if not exists account_merges_survivor_idx on account_merges (survivor_id);
+
+-- Which proof let the merge happen: 'email:<did>' (a code entered in the
+-- last ten minutes) or 'wallet:<caip10>' (a signature made for it). Never
+-- a secret: no token, no code, no signature.
+alter table account_merges add column if not exists proof_ref text;
+
+-- The merge itself (lib/server/account-merge), one function so it is one
+-- transaction: every row the absorbed account owns moves to the survivor,
+-- or nothing does. Its statements begin with their semicolon, so that
+-- db:push, which splits at a semicolon ending a line, keeps it whole.
+create or replace function merge_accounts(p_merge uuid, p_survivor uuid, p_absorbed uuid) returns jsonb language plpgsql as $$
+declare
+  m record
+  ; s uuid := p_survivor
+  ; a uuid := p_absorbed
+  ; s_row record
+  ; a_row record
+  ; a_home text
+  ; a_first date
+  ; a_norm text
+  ; n int
+  ; n2 int
+  ; v_moved jsonb := '{}'::jsonb
+; begin
+  select * into m from account_merges where id = p_merge for update
+  ; if not found or m.survivor_id <> s or m.absorbed_id <> a then raise exception 'merge row mismatch' using errcode = 'P0001'
+  ; end if
+  ; if m.status = 'done' then return m.moved
+  ; end if
+  -- Both rows, locked in id order so two merges cannot deadlock.
+  ; perform 1 from users where id in (s, a) order by id for update
+  ; select * into s_row from users where id = s
+  ; if not found then raise exception 'merge account missing' using errcode = 'P0002'
+  ; end if
+  ; select * into a_row from users where id = a
+  ; if not found then raise exception 'merge account missing' using errcode = 'P0002'
+  ; end if
+  ; if s_row.retired_into is not null or a_row.retired_into is not null then raise exception 'merge account retired' using errcode = 'P0003'
+  ; end if
+  ; perform set_config('berth.merging', 'on', true)
+  -- The rows shared with other people (friendships, salutes, blocks,
+  -- requests), locked up front in one fixed order, so a friend accepting
+  -- or a block landing mid merge waits rather than deadlocks.
+  ; perform 1 from friends where a_id in (s, a) or b_id in (s, a) order by a_id, b_id for update
+  ; perform 1 from salutes where giver_id in (s, a) or recipient_id in (s, a) order by giver_id, recipient_id for update
+  ; perform 1 from blocks where blocker_id in (s, a) or blocked_id in (s, a) order by id for update
+  ; perform 1 from friend_requests where from_id in (s, a) or to_id in (s, a) order by id for update
+
+  -- Identities. The absorbed row's own columns are recorded first, in case
+  -- the backfill never reached them. All move over as linked, not home and
+  -- not primary: the survivor keeps its one home EVM address and its
+  -- primary email. Only a survivor with no home at all takes the absorbed
+  -- home as its own, so its buys still have somewhere to land.
+  ; insert into user_identities (user_id, kind, value, family, is_home, proof)
+      select a, 'wallet', 'eip155:' || a_row.wallet_address, 'evm', false, 'legacy'
+      where a_row.wallet_address ~ '^0x[0-9a-f]{40}$'
+      on conflict do nothing
+  ; insert into user_identities (user_id, kind, value, is_primary, proof)
+      select a, 'email', lower(btrim(a_row.email)), false, 'legacy'
+      where a_row.email is not null and btrim(a_row.email) <> ''
+      on conflict do nothing
+  -- The survivor's own email, if the backfill never recorded it, becomes
+  -- its primary email identity first, ahead of any that moves over.
+  ; insert into user_identities (user_id, kind, value, is_primary, proof)
+      select s, 'email', lower(btrim(s_row.email)), not exists (select 1 from user_identities where user_id = s and is_primary), 'legacy'
+      where s_row.email is not null and btrim(s_row.email) <> ''
+      on conflict do nothing
+  ; select value into a_home from user_identities where user_id = a and is_home
+  ; if a_home is null and a_row.wallet_address ~ '^0x[0-9a-f]{40}$' then a_home := 'eip155:' || a_row.wallet_address
+  ; end if
+  ; update user_identities set user_id = s, is_home = false, is_primary = false, merged_at = now() where user_id = a
+  -- The absorbed row lets go of its wallet column now, so the survivor may
+  -- take the address as its home below. It cannot be left with no identity
+  -- at all (users_identity), so its DID is retired here too.
+  ; update users set privy_did = 'merged:' || coalesce(privy_did, id::text), wallet_address = null where id = a
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('identities', n)
+  ; if a_home is not null and s_row.wallet_address is null
+       and not exists (select 1 from user_identities where user_id = s and is_home) then
+      update user_identities set is_home = true where user_id = s and kind = 'wallet' and value = a_home and unlinked_at is null
+      ; update users set wallet_address = substr(a_home, 8) where id = s
+  ; end if
+  ; update user_identities set is_primary = true
+      where id = (select id from user_identities where user_id = s and kind = 'email' and unlinked_at is null order by created_at, value limit 1)
+        and not exists (select 1 from user_identities where user_id = s and is_primary)
+
+  -- Stored days are never deleted or moved: both accounts keep theirs, and
+  -- the history read (lib/server/portfolio loadPortfolioDays) adds the
+  -- retired account's days to the survivor's, day by day, until the
+  -- survivor has a row written after the merge. When the absorbed account
+  -- has any order or day, the evening cron is asked to redraw the
+  -- survivor's ledger days from the joined orders (never a snapshot).
+  ; select least(
+        (select min(day) from portfolio_days where user_id = a),
+        (select min(coalesce(placed_at, filled_at, created_at))::date from orders where user_id = a)
+      ) into a_first
+
+  -- The ledger: orders (their order_marks follow by order id), limit
+  -- orders, pending pour claims, and the assistant's usage history.
+  ; update orders set user_id = s where user_id = a
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('orders', n)
+  ; update limit_orders set user_id = s where user_id = a
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('limitOrders', n)
+  ; update pour_claims set user_id = s where user_id = a
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('pourClaims', n)
+  ; update chat_usage set user_id = s where user_id = a
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('chatUsage', n)
+  ; update mcp_calls set user_id = s where user_id = a
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('mcpCalls', n)
+
+  ; if a_first is not null then
+      update users set portfolio_rebuild_at = now() where id = s
+  ; end if
+
+  -- XP. An event with a ref (an order, a friend's first order) is unique
+  -- across every account already, so it moves as it is. A ref that names
+  -- the absorbed account itself ('<id>:<mode>', theme_tried) is rewritten
+  -- to name the survivor, and stays behind when the survivor already has
+  -- it. A once per account kind the survivor already has stays on the
+  -- absorbed row, kept for the record and never paid twice. XP one side
+  -- earned for inviting the other (friend_poured, and the invitee's
+  -- invite_accepted) was a person inviting themselves: it rests on the
+  -- retired row, whichever side it was paid to. Both totals are then
+  -- summed afresh from the events, never added together.
+  -- (The survivor's own invite_accepted keeps its row but takes the ref
+  -- 'self:<survivor>' on the way, so the absorbed row can hold it beside
+  -- any invite_accepted of its own.)
+  ; update xp_events set user_id = a, ref = coalesce(ref, 'self:' || s::text)
+      where user_id = s and ((kind = 'friend_poured' and ref = a::text)
+        or (kind = 'invite_accepted' and ref is null and s_row.referred_by is not distinct from a))
+  ; update xp_events e set user_id = s, ref = s::text || substr(e.ref, length(a::text) + 1)
+      where e.user_id = a and e.ref like a::text || ':%'
+        and not exists (select 1 from xp_events x where x.kind = e.kind and x.ref = s::text || substr(e.ref, length(a::text) + 1))
+  ; get diagnostics n2 = row_count
+  ; update xp_events e set user_id = s
+      where e.user_id = a
+        and coalesce(e.ref, '') not like a::text || ':%'
+        and not (e.kind = 'friend_poured' and coalesce(e.ref, '') in (s::text, a::text))
+        and not (e.kind = 'invite_accepted' and (coalesce(e.ref, '') = 'self:' || s::text or (e.ref is null and a_row.referred_by is not distinct from s)))
+        and (e.ref is not null or not exists (select 1 from xp_events x where x.user_id = s and x.kind = e.kind and x.ref is null))
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('xpEvents', n + n2)
+  ; select count(*) into n from xp_events where user_id = a
+  ; v_moved := v_moved || jsonb_build_object('xpEventsKept', n)
+  ; update users set xp = coalesce((select sum(amount) from xp_events where user_id = s), 0), updated_at = now() where id = s
+  ; update users set xp = coalesce((select sum(amount) from xp_events where user_id = a), 0) where id = a
+
+  -- Referrals. The survivor keeps its own referrer, and the absorbed
+  -- account's referrer is dropped. Whoever the absorbed account invited is
+  -- now the survivor's (the survivor itself, if it was one, is nobody's).
+  -- An account retired into the absorbed one now points at the survivor, so
+  -- an old invite code resolves in one step.
+  ; update users set referred_by = s where referred_by = a and id <> s
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('referrals', n)
+  ; update users set referred_by = null where id = s and referred_by = a
+  ; update users set retired_into = s where retired_into = a
+
+  -- Usernames. The survivor keeps its own. A survivor with none takes the
+  -- absorbed one, card and all. Otherwise the absorbed one is released
+  -- after the usual 90 day hold, held for the survivor, who may take it.
+  ; if not exists (select 1 from handles where user_id = s) then
+      update handles set user_id = s where user_id = a
+      ; update profiles set user_id = s where user_id = a and not exists (select 1 from profiles where user_id = s)
+  ; end if
+  ; select handle_norm into a_norm from handles where user_id = a
+  ; if a_norm is not null then
+      delete from handles where user_id = a
+      ; insert into handle_reserved (handle_norm, reason, user_id, until)
+          values (a_norm, 'retired', s, now() + interval '90 days')
+          on conflict (handle_norm) do update set user_id = excluded.user_id, until = excluded.until
+          where handle_reserved.reason = 'retired'
+  ; end if
+  ; update handle_reserved set user_id = s where user_id = a and reason = 'retired'
+  ; update profiles set visible = false, hidden_at = coalesce(hidden_at, now()), updated_at = now() where user_id = a
+
+  -- Salutes, without duplicates: one person salutes a card once. Where
+  -- both accounts saluted the same card (or were saluted by the same
+  -- person) the survivor's row stays, live if either was, dated the
+  -- earlier. A salute between the two accounts goes.
+  ; update salutes y set revoked_at = case when x.revoked_at is null then null else y.revoked_at end, first_at = least(y.first_at, x.first_at)
+      from salutes x where x.giver_id = a and y.giver_id = s and y.recipient_id = x.recipient_id
+  ; update salutes y set revoked_at = case when x.revoked_at is null then null else y.revoked_at end, first_at = least(y.first_at, x.first_at)
+      from salutes x where x.recipient_id = a and y.recipient_id = s and y.giver_id = x.giver_id
+  ; update salutes x set giver_id = s
+      where x.giver_id = a and x.recipient_id <> s
+        and not exists (select 1 from salutes y where y.giver_id = s and y.recipient_id = x.recipient_id)
+  ; get diagnostics n = row_count
+  ; update salutes x set recipient_id = s
+      where x.recipient_id = a and x.giver_id <> s
+        and not exists (select 1 from salutes y where y.recipient_id = s and y.giver_id = x.giver_id)
+  ; get diagnostics n2 = row_count
+  ; v_moved := v_moved || jsonb_build_object('salutes', n + n2)
+  ; delete from salutes where giver_id = a or recipient_id = a
+
+  -- Friends, without duplicates and past the cap if need be. Live
+  -- requests move where they do not repeat one the survivor already has
+  -- or ask for a friend it already has; the rest are withdrawn. The
+  -- absorbed account's friend link stops working.
+  ; insert into friends (a_id, b_id, since)
+      select least(s, f.other), greatest(s, f.other), f.since
+        from (select case when a_id = a then b_id else a_id end as other, since from friends where a_id = a or b_id = a) f
+       where f.other <> s
+      on conflict (a_id, b_id) do update set since = least(friends.since, excluded.since)
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('friends', n)
+  ; delete from friends where a_id = a or b_id = a
+  ; update friend_requests r set from_id = s
+      where r.from_id = a and r.status in ('pending', 'declined') and r.to_id <> s
+        and not exists (select 1 from friend_requests q where q.from_id = s and q.to_id = r.to_id and q.status in ('pending', 'declined'))
+        and not exists (select 1 from friends f where f.a_id = least(s, r.to_id) and f.b_id = greatest(s, r.to_id))
+  ; update friend_requests r set to_id = s
+      where r.to_id = a and r.status in ('pending', 'declined') and r.from_id <> s
+        and not exists (select 1 from friend_requests q where q.to_id = s and q.from_id = r.from_id and q.status in ('pending', 'declined'))
+        and not exists (select 1 from friends f where f.a_id = least(s, r.from_id) and f.b_id = greatest(s, r.from_id))
+  ; update friend_requests set status = 'withdrawn', responded_at = coalesce(responded_at, now())
+      where (from_id = a or to_id = a) and status in ('pending', 'declined')
+  ; update friend_links set revoked_at = now() where user_id = a and revoked_at is null
+  -- A report about the absorbed card is about the person, who is the survivor now.
+  ; update social_reports set target_id = s where target_id = a
+
+  -- Blocks, unioned: whoever either account blocked, the survivor blocks,
+  -- and whoever blocked either account blocks the survivor. A block still
+  -- does what it always does, so friendships, live requests and salutes
+  -- across a block the merge created end here.
+  ; update blocks b set blocker_id = s
+      where b.blocker_id = a and b.blocked_id is distinct from s
+        and not exists (select 1 from blocks c where c.blocker_id = s and (c.handle_norm = b.handle_norm or (b.blocked_id is not null and c.blocked_id = b.blocked_id)))
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('blocks', n)
+  ; update blocks b set blocked_id = s
+      where b.blocked_id = a and b.blocker_id <> s
+        and not exists (select 1 from blocks c where c.blocker_id = b.blocker_id and c.blocked_id = s)
+  ; delete from blocks where blocker_id = a or blocked_id = a
+  ; delete from friends f using blocks b
+      where b.blocked_id is not null and s in (b.blocker_id, b.blocked_id)
+        and f.a_id = least(b.blocker_id, b.blocked_id) and f.b_id = greatest(b.blocker_id, b.blocked_id)
+  ; update friend_requests r set status = 'withdrawn', responded_at = coalesce(r.responded_at, now())
+      from blocks b
+      where b.blocked_id is not null and s in (b.blocker_id, b.blocked_id) and r.status in ('pending', 'declined')
+        and ((r.from_id = b.blocker_id and r.to_id = b.blocked_id) or (r.from_id = b.blocked_id and r.to_id = b.blocker_id))
+  ; update salutes x set revoked_at = now()
+      from blocks b
+      where b.blocked_id is not null and s in (b.blocker_id, b.blocked_id) and x.revoked_at is null
+        and ((x.giver_id = b.blocker_id and x.recipient_id = b.blocked_id) or (x.giver_id = b.blocked_id and x.recipient_id = b.blocker_id))
+
+  -- Assistants: an assistant allowed into one account never silently gets
+  -- another, so the absorbed account's grants, their tokens and any
+  -- unused code end. The person connects it again.
+  ; update oauth_grants set revoked_at = now() where user_id = a and revoked_at is null
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('grantsRevoked', n)
+  ; update oauth_tokens t set revoked_at = now() from oauth_grants g where t.grant_id = g.id and g.user_id = a and t.revoked_at is null
+  ; update oauth_codes set used_at = now() where user_id = a and used_at is null
+
+  -- The absorbed row retires: no email and no referrer, and (from above)
+  -- no wallet and its DID kept only as 'merged:<did>', which no Privy token
+  -- can present, so a sign in with it finds the survivor. Kept, never
+  -- deleted.
+  ; update users set
+      retired_into = s,
+      retired_at = now(),
+      email = null,
+      referred_by = null,
+      portfolio_rebuild_at = null,
+      updated_at = now()
+    where id = a
+  ; select xp into n from users where id = s
+  ; v_moved := v_moved || jsonb_build_object('survivorXp', n)
+
+  ; insert into account_audit (user_id, action, detail) values
+      (s, 'account_merged', jsonb_build_object('role', 'survivor', 'otherUserId', a, 'reason', m.reason, 'mergeId', m.id, 'v_moved', v_moved, 'droppedReferrer', a_row.referred_by)),
+      (a, 'account_merged', jsonb_build_object('role', 'absorbed', 'otherUserId', s, 'reason', m.reason, 'mergeId', m.id))
+  ; update account_merges set status = 'done', moved = v_moved, error = null, done_at = now() where id = m.id
+  ; return v_moved
+; end $$;

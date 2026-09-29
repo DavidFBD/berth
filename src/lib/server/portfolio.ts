@@ -2,7 +2,7 @@ import { erc20Abi, formatUnits, type Address } from "viem";
 import { HOME_CHAIN } from "@/lib/account";
 import type { OrderFacts } from "@/lib/benchmark";
 import { TOKEN_LISTINGS } from "@/lib/listings";
-import { snapshotDay, valueHoldings, type Holding, type ValuedDay } from "@/lib/portfolio-days";
+import { ledgerDays, ledgerExplains, snapshotDay, valueHoldings, type Holding, type ValuedDay } from "@/lib/portfolio-days";
 import type { PortfolioDay } from "@/lib/portfolio-history";
 import { getSql } from "@/lib/server/db";
 import { accountEvmAddresses } from "@/lib/server/identities";
@@ -110,26 +110,143 @@ export type StoredPortfolioDay = PortfolioDay & {
   source: "snapshot" | "ledger";
 };
 
+/** One account's stored days, and for an account retired into another, when it was. */
+export type AccountDays = {
+  rows: (StoredPortfolioDay & { createdAt: string })[];
+  /** Set for an account merged into the one being read: its days count only before the merge. */
+  retiredAt?: string;
+  /** The account's id; needed only to follow a chain of merges. */
+  id?: string;
+  /**
+   * The account it was merged into directly, at the time (account_merges
+   * survivor_id: later merges repoint users.retired_into, never this).
+   * Absent means the account being read.
+   */
+  parent?: string;
+};
+
+/**
+ * The account's history, day by day: its own stored days and, for an
+ * account that absorbed others in a merge (lib/server/account-merge),
+ * theirs added in. A merge never deletes or moves a stored day, so each
+ * retired account's days stay its own, and here they count for as long as
+ * the survivor's day on the same date was written before the merge (after
+ * it, the survivor's own snapshot or redrawn ledger day already reads every
+ * wallet). A day an account has no row for carries its last row forward.
+ * An account nobody merged into reads exactly its own rows.
+ */
 export async function loadPortfolioDays(userId: string): Promise<StoredPortfolioDay[]> {
-  const rows = (await getSql().query(
-    `select to_char(day, 'YYYY-MM-DD') as day, value_usd::float8 as value, holdings, source, as_of
-       from portfolio_days
-      where user_id = $1
-      order by day`,
+  const sql = getSql();
+  // Every account retired into this one, with the one each was merged into
+  // directly: a chain (C into A, then A into here) points C's retired_into
+  // here, but C's days are already inside A's rows written after C joined A.
+  const retired = (await sql.query(
+    `select u.id, u.retired_at, m.survivor_id as parent
+       from users u left join account_merges m on m.absorbed_id = u.id and m.status = 'done'
+      where u.retired_into = $1`,
     [userId],
-  )) as { day: string; value: number; holdings: Holding[]; source: "snapshot" | "ledger"; as_of: string | Date }[];
-  return rows.map((row) => ({
-    day: row.day,
-    value: Number(row.value),
-    holdings: row.holdings ?? [],
-    source: row.source,
-    asOf: new Date(row.as_of).toISOString(),
-  }));
+  )) as { id: string; retired_at: string | Date | null; parent: string | null }[];
+  const ids = [userId, ...retired.map((row) => row.id)];
+  const rows = (await sql.query(
+    `select user_id, to_char(day, 'YYYY-MM-DD') as day, value_usd::float8 as value, holdings, source, as_of, created_at
+       from portfolio_days
+      where user_id = any($1::uuid[])
+      order by day`,
+    [ids],
+  )) as {
+    user_id: string;
+    day: string;
+    value: number;
+    holdings: Holding[];
+    source: "snapshot" | "ledger";
+    as_of: string | Date;
+    created_at: string | Date;
+  }[];
+  const byUser = new Map<string, AccountDays["rows"]>(ids.map((id) => [id, []]));
+  for (const row of rows) {
+    byUser.get(row.user_id)?.push({
+      day: row.day,
+      value: Number(row.value),
+      holdings: row.holdings ?? [],
+      source: row.source,
+      asOf: new Date(row.as_of).toISOString(),
+      createdAt: new Date(row.created_at).toISOString(),
+    });
+  }
+  return combineAccountDays(
+    { id: userId, rows: byUser.get(userId) ?? [] },
+    retired.map((row) => ({
+      id: row.id,
+      parent: row.parent && ids.includes(row.parent) ? row.parent : userId,
+      rows: byUser.get(row.id) ?? [],
+      retiredAt: new Date(row.retired_at ?? 0).toISOString(),
+    })),
+  );
+}
+
+/** The pure half of loadPortfolioDays: the survivor's days with the retired accounts' added in. */
+export function combineAccountDays(own: AccountDays, retired: readonly AccountDays[]): StoredPortfolioDay[] {
+  const strip = ({ day, value, holdings, source, asOf }: StoredPortfolioDay): StoredPortfolioDay => ({ day, value, holdings, source, asOf });
+  const withRows = retired.filter((account) => account.rows.length > 0);
+  if (withRows.length === 0) return own.rows.map(strip);
+  const byId = new Map<string, AccountDays>(retired.filter((account) => account.id).map((account) => [account.id!, account]));
+  const lastOnOrBefore = (rows: AccountDays["rows"], day: string) => {
+    let found: AccountDays["rows"][number] | undefined;
+    for (const row of rows) {
+      if (row.day > day) break;
+      found = row;
+    }
+    return found;
+  };
+  const days = [...new Set([own, ...withRows].flatMap((account) => account.rows.map((row) => row.day)))].sort();
+  const out: StoredPortfolioDay[] = [];
+  /**
+   * Whether an account's value on `day` is already inside another row:
+   * the account it was merged into directly has a row for the day written
+   * after that merge, or that account is itself covered, up the chain.
+   */
+  const covered = (account: AccountDays, day: string, seen = 0): boolean => {
+    const parent = account.parent && account.parent !== own.id ? byId.get(account.parent) : undefined;
+    const into = parent ?? own;
+    const row = lastOnOrBefore(into.rows, day);
+    if (row && account.retiredAt && Date.parse(row.createdAt) >= Date.parse(account.retiredAt)) return true;
+    return !!parent && seen < 8 && covered(parent, day, seen + 1);
+  };
+  for (const day of days) {
+    const mine = lastOnOrBefore(own.rows, day);
+    const parts = mine ? [mine] : [];
+    for (const account of withRows) {
+      if (covered(account, day)) continue;
+      const theirs = lastOnOrBefore(account.rows, day);
+      if (theirs) parts.push(theirs);
+    }
+    if (parts.length === 0) continue;
+    const holdings = new Map<string, Holding>();
+    for (const part of parts) {
+      for (const holding of part.holdings) {
+        const known = holdings.get(holding.symbol);
+        holdings.set(holding.symbol, known ? { ...known, quantity: known.quantity + holding.quantity } : { ...holding });
+      }
+    }
+    // A snapshot only when every part is a snapshot taken that very day;
+    // a carried or ledger part makes the sum a derived day.
+    const snapshot = parts.every((part) => part.source === "snapshot" && part.day === day);
+    out.push({
+      day,
+      value: parts.reduce((sum, part) => sum + part.value, 0),
+      holdings: [...holdings.values()],
+      source: snapshot ? "snapshot" : "ledger",
+      asOf: parts.map((part) => part.asOf).sort().at(-1)!,
+    });
+  }
+  return out;
 }
 
 /**
  * Write one day. A snapshot replaces whatever was there, since it read the
- * chain; a ledger row never replaces a snapshot.
+ * chain; a ledger row never replaces a snapshot. `created_at` is when the
+ * row was last written, which is what tells a merged account's history
+ * (loadPortfolioDays) that the row already reads every wallet.
  */
 export async function savePortfolioDay(
   userId: string,
@@ -145,7 +262,8 @@ export async function savePortfolioDay(
        value_usd = excluded.value_usd,
        holdings = excluded.holdings,
        source = excluded.source,
-       as_of = excluded.as_of
+       as_of = excluded.as_of,
+       created_at = now()
      where excluded.source = 'snapshot' or portfolio_days.source = 'ledger'
      returning day`,
     [userId, day, valued.value, JSON.stringify(valued.holdings), source, asOf],
@@ -356,3 +474,85 @@ export async function runPortfolioSnapshot({
   return summary;
 }
 
+
+export type RebuildSummary = {
+  /** Merged accounts looked at this run. */
+  accounts: number;
+  /** Of those, the ones whose orders explain what they hold now, redrawn from the ledger. */
+  rebuilt: number;
+  /** The orders do not explain the holdings: history restarts from the next snapshot. */
+  unexplained: number;
+  /** The chain could not be read: the account is tried again tomorrow. */
+  failed: number;
+  written: number;
+};
+
+/** Merged accounts redrawn in one evening run; merges are rare, and each is one read. */
+export const REBUILD_PER_RUN = 5;
+
+/**
+ * History after a merge (lib/server/account-merge). The merge deletes no
+ * stored day: the history read adds the retired account's days to the
+ * survivor's (loadPortfolioDays). It marks the survivor with
+ * `portfolio_rebuild_at`, and this redraws its ledger days the way
+ * `pnpm portfolio:backfill` does for anyone: from the joined orders,
+ * valued at stored closes, source 'ledger', only when those orders explain
+ * what every linked hub wallet holds right now, and never over a snapshot
+ * (savePortfolioDay). When they do not (a transfer the orders never saw),
+ * nothing is written and the summed history stands. The flag is cleared
+ * either way, unless the chain read failed.
+ */
+export async function rebuildMergedPortfolios({
+  now = new Date(),
+  readBalances = readListingBalances,
+  deriveHubWallet = hubWalletFor,
+  limit = REBUILD_PER_RUN,
+}: {
+  now?: Date;
+  readBalances?: ListingBalanceReader;
+  deriveHubWallet?: (spokeAddress: string) => Promise<string>;
+  limit?: number;
+} = {}): Promise<RebuildSummary> {
+  const sql = getSql();
+  const summary: RebuildSummary = { accounts: 0, rebuilt: 0, unexplained: 0, failed: 0, written: 0 };
+  const due = (await sql.query(
+    `select id, wallet_address, portfolio_rebuild_at from users
+      where portfolio_rebuild_at is not null and retired_into is null
+      order by portfolio_rebuild_at limit $1`,
+    [limit],
+  )) as { id: string; wallet_address: string | null; portfolio_rebuild_at: string | Date }[];
+  const today = now.toISOString().slice(0, 10);
+  for (const account of due) {
+    summary.accounts += 1;
+    const clear = () =>
+      sql.query(`update users set portfolio_rebuild_at = null where id = $1 and portfolio_rebuild_at = $2::timestamptz`, [
+        account.id,
+        new Date(account.portfolio_rebuild_at).toISOString(),
+      ]);
+    const orders = await loadListingOrders(account.id);
+    const wallets = (await accountEvmAddresses(account.id, account.wallet_address)).all;
+    if (orders.length === 0 || wallets.length === 0) {
+      await clear();
+      continue;
+    }
+    let balances: Record<string, number>;
+    try {
+      balances = (await readAccountBalances(wallets, readBalances, deriveHubWallet)).total;
+    } catch {
+      summary.failed += 1;
+      continue;
+    }
+    if (!ledgerExplains(orders, balances)) {
+      summary.unexplained += 1;
+      await clear();
+      continue;
+    }
+    const closes = await readMarks([...new Set(orders.map((order) => order.symbol))]);
+    for (const row of ledgerDays({ orders, closes, through: today })) {
+      if (await savePortfolioDay(account.id, row.day, row, "ledger", row.asOf)) summary.written += 1;
+    }
+    summary.rebuilt += 1;
+    await clear();
+  }
+  return summary;
+}

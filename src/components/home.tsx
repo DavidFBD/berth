@@ -131,8 +131,11 @@ export function Home() {
   const holdings = useHubHoldings(account.hubWallets);
   // The answer is remembered per account, so a returning holder's panel
   // opens in its settled order instead of reordering when holdings land.
+  // Keyed by the account's home, not by where this session's buys land
+  // (the signer's own wallet), so every wallet of one account shares it.
+  const accountKey = account.wallets.find((wallet) => wallet.isHome)?.spoke ?? account.spokeAddress;
   const [rememberedOwns, rememberOwns] = useStoredChoice(
-    account.spokeAddress ? `berth.owns-listings.${account.spokeAddress.toLowerCase()}` : null,
+    accountKey ? `berth.owns-listings.${accountKey.toLowerCase()}` : null,
   );
   const liveOwns = holdings.settled
     ? holdings.held.some((holding) => holding.listing.kind === "stock")

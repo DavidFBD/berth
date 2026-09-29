@@ -46,7 +46,7 @@ describe("accountHubPlan", () => {
     expect(
       accountHubPlan({ sessionSpoke: A, pending: null, linked: undefined, linkedLoading: false, profileHome: A }),
     ).toEqual({ home: A, wallets: [{ spoke: A, isHome: true }], signer: A, signerLinked: true, homeKnown: true });
-    // Once it answers, the home is the account's, not the session's.
+    // Once it answers, the signer is on the account: its buys land in its own hub wallet.
     const known = accountHubPlan({
       sessionSpoke: B,
       pending: null,
@@ -56,16 +56,16 @@ describe("accountHubPlan", () => {
       ],
       linkedLoading: false,
     });
-    expect(known).toMatchObject({ home: A, homeKnown: true });
+    expect(known).toMatchObject({ home: B, homeKnown: true });
   });
 
-  it("two linked wallets: buys land at the home, the totals read both, the signer may be either", () => {
+  it("two linked wallets: buys land in the signer's own hub wallet, the totals read both, the signer may be either", () => {
     const linked = [
       { address: B, family: "evm", isHome: false },
       { address: A, family: "evm", isHome: true },
     ];
     expect(accountHubPlan({ sessionSpoke: B, pending: null, linked, linkedLoading: false })).toEqual({
-      home: A,
+      home: B,
       wallets: [
         { spoke: A, isHome: true },
         { spoke: B, isHome: false },
@@ -74,6 +74,23 @@ describe("accountHubPlan", () => {
       signerLinked: true,
       homeKnown: true,
     });
+  });
+
+  it("after a merge: a Hana session's buys land in Hana's hub wallet, an email session's in its embedded wallet's", () => {
+    const EMBEDDED = A;
+    const HANA = B;
+    // The email account survived: its embedded wallet is the home, Hana joined it.
+    const linked = [
+      { address: EMBEDDED, family: "evm", isHome: true },
+      { address: HANA, family: "evm", isHome: false },
+    ];
+    const hana = accountHubPlan({ sessionSpoke: HANA, pending: null, linked, linkedLoading: false });
+    expect(hana).toMatchObject({ home: HANA, signer: HANA, signerLinked: true });
+    expect(hana.wallets.map((wallet) => wallet.spoke)).toEqual([EMBEDDED, HANA]);
+    const email = accountHubPlan({ sessionSpoke: EMBEDDED, pending: null, linked, linkedLoading: false, emailSession: true });
+    expect(email).toMatchObject({ home: EMBEDDED, signer: EMBEDDED });
+    // A signer not on the account buys nowhere of its own: the home, and its orders wait.
+    expect(accountHubPlan({ sessionSpoke: C, pending: null, linked, linkedLoading: false })).toMatchObject({ home: EMBEDDED, signerLinked: false });
   });
 
   it("a waiting extension address is never the account, and its orders wait until it is added", () => {
