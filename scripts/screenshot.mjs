@@ -130,6 +130,19 @@ for (const selector of clicks) {
   // Let each step's transition settle before the next click or the shutter.
   await page.waitForTimeout(400);
 }
+if (fullPage) {
+  // Lazy images (next/image) load only near the viewport: walk the page
+  // once so the whole-page shot shows them, then come back to the top.
+  await page.evaluate(async () => {
+    for (let y = 0; y < document.body.scrollHeight; y += window.innerHeight) {
+      window.scrollTo(0, y);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    window.scrollTo(0, 0);
+  });
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForTimeout(400);
+}
 await page.screenshot({ path: out, fullPage });
 console.log(
   `${out} (${browserName} ${width}x${height} ${colorScheme})`,

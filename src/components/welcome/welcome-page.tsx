@@ -2,20 +2,23 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Bank, HandHeart, Key, PencilSimpleLine, Wallet } from "@phosphor-icons/react";
+import { Bank, Coins, EnvelopeSimple, HandHeart, Key, PencilSimpleLine, ShieldCheck, Wallet } from "@phosphor-icons/react";
 import { BerthMark } from "@/components/berth-mark";
 import { MarketPreview, NewsFeed } from "@/components/board";
 import { ProviderMark } from "@/components/assistant/provider-marks";
 import { RankGlyph } from "@/components/rank-glyph";
+import { BoardView } from "@/components/social/friends-board";
 import { SampleChart } from "@/components/welcome/sample-chart";
 import { useCopy } from "@/components/settings-provider";
 import { RANKS } from "@/lib/xp";
+import type { FriendsBoard } from "@/lib/social-types";
 import { cn } from "@/lib/utils";
 
 /**
  * The front door, laid out like the Seline mockup (2026-09-29): the
  * positioning line with its one highlighted phrase, the way in, a floating
- * preview of the board, then one section per live feature in the order of
+ * preview of the board, then one block that says what Berth is (four points),
+ * one section per pitch-worthy live feature in the order of
  * docs/product/features.md, and a short list of what is coming. The
  * highlighted phrase stays ink on the pale wash, so the email button is the
  * page's one accent. Everything that signs someone in is passed in as
@@ -79,33 +82,35 @@ export function WelcomePage({
       </header>
 
       <main className="mt-[72px] lg:mt-[88px]">
-        <Feature id="how" n="01" title={page.features.buy.title} body={page.features.buy.body} fine={page.features.buy.fine}>
-          <BuyVisual />
-        </Feature>
-        <Feature n="02" title={page.features.custody.title} body={page.features.custody.body}>
-          <CustodyVisual />
-        </Feature>
-        <Feature n="03" title={page.features.cash.title} body={page.features.cash.body}>
-          <CashVisual />
-        </Feature>
-        <Feature n="04" title={page.features.compare.title} body={page.features.compare.body}>
+        <ValueBlock />
+
+        <Feature n="01" title={page.features.compare.title} body={page.features.compare.body}>
           <CompareVisual />
         </Feature>
-        <Feature n="05" title={page.features.news.title} body={page.features.news.body}>
+        <Feature id="assistant" n="02" title={page.features.assistant.title} body={page.features.assistant.body} fine={page.features.assistant.fine}>
+          <AssistantVisual />
+        </Feature>
+        <Feature id="ai" n="03" title={page.features.ai.title} body={page.features.ai.body}>
+          <AiVisual />
+        </Feature>
+        <Feature n="04" title={page.features.news.title} body={page.features.news.body}>
           {/* The real column, live, as a signed-out visitor may read it. */}
           <NewsFeed limit={2} />
         </Feature>
-        <Feature id="assistant" n="06" title={page.features.assistant.title} body={page.features.assistant.body} fine={page.features.assistant.fine}>
-          <AssistantVisual />
+        <Feature n="05" title={page.features.night.title} body={page.features.night.body} fine={page.features.night.fine}>
+          <NightVisual />
         </Feature>
-        <Feature id="ai" n="07" title={page.features.ai.title} body={page.features.ai.body}>
-          <AiVisual />
+        <Feature n="06" title={page.features.friends.title} body={page.features.friends.body}>
+          <FriendsVisual />
         </Feature>
-        <Feature n="08" title={page.features.ranks.title} body={page.features.ranks.body}>
-          <RanksVisual />
-        </Feature>
-        <Feature n="09" title={page.features.wallets.title} body={page.features.wallets.body}>
+        <Feature n="07" title={page.features.wallets.title} body={page.features.wallets.body}>
           <WalletsVisual />
+        </Feature>
+        <Feature n="08" title={page.features.email.title} body={page.features.email.body}>
+          <EmailVisual />
+        </Feature>
+        <Feature n="09" title={page.features.ranks.title} body={page.features.ranks.body}>
+          <RanksVisual />
         </Feature>
 
         <section className="grid gap-5 border-t border-border py-11 lg:grid-cols-2 lg:gap-16 lg:py-14">
@@ -285,94 +290,45 @@ function Row({ label, value, first }: { label: string; value: ReactNode; first?:
   );
 }
 
-const PAY_WITH = [
-  { coin: "USDC", network: "Base", usd: "$412.08" },
-  { coin: "SOL", network: "Solana", usd: "$96.30" },
-  { coin: "Bitcoin", network: "Bitcoin", usd: "$1,120.55" },
-  { coin: "Ether", network: "Arbitrum", usd: "$58.14" },
-];
+const POINT_GLYPHS = { pay: Coins, custody: Key, email: EnvelopeSimple, cash: Bank } as const;
 
-function BuyVisual() {
-  const copy = useCopy();
-  const f = copy.welcomePage.features.buy;
+/**
+ * What Berth is, once: a headline, a paragraph and four points, where the
+ * page used to spend four sections on buying, custody, email and cash.
+ */
+function ValueBlock() {
+  const value = useCopy().welcomePage.value;
+  const points = Object.entries(value.points) as [keyof typeof POINT_GLYPHS, { title: string; body: string }][];
   return (
-    <Visual>
-      <div className="mb-3 flex items-center justify-between font-display text-[15px] tracking-[-0.01em] text-foreground">
-        {f.card}
-        <span className="money text-sm">$50.00</span>
-      </div>
-      {PAY_WITH.map((row, index) => (
-        <div key={row.coin} className={cn("flex items-center gap-3 py-2.5 text-[13.5px]", index > 0 && "border-t border-border")}>
-          <span
-            className={cn(
-              "grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px]",
-              index === 0 ? "border-foreground" : "border-input",
-            )}
-          >
-            {index === 0 && <span className="size-2 rounded-full bg-foreground" />}
-          </span>
-          <span className="min-w-0 flex-1 text-foreground">
-            {row.coin}
-            <small className="block text-xs text-muted-foreground">{copy.welcomePage.onNetwork(row.network)}</small>
-          </span>
-          <span className="money text-[13px] text-foreground">{row.usd}</span>
-        </div>
-      ))}
-      <div className="mt-3.5 flex h-10 items-center justify-center rounded-full border border-input text-[13.5px] font-medium text-foreground">
-        {f.review}
-      </div>
-    </Visual>
-  );
-}
-
-function CustodyVisual() {
-  const f = useCopy().welcomePage.features.custody;
-  return (
-    <Visual>
-      <div className="rounded-[10px] border border-border bg-background px-4 py-3.5">
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Key weight="duotone" className="size-3.5" />
-          {f.asks}
-        </p>
-        <div className="mt-2.5">
-          <Row first label={f.buy} value="NVIDIA" />
-          <Row label={f.pay} value={<span className="money">50.00 USDC</span>} />
-          <Row label={f.get} value={<span className="money">0.2204 NVDA</span>} />
-          <Row label={f.held} value={f.you} />
+    <section id="how" className="scroll-mt-6 border-t border-border py-11 lg:py-16">
+      <div className="grid gap-5 lg:grid-cols-2 lg:gap-16">
+        <h2 className="max-w-[34rem] font-display text-[30px] leading-[1.13] tracking-[-0.025em] text-foreground lg:text-[40px]">
+          {value.title}
+        </h2>
+        <div className="lg:pt-1.5">
+          <p className="max-w-[30rem] text-[15.5px] leading-[1.7] text-muted-foreground lg:text-base">{value.body}</p>
+          <p className="mt-3 max-w-[30rem] text-[13px] leading-relaxed text-muted-foreground">{value.fine}</p>
         </div>
       </div>
-      <div className="mt-3.5 flex h-10 items-center justify-center rounded-full border border-input text-[13.5px] font-medium text-foreground">
-        {f.sign}
-      </div>
-    </Visual>
-  );
-}
-
-function CashVisual() {
-  const copy = useCopy();
-  const f = copy.welcomePage.features.cash;
-  return (
-    <Visual>
-      <div className="flex items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-secondary-foreground">
-          <Bank weight="duotone" className="size-[18px]" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="font-display text-base text-foreground">
-            {copy.cashTitle} <span className="money text-[15px]">$203.48</span>
-          </span>
-          <small className="block text-[13px] text-muted-foreground">{f.line}</small>
-        </span>
-      </div>
-      <div className="mt-3 border-t border-border pt-1.5">
-        <Row first label={f.counts} value={f.yes} />
-        <Row label={f.takeOut} value={f.anyTime} />
-      </div>
-      <div className="mt-3.5 flex gap-1.5">
-        <span className={cn(PILL, "h-7 px-3 text-[12.5px] font-medium")}>{copy.cashParkMore}</span>
-        <span className={cn(PILL, "h-7 px-3 text-[12.5px] font-medium")}>{copy.cashTakeOut}</span>
-      </div>
-    </Visual>
+      {/* On a phone the four points share one card, a row each; wider, each has its own. */}
+      <ul className="mt-8 divide-y divide-border rounded-2xl border border-border bg-card sm:grid sm:grid-cols-2 sm:gap-3 sm:divide-y-0 sm:rounded-none sm:border-0 sm:bg-transparent lg:mt-12 lg:grid-cols-4 lg:gap-4">
+        {points.map(([key, point]) => {
+          const Glyph = POINT_GLYPHS[key];
+          return (
+            <li
+              key={key}
+              className="flex gap-3.5 px-[18px] py-4 sm:block sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:py-[18px] lg:p-5"
+            >
+              <Glyph weight="duotone" className="mt-px size-6 shrink-0 text-foreground" aria-hidden />
+              <span className="block">
+                <span className="block font-display text-[16px] leading-snug tracking-[-0.01em] text-foreground sm:mt-3.5">{point.title}</span>
+                <span className="mt-1 block text-[13.5px] leading-[1.6] text-muted-foreground sm:mt-1.5">{point.body}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -501,6 +457,7 @@ function WalletsVisual() {
   const rows = [
     { name: f.evm, address: "0x3f2c…a91c", home: true },
     { name: f.solana, address: "7Hq4…Nk2d", home: false },
+    { name: f.bitcoin, address: "bc1q…8f3k", home: false },
   ];
   return (
     <Visual>
@@ -523,6 +480,134 @@ function WalletsVisual() {
           </span>
         </div>
       ))}
+    </Visual>
+  );
+}
+
+/**
+ * Real Berth fills, from the orders ledger and SODAX's volume API
+ * (reports/weekend-checks.md, check 1): every one outside the New York
+ * session. Weekday nights only; nothing here may suggest a weekend.
+ */
+const NIGHT_FILLS = [
+  { day: "Tuesday", at: "01:08", minutes: 68, seconds: 25, listing: "SGOV" },
+  { day: "Monday", at: "05:30", minutes: 330, seconds: 15, listing: "NVIDIA" },
+  { day: "Monday", at: "06:09", minutes: 369, seconds: 20, listing: "SGOV" },
+  { day: "Friday", at: "07:57", minutes: 477, seconds: 19, listing: "Tesla" },
+] as const;
+
+const DAY = 24 * 60;
+const SESSION = { open: 9 * 60 + 30, close: 16 * 60 };
+
+function NightVisual() {
+  const copy = useCopy();
+  const f = copy.welcomePage.features.night;
+  const pct = (minutes: number) => `${(minutes / DAY) * 100}%`;
+  return (
+    <Visual>
+      <p className="mb-3 text-[12.5px] text-muted-foreground">{f.clock}</p>
+      <div className="relative h-9 rounded-full border border-border bg-background">
+        <span
+          className="absolute inset-y-1 flex items-center justify-center rounded-full bg-muted text-[11px] text-muted-foreground"
+          style={{ left: pct(SESSION.open), width: pct(SESSION.close - SESSION.open) }}
+        >
+          {f.open}
+        </span>
+        {NIGHT_FILLS.map((fill) => (
+          <span
+            key={`${fill.day}${fill.at}`}
+            className="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground"
+            style={{ left: pct(fill.minutes) }}
+          />
+        ))}
+      </div>
+      <div className="money mt-1.5 flex justify-between text-[11px] text-faint">
+        <span>00:00</span>
+        <span>12:00</span>
+        <span>24:00</span>
+      </div>
+      <div className="mt-3">
+        {NIGHT_FILLS.map((fill, index) => (
+          <Row
+            key={`${fill.day}${fill.at}`}
+            first={index === 0}
+            label={`${fill.day}, ${fill.at}`}
+            value={
+              <>
+                {fill.listing === "SGOV" ? copy.benchmarkNames.SGOV : fill.listing}
+                <span className="text-muted-foreground">, {f.filled(fill.seconds)}</span>
+              </>
+            }
+          />
+        ))}
+      </div>
+    </Visual>
+  );
+}
+
+/** The friends board itself, drawn from an example month. */
+const EXAMPLE_BOARD = {
+  month: "2026-09",
+  rows: [
+    { handle: "maren", avatarId: "lantern", xp: 2400, points: 486 },
+    { handle: "tobias", avatarId: "compass", xp: 1820, points: 402 },
+    { handle: "", avatarId: "buoy", xp: 1120, points: 355, you: true },
+    { handle: "ines", avatarId: "cleat", xp: 610, points: 190 },
+  ].map((row, index) => ({
+    you: false,
+    ...row,
+    place: index + 1,
+    orderXp: 0,
+    referralXp: 0,
+    otherXp: 0,
+    salutePoints: 0,
+  })),
+} satisfies FriendsBoard;
+
+function FriendsVisual() {
+  return (
+    // An example, so nothing in it opens: inert keeps the rows and the (i) out of reach.
+    <div aria-hidden inert className="[&_section]:shadow-none">
+      <BoardView board={EXAMPLE_BOARD} />
+    </div>
+  );
+}
+
+function EmailVisual() {
+  const copy = useCopy();
+  const f = copy.welcomePage.features.email;
+  const mail = copy.email;
+  const messages = [
+    { subject: mail.friendRequest.subject("maren"), when: "09:14" },
+    { subject: mail.assistantConnected.subject(copy.assistantClaude), when: "Mon" },
+    { subject: mail.walletAdded.subject, when: "Sep 21" },
+  ];
+  return (
+    <Visual>
+      {messages.map((message, index) => (
+        <div key={message.subject} className={cn("flex items-start gap-3 py-2.5", index > 0 && "border-t border-border")}>
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted">
+            <BerthMark className="size-[18px]" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex justify-between gap-3 text-[13.5px] text-foreground">
+              {f.from}
+              <span className="text-xs text-muted-foreground">{message.when}</span>
+            </span>
+            <small className="block truncate text-[12.5px] text-muted-foreground">{message.subject}</small>
+          </span>
+        </div>
+      ))}
+      <div className="mt-2 flex flex-col gap-1.5 border-t border-border pt-3 text-[12.5px] text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <ShieldCheck weight="duotone" className="size-3.5 shrink-0" />
+          {f.always}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <EnvelopeSimple weight="duotone" className="size-3.5 shrink-0" />
+          {f.switches}
+        </span>
+      </div>
     </Visual>
   );
 }

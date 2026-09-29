@@ -115,16 +115,24 @@ export type Copy = {
     previewExample: string;
     /** "on Base": a coin's network, under its name. */
     onNetwork: (network: string) => string;
+    /** The one block under the preview: what Berth is, in a headline, a paragraph and four points. */
+    value: {
+      title: string;
+      body: string;
+      fine: string;
+      points: Record<"pay" | "custody" | "email" | "cash", { title: string; body: string }>;
+    };
     features: {
-      buy: { title: string; body: string[]; fine: string; card: string; review: string };
-      custody: { title: string; body: string[]; asks: string; buy: string; pay: string; get: string; held: string; you: string; sign: string };
-      cash: { title: string; body: string[]; line: string; counts: string; yes: string; takeOut: string; anyTime: string };
       compare: { title: string; body: string[] };
-      news: { title: string; body: string[] };
       assistant: { title: string; body: string[]; fine: string; ask: string; answer: string; askBuy: string; draft: string; buy: string; amount: string; payWith: string };
       ai: { title: string; body: string[]; reads: string; sign: string };
+      news: { title: string; body: string[] };
+      /** Weekday nights only: weekends are unproven (reports/weekend-checks.md). */
+      night: { title: string; body: string[]; fine: string; clock: string; open: string; filled: (seconds: number) => string };
+      friends: { title: string; body: string[] };
+      wallets: { title: string; body: string[]; home: string; linked: string; evm: string; solana: string; bitcoin: string };
+      email: { title: string; body: string[]; from: string; always: string; switches: string };
       ranks: { title: string; body: string[]; xp: string; now: (rank: string, level: number) => string };
-      wallets: { title: string; body: string[]; home: string; linked: string; evm: string; solana: string };
     };
     comingTitle: string;
     coming: { name: string; line: string }[];
@@ -1346,7 +1354,7 @@ export const COPY: Copy = {
     "Stock tokens track a share; they are not the share. Read what you own before you buy.",
   welcomePage: {
     navLabel: "Berth",
-    nav: { how: "How it works", assistant: "The Assistant", ai: "For your AI" },
+    nav: { how: "What it is", assistant: "The Assistant", ai: "For your AI" },
     eyebrow: "US stocks and funds, in your own custody",
     headlineLead: "Stocks for the money that ",
     headlineMark: "already lives onchain.",
@@ -1354,51 +1362,35 @@ export const COPY: Copy = {
     previewLabel: "What the board looks like",
     previewExample: "Example",
     onNetwork: (network) => `on ${network}`,
+    value: {
+      title: "Buy US stocks with the crypto you hold. Keep them in your own wallet.",
+      body:
+        "Berth is software, not a broker. Choose what to pay with, sign once in your own wallet, and independent solvers fill the order through SODAX. What you buy lands with you.",
+      fine: "What you buy are tokens that track a share, issued by third parties.",
+      points: {
+        pay: {
+          title: "Pay with what you hold",
+          body: "Stablecoins, ETH, SOL or Bitcoin, on more than 20 networks. One signature.",
+        },
+        custody: {
+          title: "Your custody, always",
+          body: "You sign every order. Berth never holds your keys or your funds.",
+        },
+        email: {
+          title: "Start with an email",
+          body: "No seed phrase to write down. Your keys can be exported from Settings, Advanced.",
+        },
+        cash: {
+          title: "Cash that earns",
+          body: "Park idle money in a Treasury bill fund at the T\u2011bill rate. It counts toward what you own.",
+        },
+      },
+    },
     features: {
-      buy: {
-        title: "Buy with the crypto you already hold",
-        body: [
-          "Pay for US stocks and funds from stablecoins, ETH, SOL, Bitcoin or other assets on more than 20 networks. One signature. Independent solvers fill the order through SODAX.",
-        ],
-        fine: "What you buy are tokens that track a share, issued by third parties.",
-        card: "Buy NVIDIA",
-        review: "Review and sign",
-      },
-      custody: {
-        title: "Your custody, always",
-        body: [
-          "Berth is software, not a broker. You sign every order in your own wallet, and Berth never holds your keys or your funds.",
-          "Start with just an email and get a wallet with no seed phrase, or bring your own wallet. Keys can be exported from Settings, Advanced.",
-        ],
-        asks: "Your wallet asks you to sign",
-        buy: "Buy",
-        pay: "You pay",
-        get: "You get about",
-        held: "Held by",
-        you: "You",
-        sign: "Sign in your wallet",
-      },
-      cash: {
-        title: "Cash that earns the T\u2011bill rate",
-        body: [
-          "Park money you are not using in a Treasury bill fund. Waiting cash earns the T-bill rate, and it counts toward what you own.",
-        ],
-        line: "In a Treasury bill fund. Earns the T-bill rate.",
-        counts: "Counts toward what you own",
-        yes: "Yes",
-        takeOut: "Take it out",
-        anyTime: "Any time",
-      },
       compare: {
         title: "See what your money would have made elsewhere",
         body: [
-          "Your portfolio drawn beside the same dollars, on the same days, in another holding. Over a week, a month, three months or since your first buy. Each holding shows its own result the same way.",
-        ],
-      },
-      news: {
-        title: "News about your stocks, curated by Jev",
-        body: [
-          "A live column of posts on X and headlines. Jev, a model by TypeSafe, reads and labels each one and keeps it only when it reports something. When a price moves a lot, What moved links it to the post that reported it.",
+          "Your portfolio beside the same dollars, on the same days, in the S&P 500 fund, the Nasdaq 100 fund, Gold, Bitcoin or Treasury bills. Over a week, a month, three months or since your first buy.",
         ],
       },
       assistant: {
@@ -1418,35 +1410,66 @@ export const COPY: Copy = {
       ai: {
         title: "Bring Berth into your AI",
         body: [
-          "Connect Claude, ChatGPT or Grok to your Berth account through Berth's MCP server. Your own AI reads your account beside everything else it does, and drafts orders you sign in Berth. Disconnect any time.",
+          "Connect Claude, ChatGPT or Grok to your Berth account. Your own AI reads your account beside everything else it does, and drafts orders you sign in Berth. Disconnect any time.",
         ],
         reads: "Your AI reads and drafts",
         sign: "You sign in Berth",
       },
-      ranks: {
-        title: "Ranks, XP and friends",
+      news: {
+        title: "News about your stocks, curated by Jev",
         body: [
-          "Earn XP for buying, holding, adding an email and bringing friends. Climb ten harbour ranks from First Line to Harbour Master, with avatars and features unlocked on the way.",
-          "Pick a username for a profile, salute people and add friends. The friends board ranks XP and Salutes, never returns. Share your link, and you both earn XP when a friend joins and trades.",
+          "Posts on X and headlines, each read by Jev, a model by TypeSafe, and kept only when it reports something. When a price moves a lot, What moved links it to the post that reported it.",
         ],
-        xp: "1,120 / 1,500 XP",
-        now: (rank, level) => `${rank}, level ${level}`,
+      },
+      night: {
+        title: "Buy on weekday nights, when US markets are closed",
+        body: [
+          "US markets keep their hours. Berth orders still fill through the night and the early morning on weekdays, usually in under half a minute.",
+        ],
+        fine: "Weekends and US market holidays are not covered yet.",
+        clock: "Filled by Berth, New York time",
+        open: "US market open",
+        filled: (seconds) => `filled in ${seconds} s`,
+      },
+      friends: {
+        title: "Friends, Salutes and a board without money",
+        body: [
+          "Pick a username for a one screen profile. Find a friend by their exact username, salute people and see a friends board ranked on XP and Salutes, never returns. Nobody sees anyone's friends.",
+        ],
       },
       wallets: {
         title: "One account, many wallets",
         body: [
-          "Link several wallets and networks to one account, EVM and Solana today. Buys land at your home wallet, and your total adds up every wallet.",
+          "Link EVM, Solana and Bitcoin wallets to one account. Buys land at your home wallet, and your total adds up every one.",
         ],
         home: "Home",
         linked: "Linked",
         evm: "EVM wallet",
         solana: "Solana wallet",
+        bitcoin: "Bitcoin wallet",
+      },
+      email: {
+        title: "A short email when it matters",
+        body: [
+          "Berth writes when a wallet joins or leaves your account, accounts merge or an AI is connected, and when a friend asks. Each kind has its own switch, and one tap unsubscribes. No marketing.",
+        ],
+        from: "Berth",
+        always: "Security notices always reach you.",
+        switches: "Everything else has its own switch.",
+      },
+      ranks: {
+        title: "Ranks, XP and invites",
+        body: [
+          "Earn XP for buying, holding, adding an email and bringing friends. Climb ten harbour ranks from First Line to Harbour Master, with avatars and features unlocked on the way.",
+          "Share your link, and you both earn XP when a friend joins and trades. You become friends at once.",
+        ],
+        xp: "1,120 / 1,500 XP",
+        now: (rank, level) => `${rank}, level ${level}`,
       },
     },
     comingTitle: "Coming",
     coming: [
       { name: "Limit orders", line: "Set a price, and the order waits until it is reached. In testing." },
-      { name: "Bitcoin wallets", line: "Link a Bitcoin wallet to your account, next after EVM and Solana." },
     ],
     legal:
       "Not available in the United States or where local law or sanctions forbid it. Stocks on Berth are tokens that track a share, issued by third parties. Nothing here is advice, and past results say nothing about the future.",
