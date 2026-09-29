@@ -20,6 +20,11 @@ import { hasVerifiedEmail, ownHandle, type SocialViewer } from "@/lib/server/soc
 
 const DAY_MS = 86_400_000;
 
+/** A verified email on the house's domain. */
+export function isStaff(viewer: SocialViewer): boolean {
+  return viewer.email !== null && viewer.email.trim().toLowerCase().endsWith("@sodax.com");
+}
+
 function nextChange(changedAt: string, now: Date): string | null {
   const next = new Date(new Date(changedAt).getTime() + HANDLE_CHANGE_DAYS * DAY_MS);
   return next > now ? next.toISOString() : null;
@@ -37,7 +42,9 @@ export async function checkHandle(viewer: SocialViewer, value: unknown, now = ne
   if (!parsed.ok) return parsed;
   const refused = refusedName(parsed);
   if (refused === "offensive") return { ok: false, reason: "offensive" };
-  if (refused === "reserved") return { ok: false, reason: "taken" };
+  // The house's own people (a verified @sodax.com email) may carry house
+  // words such as sodax or berth; everyone else gets the one answer.
+  if (refused === "reserved" && !isStaff(viewer)) return { ok: false, reason: "taken" };
   const mine = await ownHandle(viewer.id);
   if (mine && mine.handle !== parsed.handle && nextChange(mine.changedAt, now)) return { ok: false, reason: "cooldown" };
   const rows = (await getSql().query(

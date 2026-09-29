@@ -2708,7 +2708,7 @@ export const COPY: Copy = {
         charset: "Letters, numbers and _ only.",
         edge: "No _ at the start or end.",
         offensive: "Pick another name.",
-        taken: "That name is taken.",
+        taken: "That name isn't available.",
         cooldown: nextChange ? `You can change it again on ${nextChange}.` : "You changed it recently.",
         noEmail: "Add an email first.",
       })[reason],
