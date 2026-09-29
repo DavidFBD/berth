@@ -550,6 +550,12 @@ describe("a merged account's history, read", () => {
     await savePortfolioDay(absorbed.id, "2026-09-22", { value: 50, holdings: [] }, "snapshot", "2026-09-22T22:30:00Z");
     await savePortfolioDay(absorbed.id, "2026-09-23", { value: 60, holdings: [] }, "snapshot", "2026-09-23T22:30:00Z");
     expect((await mergeAccounts({ survivor: survivor.id, absorbed: absorbed.id, reason: "email" })).ok).toBe(true);
+    // Both stamps come from now(), and PGlite's clock can give the saves and
+    // the merge the same instant, which reads as a row written after the
+    // merge. Pin them: every row written the evening of its day, the merge
+    // the day after the last.
+    await sql.query(`update portfolio_days set created_at = day + interval '22 hours 30 minutes'`);
+    await sql.query(`update users set retired_at = '2026-09-24T12:00:00Z' where id = $1`, [absorbed.id]);
     const summary = await rebuildMergedPortfolios({ deriveHubWallet: async (spoke) => spoke, readBalances: async () => ({ NVDA: 7 }) });
     expect(summary).toMatchObject({ unexplained: 1, written: 0 });
     expect(((await sql.query(`select count(*)::int as n from portfolio_days`)) as { n: number }[])[0].n).toBe(3);
