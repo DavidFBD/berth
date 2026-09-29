@@ -6,7 +6,7 @@ import { parseUnits } from "viem";
 import { HomeHeader, BOARD_GRID, BOARD_PAGE, BOARD_TRACK } from "@/components/home";
 import { AccountTotalView } from "@/components/board/account-total";
 import { CashShelfView } from "@/components/board/cash-shelf";
-import { HoldingsView, ListingBoard, NewsFeed, NudgeLineView } from "@/components/board";
+import { EmailNudgeLineView, HoldingsView, ListingBoard, NewsFeed, NudgeLineView } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { AskCard, AskDock, DOCK_CLEARANCE } from "@/components/chat/ask-surfaces";
 import { AssistantCard } from "@/components/assistant/assistant-card";
@@ -28,12 +28,16 @@ import { seededPortfolioClient } from "../account/portfolio-gallery";
  *   /dev/board?home=held    three holdings, cash parked, funds waiting,
  *                           the comparison drawn from real closes
  *   /dev/board?home=new     a first visit: funds only, nothing held
+ *   /dev/board?home=walletEmail
+ *                           a wallet-only account (no verified email) after
+ *                           its first buy: the email nudge strip in place of
+ *                           the standing nudge line (lib/email-nudge)
  *
  * The prices, the board's lines and the news are live, from the same public
  * routes the app reads. Actions go nowhere. `&dock=0` hides the docked Ask;
  * `&streaming=1` shows it as it is while an answer comes in.
  */
-export type HomeScene = "held" | "new";
+export type HomeScene = "held" | "new" | "walletEmail";
 
 function fundsFixture(held: boolean): EmbeddedHoldingsResult {
   const usdc = getDepositTokens(HOME_CHAIN).find((token) => token.symbol === "USDC");
@@ -52,7 +56,8 @@ function fundsFixture(held: boolean): EmbeddedHoldingsResult {
 }
 
 export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeScene; dock: boolean; streaming?: boolean }) {
-  const held = scene === "held";
+  const walletEmail = scene === "walletEmail";
+  const held = scene === "held" || walletEmail;
   const [{ client, rows }] = useState(() => seededPortfolioClient(held ? "three-months" : "empty", { xp: 900 }));
   const mounted = useMounted();
   const [nudge, setNudge] = useState<Nudge | null>(
@@ -100,13 +105,17 @@ export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeSce
             <AccountTotalView
               figures={{ holdings: holdingsUsd, cash: cashUsd ?? 0, funds: funds.totalUsd, holdsAnything: rows.length > 0 }}
             />
-            <NudgeLineView
-              nudge={nudge}
-              onDismiss={() => setNudge(null)}
-              onAddFunds={noop}
-              onParkCash={noop}
-              onOpenAccount={noop}
-            />
+            {walletEmail ? (
+              <EmailNudgeLineView show onOpen={noop} onDismiss={noop} />
+            ) : (
+              <NudgeLineView
+                nudge={nudge}
+                onDismiss={() => setNudge(null)}
+                onAddFunds={noop}
+                onParkCash={noop}
+                onOpenAccount={noop}
+              />
+            )}
             {held ? [owned, money] : [money, owned]}
             <ListingBoard
               onBuy={noop}

@@ -632,6 +632,11 @@ export type Copy = {
   nudgeInviteAction: string;
   nudgeDismissLabel: string;
 
+  /* — the email nudge: one strip asking a wallet-only account to add an email — */
+  emailNudgeText: string;
+  emailNudgeAction: string;
+  emailNudgeDismiss: string;
+
   /* — agent access: an assistant reads the account and drafts orders, the person signs — */
   /**
    * The consent screen's heading. The party is derived from where the answer
@@ -1623,6 +1628,10 @@ export const COPY: Copy = {
   nudgeInvite: "Invites are open to you now. Your link is in your account.",
   nudgeInviteAction: "Open account",
   nudgeDismissLabel: "Dismiss",
+
+  emailNudgeText: "Add an email to keep your account and pick a username.",
+  emailNudgeAction: "Add email",
+  emailNudgeDismiss: "Not now",
 
   authorizeTitle: (party) =>
     party.kind === "known"

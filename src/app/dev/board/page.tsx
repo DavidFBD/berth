@@ -67,7 +67,7 @@ export default function BoardGalleryPage() {
 function Galleries() {
   const params = useSearchParams();
   const home = params.get("home");
-  if (home === "held" || home === "new") {
+  if (home === "held" || home === "new" || home === "walletEmail") {
     return <HomeGallery key={home} scene={home} dock={params.get("dock") !== "0"} streaming={params.get("streaming") === "1"} />;
   }
   return (

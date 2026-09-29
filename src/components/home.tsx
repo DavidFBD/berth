@@ -10,11 +10,13 @@ import { useCopy } from "@/components/settings-provider";
 import {
   AccountTotal,
   CashShelf,
+  EmailNudgeLine,
   HoldingsList,
   ListingBoard,
   NewsFeed,
   NudgeLine,
   WaitingOrders,
+  useWaitingOrdersShowing,
 } from "@/components/board";
 import { AskCard, AskCardPlaceholder, AskDock, DOCK_CLEARANCE } from "@/components/chat/ask-surfaces";
 import { useAskAvailable } from "@/components/chat/chat-status";
@@ -27,7 +29,7 @@ import { VaultPositions } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
-import { useAddConnectedWallet } from "@/hooks/use-account-wallets";
+import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-account-wallets";
 import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
@@ -99,14 +101,26 @@ export function Home() {
   const assistantReachable = useAssistantReachable();
   // Which assistant the board's "Your assistant" card opened the drawer on.
   const [accountAssistant, setAccountAssistant] = useState<AssistantId | null>(null);
+  // Whether the email nudge opened the drawer, so it lands on the add-email row.
+  const [focusEmail, setFocusEmail] = useState(false);
   const openAccount = (assistant: AssistantId | null = null) => {
     setAccountAssistant(assistant);
     setAccountOpen(true);
   };
+  const openAccountForEmail = () => {
+    setFocusEmail(true);
+    setAccountOpen(true);
+  };
   const onAccountOpenChange = (next: boolean) => {
     setAccountOpen(next);
-    if (!next) setAccountAssistant(null);
+    if (!next) {
+      setAccountAssistant(null);
+      setFocusEmail(false);
+    }
   };
+  // Whether a higher-priority strip already holds the email nudge's slot.
+  const waitingOrdersShowing = useWaitingOrdersShowing();
+  const unlinkedWalletShowing = useUnlinkedWalletShowing(accountOpen);
   const [chatReturn, setChatReturn] = useState(false);
   const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
@@ -230,7 +244,12 @@ export function Home() {
       */}
       <div className={cn(BOARD_PAGE, askAvailable !== false && DOCK_CLEARANCE)}>
         <HomeHeader onOpenChat={() => openChat()}>
-          <AccountButton open={accountOpen} onOpenChange={onAccountOpenChange} assistant={accountAssistant} />
+          <AccountButton
+            open={accountOpen}
+            onOpenChange={onAccountOpenChange}
+            assistant={accountAssistant}
+            focusEmail={focusEmail}
+          />
         </HomeHeader>
 
         <div className={BOARD_GRID}>
@@ -239,6 +258,13 @@ export function Home() {
             {/* Only while a limit order waits, and only behind its switch. */}
             <WaitingOrders />
             <UnlinkedWalletPrompt hidden={accountOpen} />
+            {/* At most one prompt strip at a time: the waiting-orders strip
+                and the unlinked-wallet prompt above both outrank this one
+                (lib/email-nudge). */}
+            <EmailNudgeLine
+              otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing}
+              onOpen={openAccountForEmail}
+            />
             <NudgeLine
               onAddFunds={() => openAccount()}
               onParkCash={() => openBuy(CASH_LISTING)}

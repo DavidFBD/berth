@@ -36,6 +36,7 @@ import { AssistantSection } from "@/components/assistant/assistant-section";
 import { WalletsSection } from "@/components/account-wallets";
 import { SocialSection } from "@/components/social/social-section";
 import { RankChip, RewardsPanel } from "@/components/rewards-panel";
+import { ADD_EMAIL_ANCHOR } from "@/components/social/social-section";
 import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
@@ -53,12 +54,15 @@ export function AccountButton({
   open: openProp,
   onOpenChange,
   assistant = null,
+  focusEmail = false,
 }: {
   /** Optional controlled open state so the page (the funds module's top-up button) can open the account drawer. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Opened from the board's "Your assistant" card: that assistant's steps, scrolled to. */
   assistant?: AssistantId | null;
+  /** Opened from the email nudge: the add-email row, scrolled to. */
+  focusEmail?: boolean;
 } = {}) {
   const privy = usePrivyEmbeddedWallet();
   const linking = useLinkInProgress();
@@ -69,6 +73,7 @@ export function AccountButton({
   const accountOpen = openProp ?? accountOpenState;
   const setAccountOpen = onOpenChange ?? setAccountOpenState;
   useScrollToAssistant(accountOpen && assistant !== null);
+  useScrollToAddEmail(accountOpen && focusEmail);
 
   if (!PRIVY_ENABLED) return <ConnectButton />;
 
@@ -229,6 +234,20 @@ function useScrollToAssistant(active: boolean) {
     if (!active) return;
     const timer = setTimeout(() => {
       document.getElementById(ASSISTANT_ANCHOR)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 360);
+    return () => clearTimeout(timer);
+  }, [active]);
+}
+
+/**
+ * Opened from the email nudge: bring the add-email row (inside RewardsPanel)
+ * into view, the same way "Your assistant" is scrolled to above.
+ */
+function useScrollToAddEmail(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const timer = setTimeout(() => {
+      document.getElementById(ADD_EMAIL_ANCHOR)?.scrollIntoView({ block: "start", behavior: "smooth" });
     }, 360);
     return () => clearTimeout(timer);
   }, [active]);

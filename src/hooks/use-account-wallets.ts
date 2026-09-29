@@ -150,6 +150,17 @@ export function useUnlinkedWallet(): { address: string; mode: "wallet" | "email"
 }
 
 /**
+ * Whether the unlinked-wallet prompt is showing right now, without pulling
+ * in the full `useAddConnectedWallet` (its signers and mutation). Shared
+ * with the email nudge's priority (lib/email-nudge): this strip outranks
+ * it, since it is about an account mix-up rather than a suggestion.
+ */
+export function useUnlinkedWalletShowing(hidden: boolean): boolean {
+  const waiting = useUnlinkedWallet();
+  return Boolean(waiting) && !hidden;
+}
+
+/**
  * "Add to this account" and "Sign in with it" for the waiting wallet.
  * Adding needs two signatures in wallet mode: the new wallet's, then the
  * earlier account's home (the person switches the extension back when

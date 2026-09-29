@@ -45,7 +45,7 @@ export function WaitingOrders() {
   const unsaved = usePendingLimits(limits.orders, limits.enabled);
   const [open, setOpen] = useState(false);
   // Shown whenever an order waits, even after the switch is turned off, so none is ever stranded.
-  if (limits.waiting.length === 0 && unsaved.length === 0) return null;
+  if (!waitingOrdersShow(limits.waiting.length, unsaved.length)) return null;
   return (
     <>
       {unsaved.length > 0 && <p className="px-1 text-xs text-muted-foreground" data-testid="limit-unsaved">{copy.limitUnsaved}</p>}
@@ -53,6 +53,20 @@ export function WaitingOrders() {
       <WaitingOrdersDrawer orders={limits.waiting} open={open} onOpenChange={setOpen} />
     </>
   );
+}
+
+const waitingOrdersShow = (waitingCount: number, unsavedCount: number) => waitingCount > 0 || unsavedCount > 0;
+
+/**
+ * Whether the waiting-orders strip is showing right now, without mounting
+ * `useAnnounceClosings` a second time. Shared with the email nudge's
+ * priority (lib/email-nudge): this strip outranks it, since it is about
+ * money already in motion.
+ */
+export function useWaitingOrdersShowing(): boolean {
+  const limits = useLimitOrders();
+  const unsaved = usePendingLimits(limits.orders, limits.enabled);
+  return waitingOrdersShow(limits.waiting.length, unsaved.length);
 }
 
 const nameOf = (symbol: string) => TOKEN_LISTINGS.find((listing) => listing.symbol === symbol)?.name ?? symbol;
