@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useCopy } from "@/components/settings-provider";
 import { NamePicker } from "@/components/social/name-picker";
+import { FindFriend, type FindResult } from "@/components/social/find-friend";
 import { useBlocked, useFriendLink, useFriendsList, useMySocial, useSetVisible, useSocialAction } from "@/hooks/use-social";
 import type { BlockedName, FriendsList, MySocial, Person } from "@/lib/social-types";
 import { SPRING_SHELF } from "@/lib/motion";
@@ -24,7 +25,14 @@ import { cn } from "@/lib/utils";
  * hide switch, and blocked people folded. One (i), on the title.
  */
 
-export type SocialDemo = { me: MySocial; friends?: FriendsList; blocked?: BlockedName[]; token?: string; open?: "friends" | "blocked" | "change" };
+export type SocialDemo = {
+  me: MySocial;
+  friends?: FriendsList;
+  blocked?: BlockedName[];
+  token?: string;
+  open?: "friends" | "blocked" | "change";
+  find?: { value: string; result: FindResult };
+};
 
 /** Where the rewards panel's add email row lives, so the no-email row can bring it into view. */
 export const ADD_EMAIL_ANCHOR = "add-email";
@@ -207,6 +215,9 @@ function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; de
   };
   return (
     <div className="flex flex-col gap-2 pb-2.5">
+      <div className="px-3 pt-0.5 pb-1.5">
+        <FindFriend demo={demo ? (demo.find ?? { value: "", result: null }) : undefined} />
+      </div>
       {list && list.friends.length === 0 && <p className="px-3 text-xs text-muted-foreground">{copy.friendsNone}</p>}
       {list && list.friends.length > 0 && (
         <ul className="flex flex-col px-3">

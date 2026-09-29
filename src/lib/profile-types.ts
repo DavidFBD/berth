@@ -46,6 +46,10 @@ export type ReferralPanel = {
     level: number;
     /** Whether the shared first-pour reward has already paid out. */
     firstPourPaid: boolean;
+    /** Whether the referral made the two friends (a block or a full list skips it). */
+    friends: boolean;
+    /** The referrer's username, only while the two are friends, as a friends list shows it. */
+    name: string | null;
   } | null;
   /**
    * A stripped link's recovery hatch: true while the account is young,

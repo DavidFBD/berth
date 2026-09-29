@@ -109,7 +109,8 @@ a round that changes behaviour.
   XP. The count shows on the card and feeds salute points.
 - **Friends** — a mutual connection by request (`friend_requests`,
   `friends`; the plan called it crew). Only you see your friends. A friend
-  link (`friend_links`) is its own token, not the referral code.
+  link (`friend_links`) is its own token, not the referral code. A referral
+  that binds makes the pair friends at once, no request (ADR-0006).
 - **Friends board** — you and your friends ranked on board points
   (ADR-0005), this calendar month.
 - **Appearance** — light, dark or system (`lib/appearance`), stamped by
@@ -119,7 +120,7 @@ a round that changes behaviour.
 
 Load-bearing decisions live in `docs/adr/` (base-voice rewards copy, the
 level-3 invite gate, no leaderboard of strangers, referral pays at first
-verified order, the friends board on capped points)
+verified order, the friends board on capped points, referral is friendship)
 and in `docs/research/2026-09-16-colosseum-pivot-deep-dive.md` (the pivot,
 the account model, the name). Recorded in `thoughts.md`: the account-linking
 edge is accepted; SIWE and order-ownership proof are done. The

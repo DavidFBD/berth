@@ -672,6 +672,8 @@ export type Copy = {
   inviteFirstTradePaid: (amount: number) => string;
   inviteFirstTradePending: (amount: number) => string;
   inviterLevel: (level: number) => string;
+  /** Under "A friend invited you", once the referral has made the two friends. */
+  invitedFriendsWith: (name: string | null) => string;
   claimAskTitle: string;
   claimAskSub: string;
   claimInputLabel: string;
@@ -1098,6 +1100,12 @@ export type SocialCopy = {
   signIn: string;
   notFound: string;
   notFoundSub: string;
+  /* — find a friend, by exact username — */
+  findTitle: string;
+  findSub: string;
+  findLabel: string;
+  findButton: string;
+  findSlow: string;
   back: string;
   moreLabel: string;
   block: string;
@@ -1807,6 +1815,8 @@ export const COPY: Copy = {
   inviteFirstTradePending: (amount) =>
     `Make your first trade and +${amount} XP lands for you both.`,
   inviterLevel: (level) => `Level ${level}`,
+  invitedFriendsWith: (name) =>
+    name ? `You and ${name} are now friends.` : "You are now friends.",
   claimAskTitle: "Arrived on a friend's invite?",
   claimAskSub: "Enter their code and your first trade pays you both.",
   claimInputLabel: "Your friend's invite code",
@@ -2575,6 +2585,11 @@ export const COPY: Copy = {
     signIn: "Sign in",
     notFound: "No one by that name.",
     notFoundSub: "Usernames are exact. Ask them for their link.",
+    findTitle: "Find a friend",
+    findSub: "Type their exact username.",
+    findLabel: "Their username",
+    findButton: "Find",
+    findSlow: "That is a lot of looking for one hour. Try again later.",
     back: "Back to Berth",
     moreLabel: "More",
     block: "Block",

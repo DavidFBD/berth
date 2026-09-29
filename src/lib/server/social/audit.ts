@@ -19,6 +19,7 @@ export type SocialAction =
   | "friend_accept"
   | "friend_decline"
   | "friend_remove"
+  | "friend_referral"
   | "link_new"
   | "block"
   | "unblock"

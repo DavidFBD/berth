@@ -1,11 +1,11 @@
 import type { CardAnswer, FriendAction } from "@/lib/social-types";
 import { isReportReason, listBlocked, report, setBlock } from "@/lib/server/social/blocks";
 import { friendsBoard } from "@/lib/server/social/board";
-import { readCard, SIGN_IN } from "@/lib/server/social/cards";
+import { NOT_FOUND, readCard, SIGN_IN } from "@/lib/server/social/cards";
 import { friendAction, friendLink, listFriends, readLinkCard } from "@/lib/server/social/friends";
 import { checkHandle, mySocial, setHandle, setVisible } from "@/lib/server/social/handles";
 import { takeSocialPlace, type SocialBucket } from "@/lib/server/social/limits";
-import type { SocialViewer } from "@/lib/server/social/people";
+import { hasVerifiedEmail, type SocialViewer } from "@/lib/server/social/people";
 import { setSalute } from "@/lib/server/social/salutes";
 
 /**
@@ -41,8 +41,17 @@ export async function runSocialOp(
   if (op === "card" || op === "link-card") {
     // Signed out, every name gets the same answer without a lookup.
     if (!viewer) return ok(SIGN_IN);
+    if (op === "card") {
+      // A name typed into a URL is a lookup like Find: verified email only,
+      // and one 30 an hour budget for both, so guessing names is limited
+      // wherever it is tried. Without an email every name gets the one
+      // fixed answer, with no lookup.
+      if (!hasVerifiedEmail(viewer)) return ok(NOT_FOUND);
+      if (!(await take("find"))) return slow;
+      return ok(await readCard(viewer, body.handle));
+    }
     if (!(await take("card"))) return slow;
-    const answer: CardAnswer = op === "card" ? await readCard(viewer, body.handle) : await readLinkCard(viewer, body.token);
+    const answer: CardAnswer = await readLinkCard(viewer, body.token);
     return ok(answer);
   }
 
@@ -51,6 +60,14 @@ export async function runSocialOp(
   switch (op) {
     case "me":
       return ok(await mySocial(viewer));
+    case "find": {
+      // Exact name only, verified email only, 30 an hour. The answer is the
+      // card's own: missing, hidden, blocked and blocking are one NOT_FOUND.
+      // The email gate reads the viewer alone, so it says nothing of the name.
+      if (!hasVerifiedEmail(viewer)) return { status: 403, body: { error: "email" } };
+      if (!(await take("find"))) return slow;
+      return ok(await readCard(viewer, body.handle));
+    }
     case "check":
       if (!(await take("check"))) return slow;
       return ok(await checkHandle(viewer, body.handle));

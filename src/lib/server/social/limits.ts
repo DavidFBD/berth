@@ -10,8 +10,10 @@ import { sha256Hex } from "@/lib/server/oauth/crypto";
  */
 
 export const SOCIAL_LIMITS = {
-  /** Cards opened by a signed in account. */
+  /** Cards opened through a friend link (an unguessable token, not a name). */
   card: 60,
+  /** Every lookup by name: "Find a friend" and a /u/<name> card share it. */
+  find: 30,
   /** The picker's live availability check: itself an oracle, so it is tight. */
   check: 20,
   /** Username saves (the 30 day rule limits changes; this limits tries). */

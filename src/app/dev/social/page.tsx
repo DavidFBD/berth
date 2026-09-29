@@ -8,6 +8,7 @@ import { NamePickerView, type PickerStatus } from "@/components/social/name-pick
 import { NotFoundCard, ProfileCardView, SignInCard } from "@/components/social/profile-card";
 import { BoardView } from "@/components/social/friends-board";
 import { SocialSection, type SocialDemo } from "@/components/social/social-section";
+import { FindFriend } from "@/components/social/find-friend";
 import type { CardAnswer, FriendsBoard, Relation, Viewer } from "@/lib/social-types";
 
 /**
@@ -28,6 +29,10 @@ import type { CardAnswer, FriendsBoard, Relation, Viewer } from "@/lib/social-ty
  *   /dev/social?state=section-new        the drawer section before a pick
  *   /dev/social?state=section-noemail    the drawer section without an email
  *   /dev/social?state=board              the friends board
+ *   /dev/social?state=find               Find a friend, before a lookup
+ *   /dev/social?state=find-found         Find a friend, a card found
+ *   /dev/social?state=find-missing       Find a friend, missing, hidden and blocked alike
+ *   /dev/social?state=section-find       the drawer section, a card found
  */
 
 const CARD = { handle: "mira_k", avatarId: "lantern", xp: 1240, memberSince: "2026-07", salutes: 14 };
@@ -104,6 +109,27 @@ function Gallery() {
   if (state === "picker") return <Picker value="mira_k" status={{ kind: "free" }} />;
   if (state === "picker-taken") return <Picker value="Harbour" status={{ kind: "refused", reason: "taken" }} />;
   if (state === "board") return <BoardView board={BOARD} />;
+  if (state === "find" || state === "find-found" || state === "find-missing")
+    return (
+      <Panel className="px-4 py-4">
+        <FindFriend
+          key={state}
+          demo={
+            state === "find"
+              ? { value: "", result: null }
+              : state === "find-found"
+                ? { value: "mira_k", result: { kind: "answer", answer: PROFILES["profile-none"] } }
+                : { value: "someone_else", result: { kind: "answer", answer: { found: false } } }
+          }
+        />
+      </Panel>
+    );
+  if (state === "section-find")
+    return (
+      <Panel>
+        <SocialSection demo={{ ...SECTION, find: { value: "mira_k", result: { kind: "answer", answer: PROFILES["profile-none"] } } }} />
+      </Panel>
+    );
   if (state === "section-new")
     return (
       <Panel>

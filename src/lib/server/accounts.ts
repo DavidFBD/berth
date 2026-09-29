@@ -2,6 +2,8 @@ import { getSql } from "@/lib/server/db";
 import { detectFamily, normalizeAddress } from "@/lib/identity/caip";
 import { recordHomeWallet, recordPrimaryEmail, walletOwner } from "@/lib/server/identities";
 import { CODE_ALPHABET, CODE_LENGTH } from "@/lib/invite-code";
+import { befriendOnReferral } from "@/lib/server/social/friends";
+import { SHOWN_SQL } from "@/lib/server/social/people";
 import type {
   Profile,
   ReferralPanel,
@@ -385,10 +387,19 @@ export async function ensureReferralCode(user: UserRow): Promise<UserRow> {
 }
 
 /**
- * Binds who invited this account. Callable only for rows created this
- * request (the route enforces that), and self-referral dies in the SQL: the
- * code must belong to a DIFFERENT user, and referred_by only writes once.
- * The code of an account merged into another names the survivor.
+ * Binds the invite code a new account arrived with, on its first profile
+ * sync. "New" is the account's own record, not the request that happened to
+ * create the row: the welcome reward (account_created) is paid on that same
+ * first sync, just after this, so an account that has it has synced before
+ * and is not new. Until 2026-09-29 the rule was "created this request", and
+ * any other rewards route that won the race to create the row (a wallet
+ * sign in fires several at once) silently spent the code (a referred account
+ * in production was born in another route 7 seconds before its sync).
+ *
+ * The late-claim rule holds too (young, unclaimed, never poured), and
+ * self-referral dies in the SQL: the code must belong to a DIFFERENT user,
+ * and referred_by only writes once. The code of an account merged into
+ * another names the survivor. A bind makes the two friends.
  */
 export async function bindReferral(
   userId: string,
@@ -398,11 +409,19 @@ export async function bindReferral(
   const rows = (await sql.query(
     `update users set referred_by = referrer.id, updated_at = now()
      from (select coalesce(retired_into, id) as id from users where referral_code = $2) as referrer
-     where users.id = $1 and users.referred_by is null and referrer.id <> $1
+     where users.id = $1
+       and referrer.id <> $1
+       and ${CLAIMABLE_SQL}
+       and not exists (
+         select 1 from xp_events
+         where xp_events.user_id = users.id and xp_events.kind = 'account_created'
+       )
      returning referrer.id as referrer_id`,
     [userId, code],
   )) as { referrer_id: string }[];
-  return rows[0]?.referrer_id ?? null;
+  const referrerId = rows[0]?.referrer_id ?? null;
+  if (referrerId) await befriendOnReferral(userId, referrerId, "invite");
+  return referrerId;
 }
 
 /**
@@ -442,7 +461,9 @@ export async function claimReferral(
      returning referrer.id as referrer_id`,
     [userId, code],
   )) as { referrer_id: string }[];
-  return rows[0]?.referrer_id ?? null;
+  const referrerId = rows[0]?.referrer_id ?? null;
+  if (referrerId) await befriendOnReferral(userId, referrerId, "code");
+  return referrerId;
 }
 
 /** Records one invite-link landing. Junk codes never make a row. */
@@ -473,11 +494,24 @@ export async function referralPanel(user: UserRow): Promise<ReferralPanel> {
       `select 1 from xp_events where user_id = $1 and kind = 'invite_accepted'`,
       [user.id],
     )) as unknown[];
+    // Friends since the referral bound (social/friends befriendOnReferral):
+    // the name is shown as the friends list would show it, the name at the
+    // time the card went off when it is off.
+    const friendship = (await sql.query(
+      `select case when ${SHOWN_SQL("$2::uuid")} then h.handle else coalesce(p.hidden_handle, h.handle) end as name
+       from friends f
+       left join handles h on h.user_id = $2
+       left join profiles p on p.user_id = $2
+       where f.a_id = least($1::uuid, $2::uuid) and f.b_id = greatest($1::uuid, $2::uuid)`,
+      [user.id, user.referred_by],
+    )) as { name: string | null }[];
     if (referrer[0]) {
       invitedBy = {
         avatarId: referrer[0].avatar_id,
         level: rankForXp(referrer[0].xp).level,
         firstPourPaid: accepted.length > 0,
+        friends: friendship.length > 0,
+        name: friendship[0]?.name ?? null,
       };
     }
   }

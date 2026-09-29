@@ -31,12 +31,15 @@ export async function POST(request: NextRequest) {
   let { user } = resolved;
   const rewards: RewardList = [];
 
-  // Referral binding: only an account born THIS request can be claimed, so
-  // an old account clicking a friend's link stays unclaimed — the code is a
-  // birth certificate, not a coupon. The XP moment comes later, at the
+  // Referral binding: only a NEW account can be claimed, so an old account
+  // clicking a friend's link stays unclaimed; the code is a birth
+  // certificate, not a coupon. New means this account's first sync (the
+  // welcome below has not been paid), whichever request created the row:
+  // a wallet sign in fires several rewards calls at once, and any of them
+  // may create it (bindReferral). The XP moment comes later, at the
   // referred account's first verified pour (see xp/pour).
   const inviteCode = normalizeInviteCode(read.caller.body.referralCode);
-  if (resolved.created && inviteCode) {
+  if (inviteCode && !user.referred_by) {
     const referrerId = await bindReferral(user.id, inviteCode);
     if (referrerId) user = { ...user, referred_by: referrerId };
   }

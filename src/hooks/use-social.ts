@@ -188,6 +188,28 @@ export function useCard(target: { handle: string } | { token: string }) {
   });
 }
 
+/**
+ * "Find a friend": one exact username, on a tap, never as you type. The
+ * answer is the card's own (found, or the one NOT_FOUND for every miss), a
+ * 429 is "slow", a 403 means no verified email. A found card is cached as
+ * the profile page would cache it, so the actions on it update in place.
+ */
+export function useFindFriend() {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  return useMutation({
+    mutationFn: async (handle: string): Promise<{ kind: "answer"; answer: CardAnswer } | { kind: "slow" } | { kind: "failed" }> => {
+      const { status, data } = await call<CardAnswer>("find", { handle });
+      if (status === 200 && data) return { kind: "answer", answer: data };
+      if (status === 429) return { kind: "slow" };
+      return { kind: "failed" };
+    },
+    onSuccess: (result, handle) => {
+      if (result.kind === "answer" && result.answer.found) queryClient.setQueryData(KEYS.card(key, handle), result.answer);
+    },
+  });
+}
+
 export type CardActionVars =
   | { kind: "salute"; handle: string; on: boolean }
   | { kind: "friend"; handle: string; action: FriendAction; token?: string }

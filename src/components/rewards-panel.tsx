@@ -627,6 +627,11 @@ function ThankYouRow({
             ? copy.inviteFirstTradePaid(amount)
             : copy.inviteFirstTradePending(amount)}
         </span>
+        {invitedBy.friends && (
+          <span className="text-xs text-muted-foreground">
+            {copy.invitedFriendsWith(invitedBy.name)}
+          </span>
+        )}
       </span>
       <span className="shrink-0 text-[11px] text-muted-foreground">
         {copy.inviterLevel(invitedBy.level)}

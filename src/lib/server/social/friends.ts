@@ -81,6 +81,60 @@ async function acceptStatement(from: string, to: string, statuses: string[]): Pr
   )) as { n: number }[];
 }
 
+/**
+ * A referral that binds makes the pair friends at once, both ways, with no
+ * request to accept (docs/plans/social.md, "Referral is friendship"). A
+ * block either way stops it, so does the referrer's earlier decline of a
+ * request from this account, and so does a full list on either side,
+ * silently: the referral still stands, only the friendship is skipped. Any
+ * live request between the two is settled as accepted. One audit row, on the
+ * referred account, when a pair is made; a pair that already exists makes
+ * none. Never throws: the referral must not fail over a friendship.
+ */
+export async function befriendOnReferral(
+  referredId: string,
+  referrerId: string,
+  via: "invite" | "code" | "backfill",
+): Promise<boolean> {
+  if (referredId === referrerId) return false;
+  try {
+    if ((await friendCount(referredId)) >= FRIENDS_MAX || (await friendCount(referrerId)) >= FRIENDS_MAX) return false;
+    const rows = (await getSql().query(
+      `with walled as (
+         select 1 from blocks
+         where blocked_id is not null
+           and ((blocker_id = $1 and blocked_id = $2) or (blocker_id = $2 and blocked_id = $1))
+         union all
+         -- The referrer once said no to a request from this account (a
+         -- decline, or one cancelled after it was declined): that answer
+         -- stands, the referral binds without the friendship.
+         select 1 from friend_requests
+         where from_id = $1 and to_id = $2
+           and (status = 'declined' or (status = 'withdrawn' and responded_at is not null))
+       ),
+       made as (
+         insert into friends (a_id, b_id) select ${pair} where not exists (select 1 from walled)
+         on conflict do nothing
+         returning 1
+       ),
+       settled as (
+         update friend_requests set status = 'accepted', responded_at = now()
+         where ((from_id = $1 and to_id = $2) or (from_id = $2 and to_id = $1))
+           and status in ('pending', 'declined') and exists (select 1 from made)
+       )
+       select count(*)::int as n from made`,
+      [referredId, referrerId],
+    )) as { n: number }[];
+    const made = (rows[0]?.n ?? 0) > 0;
+    if (made) await socialAudit(referredId, "friend_referral", referrerId, { via });
+    return made;
+  } catch (error) {
+    // The cap trigger lost a race, or anything else: the referral stands.
+    console.warn("[social] referral friendship skipped:", error instanceof Error ? error.message : error);
+    return false;
+  }
+}
+
 async function request(viewer: SocialViewer, target: string, via: "handle" | "link"): Promise<boolean> {
   if (!hasVerifiedEmail(viewer) || target === viewer.id) return false;
   if (!(await hasHandle(viewer.id))) return false;

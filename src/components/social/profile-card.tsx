@@ -45,11 +45,14 @@ export function ProfileCardView({
   answer,
   handlers,
   hidden = false,
+  heading: Heading = "h1",
 }: {
   answer: Extract<CardAnswer, { found: true }>;
   handlers: CardHandlers;
   /** The viewer's own card is hidden: say so. */
   hidden?: boolean;
+  /** h1 on its own page; h2 where the card sits inside another screen (Find a friend). */
+  heading?: "h1" | "h2";
 }) {
   const copy = useCopy().social;
   const { card, viewer } = answer;
@@ -70,7 +73,7 @@ export function ProfileCardView({
       <div className="flex flex-col items-center gap-3">
         <AvatarWithRank avatarId={card.avatarId} level={rank.level} size={88} />
         <div className="flex flex-col items-center gap-0.5">
-          <h1 className="font-display text-2xl leading-tight tracking-[-0.02em] break-all text-foreground">{card.handle}</h1>
+          <Heading className="font-display text-2xl leading-tight tracking-[-0.02em] break-all text-foreground">{card.handle}</Heading>
           <p className="text-sm text-muted-foreground">{rank.name}</p>
         </div>
       </div>

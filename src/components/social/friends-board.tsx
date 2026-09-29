@@ -7,6 +7,7 @@ import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
 import { monthLabel } from "@/components/social/profile-card";
+import { FindFriend } from "@/components/social/find-friend";
 import { useFriendsBoard, useMySocial } from "@/hooks/use-social";
 import { useCanProveAccount } from "@/hooks/use-profile";
 import type { FriendsBoard } from "@/lib/social-types";
@@ -73,6 +74,11 @@ export function FriendsBoardPage() {
         <BerthMark className="size-6" title="Berth" />
         {copy.back}
       </Link>
+      {signedIn && me.data?.hasEmail && (
+        <Panel surface="sheet" className="px-4 py-4">
+          <FindFriend />
+        </Panel>
+      )}
       {!signedIn ? (
         <p className="text-sm text-muted-foreground">{copy.boardSignedOut}</p>
       ) : me.data && !me.data.handle ? (

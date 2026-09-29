@@ -287,8 +287,9 @@ describe("the merge transaction", () => {
     expect(held).toEqual({ user_id: s, days: 90 });
 
     // Friends without duplicates or a friendship with oneself; the one who
-    // blocked A blocks S now, and their friendship with S ended.
-    expect(await friendsOf(s)).toEqual([f1, f2].sort());
+    // blocked A blocks S now, and their friendship with S ended. The
+    // newcomer who used A's code above is S's friend by that referral.
+    expect(await friendsOf(s)).toEqual([f1, f2, newcomer].sort());
     expect(await friendsOf(a)).toEqual([]);
     expect(await q(`select blocker_id from blocks where blocked_id = $1`, [s])).toEqual([{ blocker_id: blocksA }]);
     expect(await q(`select blocked_id from blocks where blocker_id = $1`, [s])).toEqual([{ blocked_id: blockedByA }]);

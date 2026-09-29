@@ -122,11 +122,11 @@ describe("usernames", () => {
 
 describe("the card", () => {
   it("shows only the card fields", async () => {
-    await person("open_card", { createdAt: "2026-07-14T08:00:00Z" });
-    const answer = await readCard(await person(), "Open_Card");
+    await person("quay_keeper", { createdAt: "2026-07-14T08:00:00Z" });
+    const answer = await readCard(await person(), "Quay_Keeper");
     expect(answer).toEqual({
       found: true,
-      card: { handle: "open_card", avatarId: null, xp: 0, memberSince: "2026-07", salutes: 0 },
+      card: { handle: "quay_keeper", avatarId: null, xp: 0, memberSince: "2026-07", salutes: 0 },
       viewer: { relation: "none", saluted: false, hasEmail: true, hasHandle: false },
     });
     const keys = answer.found ? Object.keys(answer.card).sort() : [];
@@ -617,5 +617,68 @@ describe("the route table", () => {
     for (let i = 0; i < 20; i++) expect((await runSocialOp("check", { handle: `name_${i}` }, { viewer: eager, anonKey: "k" })).status).toBe(200);
     expect((await runSocialOp("check", { handle: "name_x" }, { viewer: eager, anonKey: "k" })).status).toBe(429);
   });
+});
 
+describe("find a friend", () => {
+  it("answers missing, hidden, blocked and blocking exactly alike", async () => {
+    const seeker = await person("seeker_one");
+    const hidden = await person("find_hidden");
+    await setVisible(hidden, false);
+    await person("find_blocked");
+    await setBlock(seeker, "find_blocked", true);
+    const blocksMe = await person("find_blocker");
+    await setBlock(blocksMe, "seeker_one", true);
+    const answers = await Promise.all(
+      ["nobody_by_this", "find_hidden", "find_blocked", "find_blocker", "%%%", "ab"].map((handle) =>
+        runSocialOp("find", { handle }, { viewer: seeker, anonKey: "k" }),
+      ),
+    );
+    for (const answer of answers) {
+      expect(answer).toEqual({ status: 200, body: NOT_FOUND });
+      expect(JSON.stringify(answer)).toBe(JSON.stringify(answers[0]));
+    }
+  });
+
+  it("finds an exact name, case as typed, with the relation to act on", async () => {
+    const seeker = await person("seeker_two");
+    await person("tidewater_joe");
+    const found = await runSocialOp("find", { handle: "Tidewater_Joe" }, { viewer: seeker, anonKey: "k" });
+    expect(found.status).toBe(200);
+    expect(found.body).toMatchObject({ found: true, card: { handle: "tidewater_joe" }, viewer: { relation: "none" } });
+    // Exact only: no prefix match.
+    expect((await runSocialOp("find", { handle: "tidewater_jo" }, { viewer: seeker, anonKey: "k" })).body).toEqual(NOT_FOUND);
+  });
+
+  it("needs a verified email, and says so the same whatever the name", async () => {
+    const walletOnly = await person(undefined, { email: false });
+    await person("some_name");
+    const known = await runSocialOp("find", { handle: "some_name" }, { viewer: walletOnly, anonKey: "k" });
+    const unknown = await runSocialOp("find", { handle: "no_such_name" }, { viewer: walletOnly, anonKey: "k" });
+    expect(known).toEqual({ status: 403, body: { error: "email" } });
+    expect(unknown).toEqual(known);
+    expect((await runSocialOp("find", { handle: "some_name" }, { viewer: null, anonKey: "k" })).status).toBe(401);
+  });
+
+  it("allows 30 lookups an hour per account", async () => {
+    const eager = await person("eager_finder");
+    for (let i = 0; i < 30; i++) expect((await runSocialOp("find", { handle: `name_${i}` }, { viewer: eager, anonKey: "k" })).status).toBe(200);
+    expect((await runSocialOp("find", { handle: "name_x" }, { viewer: eager, anonKey: "k" })).status).toBe(429);
+    // Another account has its own hour.
+    const calm = await person("calm_finder");
+    expect((await runSocialOp("find", { handle: "name_x" }, { viewer: calm, anonKey: "k" })).status).toBe(200);
+  });
+
+  it("shares its hour with the /u/<name> card, which also needs a verified email", async () => {
+    const guesser = await person("name_guesser");
+    await person("real_target");
+    for (let i = 0; i < 15; i++) expect((await runSocialOp("find", { handle: `guess_${i}` }, { viewer: guesser, anonKey: "k" })).status).toBe(200);
+    for (let i = 0; i < 15; i++) expect((await runSocialOp("card", { handle: `other_${i}` }, { viewer: guesser, anonKey: "k" })).status).toBe(200);
+    expect((await runSocialOp("card", { handle: "real_target" }, { viewer: guesser, anonKey: "k" })).status).toBe(429);
+    expect((await runSocialOp("find", { handle: "real_target" }, { viewer: guesser, anonKey: "k" })).status).toBe(429);
+
+    const walletOnly = await person(undefined, { email: false });
+    const known = await runSocialOp("card", { handle: "real_target" }, { viewer: walletOnly, anonKey: "k" });
+    expect(known).toEqual({ status: 200, body: NOT_FOUND });
+    expect(await runSocialOp("card", { handle: "no_such_one" }, { viewer: walletOnly, anonKey: "k" })).toEqual(known);
+  });
 });
