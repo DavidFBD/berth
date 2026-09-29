@@ -8,7 +8,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
-    include: ["src/**/*.test.ts"],
+    // No include here: a root include merges into every project below
+    // (extends: true), which ran each unit file in the db project too.
     environment: "node",
     // PGlite boots a whole Postgres in WASM per file; under a loaded full run
     // that alone can pass the 5s default. The db tests get room, the pure

@@ -973,3 +973,55 @@ declare
   ; update account_merges set status = 'done', moved = v_moved, error = null, done_at = now() where id = m.id
   ; return v_moved
 ; end $$;
+
+-- Email (docs/plans/recurring-email.md section 3, lib/server/email). What a
+-- person chose to get by mail, one row per switchable kind they changed;
+-- no row means the default (orders and friends on, weekly off). Security
+-- notices have no row: they cannot be switched off.
+create table if not exists email_prefs (
+  user_id uuid not null references users(id) on delete cascade,
+  kind text not null check (kind in ('orders', 'friends', 'weekly')),
+  enabled boolean not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, kind)
+);
+
+-- Addresses mail must not go to: a hard bounce or a complaint, reported by
+-- Resend's webhook. Normalised (trimmed, lowercased). Checked before every
+-- send, security notices included, since the address is dead or hostile.
+create table if not exists email_suppressions (
+  address text primary key,
+  reason text not null check (reason in ('bounce', 'complaint', 'suppressed')),
+  provider_id text,
+  at timestamptz not null default now()
+);
+
+-- One row per notice Berth tried to send, so a retry of the same event
+-- sends nothing new: unique (type, ref), where ref is the event's own id
+-- (the order, the grant, the merge). Holds no body and no address.
+-- `status`: 'pending' while it goes out (or waits to be tried again),
+-- 'sent' with Resend's id, 'failed' with a short code (never the address
+-- or the body). `notice` is what the notice will say (names, a short
+-- address, a price), kept only while it is pending so the morning and
+-- evening passes can send it again, and cleared once it is sent or given
+-- up. `day_key` (UTC day) holds the friend request's one email a day in
+-- the database itself.
+create table if not exists email_sends (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete cascade,
+  type text not null,
+  ref text not null,
+  status text not null default 'pending' check (status in ('pending', 'sent', 'failed')),
+  provider_id text,
+  error text,
+  notice jsonb,
+  day_key text,
+  attempts int not null default 1,
+  created_at timestamptz not null default now(),
+  constraint email_sends_type_ref unique (type, ref)
+);
+
+create index if not exists email_sends_user_idx on email_sends (user_id, type, created_at desc);
+create index if not exists email_sends_pending_idx on email_sends (created_at) where status = 'pending';
+create unique index if not exists email_sends_friend_daily
+  on email_sends (user_id, day_key) where type = 'friend_request';

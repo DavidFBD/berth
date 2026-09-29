@@ -14,6 +14,7 @@ import { CHAT_USAGE_KEEP_DAYS } from "@/lib/server/chat/usage";
  * - rate limit windows older than a day;
  * - MCP usage rows (mcp_calls) older than 90 days;
  * - chat usage rows (chat_usage) older than 90 days;
+ * - email send log rows (email_sends) older than 12 months;
  * - social audit rows (social_audit) older than a year, and retired
  *   usernames whose hold has ended (lib/server/social).
  *
@@ -43,6 +44,8 @@ export async function pruneOAuth(now = new Date()): Promise<OAuthPruneSummary> {
         and not exists (select 1 from oauth_codes k where k.client_id = c.client_id and k.expires_at > $1::timestamptz)`,
   );
   const rateWindows = await count(`delete from oauth_rate_limits where window_start < $1::timestamptz - interval '1 day'`, [at]);
+  // The email send log (lib/server/email), kept 12 months as the privacy policy says; before db:push it may not exist.
+  await count(`delete from email_sends where created_at < $1::timestamptz - interval '12 months'`, [at]).catch(() => 0);
   // Spent account nonces (lib/server/account-wallets-route); before db:push the table may not exist.
   await count(`delete from account_nonces where spent_at < $1::timestamptz - interval '1 day'`, [at]).catch(() => 0);
   // Before db:push the table may not exist yet; the rest of the prune still counts.

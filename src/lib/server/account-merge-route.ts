@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { sendNotice } from "@/lib/server/email/send";
 import { accountForDid, accountForWallet, normalizeWallet } from "@/lib/server/accounts";
 import { doneMerge, mergeAccounts, planMerge, type MergePlan } from "@/lib/server/account-merge";
 import { accountOf, asProof, NOT_VERIFIED, privyFresh, signerOf, spend } from "@/lib/server/account-wallets-route";
@@ -178,5 +179,7 @@ export async function runMerge(request: NextRequest): Promise<NextResponse> {
       headers: noStore,
     });
   }
+  // A security notice to the account that remains, once per absorbed account (it can be absorbed once, ever).
+  if (!result.again) sendNotice({ userId: result.survivor, ref: result.absorbed, notice: { type: "accounts_merged" } });
   return answer(result.survivor, Number(result.moved.survivorXp ?? 0));
 }

@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { setSqlClient, type SqlClient } from "./db";
 import { makeTestDb } from "./pglite-test-db";
 import { getOrCreateUser, IdentityUnavailableError, setEmail } from "./accounts";
-import { backfillInsert, planIdentityBackfill, type BackfillUser } from "./identities";
+import { backfillInsert, ensurePrimaryEmail, planIdentityBackfill, type BackfillUser } from "./identities";
 
 /**
  * Phase 1 of the account model against the real schema: every write that
@@ -111,6 +111,36 @@ describe("dual write: email", () => {
     )) as { action: string; detail: Record<string, unknown> }[];
     expect(audit).toEqual([{ action: "identity_conflict", detail: { kind: "email", otherUserId: owner.id } }]);
     expect(JSON.stringify(audit)).not.toMatch(/taken/i);
+  });
+});
+
+describe("a changed email and a merge survivor", () => {
+  it("a new verified email becomes the primary; the old one stays on the account, not primary", async () => {
+    const { user } = (await getOrCreateUser({ did: "did:privy:changes-email", wallet: null }))!;
+    await setEmail(user.id, "changer-old@example.com");
+    await setEmail(user.id, "Changer-New@example.com");
+    const rows = (await identitiesOf(user.id)) as { value: string; is_primary: boolean }[];
+    expect(rows.map(({ value, is_primary }) => ({ value, is_primary })).sort((a, b) => a.value.localeCompare(b.value))).toEqual([
+      { value: "changer-new@example.com", is_primary: true },
+      { value: "changer-old@example.com", is_primary: false },
+    ]);
+    // Back to the old one: it is promoted again, never duplicated.
+    await setEmail(user.id, "changer-old@example.com");
+    const again = (await identitiesOf(user.id)) as { value: string; is_primary: boolean }[];
+    expect(again.find((row) => row.is_primary)?.value).toBe("changer-old@example.com");
+    expect(again).toHaveLength(2);
+  });
+
+  it("ensurePrimaryEmail records users.email as primary only when there is none", async () => {
+    const { user } = (await getOrCreateUser({ did: "did:privy:no-primary", wallet: null }))!;
+    await sql.query(`update users set email = ' Ensure-Legacy@Example.com' where id = $1`, [user.id]);
+    await ensurePrimaryEmail(user.id);
+    expect(await identitiesOf(user.id)).toMatchObject([{ value: "ensure-legacy@example.com", is_primary: true, proof: "legacy" }]);
+    await sql.query(`update users set email = 'ensure-later@example.com' where id = $1`, [user.id]);
+    await ensurePrimaryEmail(user.id);
+    expect(await identitiesOf(user.id)).toHaveLength(1);
+    // Leave users.email matching its primary, as the backfill test below reads every row.
+    await sql.query(`update users set email = 'ensure-legacy@example.com' where id = $1`, [user.id]);
   });
 });
 

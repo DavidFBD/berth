@@ -10,6 +10,7 @@ import type { ConsentRequest } from "@/lib/server/oauth/authorize";
 import { resolveScope, scopeList } from "@/lib/server/oauth/validation";
 import { assistantForGrantName, describeParty, type AssistantId } from "@/lib/assistant-party";
 import { COPY } from "@/lib/copy";
+import { sendNotice } from "@/lib/server/email/send";
 
 /**
  * Codes, grants and tokens: the stateful half of the authorization server.
@@ -216,6 +217,14 @@ export async function exchangeCode(input: CodeExchange, now = new Date()): Promi
     return { ok: false, error: "invalid_grant", description: "code already used" };
   }
   const pair = await mintPair(grantId, row.scope, now);
+  // A new connection is a security notice (approving the same app again refreshes its grant and says nothing).
+  if (!existing[0]) {
+    sendNotice({
+      userId: row.user_id,
+      ref: grantId,
+      notice: { type: "assistant_connected", app: clientName ?? COPY.email.assistantConnected.unnamed, scopes: scopeList(row.scope) },
+    });
+  }
   // A replay that marked the code after the link above found grant_id set
   // and revoked the grant, tokens minted just now included (mintPair rows
   // are revoked by grant; a grant revoked first leaves them unusable too).

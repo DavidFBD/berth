@@ -6,6 +6,9 @@ import { getSodax, receiptSucceeded } from "@/lib/server/pour-verify";
 import { recordOrderMarks, saveOrder } from "@/lib/server/orders";
 import { readOrder } from "@/lib/orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
+import { formatTokenAmount, formatUsdPrecise } from "@/lib/format";
+import { sendNotice } from "@/lib/server/email/send";
+import type { Notice } from "@/lib/server/email/compose";
 import {
   effectivePrice,
   fillProgress,
@@ -421,6 +424,25 @@ async function recordFill(row: Row, userId: string, response: IntentResponse, st
   }
 }
 
+/** What the email says when a waiting order closes: names, not tickers; the price the person set. */
+export function closingNotice(row: Row): Notice | null {
+  const listing = TOKEN_LISTINGS.find((entry) => entry.address.toLowerCase() === row.listing_address.toLowerCase());
+  const name = listing?.name ?? row.listing_symbol;
+  if (row.status === "expired") return { type: "order_expired", side: row.direction, name };
+  if (row.status !== "filled") return null;
+  let received: string | null = null;
+  try {
+    const raw = row.received_raw ? BigInt(row.received_raw) : 0n;
+    if (raw > 0n) {
+      const unit = row.direction === "buy" ? name : row.pay_symbol;
+      if (unit) received = `${formatTokenAmount(raw, row.output_decimals)} ${unit}`;
+    }
+  } catch {
+    received = null;
+  }
+  return { type: "order_filled", side: row.direction, name, price: formatUsdPrecise(Number(row.limit_price)), received };
+}
+
 /**
  * Bring waiting rows in step with the backend. A row the backend has not
  * indexed yet stays as it is. A waiting row past its own deadline that the
@@ -473,6 +495,11 @@ export async function syncRows(
       );
       if (status === "filled" && response && state && (await onFilled(next, row.user_id, response, state))) {
         await getSql().query(`update limit_orders set fill_recorded_at = $2 where id = $1`, [row.id, now.toISOString()]);
+      }
+      // The moment it closed, by fill or by its deadline: an order notice, once per order.
+      if (isWaiting(row.status) && (status === "filled" || status === "expired")) {
+        const notice = closingNotice(next);
+        if (notice) sendNotice({ userId: row.user_id, ref: row.id, notice });
       }
       out.push(next);
     }),

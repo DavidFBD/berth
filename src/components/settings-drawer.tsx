@@ -17,6 +17,7 @@ import { APPEARANCE_IDS, type AppearanceId } from "@/lib/appearance";
 import { CURRENCIES } from "@/lib/currencies";
 import { cn } from "@/lib/utils";
 import { useAwardTheme } from "@/hooks/use-profile";
+import { EmailSection } from "@/components/email-section";
 
 const APPEARANCE_ICONS: Record<AppearanceId, typeof Sun> = {
   system: Desktop,
@@ -26,7 +27,7 @@ const APPEARANCE_ICONS: Record<AppearanceId, typeof Sun> = {
 
 /**
  * The back room: pick an appearance (system, light, or dark) and a display
- * currency. Both persist per browser. Controlled from outside; the account
+ * currency, both per browser, and which notices come by email, per account. Controlled from outside; the account
  * drawer owns the way in.
  */
 export function SettingsDrawer({
@@ -132,6 +133,8 @@ export function SettingsDrawer({
                 ))}
               </div>
             </section>
+
+            <EmailSection offerAdd={false} />
 
             <div className="flex gap-5 self-start text-[13px]">
               <a href="/privacy" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">

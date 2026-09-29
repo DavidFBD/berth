@@ -32,6 +32,7 @@ import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
 import { SettingsDrawer } from "@/components/settings-drawer";
+import { EmailSection } from "@/components/email-section";
 import { AssistantSection } from "@/components/assistant/assistant-section";
 import { WalletsSection } from "@/components/account-wallets";
 import { SocialSection } from "@/components/social/social-section";
@@ -290,6 +291,9 @@ function ExternalAccountEntry({
             <WalletsSection />
             <Panel>
               <SocialSection />
+            </Panel>
+            <Panel>
+              <EmailSection heading="row" />
             </Panel>
             <Panel>
               <div id={ASSISTANT_ANCHOR} className="scroll-mt-4">

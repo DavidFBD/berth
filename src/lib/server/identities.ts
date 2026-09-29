@@ -95,18 +95,10 @@ export async function recordPrimaryEmail(userId: string, email: string): Promise
   if (!value) return;
   const sql = getSql();
   try {
-    const inserted = (await sql.query(
-      `insert into user_identities (user_id, kind, value, is_primary, verified_at, proof)
-       values ($1, 'email', $2, true, now(), 'privy_email')
-       on conflict do nothing
-       returning id`,
-      [userId, value],
-    )) as unknown[];
-    if (inserted.length > 0) return;
     const owner = (await sql.query(
-      `select user_id from user_identities where kind = 'email' and value = $1`,
+      `select user_id, is_primary from user_identities where kind = 'email' and value = $1`,
       [value],
-    )) as { user_id: string }[];
+    )) as { user_id: string; is_primary: boolean }[];
     const other = owner[0]?.user_id;
     if (other && other !== userId) {
       await sql.query(
@@ -114,10 +106,58 @@ export async function recordPrimaryEmail(userId: string, email: string): Promise
          values ($1, 'identity_conflict', $2::jsonb)`,
         [userId, JSON.stringify({ kind: "email", otherUserId: other })],
       );
-    } else if (!other) {
-      // Refused by the one-primary index: this account already has another.
-      console.warn(`[identities] email not recorded for ${userId.slice(0, 8)}: a primary email exists`);
+      return;
     }
+    if (owner[0]?.is_primary) return;
+    // A changed email: the old primary stays on the account as a linked
+    // email (it still belongs to nobody else), and the new one becomes the
+    // primary. Clear, then set, in the order the one-primary index allows.
+    const demoted = (await sql.query(
+      `update user_identities set is_primary = false
+        where user_id = $1 and kind = 'email' and is_primary and value <> $2
+        returning id`,
+      [userId, value],
+    )) as unknown[];
+    if (owner[0]) {
+      await sql.query(`update user_identities set is_primary = true, verified_at = now(), proof = 'privy_email' where kind = 'email' and value = $1 and user_id = $2`, [value, userId]);
+    } else {
+      await sql.query(
+        `insert into user_identities (user_id, kind, value, is_primary, verified_at, proof)
+         values ($1, 'email', $2, true, now(), 'privy_email')`,
+        [userId, value],
+      );
+    }
+    if (demoted.length > 0) {
+      await sql.query(`insert into account_audit (user_id, action, detail) values ($1, 'primary_email_changed', '{}'::jsonb)`, [userId]);
+    }
+  } catch (error) {
+    warnIdentity("email", userId, error);
+  }
+}
+
+/**
+ * After a merge: an account left with no primary email identity although
+ * its users.email holds one (a survivor the backfill never reached, or
+ * whose row moved over as linked) records it as primary, so notices have
+ * somewhere to go. Never throws; does nothing when a primary exists.
+ */
+export async function ensurePrimaryEmail(userId: string): Promise<void> {
+  try {
+    const rows = (await getSql().query(
+      `select u.email from users u
+        where u.id = $1 and u.email is not null and btrim(u.email) <> ''
+          and not exists (select 1 from user_identities i where i.user_id = u.id and i.is_primary)`,
+      [userId],
+    )) as { email: string }[];
+    const value = emailValue(rows[0]?.email);
+    if (!value) return;
+    await getSql().query(
+      `insert into user_identities (user_id, kind, value, is_primary, proof)
+       values ($1, 'email', $2, true, 'legacy')
+       on conflict on constraint user_identities_kind_value do update set is_primary = true
+         where user_identities.user_id = excluded.user_id`,
+      [userId, value],
+    );
   } catch (error) {
     warnIdentity("email", userId, error);
   }

@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/server/db";
+import { ensurePrimaryEmail } from "@/lib/server/identities";
 
 /**
  * Phase 3 of docs/plans/account-linking.md: two Berth accounts one person
@@ -169,6 +170,8 @@ export async function mergeAccounts({
     const rows = (await sql.query(`select merge_accounts($1, $2, $3) as moved`, [id, survivor, absorbed])) as {
       moved: Record<string, number>;
     }[];
+    // The survivor must have a primary email if its users row names one, so notices reach it.
+    await ensurePrimaryEmail(survivor);
     return { ok: true, survivor, absorbed, moved: rows[0]?.moved ?? {}, again: false };
   } catch (error) {
     const code = (error as { code?: unknown })?.code;

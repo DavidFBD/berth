@@ -3,6 +3,7 @@ import { refreshMarks, type MarksRunSummary } from "@/lib/server/marks";
 import { fillOrderMarks, type OrderMarksSummary } from "@/lib/server/order-marks";
 import { rebuildMergedPortfolios, runPortfolioSnapshot, type RebuildSummary, type SnapshotSummary } from "@/lib/server/portfolio";
 import { pruneOAuth, type OAuthPruneSummary } from "@/lib/server/oauth/prune";
+import { retryPendingSends, type RetrySummary } from "@/lib/server/email/send";
 import { syncWaitingOrders, type LimitSyncSummary } from "@/lib/server/limit-orders";
 import { settlePourClaims, type ClaimSummary } from "@/lib/server/pour-claims";
 
@@ -61,6 +62,8 @@ export type EveningSummary = {
   rebuilds: Stage<RebuildSummary>;
   /** Accounts whose history was reached back to the first buy (lib/server/history-backfill). */
   histories: Stage<HistoryBackfillSummary>;
+  /** Email notices pending more than ten minutes, sent again (lib/server/email). */
+  emails: Stage<RetrySummary>;
   /** Marks written or dropped, order prices written, portfolio days written. */
   written: number;
   failed: boolean;
@@ -93,6 +96,7 @@ export async function runEvening({
   claims = () => settlePourClaims({ now }),
   rebuilds = () => rebuildMergedPortfolios({ now }),
   histories = (deadline: number) => backfillHistories({ write: true, limit: HISTORY_BACKFILL_PER_RUN, now, deadline }),
+  emails = () => retryPendingSends(),
   budgets = { marks: MARKS_BUDGET_MS, orderMarks: ORDER_MARKS_BUDGET_MS, snapshotDeadline: SNAPSHOT_DEADLINE_MS },
 }: {
   now?: Date;
@@ -104,13 +108,15 @@ export async function runEvening({
   claims?: () => Promise<ClaimSummary>;
   rebuilds?: () => Promise<RebuildSummary>;
   histories?: (deadline: number) => Promise<HistoryBackfillSummary>;
+  emails?: () => Promise<RetrySummary>;
   budgets?: { marks: number; orderMarks: number; snapshotDeadline: number };
 } = {}): Promise<EveningSummary> {
   const started = Date.now();
-  const [marksStage, pruneStage, limitStage] = await Promise.all([
+  const [marksStage, pruneStage, limitStage, emailStage] = await Promise.all([
     stage(marks, budgets.marks),
     stage(prune, budgets.marks),
     stage(limits, budgets.marks),
+    stage(emails, budgets.marks),
   ]);
   // After the limit pass, which records the fills the claims wait on.
   const claimStage = await stage(claims, budgets.orderMarks);
@@ -149,6 +155,7 @@ export async function runEvening({
   if (!claimStage.ok) console.warn("[cron/evening] pour claims failed:", claimStage.error);
   if (!rebuildStage.ok) console.warn("[cron/evening] merged history failed:", rebuildStage.error);
   if (!historyStage.ok) console.warn("[cron/evening] history backfill failed:", historyStage.error);
+  if (!emailStage.ok) console.warn("[cron/evening] email retry failed:", emailStage.error);
   return {
     marks: marksStage,
     orderMarks: orderStage,
@@ -158,6 +165,7 @@ export async function runEvening({
     pourClaims: claimStage,
     rebuilds: rebuildStage,
     histories: historyStage,
+    emails: emailStage,
     written:
       written +
       (rebuildStage.ok ? rebuildStage.result.written : 0) +

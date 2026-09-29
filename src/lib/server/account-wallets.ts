@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/server/db";
+import { sendNotice } from "@/lib/server/email/send";
 import { toCaip10, type WalletFamily } from "@/lib/identity/caip";
 import {
   UNLINK_COOLDOWN_DAYS,
@@ -86,10 +87,10 @@ export async function linkWallet(userId: string, address: string, family: LinkFa
      where user_identities.unlinked_at is not null
        and (user_identities.user_id = excluded.user_id
             or user_identities.unlinked_at <= now() - interval '${UNLINK_COOLDOWN_DAYS} days')
-     returning is_home`,
+     returning is_home, id, extract(epoch from created_at)::bigint::text as at`,
       [userId, value, wallet],
-    ) as Promise<{ is_home: boolean }[]>;
-  let rows: { is_home: boolean }[];
+    ) as Promise<{ is_home: boolean; id: string; at: string }[]>;
+  let rows: { is_home: boolean; id: string; at: string }[];
   try {
     rows = await insert(true);
   } catch (error) {
@@ -107,6 +108,8 @@ export async function linkWallet(userId: string, address: string, family: LinkFa
       );
     }
     await audit(userId, "wallet_linked", { family, wallet: value, home: rows[0].is_home, proof: LINK_PROOF[family] });
+    // A security notice, once per link (the row and when it was linked).
+    sendNotice({ userId, ref: `${rows[0].id}:${rows[0].at}`, notice: { type: "wallet_added", family, address: wallet } });
     return "linked";
   }
 
@@ -208,11 +211,12 @@ export async function unlinkWallet(userId: string, address: string, family: Link
   const rows = (await sql.query(
     `update user_identities set unlinked_at = now()
       where user_id = $1 and kind = 'wallet' and value = $2 and unlinked_at is null and not is_home
-      returning id`,
+      returning id, extract(epoch from unlinked_at)::bigint::text as at`,
     [userId, value],
-  )) as unknown[];
+  )) as { id: string; at: string }[];
   if (rows.length === 0) return "not_linked";
   await audit(userId, "wallet_unlinked", { family, wallet: value });
+  sendNotice({ userId, ref: `${rows[0].id}:${rows[0].at}`, notice: { type: "wallet_removed", family, address: wallet } });
   return "unlinked";
 }
 

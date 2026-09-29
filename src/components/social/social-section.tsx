@@ -339,8 +339,8 @@ function Fold({ open, onToggle, title, count, children }: { open: boolean; onTog
   );
 }
 
-/** A plain on/off switch. On here means hidden. */
-function Toggle({ label, on, onChange, disabled }: { label: string; on: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+/** A plain on/off switch (here, on means hidden; the Email section reuses it). */
+export function Toggle({ label, on, onChange, disabled }: { label: string; on: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
   return (
     <button
       type="button"

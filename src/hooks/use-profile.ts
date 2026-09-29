@@ -26,6 +26,7 @@ import type { ChatStatusResponse } from "@/app/api/chat/status/route";
 import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route";
 import type { WalletsResponse } from "@/app/api/account/wallets/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
+import type { EmailSettingsResponse, SwitchableKind } from "@/lib/email-kinds";
 import { CHAT_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
 import { announceRewards } from "@/components/xp-toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
@@ -489,6 +490,31 @@ export function useAuthorizeDecision() {
       const data = await call<{ redirect?: string }>("/api/oauth/decision", vars);
       return data?.redirect ?? null;
     },
+  });
+}
+
+/** The account's email settings (app/api/account/email). Fetched only while the section is on screen. */
+export function useEmailSettings(enabled: boolean) {
+  return useRewardsQuery<EmailSettingsResponse>("email-settings", "/api/account/email", {
+    enabled,
+    staleTime: 60_000,
+    // Not deployed yet: no address, so the section offers to add one.
+    notFound: { address: null, deliverable: false, prefs: { orders: true, friends: true, weekly: false } },
+  });
+}
+
+/** Flip one email switch; the cached settings are replaced with the answer. */
+export function useSetEmailPref() {
+  const queryClient = useQueryClient();
+  const { key, call } = useRewardsCall();
+  return useMutation({
+    mutationFn: async ({ kind, enabled }: { kind: SwitchableKind; enabled: boolean }) => {
+      if (!key) throw new Error("no account");
+      const data = await call<EmailSettingsResponse>("/api/account/email/prefs", { kind, enabled });
+      if (!data) throw new Error("not saved");
+      return data;
+    },
+    onSuccess: (data) => queryClient.setQueryData(["email-settings", key], data),
   });
 }
 

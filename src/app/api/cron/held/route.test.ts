@@ -42,7 +42,8 @@ describe("GET /api/cron/held", () => {
     vi.stubEnv("CRON_SECRET", SECRET);
     const response = await call(`Bearer ${SECRET}`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ checked: 3, paid: 1, forfeited: 1, retried: 1 });
+    // The morning email pass rides along; with no key it does nothing.
+    expect(await response.json()).toEqual({ checked: 3, paid: 1, forfeited: 1, retried: 1, emails: { retried: 0, sent: 0, gaveUp: 0 } });
     expect(runHoldCheck).toHaveBeenCalledOnce();
   });
 });

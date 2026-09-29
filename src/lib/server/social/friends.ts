@@ -3,6 +3,7 @@ import { CODE_ALPHABET } from "@/lib/invite-code";
 import { lookupKey } from "@/lib/handle";
 import type { CardAnswer, FriendAction, FriendsList, Person } from "@/lib/social-types";
 import { socialAudit } from "@/lib/server/social/audit";
+import { sendNotice } from "@/lib/server/email/send";
 import { NOT_FOUND, readCardOf, relationTo, SIGN_IN } from "@/lib/server/social/cards";
 import { anyTarget, hasVerifiedEmail, SHOWN_SQL, visibleTarget, type SocialViewer } from "@/lib/server/social/people";
 
@@ -168,10 +169,14 @@ async function request(viewer: SocialViewer, target: string, via: "handle" | "li
      select $1, $2, $3, case when q then 'declined' else 'pending' end, case when q then now() end from quiet
      where (select count(*) from friend_requests where from_id = $1 and created_at > now() - interval '1 day') < $5
      on conflict do nothing
-     returning 1`,
+     returning id, status, (select handle from handles where user_id = $1) as handle`,
     [viewer.id, target, via, DECLINE_QUIET_DAYS, DAILY_REQUEST_MAX],
-  )) as unknown[];
+  )) as { id: string; status: string; handle: string | null }[];
   if (rows.length > 0) await socialAudit(viewer.id, "friend_request", target, { via });
+  // A request that reaches them (not one held quiet after a decline) is a friends notice.
+  if (rows[0]?.status === "pending" && rows[0].handle) {
+    sendNotice({ userId: target, ref: rows[0].id, notice: { type: "friend_request", username: rows[0].handle } });
+  }
   return rows.length > 0;
 }
 

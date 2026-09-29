@@ -1,0 +1,114 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`notice templates > accounts-merged renders HTML and text without personal data 1`] = `
+"Subject: Your Berth accounts were merged
+
+Your accounts are now one
+
+Two Berth accounts were merged into this one. Your orders, rewards and wallets are all here now.
+
+Open Berth: https://www.berthmarkets.com/
+
+This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
+Not you? Write to us at support@berthmarkets.com.
+
+Berth. A place to tie up."
+`;
+
+exports[`notice templates > assistant-connected renders HTML and text without personal data 1`] = `
+"Subject: Claude was connected to your Berth account
+
+An AI was connected
+
+Claude was connected to your Berth account. It can:
+
+* See what you own and your orders.
+* Suggest a buy or a sell, which you check and sign in Berth.
+
+It cannot move your money or sign for you. You can disconnect it from your account at any time.
+
+Open Berth: https://www.berthmarkets.com/
+
+This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
+Not you? Write to us at support@berthmarkets.com.
+
+Berth. A place to tie up."
+`;
+
+exports[`notice templates > friend-request renders HTML and text without personal data 1`] = `
+"Subject: harbourmaster asked to be your friend on Berth
+
+A friend request
+
+harbourmaster asked to be your friend on Berth. Open Berth to accept or decline.
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because friend emails are on.
+Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Berth. A place to tie up."
+`;
+
+exports[`notice templates > order-expired renders HTML and text without personal data 1`] = `
+"Subject: Your NVIDIA buy order expired
+
+Your order expired
+
+Your limit order to buy NVIDIA reached its end date without filling. The money came back to your wallet.
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because order emails are on.
+Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Berth. A place to tie up."
+`;
+
+exports[`notice templates > order-filled renders HTML and text without personal data 1`] = `
+"Subject: Your NVIDIA buy order filled
+
+Your order filled
+
+Your limit order to buy NVIDIA filled at $198.20 or less, the price you set.
+
+Your price: $198.20
+Received: 0.5046 NVIDIA
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because order emails are on.
+Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Berth. A place to tie up."
+`;
+
+exports[`notice templates > wallet-added renders HTML and text without personal data 1`] = `
+"Subject: A wallet was added to your Berth account
+
+A wallet was added
+
+An EVM wallet, 0x5aAe…eAed, was added to your Berth account. It can now pay for your orders.
+
+Open Berth: https://www.berthmarkets.com/
+
+This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
+Not you? Write to us at support@berthmarkets.com.
+
+Berth. A place to tie up."
+`;
+
+exports[`notice templates > wallet-removed renders HTML and text without personal data 1`] = `
+"Subject: A wallet was removed from your Berth account
+
+A wallet was removed
+
+A Solana wallet, 7EcDhS…FLtV, was removed from your Berth account. Orders it paid for stay in your history.
+
+Open Berth: https://www.berthmarkets.com/
+
+This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
+Not you? Write to us at support@berthmarkets.com.
+
+Berth. A place to tie up."
+`;

@@ -5,6 +5,7 @@ allowBuilds:
   bufferutil: true
   core-js: true
   core-js-pure: true
+  esbuild: false
   keccak: true
   protobufjs: true
   secp256k1: true

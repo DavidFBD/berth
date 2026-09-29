@@ -929,6 +929,9 @@ export type Copy = {
   chatTooLong: string;
   chatLockedTitle: (rankName: string) => string;
   chatLockedBody: (xp: number) => string;
+  /* — email (lib/server/email): notices by mail, and the settings that choose them — */
+  email: EmailCopy;
+
   /* — the privacy policy (app/privacy): public, signed in or not — */
   /** The small link to /privacy, in the settings drawer and under the consent screen. */
   privacyLink: string;
@@ -1169,6 +1172,72 @@ export type LegalDocument = {
   backHome: string;
 };
 
+/**
+ * Every word an email says (lib/server/email/compose), and the Email
+ * section of the settings drawer and the unsubscribe page. One fact, one
+ * button, one line on why the email arrived. Security notices never ask
+ * for a code or a click to "secure" anything, and link only to Berth.
+ */
+export type EmailCopy = {
+  openBerth: string;
+  /** Before the privacy contact's address, at the foot of every security notice. */
+  notYou: string;
+  securityWhy: string;
+  why: Record<"orders" | "friends" | "weekly", string>;
+  unsubscribe: string;
+  signoff: string;
+  /** With its article, as a sentence opens: "An EVM", "A Solana". */
+  family: Record<"evm" | "solana" | "bitcoin", string>;
+  walletAdded: { subject: string; heading: string; body: (family: string, address: string) => string };
+  walletRemoved: { subject: string; heading: string; body: (family: string, address: string) => string };
+  accountsMerged: { subject: string; heading: string; body: string };
+  assistantConnected: {
+    /** When the app gave no name. */
+    unnamed: string;
+    subject: (app: string) => string;
+    heading: string;
+    body: (app: string) => string;
+    scopes: Record<"read" | "draft", string>;
+    after: string;
+  };
+  orderFilled: {
+    subject: (name: string, side: "buy" | "sell") => string;
+    heading: string;
+    body: (name: string, side: "buy" | "sell", price: string) => string;
+    priceLabel: string;
+    receivedLabel: string;
+  };
+  orderExpired: {
+    subject: (name: string, side: "buy" | "sell") => string;
+    heading: string;
+    body: (name: string, side: "buy" | "sell") => string;
+  };
+  friendRequest: { subject: (username: string) => string; heading: string; body: (username: string) => string };
+  settings: {
+    sectionLabel: string;
+    goesTo: (address: string) => string;
+    securityAlways: string;
+    kinds: Record<"orders" | "friends" | "weekly", { label: string; sub: string }>;
+    addEmail: string;
+    addEmailSub: string;
+    undeliverable: string;
+    saveFailed: string;
+  };
+  unsubscribePage: {
+    title: string;
+    kindName: Record<"orders" | "friends" | "weekly", string>;
+    confirm: (kind: string) => string;
+    confirmSub: string;
+    confirmButton: string;
+    done: (kind: string) => string;
+    doneSub: string;
+    turnBackOn: string;
+    backOn: (kind: string) => string;
+    invalid: string;
+    backHome: string;
+  };
+};
+
 /** "first day", "1 market day", "4 market days". */
 function marketDays(days: number): string {
   if (days <= 0) return "first day";
@@ -1182,7 +1251,7 @@ function marketDays(days: number): string {
  */
 export const PRIVACY_OPERATOR = {
   name: "RD Norra-Winkels",
-  email: "david@sodax.com",
+  email: "support@berthmarkets.com",
   country: "the Netherlands",
 } as const;
 
@@ -2104,10 +2173,100 @@ export const COPY: Copy = {
   chatLockedTitle: (rankName) => `The Assistant opens at ${rankName}`,
   chatLockedBody: (xp) =>
     `${xp} XP to go. Adding an email to your account or making your first buy gets you there.`,
+  email: {
+    openBerth: "Open Berth",
+    notYou: "Not you? Write to us at",
+    securityWhy: "This is a security notice. Berth sends these to every account with an email, whatever your email settings say.",
+    why: {
+      orders: "You get this because order emails are on.",
+      friends: "You get this because friend emails are on.",
+      weekly: "You get this because the weekly summary is on.",
+    },
+    unsubscribe: "Turn these off",
+    signoff: "Berth. A place to tie up.",
+    family: { evm: "An EVM", solana: "A Solana", bitcoin: "A Bitcoin" },
+    walletAdded: {
+      subject: "A wallet was added to your Berth account",
+      heading: "A wallet was added",
+      body: (family, address) => `${family} wallet, ${address}, was added to your Berth account. It can now pay for your orders.`,
+    },
+    walletRemoved: {
+      subject: "A wallet was removed from your Berth account",
+      heading: "A wallet was removed",
+      body: (family, address) =>
+        `${family} wallet, ${address}, was removed from your Berth account. Orders it paid for stay in your history.`,
+    },
+    accountsMerged: {
+      subject: "Your Berth accounts were merged",
+      heading: "Your accounts are now one",
+      body: "Two Berth accounts were merged into this one. Your orders, rewards and wallets are all here now.",
+    },
+    assistantConnected: {
+      unnamed: "An AI app",
+      subject: (app) => `${app} was connected to your Berth account`,
+      heading: "An AI was connected",
+      body: (app) => `${app} was connected to your Berth account. It can:`,
+      scopes: {
+        read: "See what you own and your orders.",
+        draft: "Suggest a buy or a sell, which you check and sign in Berth.",
+      },
+      after: "It cannot move your money or sign for you. You can disconnect it from your account at any time.",
+    },
+    orderFilled: {
+      subject: (name, side) => `Your ${name} ${side === "buy" ? "buy" : "sell"} order filled`,
+      heading: "Your order filled",
+      body: (name, side, price) =>
+        side === "buy"
+          ? `Your limit order to buy ${name} filled at ${price} or less, the price you set.`
+          : `Your limit order to sell ${name} filled at ${price} or more, the price you set.`,
+      priceLabel: "Your price",
+      receivedLabel: "Received",
+    },
+    orderExpired: {
+      subject: (name, side) => `Your ${name} ${side === "buy" ? "buy" : "sell"} order expired`,
+      heading: "Your order expired",
+      body: (name, side) =>
+        side === "buy"
+          ? `Your limit order to buy ${name} reached its end date without filling. The money came back to your wallet.`
+          : `Your limit order to sell ${name} reached its end date without filling. Your ${name} came back to your account.`,
+    },
+    friendRequest: {
+      subject: (username) => `${username} asked to be your friend on Berth`,
+      heading: "A friend request",
+      body: (username) => `${username} asked to be your friend on Berth. Open Berth to accept or decline.`,
+    },
+    settings: {
+      sectionLabel: "Email",
+      goesTo: (address) => `Notices go to ${address}.`,
+      securityAlways: "Security notices always reach you: a wallet added or removed, accounts merged, an AI connected.",
+      kinds: {
+        orders: { label: "Orders", sub: "When a limit order fills or expires." },
+        friends: { label: "Friends", sub: "When someone asks to be your friend." },
+        weekly: { label: "Weekly summary", sub: "Your week against your benchmark." },
+      },
+      addEmail: "Add an email to get notices",
+      addEmailSub: "Security and order notices, by mail.",
+      undeliverable: "Mail to this address did not arrive, so Berth stopped sending. Write to us to start again.",
+      saveFailed: "That did not save. Try again.",
+    },
+    unsubscribePage: {
+      title: "Email settings",
+      kindName: { orders: "order", friends: "friend", weekly: "weekly summary" },
+      confirm: (kind) => `Turn off ${kind} emails?`,
+      confirmSub: "Security notices still reach you whatever you choose here.",
+      confirmButton: "Turn off",
+      done: (kind) => `${kind.charAt(0).toUpperCase()}${kind.slice(1)} emails are off.`,
+      doneSub: "Security notices still reach you. You can turn this back on here or in Berth's settings.",
+      turnBackOn: "Turn back on",
+      backOn: (kind) => `${kind.charAt(0).toUpperCase()}${kind.slice(1)} emails are on again.`,
+      invalid: "This link no longer works. You can change your email settings in Berth.",
+      backHome: "Go to Berth",
+    },
+  },
   privacyLink: "Privacy",
   privacyPolicy: {
     title: "Privacy policy",
-    status: "Effective 28 September 2026.",
+    status: "Effective 29 September 2026.",
     intro: [
       "This policy explains what Berth collects when you use www.berthmarkets.com and the Berth connector for your AI, why, who else sees it, how long we keep it, and what you can ask of us.",
       "Berth is self custodial. We never hold your keys and we never hold your money.",
@@ -2134,6 +2293,7 @@ export const COPY: Copy = {
           "Your AI. If you connect Claude, ChatGPT, Grok or another AI, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what your AI asked or what Berth answered.",
           "Error reports. When an order fails or does not settle, the app sends a report so we can fix the cause: the step it stopped at, the networks, the token and amount, the transaction hashes, a shortened form of your address, the error text, recent app logs, the page address, your screen size and your browser's user agent. Keys and tokens are removed first, and it never includes your email address.",
           "Usage statistics. We count page views with Vercel Web Analytics, which uses no cookies.",
+          "Emails we send. For each notice: its type, what it was about (an order, a connection), whether it was sent, and the email provider's message identifier. Never the email's text: while a notice waits to be sent again, we keep only what it will name (such as a listing, a price or a shortened wallet address), and delete that once it is sent. Your choices of which emails to get, and whether mail to your address bounced or was reported as spam.",
         ],
         after: [
           "We use this to run your account, show what you own and how it has done, check an order before a reward is paid for it, pay invite rewards, keep the service secure, limit abuse, and fix what breaks.",
@@ -2189,6 +2349,21 @@ export const COPY: Copy = {
         ],
       },
       {
+        id: "email",
+        heading: "Email from Berth",
+        body: [
+          "If your account has a verified email address, Berth sends it short notices about your account. We send no marketing.",
+        ],
+        list: [
+          "Security notices: a wallet added to or removed from your account, two accounts merged, an AI connected. These always go out, because they are how you would learn that someone else is using your account. They never ask you for a code or a password.",
+          "Order notices: a limit order filled, or expired and the money came back. On unless you turn them off.",
+          "Friend notices: someone asked to be your friend, at most one email a day. On unless you turn them off.",
+        ],
+        after: [
+          "We do not track whether you open an email or click its links. Every notice other than a security notice has a link to turn that kind off, and you can change them all under Email in the app's settings. If mail to your address bounces or is reported as spam, we stop sending to it.",
+        ],
+      },
+      {
         id: "sharing",
         heading: "Who we share it with",
         body: ["We share personal data only with the services that run Berth, each for its own part."],
@@ -2200,6 +2375,7 @@ export const COPY: Copy = {
           "Blockchain networks. Your browser reads balances and sends transactions through public network nodes. A Bitcoin order links to mempool.space so you can follow it there.",
           "GitHub, where error reports are kept in a private repository.",
           "OpenAI, if you use the Assistant in Berth, as described above.",
+          "Resend, which delivers our emails. It receives your email address, the notice's content (such as a listing's name, an amount, a price, or a friend's username) and whether the email was delivered, bounced or reported as spam.",
           "TypeSafe, whose Jev model helps choose the one line shown at the top of the app, such as news about something you own. It receives which listings your account holds and whether it has cash to spend, never your name, email or address.",
           "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
         ],
@@ -2237,6 +2413,7 @@ export const COPY: Copy = {
           "Abuse limit counters: one day. They hold a hashed form of the caller's IP address, never the address itself.",
           "Invite link visits and error reports: up to 12 months.",
           "The record of profile and friend changes: 12 months.",
+          "The record of emails sent: 12 months. A block on an address that bounced or reported spam: as long as the account exists, so the block holds.",
         ],
       },
       {
