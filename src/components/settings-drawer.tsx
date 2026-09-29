@@ -18,6 +18,7 @@ import { CURRENCIES } from "@/lib/currencies";
 import { cn } from "@/lib/utils";
 import { useAwardTheme } from "@/hooks/use-profile";
 import { EmailSection } from "@/components/email-section";
+import { AdvancedSection } from "@/components/key-export-row";
 
 const APPEARANCE_ICONS: Record<AppearanceId, typeof Sun> = {
   system: Desktop,
@@ -33,9 +34,12 @@ const APPEARANCE_ICONS: Record<AppearanceId, typeof Sun> = {
 export function SettingsDrawer({
   open,
   onOpenChange,
+  evmAddress,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Embedded-wallet accounts only: gates the Advanced section (private key export). */
+  evmAddress?: string;
 }) {
   const copy = useCopy();
   const { appearance, setAppearance } = useAppearance();
@@ -144,6 +148,11 @@ export function SettingsDrawer({
                 {copy.termsLink}
               </a>
             </div>
+
+            {/* Collapsed and closed by default, every time: the private key
+                export lives here, not in the account drawer, so it can't be
+                reached by accident. */}
+            <AdvancedSection evmAddress={evmAddress} />
           </div>
         </DrawerContent>
     </Drawer>

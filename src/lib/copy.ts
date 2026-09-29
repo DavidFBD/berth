@@ -529,6 +529,9 @@ export type Copy = {
   exportKeysSub: string;
   exportEvmLabel: string;
   exportSolanaLabel: string;
+  /** Risk step shown before the EVM/Solana buttons unlock. */
+  exportConfirmWarning: string;
+  exportConfirmCheckboxLabel: string;
 
   /* — settings — */
   settingsTitle: string;
@@ -538,6 +541,8 @@ export type Copy = {
   appearanceLight: string;
   appearanceDark: string;
   currencySectionLabel: string;
+  /** Collapsed, closed by default: the private key export lives here now. */
+  advancedSectionLabel: string;
 
   /* — info drawer: what this is, what you own, what it costs — */
   infoTitle: string;
@@ -1363,7 +1368,7 @@ export const COPY: Copy = {
         title: "Your custody, always",
         body: [
           "Berth is software, not a broker. You sign every order in your own wallet, and Berth never holds your keys or your funds.",
-          "Start with just an email and get a wallet with no seed phrase, or bring your own wallet. Keys can be exported.",
+          "Start with just an email and get a wallet with no seed phrase, or bring your own wallet. Keys can be exported from Settings, Advanced.",
         ],
         asks: "Your wallet asks you to sign",
         buy: "Buy",
@@ -1745,14 +1750,18 @@ export const COPY: Copy = {
   errNeedsGasUnknown: (network) =>
     `Not enough to cover the network fee. Add a little more on ${network} and try again.`,
 
-  exportKeysTitle: "Take your keys",
+  exportKeysTitle: "Export a private key",
   exportKeysSub:
-    "Export a private key and move your funds with any wallet. Privy shows it in its own window, so the app never sees it.",
+    "Move your funds with any wallet. Privy shows the key in its own window, so Berth never sees it.",
   exportEvmLabel: "EVM key",
   exportSolanaLabel: "Solana key",
+  exportConfirmWarning:
+    "Anyone with this key can take everything in this wallet. Berth will never ask for it. Never paste it into a website or a chat.",
+  exportConfirmCheckboxLabel: "I understand",
 
   settingsTitle: "Settings",
   settingsSub: "How the app looks, and which currency it speaks.",
+  advancedSectionLabel: "Advanced",
   appearanceSectionLabel: "Appearance",
   appearanceSystem: "System",
   appearanceLight: "Light",

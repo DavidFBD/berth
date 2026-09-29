@@ -5,16 +5,12 @@ import type { AssistantId } from "@/lib/assistant-party";
 import { toast } from "sonner";
 import { useLinkInProgress } from "@/hooks/use-link-email";
 import { AnimatePresence, motion } from "motion/react";
-import { useAddFunds, useExportWallet } from "@privy-io/react-auth";
-import {
-  useExportWallet as useExportSolanaWallet,
-  useWallets as useSolanaWallets,
-} from "@privy-io/react-auth/solana";
+import { useAddFunds } from "@privy-io/react-auth";
+import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Copy,
   GearSix,
-  Key,
   PlusCircle,
   QrCode,
   SignOut,
@@ -148,9 +144,6 @@ export function AccountButton({
 
             {address && <FundButton address={address} />}
 
-            {/* The way out. Client-only, like SolanaReceive. */}
-            {address && mounted && <KeyExportRow evmAddress={address} />}
-
             {/* An assistant that reads the account and drafts orders the
                 person signs here (app/mcp). */}
             {address && (
@@ -203,7 +196,11 @@ export function AccountButton({
         </DrawerContent>
       </Drawer>
 
-      <SettingsDrawer open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDrawer
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        evmAddress={mounted ? address : undefined}
+      />
     </>
   );
 }
@@ -336,71 +333,6 @@ function SolanaReceive() {
       address={solanaAddress}
       copyToast={copy.receiveSolanaToast}
     />
-  );
-}
-
-/**
- * The account drawer's only way out. Funds has no send screen by design,
- * which holds up while every asset can be traded and traps the ones that
- * can't: a withdraw delivered SOL to Solana had nowhere to land, and the
- * balance sat there unreachable (field-found 2026-09-01). Export answers
- * that without building a send flow, and Privy renders the key in an iframe
- * on its own domain, so this app never touches it.
- *
- * Needs wallet export enabled for the app in the Privy dashboard; with the
- * toggle off, Privy explains that inside its own modal.
- *
- * Client-only: the /solana hooks are not SSR-safe.
- */
-function KeyExportRow({ evmAddress }: { evmAddress: string }) {
-  const copy = useCopy();
-  const { exportWallet: exportEvmWallet } = useExportWallet();
-  const { exportWallet: exportSolanaWallet } = useExportSolanaWallet();
-  const solanaAddress = usePrivySolanaAddress();
-
-  return (
-    <div>
-      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
-        <Key className="size-5 shrink-0 text-primary" />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="text-sm font-medium text-foreground">
-            {copy.exportKeysTitle}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {copy.exportKeysSub}
-          </span>
-        </div>
-      </div>
-      <div className="flex gap-2 px-3 pb-3">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={() => {
-            void exportEvmWallet({ address: evmAddress }).catch(() => {
-              // Rejection includes plain user exit, and a disabled export
-              // toggle is something Privy reports in its own modal.
-            });
-          }}
-        >
-          {copy.exportEvmLabel}
-        </Button>
-        {solanaAddress && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
-            onClick={() => {
-              void exportSolanaWallet({ address: solanaAddress }).catch(() => {
-                // See above.
-              });
-            }}
-          >
-            {copy.exportSolanaLabel}
-          </Button>
-        )}
-      </div>
-    </div>
   );
 }
 

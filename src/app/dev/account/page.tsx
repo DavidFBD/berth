@@ -21,6 +21,7 @@ import { AddWalletList, SignedInAsLine, UnlinkedWalletLine, WalletsList } from "
 import type { AddRow } from "@/lib/add-wallet-list";
 import { COPY } from "@/lib/copy";
 import { SocialSection } from "@/components/social/social-section";
+import { SettingsDrawer } from "@/components/settings-drawer";
 
 const DEMO_HOME = "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be";
 const DEMO_SECOND = "0x71c7656ec7ab88b098defb751b7401b5f6d8976f";
@@ -150,6 +151,10 @@ function WalletsGallery({ scene }: { scene: string }) {
  *                                     a Bitcoin address already joined),
  *                                     drawer (Your profile above Wallets, as in the
  *                                     account drawer)
+ *   /dev/account?settings=1           the Settings drawer, open, with a
+ *                                     fake embedded address so Advanced
+ *                                     (private key export) renders; open it
+ *                                     by hand to shoot the confirm step
  *   /dev/account?assistant=claude     the "Your assistant" section with two
  *                                     connected assistants from fixtures,
  *                                     that one's steps unfolded (claude,
@@ -188,6 +193,11 @@ function Inspector() {
   }
   const walletsScene = params.get("wallets");
   if (walletsScene) return <WalletsGallery scene={walletsScene} />;
+  if (params.has("settings")) {
+    // Advanced starts closed every time (no stored choice); open it by hand
+    // in the drawer to shoot that state.
+    return <SettingsDrawer open onOpenChange={() => {}} evmAddress={DEMO_HOME} />;
+  }
   const assistant = params.get("assistant");
   if (assistant) {
     const open = assistant === "claude" || assistant === "chatgpt" || assistant === "grok" ? assistant : null;

@@ -7,6 +7,10 @@
  *   pnpm shot --url http://localhost:3000/foo --viewport 1280x800
  *   pnpm shot --scheme dark                    # emulates prefers-color-scheme
  *   pnpm shot --hover "li:has-text('NVIDIA')"  # a hover-revealed control
+ *   pnpm shot --click "text=Advanced" --click "text=Export a private key"
+ *                                               # click through a multi-step
+ *                                               # flow before the shutter,
+ *                                               # in order, one repeatable flag
  *   pnpm shot --local-storage '{"key":"value"}' # seeded once, before first load
  *   pnpm shot --reload-out second.png          # reload in the same context, shoot again
  *   pnpm shot --full                           # the whole page, not just the viewport
@@ -33,6 +37,15 @@ const arg = (name, fallback) => {
   return i > -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 };
 
+/** Every occurrence of a repeatable flag, in the order given. */
+const argAll = (name) => {
+  const out = [];
+  for (let i = 0; i < process.argv.length; i++) {
+    if (process.argv[i] === `--${name}` && process.argv[i + 1]) out.push(process.argv[i + 1]);
+  }
+  return out;
+};
+
 const url = arg("url", "http://localhost:3000");
 const out = arg("out", "shot.png");
 const browserName = arg("browser", "webkit");
@@ -42,6 +55,9 @@ const dpr = Number(arg("dpr", "2"));
 const colorScheme = arg("scheme", "light");
 // A control that only exists under the cursor cannot be reviewed without one.
 const hover = arg("hover", null);
+// A multi-step flow (open a disclosure, then tap the row it reveals) clicked
+// through in order before the shutter.
+const clicks = argAll("click");
 const storageSeedRaw = arg("local-storage", null);
 let storageSeed = null;
 if (storageSeedRaw) {
@@ -107,6 +123,11 @@ await page.waitForTimeout(settleMs);
 if (hover) {
   await page.locator(hover).first().hover();
   // Let the reveal finish before the shutter.
+  await page.waitForTimeout(400);
+}
+for (const selector of clicks) {
+  await page.locator(selector).first().click();
+  // Let each step's transition settle before the next click or the shutter.
   await page.waitForTimeout(400);
 }
 await page.screenshot({ path: out, fullPage });
