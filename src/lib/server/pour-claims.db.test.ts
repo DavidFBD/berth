@@ -81,6 +81,21 @@ describe("claims the evening settles", () => {
   });
 });
 
+describe("a claim keeps its listing", () => {
+  it("as first told, whatever a replay says, and never for another account", async () => {
+    const rows = (await sql.query(`insert into users (wallet_address) values ('0xlisting') returning id`)) as { id: string }[];
+    const userId = rows[0].id;
+    await savePourClaim(userId, "0xlisted", "buy", null, "NVDA");
+    await savePourClaim(userId, "0xlisted", "buy", "0xfill", "TSLA");
+    await savePourClaim(userId, "0xunlisted", "buy", null);
+    await savePourClaim(userId, "0xunlisted", "buy", null, "AAPL");
+    expect(await sql.query(`select intent_tx, listing_symbol, fill_tx from pour_claims where user_id = $1 order by intent_tx`, [userId])).toEqual([
+      { intent_tx: "0xlisted", listing_symbol: "NVDA", fill_tx: "0xfill" },
+      { intent_tx: "0xunlisted", listing_symbol: "AAPL", fill_tx: null },
+    ]);
+  });
+});
+
 describe("claims that cannot be paid yet", () => {
   it("stay open when the order row cannot be written, rotate to the back, and stop at the budget", async () => {
     const rows = (await sql.query(`insert into users (wallet_address) values ('0xclaim2') returning id`)) as { id: string }[];

@@ -9,6 +9,7 @@ import { saveOrder } from "@/lib/server/orders";
 import type { OrderRecord } from "@/lib/orders";
 import { checkPlan, type PlanInput } from "@/lib/recurring";
 import {
+  ageRuns,
   createPlan,
   deletePlan,
   listPlans,
@@ -57,7 +58,7 @@ beforeEach(async () => {
     sent.push(email);
     return { ok: true, id: "re_test" };
   });
-  for (const table of ["recurring_runs", "recurring_plans", "orders", "limit_orders", "email_sends", "email_prefs", "user_identities", "users"]) {
+  for (const table of ["recurring_runs", "recurring_plans", "pour_claims", "orders", "limit_orders", "email_sends", "email_prefs", "user_identities", "users"]) {
     await sql.query(`delete from ${table}`);
   }
 });
@@ -130,6 +131,35 @@ describe("plans", () => {
     const user = await account();
     const created = await createPlan(user, plan(), { now: WED });
     expect(created !== "too_many" && created.nextDueAt).toBe(new Date(MONDAY_START).toISOString());
+  });
+
+  it("resumes only while fewer than ten others run, as after a merge left the extras paused", async () => {
+    const user = await account();
+    const ids: string[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      const created = await createPlan(user, plan(), { now: WED });
+      if (created === "too_many") throw new Error("cap");
+      ids.push(created.id);
+    }
+    // Two more, paused, moved in by update as a merge brings them (the insert cap would refuse an eleventh).
+    const other = await account(null);
+    const extras = (await sql.query(
+      `insert into recurring_plans (user_id, listing_symbol, usd, cadence, weekday, time_zone, next_due_at, paused)
+       select $1, 'TSLA', 20, 'weekly', 1, 'UTC', now(), true from generate_series(1, 2) returning id`,
+      [other],
+    )) as { id: string }[];
+    await sql.query(`update recurring_plans set user_id = $1 where user_id = $2`, [user, other]);
+    expect(await setPaused(user, extras[0].id, false, WED)).toBe("too_many");
+    // Written past the statement's own check, the trigger still refuses an eleventh running plan.
+    await expect(sql.query(`update recurring_plans set paused = false where id = $1`, [extras[0].id])).rejects.toThrow(/recurring plans cap/);
+    // Pausing one makes room for one, and no more.
+    await setPaused(user, ids[0], true, WED);
+    expect(await setPaused(user, extras[0].id, false, WED)).toMatchObject({ id: extras[0].id, paused: false });
+    expect(await setPaused(user, extras[1].id, false, WED)).toBe("too_many");
+    // Resuming a plan already running is not a new one.
+    expect(await setPaused(user, ids[1], false, WED)).toMatchObject({ paused: false });
+    const running = (await listPlans(user)).filter((listed) => !listed.paused);
+    expect(running).toHaveLength(10);
   });
 
   it("only its own account can pause or delete it", async () => {
@@ -241,7 +271,7 @@ describe("runs", () => {
     expect(await readyRuns(user)).toEqual([]);
     expect(await makeDueRuns({ cutoff: MONDAY_MORNING + 14 * DAY })).toEqual([]);
     const resumed = await setPaused(user, created.id, false, MONDAY_MORNING + 16 * DAY);
-    expect(resumed?.nextDueAt).toBe("2026-10-25T23:00:00.000Z");
+    expect(resumed).toMatchObject({ nextDueAt: "2026-10-25T23:00:00.000Z" });
   });
 
   it("a dip plan's run carries its limit price when a live price and the switch allow", async () => {
@@ -443,6 +473,83 @@ describe("the morning, plan by plan", () => {
   });
 });
 
+describe("the morning's one price read", () => {
+  it("is not started without room for it: the dip plan waits, the others go on", async () => {
+    const user = await account();
+    await createPlan(user, plan({ orderType: "limit", dipPct: 5 }), { now: WED });
+    await createPlan(user, plan({ listing: "TSLA" }), { now: WED });
+    let reads = 0;
+    const priceOf = lazyPrices(async () => {
+      reads += 1;
+      return { NVDA: 200 };
+    });
+    // Five seconds left before the deadline, a read may take ten.
+    const tight = await runRecurringMorning({
+      now: MONDAY_MORNING,
+      deadline: 15_000,
+      clock: () => 10_000,
+      priceReadMs: 10_000,
+      priceOf,
+      limitOn: () => true,
+      remind: remindByEmail,
+    });
+    expect(tight).toMatchObject({ made: 1, deferred: 1 });
+    expect(reads).toBe(0);
+    // The deferred plan's date has not moved: with room, the next pass reads once and makes its run.
+    const roomy = await runRecurringMorning({
+      now: MONDAY_MORNING + 60_000,
+      deadline: 15_000,
+      clock: () => 0,
+      priceReadMs: 10_000,
+      priceOf,
+      limitOn: () => true,
+      remind: remindByEmail,
+    });
+    expect(roomy).toMatchObject({ made: 1, deferred: 0 });
+    expect(reads).toBe(1);
+    expect((await readyRuns(user)).find((run) => run.symbol === "NVDA")).toMatchObject({ limitPrice: 190 });
+  });
+
+  it("once read, later dip plans answer from memory whatever time is left", async () => {
+    const user = await account();
+    await createPlan(user, plan({ orderType: "limit", dipPct: 5 }), { now: WED });
+    await createPlan(user, plan({ listing: "TSLA", orderType: "limit", dipPct: 5 }), { now: WED });
+    let ticks = 0;
+    let reads = 0;
+    const priceOf = lazyPrices(async () => {
+      reads += 1;
+      return { NVDA: 200, TSLA: 400 };
+    });
+    // Room for the first read only; the clock then jumps close to the deadline.
+    const summary = await runRecurringMorning({
+      now: MONDAY_MORNING,
+      deadline: 15_000,
+      clock: () => (ticks++ < 2 ? 0 : 12_000),
+      priceReadMs: 10_000,
+      priceOf,
+      limitOn: () => true,
+      remind: async () => "sent" as const,
+    });
+    expect(summary).toMatchObject({ made: 2, deferred: 0 });
+    expect(reads).toBe(1);
+  });
+
+  it("an account without limit orders reads nothing, so nothing waits for room", async () => {
+    const user = await account();
+    await createPlan(user, plan({ orderType: "limit", dipPct: 5 }), { now: WED });
+    const summary = await runRecurringMorning({
+      now: MONDAY_MORNING,
+      deadline: 15_000,
+      clock: () => 10_000,
+      priceReadMs: 10_000,
+      priceOf: lazyPrices(async () => ({ NVDA: 200 })),
+      limitOn: () => false,
+      remind: remindByEmail,
+    });
+    expect(summary).toMatchObject({ made: 1, deferred: 0 });
+  });
+});
+
 describe("a buy signed before its run was made", () => {
   it("answers the run as it is made, and no reminder goes", async () => {
     const user = await account();
@@ -476,6 +583,85 @@ describe("a dip plan with no price today", () => {
     expect(sent[0].text).toContain("could not set the dip you chose today");
     const [ready] = await readyRuns(user);
     expect(ready).toMatchObject({ orderType: "limit", limitPrice: null });
+  });
+});
+
+async function claim(userId: string, at: number, { listing = "NVDA", direction = "buy" }: { listing?: string | null; direction?: string } = {}) {
+  const intentTx = `0x${Math.random().toString(16).slice(2)}`;
+  await sql.query(`insert into pour_claims (intent_tx, user_id, direction, listing_symbol, created_at) values ($1, $2, $3, $4, $5)`, [
+    intentTx,
+    userId,
+    direction,
+    listing,
+    new Date(at).toISOString(),
+  ]);
+  return intentTx;
+}
+
+describe("a buy whose fill is not confirmed yet (an open pour claim)", () => {
+  it("is not offered again, not reminded, and not let go until the evening pass confirms it", async () => {
+    const user = await account();
+    await createPlan(user, plan(), { now: WED });
+    const [run] = await makeDueRuns({ cutoff: MONDAY_START + 60_000, userId: user });
+    await claim(user, MONDAY_START + 120_000);
+    // Neither the strip nor the email offers it a second time.
+    expect(await readyRuns(user)).toEqual([]);
+    const morning = await runRecurringMorning({ now: MONDAY_MORNING, remind: remindByEmail });
+    expect(morning).toMatchObject({ made: 0, emailed: 0, notEmailed: 0 });
+    expect(sent).toHaveLength(0);
+    // Past its three days, a page load and the morning both leave it waiting.
+    const late = MONDAY_START + 3 * DAY + 60_000;
+    expect(await ageRuns(late, user)).toBe(0);
+    expect((await runRecurringMorning({ now: late, remind: remindByEmail })).aged).toBe(0);
+    expect((await runStatus(run.id)).status).toBe("due");
+    // The evening pass records the order: the run is placed, not skipped.
+    const orderId = await saveOrder(user, buy({ placedAt: new Date(MONDAY_START + 120_000) }));
+    expect(await runStatus(run.id)).toMatchObject({ status: "placed", order_id: orderId });
+  });
+
+  it("a claim dropped unfilled gives the run back to the strip and the morning", async () => {
+    const user = await account();
+    await createPlan(user, plan(), { now: WED });
+    await makeDueRuns({ cutoff: MONDAY_START + 60_000, userId: user });
+    const intentTx = await claim(user, MONDAY_START + 120_000);
+    expect(await readyRuns(user)).toEqual([]);
+    await sql.query(`update pour_claims set settled_at = now(), outcome = 'dropped' where intent_tx = $1`, [intentTx]);
+    expect(await readyRuns(user)).toHaveLength(1);
+    expect(await runRecurringMorning({ now: MONDAY_MORNING, remind: remindByEmail })).toMatchObject({ emailed: 1 });
+  });
+
+  it("a run the morning makes while a claim waits sends no reminder, and one follows once the claim is dropped", async () => {
+    const user = await account();
+    await createPlan(user, plan(), { now: WED });
+    const intentTx = await claim(user, MONDAY_START + 120_000);
+    const first = await runRecurringMorning({ now: MONDAY_MORNING, remind: remindByEmail });
+    expect(first).toMatchObject({ made: 1, emailed: 0, notEmailed: 0 });
+    expect(sent).toHaveLength(0);
+    await sql.query(`update pour_claims set settled_at = now(), outcome = 'dropped' where intent_tx = $1`, [intentTx]);
+    const second = await runRecurringMorning({ now: MONDAY_MORNING + DAY, remind: remindByEmail });
+    expect(second).toMatchObject({ made: 0, emailed: 1 });
+  });
+
+  it("holds back nothing for another listing, a sell, a claim from before the window, or one with no listing", async () => {
+    const user = await account();
+    await createPlan(user, plan(), { now: WED });
+    await makeDueRuns({ cutoff: MONDAY_START + 60_000, userId: user });
+    await claim(user, MONDAY_START + 120_000, { listing: "TSLA" });
+    await claim(user, MONDAY_START + 120_000, { direction: "sell" });
+    await claim(user, Date.parse("2026-09-01T00:00:00Z"));
+    await claim(user, MONDAY_START + 120_000, { listing: null });
+    expect(await readyRuns(user)).toHaveLength(1);
+    expect(await ageRuns(MONDAY_START + 3 * DAY + 60_000, user)).toBe(1);
+  });
+
+  it("a newer run does not let an older one go while a claim waits on it", async () => {
+    const user = await account();
+    await createPlan(user, plan(), { now: WED });
+    const [older] = await makeDueRuns({ cutoff: MONDAY_START + 60_000, userId: user });
+    await claim(user, MONDAY_START + 120_000);
+    // A week later the next run comes; the older one stays for its buy.
+    await makeDueRuns({ cutoff: MONDAY_START + 7 * DAY + 3_600_000, userId: user });
+    expect((await runStatus(older.id)).status).toBe("due");
   });
 });
 

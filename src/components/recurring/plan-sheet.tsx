@@ -16,6 +16,7 @@ import {
   MIN_PLAN_USD,
   PLAN_LINK_KEYS,
   checkPlan,
+  resumeLeft,
   dueDayWords,
   readPlanParams,
   firstDueAt,
@@ -90,8 +91,11 @@ export function PlanSheetHost({ onSignIn, onClosed }: { onSignIn?: () => void; o
   const action = useRecurringAction();
   const { key } = useAccountHeaders({ prompt: false });
   const signedOut = key === null;
-  // Waiting for a sign in the sheet asked for, to open again with the same draft.
-  const [resume, setResume] = useState(false);
+  // Waiting for a sign in the sheet asked for, to open again with the same
+  // draft: when it was asked, so the draft lapses (PLAN_RESUME_MS) if the
+  // person walks away from the sign in and comes back hours later.
+  const [resumeSince, setResumeSince] = useState<number | null>(null);
+  const resume = resumeSince !== null;
   const [open, setOpen] = useState(false);
   const [request, setRequest] = useState<PlanSheetRequest>({});
   const [state, setState] = useState<PlanDraftState>(() => draftFromRequest({}));
@@ -125,8 +129,15 @@ export function PlanSheetHost({ onSignIn, onClosed }: { onSignIn?: () => void; o
   // Back from the sign in the sheet asked for: open again, with the same draft.
   const shown = open || (resume && !signedOut);
 
+  // Still signed out when the wait lapses: the draft goes. Signed in, the sheet is showing and the timer stops.
+  useEffect(() => {
+    if (resumeSince === null || !signedOut) return;
+    const timer = setTimeout(() => setResumeSince(null), resumeLeft(resumeSince, Date.now()));
+    return () => clearTimeout(timer);
+  }, [resumeSince, signedOut]);
+
   const signIn = () => {
-    setResume(true);
+    setResumeSince(Date.now());
     setOpen(false);
     onSignIn?.();
   };
@@ -153,7 +164,7 @@ export function PlanSheetHost({ onSignIn, onClosed }: { onSignIn?: () => void; o
     action.mutate(body, {
       onSuccess: () => {
         setOpen(false);
-        setResume(false);
+        setResumeSince(null);
         onClosed?.();
         const first = sameDay ? Date.parse(edited.nextDueAt) : firstDueAt(checked.plan.schedule, Date.now());
         toast.success(copy.saved(dueDayWords(first, zone)));
@@ -175,7 +186,7 @@ export function PlanSheetHost({ onSignIn, onClosed }: { onSignIn?: () => void; o
       onOpenChange={(next) => {
         setOpen(next);
         if (next) return;
-        setResume(false);
+        setResumeSince(null);
         onClosed?.();
       }}
       state={state}

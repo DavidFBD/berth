@@ -1220,6 +1220,8 @@ export type RecurringCopy = {
   removeConfirmYes: string;
   removeConfirmNo: string;
   removed: string;
+  /** Resuming a plan when ten already run: the cap counts plans that are not paused. */
+  resumeTooMany: string;
   sheetTitle: string;
   sheetSub: string;
   listingLabel: string;
@@ -2323,6 +2325,7 @@ export const COPY: Copy = {
     removeConfirmYes: "Delete it",
     removeConfirmNo: "Keep it",
     removed: "Recurring buy deleted.",
+    resumeTooMany: "Ten recurring buys can run at once. Pause one to resume this one.",
     sheetTitle: "Recurring buy",
     sheetSub: "Berth reminds you. You sign.",
     listingLabel: "What",

@@ -132,13 +132,25 @@ export async function closePourClaim(intentTx: string, now = new Date()): Promis
   ]);
 }
 
-/** Keep a claim for a pour that could not be judged filled yet. Idempotent per intent. */
-export async function savePourClaim(userId: string, intentTx: string, direction: "buy" | "sell", fillTx: string | null): Promise<void> {
+/**
+ * Keep a claim for a pour that could not be judged filled yet. Idempotent
+ * per intent. `listingSymbol`, when the intent names a listing, lets an
+ * open buy claim hold back a recurring run of that listing until the
+ * evening pass settles it (lib/server/recurring).
+ */
+export async function savePourClaim(
+  userId: string,
+  intentTx: string,
+  direction: "buy" | "sell",
+  fillTx: string | null,
+  listingSymbol: string | null = null,
+): Promise<void> {
   await getSql().query(
-    `insert into pour_claims (intent_tx, user_id, direction, fill_tx) values ($1, $2, $3, $4)
-     on conflict (intent_tx) do update set fill_tx = coalesce(pour_claims.fill_tx, excluded.fill_tx)
+    `insert into pour_claims (intent_tx, user_id, direction, fill_tx, listing_symbol) values ($1, $2, $3, $4, $5)
+     on conflict (intent_tx) do update set fill_tx = coalesce(pour_claims.fill_tx, excluded.fill_tx),
+       listing_symbol = coalesce(pour_claims.listing_symbol, excluded.listing_symbol)
      where pour_claims.user_id = excluded.user_id`,
-    [intentTx.toLowerCase(), userId, direction, fillTx],
+    [intentTx.toLowerCase(), userId, direction, fillTx, listingSymbol],
   );
 }
 

@@ -424,6 +424,58 @@ describe("the merge transaction", () => {
     expect(await one(`select user_id, status from recurring_runs where plan_id = $1`, [aPlan.id])).toEqual({ user_id: s, status: "skipped" });
   });
 
+  it("keeps ten running: plans the survivor had paused do not count, and are not paused again", async () => {
+    const s = await account({ email: "paused-plans@example.com" });
+    const a = await account();
+    const addPlans = (userId: string, count: number, from: string, paused: boolean) =>
+      q(
+        `insert into recurring_plans (user_id, listing_symbol, usd, cadence, weekday, time_zone, next_due_at, created_at, paused)
+         select $1, 'NVDA', 50, 'weekly', 1, 'UTC', now() + interval '1 day', $3::timestamptz + g * interval '1 minute', $4
+           from generate_series(1, $2::int) g`,
+        [userId, count, from, paused],
+      );
+    await addPlans(s, 3, "2026-09-01", true);
+    await addPlans(s, 5, "2026-09-02", false);
+    await addPlans(a, 2, "2026-09-03", false);
+    const result = await mergeAccounts({ survivor: s, absorbed: a, reason: "email" });
+    if (!result.ok) throw new Error("merge failed");
+    expect(result.moved).toMatchObject({ recurringPlans: 2, recurringPaused: 0 });
+    expect(await q(`select 1 from recurring_plans where user_id = $1 and not paused`, [s])).toHaveLength(7);
+  });
+
+  it("takes the recurring lock the cap triggers take, for both accounts", async () => {
+    const s = await account({ email: "locked@example.com" });
+    const a = await account();
+    // PGlite has one connection, so the wait itself is shown against a real Postgres (reports/recurring-leftovers.md); here, that the body takes both.
+    const locks = await q<{ n: string }>(
+      `select count(*)::text as n from pg_proc where proname = 'merge_accounts' and prosrc like '%hashtextextended(''recurring:'' || least(s, a)%'
+         and prosrc like '%hashtextextended(''recurring:'' || greatest(s, a)%'`,
+    );
+    expect(locks[0].n).toBe("1");
+    const result = await mergeAccounts({ survivor: s, absorbed: a, reason: "email" });
+    expect(result.ok).toBe(true);
+  });
+
+  it("carries the email switches over, the more careful choice winning kind by kind", async () => {
+    const s = await account({ email: "prefs@example.com" });
+    const a = await account();
+    const prefs = (userId: string, rows: [string, boolean][]) =>
+      Promise.all(rows.map(([kind, enabled]) => q(`insert into email_prefs (user_id, kind, enabled) values ($1, $2, $3)`, [userId, kind, enabled])));
+    // Survivor: weekly on, friends on. Absorbed: recurring off, weekly off, orders on, friends off.
+    await prefs(s, [["weekly", true], ["friends", true]]);
+    await prefs(a, [["recurring", false], ["weekly", false], ["orders", true], ["friends", false]]);
+    const result = await mergeAccounts({ survivor: s, absorbed: a, reason: "email" });
+    if (!result.ok) throw new Error("merge failed");
+    expect(result.moved).toMatchObject({ emailPrefsOff: 3 });
+    expect(await q(`select kind, enabled from email_prefs where user_id = $1 order by kind`, [s])).toEqual([
+      { kind: "friends", enabled: false },
+      { kind: "recurring", enabled: false },
+      { kind: "weekly", enabled: false },
+    ]);
+    // The absorbed rows stay as they were.
+    expect(await q(`select 1 from email_prefs where user_id = $1`, [a])).toHaveLength(4);
+  });
+
   it("a retired survivor is refused inside the transaction, and nothing moves", async () => {
     const other = await account({ email: "gone@example.com" });
     const s = await account({ email: "retired@example.com" });

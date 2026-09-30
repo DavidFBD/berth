@@ -193,6 +193,21 @@ async function blockTime(blockHex: string): Promise<Date | null> {
   return block ? new Date(Number.parseInt(block.timestamp, 16) * 1000) : null;
 }
 
+/** The listing an intent buys (its output) or sells (its input), if it is one of ours. */
+function orderListing(sodax: Sodax, intent: Intent, direction: "buy" | "sell") {
+  const ours = direction === "buy" ? intent.outputToken : intent.inputToken;
+  return listListings(sodax.leverageYield.listVaults()).find((entry) => entry.address.toLowerCase() === ours.toLowerCase());
+}
+
+/** The symbol of the listing an intent buys or sells, or null (a pour claim keeps it). Never throws. */
+export function orderListingSymbol(sodax: Sodax, intent: Intent, direction: "buy" | "sell"): string | null {
+  try {
+    return orderListing(sodax, intent, direction)?.symbol ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function buildOrder({
   sodax,
   intentTx,
@@ -206,11 +221,9 @@ export async function buildOrder({
   intent: Intent;
   claimedFillTx?: string | null;
 }): Promise<OrderRecord | undefined> {
-  const listings = listListings(sodax.leverageYield.listVaults());
-  const ours = direction === "buy" ? intent.outputToken : intent.inputToken;
-  const other = direction === "buy" ? intent.inputToken : intent.outputToken;
-  const listing = listings.find((entry) => entry.address.toLowerCase() === ours.toLowerCase());
+  const listing = orderListing(sodax, intent, direction);
   if (!listing) return undefined;
+  const other = direction === "buy" ? intent.inputToken : intent.outputToken;
   const payToken = sodax.config.getXTokenFromHubAsset(other);
 
   const receipt = await rpc<{ blockNumber: string }>("eth_getTransactionReceipt", [intentTx]);

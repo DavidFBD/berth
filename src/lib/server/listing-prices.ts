@@ -23,6 +23,9 @@ const ORACLE_URL = "https://api.sodax.com/v1/intent/oracle";
 const HUB_CHAIN_ID = "146";
 const REVALIDATE_SECONDS = 60;
 
+/** The longest one oracle read may take; the morning's recurring stage keeps this much room before a dip plan's first price read. */
+export const ORACLE_TIMEOUT_MS = 10_000;
+
 export type ListingPricesResponse = {
   /** Lowercased listing address → USD price. */
   prices: Record<string, number>;
@@ -49,7 +52,7 @@ export async function loadListingPrices(): Promise<ListingPricesResponse> {
   try {
     const response = await fetch(ORACLE_URL, {
       next: { revalidate: REVALIDATE_SECONDS },
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(ORACLE_TIMEOUT_MS),
     });
     if (!response.ok) {
       payload.reason = `oracle answered ${response.status}`;

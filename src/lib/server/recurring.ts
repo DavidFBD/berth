@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/server/db";
+import { ORACLE_TIMEOUT_MS } from "@/lib/server/listing-prices";
 import { formatUsd } from "@/lib/format";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { isDollarStable } from "@/lib/orders";
@@ -174,8 +175,15 @@ export async function updatePlan(userId: string, planId: string, plan: PlanWrite
   return rows[0] ? planView(rows[0], []) : null;
 }
 
-/** Pause, or resume: a plan resumed after its date has passed starts from the next day it names, never with a backlog. */
-export async function setPaused(userId: string, planId: string, paused: boolean, now = Date.now()): Promise<PlanView | null> {
+/**
+ * Pause, or resume: a plan resumed after its date has passed starts from
+ * the next day it names, never with a backlog. Resuming is refused
+ * ("too_many") while MAX_PLANS others already run (an account merge can
+ * leave more than ten, the extras paused): by the statement, and for two
+ * resumes at once by the resume trigger (db/schema.sql
+ * recurring_plans_resume_cap).
+ */
+export async function setPaused(userId: string, planId: string, paused: boolean, now = Date.now()): Promise<PlanView | null | "too_many"> {
   const current = await ownPlan(userId, planId);
   if (!current) return null;
   const next =
@@ -184,9 +192,16 @@ export async function setPaused(userId: string, planId: string, paused: boolean,
       : new Date(current.next_due_at).toISOString();
   const sql = getSql();
   const rows = (await sql.query(
-    `update recurring_plans set paused = $3, next_due_at = $4, updated_at = now() where id = $1 and user_id = $2 returning ${PLAN_COLUMNS}`,
-    [planId, userId, paused, next],
-  )) as PlanRow[];
+    `update recurring_plans set paused = $3, next_due_at = $4, updated_at = now()
+      where id = $1 and user_id = $2
+        and ($3 or not paused or (select count(*) from recurring_plans where user_id = $2 and not paused and id <> $1) < $5)
+      returning ${PLAN_COLUMNS}`,
+    [planId, userId, paused, next, MAX_PLANS],
+  ).catch((error: unknown) => {
+    if (isCapRefusal(error)) return [];
+    throw error;
+  })) as PlanRow[];
+  if (!rows[0] && !paused) return "too_many";
   // A paused plan's waiting run goes quietly: nothing is left asking.
   if (paused) {
     await sql.query(
@@ -203,13 +218,29 @@ export async function deletePlan(userId: string, planId: string): Promise<boolea
   return rows.length > 0;
 }
 
-/** Runs past their three days, skipped. Answers how many. */
+/**
+ * A run with a buy of its listing signed since its window opened, kept as
+ * a pour claim because its fill could not be confirmed yet (the pour
+ * route's `unknown`): the evening pass settles the claim and, when it
+ * filled, the order it records answers the run. Until then the run is
+ * neither offered (the strip, the reminder), which would invite a second
+ * buy, nor let go (three days, a newer run), which would leave the buy
+ * with nothing to answer. `run` is the recurring_runs alias in the query.
+ */
+export const awaitingClaim = (run: string) =>
+  `exists (select 1 from pour_claims c
+            where c.user_id = ${run}.user_id and c.settled_at is null and c.direction = 'buy'
+              and upper(c.listing_symbol) = upper(${run}.listing_symbol)
+              and c.created_at >= least(${run}.due_at, ${run}.created_at))`;
+
+/** Runs past their three days, skipped, unless a buy claim still waits on them (awaitingClaim). Answers how many. */
 export async function ageRuns(now = Date.now(), userId?: string): Promise<number> {
   const cutoff = new Date(now - SKIP_AFTER_DAYS * 86_400_000).toISOString();
   const rows = (await getSql().query(
-    `update recurring_runs set status = 'skipped', closed_at = now()
-      where status in ('due', 'opened') and due_at <= $1 ${userId ? "and user_id = $2" : ""}
-      returning id`,
+    `update recurring_runs r set status = 'skipped', closed_at = now()
+      where r.status in ('due', 'opened') and r.due_at <= $1 ${userId ? "and r.user_id = $2" : ""}
+        and not ${awaitingClaim("r")}
+      returning r.id`,
     userId ? [cutoff, userId] : [cutoff],
   )) as unknown[];
   return rows.length;
@@ -229,6 +260,8 @@ export type NewRun = {
   dipUnpriced?: true;
   /** Already answered when it was made: a buy signed earlier that day. No reminder. */
   placed?: true;
+  /** A buy of it signed earlier waits on its fill (awaitingClaim): no reminder yet, the next morning may send one. */
+  awaiting?: true;
 };
 
 type DuePlan = PlanRow & { wallet_address: string | null };
@@ -283,8 +316,9 @@ async function makeRun(
        update recurring_plans set next_due_at = $3 where id = $1 and next_due_at = $2 and not paused
        returning id, user_id, listing_symbol, usd, order_type
      ), let_go as (
-       update recurring_runs set status = 'skipped', closed_at = now()
-        where plan_id in (select id from moved) and status in ('due', 'opened') and due_at < $4
+       update recurring_runs r set status = 'skipped', closed_at = now()
+        where r.plan_id in (select id from moved) and r.status in ('due', 'opened') and r.due_at < $4
+          and not ${awaitingClaim("r")}
      ), made as (
        insert into recurring_runs (plan_id, user_id, due_at, limit_price, listing_symbol, usd, order_type)
        select id, user_id, $4, $5, listing_symbol, usd, order_type from moved where not $6::boolean
@@ -298,9 +332,11 @@ async function makeRun(
   if (!id) return null;
   // A buy already signed since the day began (the person bought before the morning run reached this run) answers it now.
   const placed = dueAt <= now && (await answerFromEarlierBuy({ runId: id, userId: plan.user_id, symbol: plan.listing_symbol, dueAt, now }));
+  const awaiting = !placed && (await runAwaitsClaim(id));
   return {
     id,
     ...(placed && { placed: true as const }),
+    ...(awaiting && { awaiting: true as const }),
     ...(plan.order_type === "limit" && limit === null && { dipUnpriced: true as const }),
     userId: plan.user_id,
     symbol: plan.listing_symbol,
@@ -310,6 +346,15 @@ async function makeRun(
     limitPrice: limit,
     ...(limit !== null && { expires: dipExpiry(schedule, dueAt) }),
   };
+}
+
+async function runAwaitsClaim(runId: string): Promise<boolean> {
+  try {
+    const rows = (await getSql().query(`select 1 from recurring_runs r where r.id = $1 and ${awaitingClaim("r")}`, [runId])) as unknown[];
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -408,12 +453,13 @@ export async function makeDueRuns({
   return made;
 }
 
-/** The runs waiting for the person, oldest first: what the strip shows. */
+/** The runs waiting for the person, oldest first: what the strip shows. A run a signed buy still waits on (awaitingClaim) is not offered. */
 export async function readyRuns(userId: string): Promise<ReadyRun[]> {
   const rows = (await getSql().query(
     `select r.id, r.plan_id, r.due_at, r.status, r.limit_price, r.created_at, r.listing_symbol, r.usd, r.order_type, p.cadence, p.time_zone
        from recurring_runs r join recurring_plans p on p.id = r.plan_id
       where r.user_id = $1 and r.status in ('due', 'opened') and not p.paused
+        and not ${awaitingClaim("r")}
       order by r.due_at`,
     [userId],
   )) as (RunRow & { listing_symbol: string; usd: string; order_type: "market" | "limit"; cadence: "weekly" | "monthly"; time_zone: string })[];
@@ -627,7 +673,7 @@ export async function unemailedRuns(now: number, cutoff: number): Promise<NewRun
     `select r.id, r.user_id, r.due_at, r.limit_price, r.listing_symbol, r.usd, r.order_type, p.cadence, p.weekday, p.month_day, p.time_zone
        from recurring_runs r join recurring_plans p on p.id = r.plan_id
       where r.status = 'due' and r.emailed_at is null and r.email_outcome is null and not p.paused
-        and r.due_at > $1 and r.due_at <= $2
+        and r.due_at > $1 and r.due_at <= $2 and not ${awaitingClaim("r")}
       order by r.due_at limit 500`,
     [new Date(now - SKIP_AFTER_DAYS * 86_400_000).toISOString(), new Date(cutoff).toISOString()],
   )) as (Pick<PlanRow, "listing_symbol" | "usd" | "cadence" | "weekday" | "month_day" | "time_zone"> & {
@@ -677,7 +723,9 @@ export type RecurringMorningSummary = { aged: number; made: number; emailed: num
  * and send its one reminder at once, then retry the reminders still open.
  * Before each plan and each email it checks `deadline` and stops cleanly:
  * what it did not reach is counted as deferred and waits for a page load
- * or the next morning, never half made. The email is deduped by the run's
+ * or the next morning, never half made. A dip plan that would make the
+ * day's one price read (up to `priceReadMs`) with less than that left is
+ * deferred too, so the read can never carry the stage past its budget. The email is deduped by the run's
  * id in email_sends and goes through the person's switch, the address
  * check and the daily cap like every notice (lib/server/email/send).
  */
@@ -688,10 +736,13 @@ export async function runRecurringMorning({
   priceOf,
   limitOn,
   remind,
+  priceReadMs = ORACLE_TIMEOUT_MS,
 }: {
   now?: number;
   deadline?: number;
   clock?: () => number;
+  /** The longest the first price read may take (lazyPrices reads once, then answers from memory). */
+  priceReadMs?: number;
   priceOf?: PriceReader;
   limitOn?: (user: { id: string; wallet: string | null }) => boolean;
   remind: (run: NewRun) => Promise<RemindOutcome>;
@@ -712,16 +763,30 @@ export async function runRecurringMorning({
   };
   const seen = new Set<string>();
   const plans = await duePlans(cutoff);
+  const allowed = limitOn ?? (() => false);
+  // Once one read has answered, the rest come from memory (lazyPrices).
+  let priced = false;
+  const readPrice: PriceReader = async (symbol) => {
+    const price = await (priceOf ?? (() => undefined))(symbol);
+    priced = true;
+    return price;
+  };
   for (const [index, plan] of plans.entries()) {
     if (clock() >= deadline) {
       summary.deferred += plans.length - index;
       return summary;
     }
-    const run = await makeRun(plan, { cutoff, now, priceOf: priceOf ?? (() => undefined), limitOn: limitOn ?? (() => false) });
+    const reads = plan.order_type === "limit" && priceOf !== undefined && !priced && allowed({ id: plan.user_id, wallet: plan.wallet_address });
+    if (reads && deadline - clock() < priceReadMs) {
+      // Its date stays: a page load or the next morning makes its run.
+      summary.deferred += 1;
+      continue;
+    }
+    const run = await makeRun(plan, { cutoff, now, priceOf: readPrice, limitOn: allowed });
     if (!run) continue;
     summary.made += 1;
     seen.add(run.id);
-    if (!run.placed) await send(run);
+    if (!run.placed && !run.awaiting) await send(run);
   }
   // And any a page load made first, or tried before and left open: one email per run, whoever made it.
   const open = (await unemailedRuns(now, cutoff)).filter((run) => !seen.has(run.id));

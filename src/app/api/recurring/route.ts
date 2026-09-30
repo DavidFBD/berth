@@ -108,6 +108,8 @@ export async function POST(request: NextRequest) {
   if (action === "pause" || action === "resume") {
     const done = await setPaused(user.id, planId, action === "pause");
     if (!done) return NextResponse.json({ error: "not found" }, { status: 404 });
+    // An account merge can leave more than ten plans, the extras paused: at most ten run.
+    if (done === "too_many") return NextResponse.json({ error: "too_many" }, { status: 409 });
     return answer();
   }
 

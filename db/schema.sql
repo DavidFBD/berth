@@ -209,6 +209,13 @@ create index if not exists pour_claims_open_idx on pour_claims (created_at) wher
 -- it takes the least recently looked at first, so a stuck one rotates.
 alter table pour_claims add column if not exists last_checked_at timestamptz;
 
+-- The listing a claim buys or sells, read from the intent when the claim is
+-- kept (the pour route). An open buy claim holds back a recurring run of
+-- the same listing (lib/server/recurring): the strip and the reminder do not
+-- offer it and it is not let go until the evening pass settles the claim.
+-- Null on claims kept before this column; those hold back nothing.
+alter table pour_claims add column if not exists listing_symbol text;
+
 -- Daily closes per listing and benchmark (lib/marks), kept past DefiLlama's
 -- ninety day reach so a portfolio can be drawn for as long as it existed.
 -- One row per market day, taken at 21:30 UTC, after the New York close;
@@ -809,8 +816,13 @@ declare
 
   -- Recurring buys (lib/server/recurring): the plans and their runs move,
   -- so future buys, recorded under the survivor, still answer them. The
-  -- cap of ten is checked only when a plan is made, so past ten the
-  -- newest wait paused, their waiting runs let go, none deleted.
+  -- cap of ten is checked only when a plan is made or resumed, so past ten
+  -- running the newest wait paused, their waiting runs let go, none
+  -- deleted. Both accounts' recurring locks are taken first, in id order,
+  -- the lock the cap triggers take: a plan made or resumed on either at
+  -- this moment waits for the merge and then counts what it moved.
+  ; perform pg_advisory_xact_lock(hashtextextended('recurring:' || least(s, a)::text, 0))
+  ; perform pg_advisory_xact_lock(hashtextextended('recurring:' || greatest(s, a)::text, 0))
   ; update recurring_plans set user_id = s where user_id = a
   ; get diagnostics n = row_count
   ; v_moved := v_moved || jsonb_build_object('recurringPlans', n)
@@ -818,13 +830,23 @@ declare
   ; get diagnostics n = row_count
   ; v_moved := v_moved || jsonb_build_object('recurringRuns', n)
   ; update recurring_plans p set paused = true, updated_at = now()
-      from (select id, row_number() over (order by created_at, id) as rn from recurring_plans where user_id = s) ranked
-     where p.id = ranked.id and ranked.rn > 10 and not p.paused
+      from (select id, row_number() over (order by created_at, id) as rn from recurring_plans where user_id = s and not paused) ranked
+     where p.id = ranked.id and ranked.rn > 10
   ; get diagnostics n = row_count
   ; v_moved := v_moved || jsonb_build_object('recurringPaused', n)
   ; update recurring_runs r set status = 'skipped', closed_at = now()
       from recurring_plans p
      where p.id = r.plan_id and p.user_id = s and p.paused and r.status in ('due', 'opened')
+
+  -- Email switches (lib/server/email/store): the more careful choice
+  -- wins, kind by kind. A kind either account switched off stays off; one
+  -- the absorbed account switched on changes nothing, the survivor's own
+  -- choice or default stands. The absorbed rows stay, for the record.
+  ; insert into email_prefs (user_id, kind, enabled, updated_at)
+      select s, kind, false, now() from email_prefs where user_id = a and not enabled
+      on conflict (user_id, kind) do update set enabled = false, updated_at = now() where email_prefs.enabled
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('emailPrefsOff', n)
 
   ; if a_first is not null then
       update users set portfolio_rebuild_at = now() where id = s
@@ -1090,6 +1112,18 @@ begin perform pg_advisory_xact_lock(hashtextextended('recurring:' || new.user_id
 drop trigger if exists recurring_plans_cap on recurring_plans;
 
 create trigger recurring_plans_cap after insert on recurring_plans for each row execute function recurring_plans_cap();
+
+-- Resuming keeps to ten running plans, race safe the same way: after a
+-- plan is unpaused the trigger takes the account's advisory lock and
+-- counts the plans not paused afresh (lib/server/recurring setPaused
+-- checks first). A merge only ever pauses, so it never meets it. One line
+-- body, for db:push's split.
+create or replace function recurring_plans_resume_cap() returns trigger language plpgsql as $$
+begin perform pg_advisory_xact_lock(hashtextextended('recurring:' || new.user_id::text, 0)); if (select count(*) from recurring_plans where user_id = new.user_id and not paused) > 10 then raise exception 'recurring plans cap reached' using errcode = 'check_violation'; end if; return null; end $$;
+
+drop trigger if exists recurring_plans_resume_cap on recurring_plans;
+
+create trigger recurring_plans_resume_cap after update of paused on recurring_plans for each row when (old.paused and not new.paused) execute function recurring_plans_resume_cap();
 
 -- One run per plan per due day: 'due' when the morning run (or the app)
 -- finds it, 'opened' once the person opens its draft, 'placed' when an

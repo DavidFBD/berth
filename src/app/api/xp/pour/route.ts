@@ -3,7 +3,7 @@ import type { RewardList } from "@/lib/profile-types";
 import { flushUnannounced } from "@/lib/server/accounts";
 import { linkedWallets } from "@/lib/server/identities";
 import { awardFilledPour, closePourClaim, fillVerdict, savePourClaim } from "@/lib/server/pour-claims";
-import { recordOrder } from "@/lib/server/orders";
+import { orderListingSymbol, recordOrder } from "@/lib/server/orders";
 import { verifyPourTx } from "@/lib/server/pour-verify";
 import {
   readRewardsCaller,
@@ -68,7 +68,9 @@ export async function POST(request: NextRequest) {
   const rewards: RewardList = [];
   let xp = user.xp;
   if (verdict === "unknown") {
-    await savePourClaim(user.id, txHash, direction, claimedFill);
+    // The claim keeps its listing, so a recurring run it may answer is not
+    // offered again (a second buy) while the evening pass confirms it.
+    await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction));
   } else {
     // Awaited, not fired and forgotten: a serverless function may be frozen
     // the moment it answers. recordOrder never throws, so the award is safe.

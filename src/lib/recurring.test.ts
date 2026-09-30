@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  PLAN_RESUME_MS,
   RECURRING_ID,
   checkPlan,
   dipExpiry,
@@ -14,6 +15,7 @@ import {
   orderMatchesRun,
   planDraftUrl,
   readPlanParams,
+  resumeLeft,
   runDraftUrl,
   startOfLocalDay,
   type PlanSchedule,
@@ -213,5 +215,16 @@ describe("ids", () => {
     expect(RECURRING_ID.test("3f2b8c1e-9a4d-4e2f-8b1a-2c3d4e5f6a7b")).toBe(true);
     expect(RECURRING_ID.test("-".repeat(36))).toBe(false);
     expect(RECURRING_ID.test("3f2b8c1e9a4d4e2f8b1a2c3d4e5f6a7b----")).toBe(false);
+  });
+});
+
+describe("a plan draft kept across a sign in", () => {
+  it("waits about half an hour, then lapses", () => {
+    const since = Date.parse("2026-09-30T10:00:00Z");
+    expect(PLAN_RESUME_MS).toBe(30 * 60_000);
+    expect(resumeLeft(since, since)).toBe(PLAN_RESUME_MS);
+    expect(resumeLeft(since, since + 29 * 60_000)).toBe(60_000);
+    expect(resumeLeft(since, since + PLAN_RESUME_MS)).toBe(0);
+    expect(resumeLeft(since, since + 5 * 3_600_000)).toBe(0);
   });
 });

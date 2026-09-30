@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useCopy } from "@/components/settings-provider";
 import { openPlanSheet } from "@/components/recurring/plan-sheet-events";
-import { useRecurring, useRecurringAction } from "@/hooks/use-recurring";
+import { RecurringError, useRecurring, useRecurringAction } from "@/hooks/use-recurring";
 import { formatUsd } from "@/lib/format";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { MAX_PLANS, dueDayWords, ordinal, type PlanView } from "@/lib/recurring";
@@ -41,7 +41,15 @@ export function RecurringSection({ onLeave }: { onLeave: () => void }) {
           ...(plan.dipPct !== null && { dipPct: plan.dipPct }),
         });
       }}
-      onPause={(plan) => action.mutate({ action: plan.paused ? "resume" : "pause", planId: plan.id })}
+      onPause={(plan) =>
+        action.mutate(
+          { action: plan.paused ? "resume" : "pause", planId: plan.id },
+          {
+            onError: (error) =>
+              toast(error instanceof RecurringError && error.reason === "too_many" ? copy.resumeTooMany : copy.errors.failed),
+          },
+        )
+      }
       onDelete={(plan) => action.mutate({ action: "delete", planId: plan.id }, { onSuccess: () => toast(copy.removed) })}
     />
   );

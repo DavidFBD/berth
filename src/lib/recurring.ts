@@ -18,6 +18,18 @@ import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 export const RECURRING_QUERY_KEY = ["recurring"] as const;
 
 export const MAX_PLANS = 10;
+
+/**
+ * How long the plan sheet keeps a draft waiting for the sign in it asked
+ * for (components/recurring/plan-sheet). Past it, a sign in much later
+ * opens nothing: an old choice never reappears out of nowhere.
+ */
+export const PLAN_RESUME_MS = 30 * 60_000;
+
+/** How long a draft kept at `since` still waits, in ms; 0 once it has lapsed. */
+export function resumeLeft(since: number, now: number): number {
+  return Math.max(0, since + PLAN_RESUME_MS - now);
+}
 export const MIN_PLAN_USD = 1;
 export const MAX_PLAN_USD = 10_000;
 /** A run nobody opened or signed is skipped this many days after it came due. */
