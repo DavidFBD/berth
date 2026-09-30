@@ -94,6 +94,31 @@ One headline, one paragraph, four points. The welcome page opens on it.
   total. The Assistant can draft them. (In testing, not open to everyone.)
 - **Trading at weekends.** Not until a weekend fill has been seen.
 
+## Tagline
+
+- **Lead line: "Wall Street, in your wallet."** Exact punctuation, comma
+  included, one full stop. This is Berth's chosen lead line, used wherever a
+  short line represents the whole product: the site title and meta
+  description, Open Graph and Twitter cards, an X bio, directory and app
+  store listings, and the opener of a pitch.
+- **Supporting line (sparingly): "Like Duolingo, but for investing."** Points
+  at the habit side only: a little each week, XP, ranks, recurring buys,
+  learning as you go. Use at most once per surface (one pitch deck slide, one
+  social post, one directory long description), never twice on the same
+  page. Never in the app UI, never in the site title or meta description,
+  never beside a returns figure, a price or any money claim, and never in a
+  way that implies streak pressure, a game of chance, or that investing is
+  easy or safe. Keep the word "Duolingo" out of any logo or visual use; text
+  only.
+- **Plain descriptor, pairs with the lead line: "Real US stocks, bought from
+  your crypto wallet."** Use it where the lead line needs a second, more
+  literal sentence (a meta description, a listing body).
+- **Lines rejected, and why:**
+  - "Robinhood for your wallet." Implies affiliation or endorsement: the
+    tokenised stocks are Robinhood's own product, and Berth is not Robinhood.
+  - "Brokerage in your wallet." Berth is not a licensed broker; the word
+    invites the wrong regulatory reading.
+
 ## Say it this way
 
 - The Assistant and connected AIs **read and draft; you sign.** Never "trades

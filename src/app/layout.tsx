@@ -33,17 +33,19 @@ const moneyFont = IBM_Plex_Mono({
   subsets: ["latin"],
 });
 
+const TITLE = "Berth · Wall Street, in your wallet";
+
 const DESCRIPTION =
-  "Stocks for the money that already lives onchain. Buy US stocks and ETFs with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature, in your own custody.";
+  "Wall Street, in your wallet. Buy US stocks and ETFs with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature, in your own custody.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.berthmarkets.com"),
-  title: "Berth",
+  title: TITLE,
   description: DESCRIPTION,
   applicationName: "Berth",
   manifest: "/site.webmanifest",
   openGraph: {
-    title: "Berth",
+    title: TITLE,
     description: DESCRIPTION,
     url: "https://www.berthmarkets.com",
     siteName: "Berth",
@@ -53,13 +55,13 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Berth. Stocks for the money that already lives onchain.",
+        alt: "Berth. Wall Street, in your wallet.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Berth",
+    title: TITLE,
     description: DESCRIPTION,
     images: ["/og.png"],
   },

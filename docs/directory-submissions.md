@@ -231,7 +231,7 @@ Documentation: https://www.berthmarkets.com/assistants (to build; until then htt
 - **Name (max 100):** Berth
 - **Slug (permanent):** berth
 - **One-liner (max 200):**
-  Read your Berth account and the market for tokenised US stocks and funds, and draft a buy or sell that you check and sign in Berth yourself.
+  Wall Street, in your wallet. Read your Berth account and the market for tokenised US stocks and funds, and draft a buy or sell that you check and sign in Berth yourself.
 - **Categories (1 to 5):** Finance (add "Productivity" only if Finance is not offered; the category list is not published)
 - **Description (max 2,000):**
 
@@ -261,7 +261,7 @@ Documentation: https://www.berthmarkets.com/assistants (to build; until then htt
 ### ChatGPT plugin form (read only variant recommended)
 
 - **Plugin name:** Berth
-- **Short description:** Read your Berth account and the market for tokenised US stocks and funds, in plain words.
+- **Short description:** Wall Street, in your wallet. Read your Berth account and the market for tokenised US stocks and funds, in plain words.
 - **Long description:**
 
   > Berth holds tokenised US stocks and funds, bought with the stablecoins or Bitcoin you already have. This plugin lets ChatGPT read your Berth account and the market beside it.
