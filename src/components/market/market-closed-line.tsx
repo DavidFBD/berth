@@ -14,7 +14,9 @@ export function MarketClosedLine({ className }: { className?: string }) {
   if (!closed) return null;
   return (
     <p className={cn("text-xs text-muted-foreground", className)}>
-      {copy.marketClosedLine(closed.day, closed.time)}
+      {closed.overnight
+        ? copy.marketClosedLine(closed.day, closed.time)
+        : copy.marketShutLine(closed.day, closed.time)}
     </p>
   );
 }

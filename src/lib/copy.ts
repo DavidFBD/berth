@@ -240,11 +240,13 @@ export type Copy = {
   /**
    * Beside the board and in the buy and sell drawers, only while the US
    * market is shut. `day` is "today", "tomorrow" or a weekday, `time` the
-   * open in the viewer's own zone: "US market closed. Opens Monday 15:30
-   * your time." Says nothing about trading on; that waits for the weekend
-   * checks (docs/plans/recurring-email.md, Around the clock).
+   * open in the viewer's own zone. On a weekday night the tokens are known
+   * to trade, so it says so; over a weekend or holiday that is not yet
+   * proven (docs/plans/recurring-email.md, Around the clock), so
+   * marketShutLine says only what is true.
    */
   marketClosedLine: (day: string, time: string) => string;
+  marketShutLine: (day: string, time: string) => string;
   /** `amount` arrives pre-formatted: "0.0089 NVDA ≈ €1.80". */
   boardYouHold: (amount: string) => string;
   /**
@@ -1711,7 +1713,10 @@ export const COPY: Copy = {
 
   boardTitle: "Stocks and funds",
   boardHint: "Robinhood Stock Tokens. Choose one to buy.",
-  marketClosedLine: (day, time) => `US market closed. Opens ${day} ${time} your time.`,
+  marketClosedLine: (day, time) =>
+    `You can still buy and sell. The US market itself opens ${day} ${time} your time, and until then prices can move more than usual.`,
+  marketShutLine: (day, time) =>
+    `The US market is closed until ${day} ${time} your time. An order placed now may wait for the open, and prices can move more than usual.`,
   boardYouHold: (amount) => `You hold ${amount}`,
   boardPerformanceNote: (days) =>
     `The figure under the line is the last ${days} days. The figure by the price is the day. Only days the market was open are counted.`,

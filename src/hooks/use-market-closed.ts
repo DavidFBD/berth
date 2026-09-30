@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { useMounted } from "@/hooks/use-mounted";
-import { isOpen, nextOpen, opensAt } from "@/lib/market-calendar";
+import { isOpen, lastClose, nextOpen, opensAt } from "@/lib/market-calendar";
 
 /**
  * The clock the market line reads. Null is the real clock; a dev gallery
@@ -13,12 +13,17 @@ export const MarketClockContext = createContext<Date | null>(null);
 /** Checked once a minute: the bell moves no faster than that. */
 const TICK_MS = 60_000;
 
+/** A shut market shorter than this is a weekday night, when the tokens are known to trade. */
+const OVERNIGHT_MS = 24 * 60 * 60 * 1000;
+
 /**
- * When the US market is shut: the next open in the viewer's zone. Null while
- * it is open, and on the server and the hydration render, because the answer
- * depends on the viewer's clock and zone.
+ * When the US market is shut: the next open in the viewer's zone, and
+ * whether this is only a weekday night (trading on is proven then) rather
+ * than a weekend or holiday (not yet proven). Null while it is open, and on
+ * the server and the hydration render, because the answer depends on the
+ * viewer's clock and zone.
  */
-export function useMarketClosed(): { day: string; time: string } | null {
+export function useMarketClosed(): { day: string; time: string; overnight: boolean } | null {
   const frozen = useContext(MarketClockContext);
   const mounted = useMounted();
   const [tick, setTick] = useState(0);
@@ -35,5 +40,7 @@ export function useMarketClosed(): { day: string; time: string } | null {
     hour: "numeric",
   }).resolvedOptions();
   const hour12 = hourCycle === "h11" || hourCycle === "h12";
-  return opensAt(nextOpen(now), now, timeZone, hour12);
+  const opens = nextOpen(now);
+  const overnight = opens.getTime() - lastClose(now).getTime() < OVERNIGHT_MS;
+  return { ...opensAt(opens, now, timeZone, hour12), overnight };
 }
