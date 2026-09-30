@@ -1326,6 +1326,58 @@ export type EmailCopy = {
     button: string;
     after: string;
   };
+  /**
+   * The weekly summary (lib/server/weekly): opt in, Monday mornings, the
+   * week before. Every number in it is one the app already shows; a
+   * section with nothing trusted to say is left out, never guessed.
+   */
+  weeklySummary: {
+    /** `weekOf` is the week's Monday: "22 September". */
+    subject: (weekOf: string) => string;
+    heading: string;
+    /** `closeDay` is the last close the week has: "Friday 26 September". */
+    intro: (weekOf: string, closeDay: string | null) => string;
+    previewWorth: (worth: string, closeDay: string) => string;
+    previewPlain: string;
+    account: {
+      heading: string;
+      worth: string;
+      change: string;
+      /** The benchmark named as the email names it everywhere, by its listing: "S&P 500 ETF". */
+      benchmark: (name: string) => string;
+      /** Under the numbers when the change is shown: what it counts. */
+      changeNote: string;
+    };
+    /** Each holding's worth, and beside it its price's move over the week. */
+    holdings: {
+      heading: string;
+      note: string;
+      /** The holdings the list leaves out, with their worth beside: "And 2 more", or "2 holdings" when none is listed. */
+      more: (count: number, afterList: boolean) => string;
+    };
+    orders: {
+      heading: string;
+      filled: string;
+      /**
+       * Every order that filled this week, as the app's order log counts
+       * them; `limits` is how many of those were limit orders, a part of
+       * the count, never added to it.
+       */
+      filledValue: (buys: number, sells: number, limits: number) => string;
+      limits: string;
+      /** Limit orders that expired unfilled this week. */
+      limitsValue: (expired: number) => string;
+    };
+    recurring: {
+      heading: string;
+      placed: string;
+      skipped: string;
+      next: string;
+      nextValue: (name: string, day: string) => string;
+    };
+    friends: { heading: string; added: string; salutes: string };
+    after: string;
+  };
   settings: {
     sectionLabel: string;
     goesTo: (address: string) => string;
@@ -1551,7 +1603,7 @@ export const COPY: Copy = {
       email: {
         title: "A short email when it matters",
         body: [
-          "Berth writes when a wallet joins or leaves your account, accounts merge or an AI is connected, when a limit order fills or expires, when a friend asks, and on the day a recurring buy you set comes due. Each kind has its own switch, and one tap unsubscribes. No marketing.",
+          "Berth writes when a wallet joins or leaves your account, accounts merge or an AI is connected, when a limit order fills or expires, when a friend asks, on the day a recurring buy you set comes due, and on Mondays with your week if you ask it to. Each kind has its own switch, and one tap unsubscribes. No marketing.",
         ],
         from: "Berth",
         always: "Security notices always reach you.",
@@ -2459,6 +2511,52 @@ export const COPY: Copy = {
       button: "Open it in Berth",
       after: "Not this time? Let it pass. Nothing happens, and the next one comes as planned.",
     },
+    weeklySummary: {
+      subject: (weekOf) => `Your Berth week of ${weekOf}`,
+      heading: "Your week",
+      intro: (weekOf, closeDay) =>
+        closeDay
+          ? `Here is your account for the week of ${weekOf}, as of the close on ${closeDay}.`
+          : `Here is what happened in your account in the week of ${weekOf}.`,
+      previewWorth: (worth, closeDay) => `Your account was worth ${worth} at the close on ${closeDay}.`,
+      previewPlain: "What happened in your account last week.",
+      account: {
+        heading: "Your account",
+        worth: "Worth at the close",
+        change: "Your change this week",
+        benchmark: (name) => `${name}, same days`,
+        changeNote: "Your change counts what your holdings did, not money you added or took out.",
+      },
+      holdings: {
+        heading: "What you hold",
+        note: "Beside each, its price's move over the week.",
+        more: (count, afterList) => (afterList ? `And ${count} more` : `${count} ${count === 1 ? "holding" : "holdings"}`),
+      },
+      orders: {
+        heading: "Orders",
+        filled: "Filled",
+        filledValue: (buys, sells, limits) => {
+          const counted = [buys > 0 ? `${buys} ${buys === 1 ? "buy" : "buys"}` : null, sells > 0 ? `${sells} ${sells === 1 ? "sell" : "sells"}` : null]
+            .filter(Boolean)
+            .join(", ");
+          const total = buys + sells;
+          if (limits <= 0) return counted;
+          if (limits >= total) return `${counted}, ${total === 1 ? "a limit order" : total === 2 ? "both limit orders" : "all limit orders"}`;
+          return `${counted}, of which ${limits} ${limits === 1 ? "was a limit order" : "were limit orders"}`;
+        },
+        limits: "Limit orders",
+        limitsValue: (expired) => `${expired} expired`,
+      },
+      recurring: {
+        heading: "Recurring buys",
+        placed: "Signed",
+        skipped: "Let pass",
+        next: "Next",
+        nextValue: (name, day) => `${name}, ${day}`,
+      },
+      friends: { heading: "Friends", added: "New friends", salutes: "Salutes" },
+      after: "Values are at the market's close, in US dollars.",
+    },
     settings: {
       sectionLabel: "Email",
       goesTo: (address) => `Notices go to ${address}.`,
@@ -2466,7 +2564,7 @@ export const COPY: Copy = {
       kinds: {
         orders: { label: "Orders", sub: "When a limit order fills or expires." },
         friends: { label: "Friends", sub: "When someone asks to be your friend." },
-        weekly: { label: "Weekly summary", sub: "Your week against your benchmark." },
+        weekly: { label: "Weekly summary", sub: "On Mondays, your week beside the S&P 500 fund." },
         recurring: { label: "Recurring buys", sub: "When a plan's buy is ready to sign." },
       },
       addEmail: "Add an email to get notices",
@@ -2585,6 +2683,7 @@ export const COPY: Copy = {
           "Order notices: a limit order filled, or expired and the money came back. On unless you turn them off.",
           "Friend notices: someone asked to be your friend, at most one email a day. On unless you turn them off.",
           "Recurring buy reminders: on the day a plan you set comes due, one email for that plan, with a link that opens the buy for you to sign or let pass. On unless you turn them off.",
+          "The weekly summary: on Mondays, what your account was worth at the week's last close, its change beside the S&P 500 fund, what you hold and how each moved, what filled and which limit orders expired, your recurring buys (how many runs you signed or let pass, and the next plan's listing and day), and how many new friends and Salutes you had. Off unless you turn it on.",
         ],
         after: [
           "We do not track whether you open an email or click its links. Every notice other than a security notice has a link to turn that kind off, and you can change them all under Email in the app's settings. If mail to your address bounces or is reported as spam, we stop sending to it.",
@@ -2602,7 +2701,7 @@ export const COPY: Copy = {
           "Blockchain networks. Your browser reads balances and sends transactions through public network nodes. A Bitcoin order links to mempool.space so you can follow it there.",
           "GitHub, where error reports are kept in a private repository.",
           "OpenAI, if you use the Assistant in Berth, as described above.",
-          "Resend, which delivers our emails. It receives your email address, the notice's content (such as a listing's name, an amount, a price, or a friend's username) and whether the email was delivered, bounced or reported as spam.",
+          "Resend, which delivers our emails. It receives your email address, the notice's content (such as a listing's name, an amount, a price, or a friend's username, and in a weekly summary you turned on, your account's value and holdings, what filled, your recurring buys' names, dates and how many runs you signed or let pass, and how many new friends and Salutes you had) and whether the email was delivered, bounced or reported as spam.",
           "TypeSafe, whose Jev model helps choose the one line shown at the top of the app, such as news about something you own. It receives which listings your account holds and whether it has cash to spend, never your name, email or address.",
           "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
         ],

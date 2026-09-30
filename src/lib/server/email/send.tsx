@@ -6,6 +6,7 @@ import { resendTransport, type EmailTransport, type OutgoingEmail } from "@/lib/
 import { claimSend, finishSend, isSuppressed, primaryEmail, readPrefs, sendsToday, takeStalePending } from "@/lib/server/email/store";
 import { NoticeEmail, noticeText } from "@/lib/server/email/template";
 import { issueUnsubscribeToken } from "@/lib/server/email/token";
+import { weeklyRefCurrent } from "@/lib/weekly-window";
 
 /**
  * Sending a notice, queue free. A route calls `sendNotice` after its own
@@ -60,17 +61,46 @@ export function dailyCap(env: NodeJS.ProcessEnv = process.env): number {
 }
 
 /**
+ * The part of the day's cap no share may take: a quarter, rounded up, kept
+ * for an order filling or a friend asking (and security, which no cap
+ * stops), whatever EMAIL_RECURRING_DAILY_CAP and EMAIL_WEEKLY_DAILY_CAP
+ * say.
+ */
+export function reservedDailyRoom(env: NodeJS.ProcessEnv = process.env): number {
+  return Math.ceil(dailyCap(env) / 4);
+}
+
+function wantedShare(raw: string | undefined, fallback: number): number {
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && raw?.trim() ? Math.floor(value) : fallback;
+}
+
+/**
  * Recurring reminders' own share of the day: half the daily cap, so a
  * Monday full of plans never takes the room an order filling or a friend
  * asking needs. A reminder past it waits for the next morning's retry
  * (lib/server/recurring, over the run's life); the strip shows it anyway.
- * EMAIL_RECURRING_DAILY_CAP overrides it, never past the daily cap.
+ * EMAIL_RECURRING_DAILY_CAP overrides it, never into the reserved quarter
+ * (reservedDailyRoom).
  */
 export function recurringDailyCap(env: NodeJS.ProcessEnv = process.env): number {
   const cap = dailyCap(env);
-  const value = Number(env.EMAIL_RECURRING_DAILY_CAP);
-  const wanted = Number.isFinite(value) && value >= 0 && env.EMAIL_RECURRING_DAILY_CAP?.trim() ? Math.floor(value) : Math.floor(cap / 2);
-  return Math.min(wanted, cap);
+  return Math.min(wantedShare(env.EMAIL_RECURRING_DAILY_CAP, Math.floor(cap / 2)), cap - reservedDailyRoom(env));
+}
+
+/**
+ * The weekly summary's own share of the day: a quarter of the daily cap,
+ * so with the recurring reminders' half there is still a quarter left for
+ * an order filling, a friend asking, and every security notice (which no
+ * cap stops). A summary past it waits for the next morning within its
+ * week (lib/server/weekly). EMAIL_WEEKLY_DAILY_CAP overrides it, never
+ * past what the recurring share and the reserved quarter leave, so the
+ * two shares together never take order and friend notices' room.
+ */
+export function weeklyDailyCap(env: NodeJS.ProcessEnv = process.env): number {
+  const cap = dailyCap(env);
+  const left = cap - reservedDailyRoom(env) - recurringDailyCap(env);
+  return Math.max(0, Math.min(wantedShare(env.EMAIL_WEEKLY_DAILY_CAP, Math.floor(cap / 4)), left));
 }
 
 /** Waits before each retry of a rate limited send. */
@@ -201,6 +231,7 @@ export async function deliver(input: NoticeInput): Promise<DeliverOutcome> {
   if (typeof checked === "string") return checked;
   if (NOTICE_KIND[input.notice.type] !== "security" && (await sendsToday()) >= dailyCap()) return "daily_volume";
   if (input.notice.type === "recurring_due" && (await sendsToday("recurring_due")) >= recurringDailyCap()) return "daily_volume";
+  if (input.notice.type === "weekly" && (await sendsToday("weekly")) >= weeklyDailyCap()) return "daily_volume";
   const claim = await claimSend(input.userId, input.notice.type, input.ref, input.notice);
   if (typeof claim === "string") return claim;
   return sendClaimed(claim.id, input, checked.to);
@@ -212,13 +243,21 @@ export type RetrySummary = { retried: number; sent: number; gaveUp: number };
  * The morning and evening passes: every send pending more than ten minutes
  * (one that died midway, or a security notice deferred by a rate limit) is
  * checked again against the person's switches and address and sent, at
- * most `limit` a pass. A row past its last attempt is given up.
+ * most `limit` a pass. A row past its last attempt is given up, and so is
+ * a weekly summary whose week is over (it goes out Monday to Wednesday
+ * only, lib/weekly-window), so "your week of" never arrives late.
  */
-export async function retryPendingSends({ limit = 20 }: { limit?: number } = {}): Promise<RetrySummary> {
+export async function retryPendingSends({ limit = 20, now = new Date() }: { limit?: number; now?: Date } = {}): Promise<RetrySummary> {
   if (!sendingAllowed()) return { retried: 0, sent: 0, gaveUp: 0 };
-  const { rows, gaveUp } = await takeStalePending(limit);
+  const { rows, gaveUp: aged } = await takeStalePending(limit);
   let sent = 0;
+  let gaveUp = aged;
   for (const row of rows) {
+    if (row.type === "weekly" && !weeklyRefCurrent(row.ref, now)) {
+      await finishSend(row.id, { ok: false, error: "week_past" });
+      gaveUp += 1;
+      continue;
+    }
     const input: NoticeInput = { userId: row.user_id, ref: row.ref, notice: row.notice as unknown as Notice };
     const checked = await recipient(input);
     if (typeof checked === "string") {
@@ -269,6 +308,36 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
   {
     name: "recurring-due",
     notice: { type: "recurring_due", lead: "Monday", name: "S&P 500 ETF", usd: "$20.00", limitPrice: null, path: "/?open=SPY&side=buy&usd=20&run=sample" },
+  },
+  {
+    name: "weekly-summary",
+    notice: {
+      type: "weekly",
+      weekOf: "21 September",
+      closeDay: "Friday 25 September",
+      account: { worth: "$1,284.60", change: "+1.24%", benchmark: { name: "S&P 500 ETF", change: "+0.81%" } },
+      holdings: [
+        { name: "NVIDIA", worth: "$642.10", move: "+3.02%" },
+        { name: "S&P 500 ETF", worth: "$410.25", move: "+0.81%" },
+        { name: "Treasury ETF", worth: "$232.25", move: "+0.08%" },
+      ],
+      orders: { buys: 3, sells: 0, limitsFilled: 1, limitsExpired: 1 },
+      recurring: { placed: 1, skipped: 1, next: { name: "S&P 500 ETF", day: "Monday 5 October" } },
+      friends: { added: 1, salutes: 3 },
+    },
+  },
+  {
+    name: "weekly-summary-first-week",
+    notice: {
+      type: "weekly",
+      weekOf: "21 September",
+      closeDay: "Friday 25 September",
+      account: { worth: "$50.12", change: null, benchmark: null },
+      holdings: [{ name: "NVIDIA", worth: "$50.12", move: "\u22121.40%" }],
+      orders: { buys: 1, sells: 0, limitsFilled: 0, limitsExpired: 0 },
+      recurring: null,
+      friends: null,
+    },
   },
 ];
 

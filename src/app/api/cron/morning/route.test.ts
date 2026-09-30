@@ -6,6 +6,8 @@ const runRecurringMorning = vi.fn();
 vi.mock("@/lib/server/holds", () => ({ runHoldCheck: () => runHoldCheck() }));
 vi.mock("@/lib/server/recurring", () => ({ runRecurringMorning: () => runRecurringMorning(), reminderNotice: vi.fn() }));
 vi.mock("@/lib/server/portfolio", () => ({ liveListingPrices: async () => ({}) }));
+const runWeeklySummaries = vi.fn();
+vi.mock("@/lib/server/weekly", () => ({ runWeeklySummaries: () => runWeeklySummaries() }));
 
 import { GET } from "./route";
 
@@ -23,6 +25,8 @@ describe("GET /api/cron/morning", () => {
     runHoldCheck.mockResolvedValue({ checked: 3, paid: 1, forfeited: 1, retried: 1 });
     runRecurringMorning.mockReset();
     runRecurringMorning.mockResolvedValue({ aged: 1, made: 2, emailed: 0, notEmailed: 2 });
+    runWeeklySummaries.mockReset();
+    runWeeklySummaries.mockResolvedValue({ week: "2026-W39", sent: 1, empty: 0, notSent: 0, deferred: 0 });
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -52,8 +56,10 @@ describe("GET /api/cron/morning", () => {
       holds: { ok: true, result: { checked: 3, paid: 1, forfeited: 1, retried: 1 } },
       recurring: { ok: true, result: { aged: 1, made: 2, emailed: 0, notEmailed: 2 } },
       emails: { ok: true, result: { retried: 0, sent: 0, gaveUp: 0 } },
+      weekly: { ok: true, result: { week: "2026-W39", sent: 1, empty: 0, notSent: 0, deferred: 0 } },
       failed: false,
     });
+    expect(runWeeklySummaries).toHaveBeenCalledOnce();
     expect(runHoldCheck).toHaveBeenCalledOnce();
     expect(runRecurringMorning).toHaveBeenCalledOnce();
   });
@@ -68,5 +74,15 @@ describe("GET /api/cron/morning", () => {
     expect(body.holds).toEqual({ ok: false, error: "rpc down" });
     expect(body.recurring.ok).toBe(true);
     expect(body.failed).toBe(true);
+  });
+
+  it("a failing weekly summary is reported but does not fail the run", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    runWeeklySummaries.mockRejectedValue(new Error("db down"));
+    const response = await call(`Bearer ${SECRET}`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.weekly).toEqual({ ok: false, error: "db down" });
+    expect(body.failed).toBe(false);
   });
 });

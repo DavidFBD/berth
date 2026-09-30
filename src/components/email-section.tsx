@@ -14,10 +14,10 @@ import { cn } from "@/lib/utils";
  * account without an email is offered the add-email flow instead, which
  * lives in the same drawer (RewardsPanel, ADD_EMAIL_ANCHOR).
  *
- * The weekly summary is stored but not sent yet, so it has no switch here:
- * a switch that does nothing would be a promise the app cannot keep.
+ * The weekly summary (lib/server/weekly) is the one switch that starts
+ * off: it is the only email the person did not cause.
  */
-const SHOWN_KINDS: readonly SwitchableKind[] = ["orders", "recurring", "friends"];
+const SHOWN_KINDS: readonly SwitchableKind[] = ["orders", "recurring", "friends", "weekly"];
 
 export function EmailSection({
   heading = "caps",

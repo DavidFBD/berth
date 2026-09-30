@@ -1,6 +1,7 @@
 import {
   Body,
   Button,
+  Column,
   Container,
   Head,
   Heading,
@@ -9,6 +10,7 @@ import {
   Img,
   Link,
   Preview,
+  Row,
   Section,
   Text,
 } from "react-email";
@@ -92,6 +94,66 @@ export function NoticeEmail({ content, markUrl, unsubscribeUrl, contact }: Layou
                 ))}
               </ul>
             ) : null}
+            {content.sections?.map((section) => (
+              <Section key={section.heading} style={{ margin: "4px 0 18px" }}>
+                <Text
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: "11.5px",
+                    lineHeight: "16px",
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    color: MUTED,
+                    margin: "0 0 6px",
+                  }}
+                >
+                  {section.heading}
+                </Text>
+                <Section style={{ backgroundColor: CARD_2, borderRadius: "10px", padding: "8px 16px" }}>
+                  {section.facts.map((fact) => (
+                    <Row key={fact.label}>
+                      <Column style={{ ...small, margin: 0, padding: "5px 12px 5px 0", color: INK_2, verticalAlign: "top" }}>
+                        {fact.label}
+                      </Column>
+                      <Column
+                        align="right"
+                        style={{
+                          fontFamily: MONO,
+                          fontSize: "14px",
+                          lineHeight: "20px",
+                          color: INK,
+                          padding: "5px 0",
+                          verticalAlign: "top",
+                          // Kept to one line only beside a move, where the words are a number.
+                          ...(section.facts.some((entry) => entry.aside) ? { whiteSpace: "nowrap" as const } : {}),
+                        }}
+                      >
+                        {fact.value}
+                      </Column>
+                      {section.facts.some((entry) => entry.aside) ? (
+                        <Column
+                          align="right"
+                          style={{
+                            fontFamily: MONO,
+                            fontSize: "13px",
+                            lineHeight: "20px",
+                            color: MUTED,
+                            padding: "5px 0 5px 12px",
+                            verticalAlign: "top",
+                            whiteSpace: "nowrap",
+                            width: "72px",
+                          }}
+                        >
+                          {fact.aside ?? ""}
+                        </Column>
+                      ) : null}
+                    </Row>
+                  ))}
+                </Section>
+                {section.note ? <Text style={{ ...small, margin: "6px 0 0" }}>{section.note}</Text> : null}
+              </Section>
+            ))}
             {content.after?.map((paragraph) => (
               <Text key={paragraph} style={text}>
                 {paragraph}
@@ -157,6 +219,10 @@ export function NoticeEmail({ content, markUrl, unsubscribeUrl, contact }: Layou
 export function noticeText({ content, unsubscribeUrl, contact }: Omit<LayoutProps, "markUrl">): string {
   const lines: string[] = [content.heading, "", ...content.paragraphs];
   if (content.list?.length) lines.push("", ...content.list.map((item) => `* ${item}`));
+  for (const section of content.sections ?? []) {
+    lines.push("", section.heading, ...section.facts.map((fact) => `${fact.label}: ${fact.value}${fact.aside ? `, ${fact.aside}` : ""}`));
+    if (section.note) lines.push(section.note);
+  }
   if (content.after?.length) lines.push("", ...content.after);
   if (content.facts?.length) lines.push("", ...content.facts.map((fact) => `${fact.label}: ${fact.value}`));
   lines.push("", `${content.button.label}: ${content.button.href}`, "", content.why);

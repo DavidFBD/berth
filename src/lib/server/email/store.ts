@@ -13,15 +13,35 @@ import {
  * so a merge or a changed primary email is followed at once.
  */
 
-/** The account's verified primary email (user_identities, kind email, is_primary), normalised, or null. */
+/**
+ * The one rule for where a person's notices go: their primary email
+ * identity (user_identities, kind email, is_primary; at most one per
+ * account). `user` is the SQL expression for the account's id. Every
+ * reader of the address uses it (primaryEmail at send time, the weekly
+ * summary's picking query), normalised the same way afterwards
+ * (sendableAddress), so no query picks a person the send would refuse.
+ */
+export const primaryEmailSql = (user: string) =>
+  `select value from user_identities where user_id = ${user} and kind = 'email' and is_primary limit 1`;
+
+/** A stored address as a send reads it: normalised, or null when it is not an address at all. */
+export function sendableAddress(value: string | null | undefined): string | null {
+  return emailValue(value);
+}
+
+/** The account's verified primary email (primaryEmailSql), normalised, or null. */
 export async function primaryEmail(userId: string): Promise<string | null> {
-  const rows = (await getSql().query(
-    `select value from user_identities
-      where user_id = $1 and kind = 'email' and is_primary
-      limit 1`,
-    [userId],
-  )) as { value: string }[];
-  return rows[0]?.value ?? null;
+  const rows = (await getSql().query(primaryEmailSql("$1"), [userId])) as { value: string }[];
+  return sendableAddress(rows[0]?.value);
+}
+
+/** Of these normalised addresses, the ones on the suppression list, in one read. */
+export async function suppressedAmong(addresses: readonly string[]): Promise<Set<string>> {
+  if (addresses.length === 0) return new Set();
+  const rows = (await getSql().query(`select address from email_suppressions where address = any($1::text[])`, [addresses])) as {
+    address: string;
+  }[];
+  return new Set(rows.map((row) => row.address));
 }
 
 export async function readPrefs(userId: string): Promise<EmailPrefs> {
@@ -122,7 +142,25 @@ export async function finishSend(
   }
 }
 
-/** Sends counted against the day's volume (UTC day): everything sent or going out since midnight. */
+/**
+ * Records that (type, ref) was not sent and why, without sending: a row
+ * finished as 'failed' with `reason` as its error, so it counts against
+ * no cap and a later claim may still take it (claimSend reclaims a failed
+ * row). A row already sent or under way is left alone. The weekly summary
+ * uses it so a person it tried is not picked first again ('empty': the
+ * week had nothing to say, and the week is done for them; 'build' and the
+ * rest: tried again another morning, after everyone not yet tried).
+ */
+export async function recordUnsent(userId: string, type: string, ref: string, reason: string): Promise<void> {
+  await getSql().query(
+    `insert into email_sends (user_id, type, ref, status, error) values ($1, $2, $3, 'failed', $4)
+     on conflict on constraint email_sends_type_ref do update set
+       error = excluded.error, notice = null, attempts = email_sends.attempts + 1, created_at = now()
+       where email_sends.status = 'failed'`,
+    [userId, type, ref, reason.slice(0, 80)],
+  );
+}
+
 /** Sends claimed today (UTC), sent or pending; of one type when given. */
 export async function sendsToday(type?: string): Promise<number> {
   const rows = (await getSql().query(

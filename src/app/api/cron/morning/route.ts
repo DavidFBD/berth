@@ -8,7 +8,8 @@ export const maxDuration = 60;
 /**
  * The morning run (vercel.json, 06:00 UTC every day): the thirty day hold
  * check, the recurring buys' reminders, and the email notices left
- * pending, in that order and each within its own budget
+ * pending, then on Monday to Wednesday the weekly summary, in that order
+ * and each within its own budget
  * (lib/server/morning). Each stage's summary either way; 500 when the hold
  * check or the recurring stage failed, so Vercel's cron log shows it, even
  * though every stage still ran.

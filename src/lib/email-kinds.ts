@@ -5,8 +5,9 @@
  * Security notices are always on: a wallet added or removed, accounts
  * merged, an assistant connected. They cannot be switched off, so they
  * have no switch and no row in email_prefs. Everything else is a switch.
- * The weekly summary is stored but not sent yet, and is off by default:
- * it is the one kind the person did not trigger.
+ * The weekly summary (lib/server/weekly, Monday mornings) is off by
+ * default: it is the one kind the person did not trigger, so it goes only
+ * to someone who switched it on.
  */
 export const EMAIL_KINDS = ["security", "orders", "friends", "weekly", "recurring"] as const;
 export type EmailKind = (typeof EMAIL_KINDS)[number];

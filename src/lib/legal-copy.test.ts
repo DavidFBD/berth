@@ -23,3 +23,17 @@ describe("the terms of use", () => {
     for (const text of [all(COPY.termsOfUse), helpText]) expect(text).not.toMatch(/ [-–—] |—|–/);
   });
 });
+
+describe("the privacy policy", () => {
+  it("says everything the weekly summary carries, where it is kept and where it goes", () => {
+    const text = all(COPY.privacyPolicy as typeof COPY.termsOfUse);
+    const weekly = text.split("\n").find((line) => line.startsWith("The weekly summary:"));
+    const resend = text.split("\n").find((line) => line.startsWith("Resend,"));
+    for (const line of [weekly, resend]) {
+      expect(line).toBeDefined();
+      for (const part of ["recurring buys", "signed or let pass", "friends", "Salutes", "filled"]) expect(line).toContain(part);
+    }
+    expect(weekly).toContain("next plan's listing and day");
+    expect(resend).toContain("names, dates");
+  });
+});

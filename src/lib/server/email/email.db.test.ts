@@ -180,7 +180,8 @@ describe("deliver", () => {
     expect(await deliver(filled(userId, "o-share-1"))).toBe("sent");
     expect(await deliver(filled(userId, "o-share-2"))).toBe("sent");
     vi.stubEnv("EMAIL_DAILY_CAP", "");
-    expect(recurringDailyCap({ EMAIL_DAILY_CAP: "90", EMAIL_RECURRING_DAILY_CAP: "500" } as unknown as NodeJS.ProcessEnv)).toBe(90);
+    // Never into the quarter kept for orders and friends.
+    expect(recurringDailyCap({ EMAIL_DAILY_CAP: "90", EMAIL_RECURRING_DAILY_CAP: "500" } as unknown as NodeJS.ProcessEnv)).toBe(67);
   });
 
   it("waits out a rate limit, then defers a security notice for the next pass instead of failing it", async () => {

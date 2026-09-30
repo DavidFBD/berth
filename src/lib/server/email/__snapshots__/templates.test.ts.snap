@@ -129,3 +129,72 @@ Not you? Write to us at support@berthmarkets.com.
 
 Berth. A place to tie up."
 `;
+
+exports[`notice templates > weekly-summary renders HTML and text without personal data 1`] = `
+"Subject: Your Berth week of 21 September
+
+Your week
+
+Here is your account for the week of 21 September, as of the close on Friday 25 September.
+
+Your account
+Worth at the close: $1,284.60
+Your change this week: +1.24%
+S&P 500 ETF, same days: +0.81%
+
+What you hold
+NVIDIA: $642.10, +3.02%
+S&P 500 ETF: $410.25, +0.81%
+Treasury ETF: $232.25, +0.08%
+Beside each, its price's move over the week.
+
+Orders
+Filled: 3 buys, of which 1 was a limit order
+Limit orders: 1 expired
+
+Recurring buys
+Signed: 1
+Let pass: 1
+Next: S&P 500 ETF, Monday 5 October
+
+Friends
+New friends: 1
+Salutes: 3
+
+Your change counts what your holdings did, not money you added or took out.
+Values are at the market's close, in US dollars.
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because the weekly summary is on.
+Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Berth. A place to tie up."
+`;
+
+exports[`notice templates > weekly-summary-first-week renders HTML and text without personal data 1`] = `
+"Subject: Your Berth week of 21 September
+
+Your week
+
+Here is your account for the week of 21 September, as of the close on Friday 25 September.
+
+Your account
+Worth at the close: $50.12
+
+What you hold
+NVIDIA: $50.12, −1.40%
+Beside each, its price's move over the week.
+
+Orders
+Filled: 1 buy
+
+Values are at the market's close, in US dollars.
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because the weekly summary is on.
+Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Berth. A place to tie up."
+`;

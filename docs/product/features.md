@@ -80,6 +80,14 @@ One headline, one paragraph, four points. The welcome page opens on it.
     or a limit order fills or expires. Security notices always go out; every
     other kind has its own switch and a one-tap unsubscribe. No marketing.
     Answered at support@berthmarkets.com.
+    **Weekly summary, opt in.** Off until you turn it on under Email in
+    settings. On Mondays: what the account was worth at the week's last
+    close, its change beside the S&P 500 fund over the same days (as the
+    chart's one week range tells it), each holding with its price's move,
+    and counts of what filled, recurring buys signed or let pass, new
+    friends and Salutes. A part with nothing sure to say is left out; a
+    quiet week sends nothing. Always the S&P 500 fund, since the benchmark
+    you pick in the app stays in your browser.
 13. **Ranks, XP and avatars.** Earn XP for buying, holding, adding an email
     and bringing friends; climb ten harbour ranks from First Line to Harbour
     Master, with avatars and features unlocked on the way.
@@ -144,6 +152,7 @@ One headline, one paragraph, four points. The welcome page opens on it.
 
 - Board: `src/components/home.tsx`, gallery `/dev/board?home=held` (dev only).
 - Assistant: `/dev/chat` (dev only, mock model), live via the Assistant button.
+- Emails: `/dev/email` (dev only), one at a time with `?only=weekly-summary`.
 - Connector help: `/assistants`. Legal: `/privacy`, `/terms`.
 - Brand: `public/berth-brand/brand-sheet.md`, rank names in
   `public/berth-brand/rank-names.md`, thinking orbs only while something works.

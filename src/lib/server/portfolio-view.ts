@@ -15,7 +15,9 @@ import {
   loadListingOrders,
   loadPortfolioDays,
   readAccountBalances,
+  type StoredPortfolioDay,
 } from "@/lib/server/portfolio";
+import type { Marks, OrderFacts } from "@/lib/benchmark";
 
 /**
  * The account's money over time beside the same money in a benchmark, for
@@ -204,36 +206,13 @@ export async function loadPortfolioHistory({
     }
   }
 
-  // Do the orders add up to what is held? Judged on today's balances when
-  // they were read, else on the newest stored day's holdings and the orders
-  // placed before it. With neither there is nothing to contradict them.
-  const lastDay = days.at(-1);
-  let balanceExplained = true;
-  if (liveInputs) {
-    balanceExplained = ledgerExplains(orders, liveInputs.balances);
-  } else if (lastDay) {
-    const asOf = Date.parse(lastDay.asOf);
-    balanceExplained = ledgerExplains(
-      orders.filter((order) => Date.parse(order.placedAt) <= asOf),
-      Object.fromEntries(lastDay.holdings.map((holding) => [holding.symbol, holding.quantity])),
-    );
-  }
-  // When they do not, money moved without an order: the comparison starts
-  // from the first snapshot the orders explain everything after.
-  const base = balanceExplained ? undefined : explainedFrom(days, orders, liveInputs?.balances);
-  // A day rebuilt from the orders after that snapshot would leave out the
-  // move, so only snapshots are drawn from it on.
-  const drawn = base ? days.filter((day) => day.source === "snapshot" || day.day <= base.day) : days;
-
-  const { ranges, available } = historyRanges({
-    days: drawn,
+  const { ranges, available } = storedComparison({
+    days,
     orders,
-    benchmarkSymbol: benchmark.symbol,
-    benchmarkMarks: marks[benchmark.symbol],
-    listingCloses: marks,
+    benchmark,
+    marks,
     live,
-    balanceExplained,
-    base,
+    liveBalances: liveInputs?.balances,
   });
 
   const response: PortfolioHistoryResponse = {
@@ -245,4 +224,60 @@ export async function loadPortfolioHistory({
     todaySource,
   };
   return response;
+}
+
+/**
+ * The comparison from what is already read: stored days, the orders, the
+ * closes and, when there is one, today's live point with the balances it
+ * was read from. Whether the orders explain what is held is judged here,
+ * on the live balances when given, else on the newest stored day and the
+ * orders placed before it. loadPortfolioHistory's arithmetic, and the
+ * weekly summary's (lib/server/weekly), which passes stored days only.
+ */
+export function storedComparison({
+  days,
+  orders,
+  benchmark,
+  marks,
+  live,
+  liveBalances,
+}: {
+  days: readonly StoredPortfolioDay[];
+  orders: readonly OrderFacts[];
+  benchmark: Pick<Benchmark, "symbol">;
+  marks: Readonly<Record<string, Marks>>;
+  live?: LivePoint;
+  liveBalances?: Readonly<Record<string, number>>;
+}): { ranges: Partial<Record<Range, HistoryResult>>; available: Range[] } {
+  // Do the orders add up to what is held? Judged on today's balances when
+  // they were read, else on the newest stored day's holdings and the orders
+  // placed before it. With neither there is nothing to contradict them.
+  const lastDay = days.at(-1);
+  let balanceExplained = true;
+  if (liveBalances) {
+    balanceExplained = ledgerExplains(orders, liveBalances);
+  } else if (lastDay) {
+    const asOf = Date.parse(lastDay.asOf);
+    balanceExplained = ledgerExplains(
+      orders.filter((order) => Date.parse(order.placedAt) <= asOf),
+      Object.fromEntries(lastDay.holdings.map((holding) => [holding.symbol, holding.quantity])),
+    );
+  }
+  // When they do not, money moved without an order: the comparison starts
+  // from the first snapshot the orders explain everything after.
+  const base = balanceExplained ? undefined : explainedFrom(days, orders, liveBalances);
+  // A day rebuilt from the orders after that snapshot would leave out the
+  // move, so only snapshots are drawn from it on.
+  const drawn = base ? days.filter((day) => day.source === "snapshot" || day.day <= base.day) : days;
+
+  return historyRanges({
+    days: drawn,
+    orders,
+    benchmarkSymbol: benchmark.symbol,
+    benchmarkMarks: marks[benchmark.symbol],
+    listingCloses: marks,
+    live,
+    balanceExplained,
+    base,
+  });
 }

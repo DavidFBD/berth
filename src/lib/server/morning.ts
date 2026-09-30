@@ -10,6 +10,7 @@ import {
   type RecurringMorningSummary,
   type RemindOutcome,
 } from "@/lib/server/recurring";
+import { runWeeklySummaries, type WeeklyRunSummary } from "@/lib/server/weekly";
 
 /**
  * The morning run (vercel.json, 06:00 UTC every day, anywhere in that hour
@@ -23,11 +24,25 @@ import {
  *    one reminder email each (lib/server/recurring). Berth reminds, the
  *    person signs; nothing is bought here.
  * 3. Emails: every notice left pending, sent again (lib/server/email).
+ * 4. Weekly: the weekly summary (lib/server/weekly), on Monday, and on
+ *    Tuesday and Wednesday for whoever it did not reach, to the people who
+ *    switched it on. It runs after the email retry, never beside it, so
+ *    the two never share Resend's rate limit and a retried order or
+ *    friend notice is never lost to a 429 the summaries caused. Its
+ *    budget is whatever the run has left, at most WEEKLY_BUDGET_MS: on a
+ *    slow morning it sends fewer, and the rest go the next morning. It
+ *    never counts as a failure of the run.
  */
 
 export const HOLDS_BUDGET_MS = 25_000;
 export const RECURRING_BUDGET_MS = 20_000;
 export const EMAILS_BUDGET_MS = 10_000;
+/** The weekly stage's most; it gets less when the stages before it ran long (RUN_BUDGET_MS). */
+export const WEEKLY_BUDGET_MS = 10_000;
+/** The whole run's time, inside the route's sixty seconds (maxDuration) with room to answer. */
+export const RUN_BUDGET_MS = 57_000;
+/** It starts nobody new this long before its budget ends: one summary is a few reads, a render and a send. */
+export const WEEKLY_MARGIN_MS = 3_000;
 /**
  * The recurring stage stops starting new plans and emails this long
  * before its budget runs out, so it answers on its own instead of being
@@ -41,6 +56,7 @@ export type MorningSummary = {
   holds: Stage<HoldRunSummary>;
   recurring: Stage<RecurringMorningSummary>;
   emails: Stage<RetrySummary>;
+  weekly: Stage<WeeklyRunSummary>;
   failed: boolean;
 };
 
@@ -92,19 +108,29 @@ export async function runMorning({
       remind: remindByEmail,
     }),
   emails = () => retryPendingSends(),
-  budgets = { holds: HOLDS_BUDGET_MS, recurring: RECURRING_BUDGET_MS, emails: EMAILS_BUDGET_MS },
+  weekly = (budgetMs) => runWeeklySummaries({ now, deadline: Date.now() + budgetMs - WEEKLY_MARGIN_MS }),
+  budgets = { holds: HOLDS_BUDGET_MS, recurring: RECURRING_BUDGET_MS, emails: EMAILS_BUDGET_MS, weekly: WEEKLY_BUDGET_MS, run: RUN_BUDGET_MS },
+  clock = Date.now,
 }: {
   now?: Date;
   holds?: () => Promise<HoldRunSummary>;
   recurring?: () => Promise<RecurringMorningSummary>;
   emails?: () => Promise<RetrySummary>;
-  budgets?: { holds: number; recurring: number; emails: number };
+  /** Given its budget, so it stops starting new summaries in time. */
+  weekly?: (budgetMs: number) => Promise<WeeklyRunSummary>;
+  budgets?: { holds: number; recurring: number; emails: number; weekly: number; run?: number };
+  clock?: () => number;
 } = {}): Promise<MorningSummary> {
+  const started = clock();
   const holdStage = await stage(holds, budgets.holds);
   const recurringStage = await stage(recurring, budgets.recurring);
   const emailStage = await stage(emails, budgets.emails);
+  // After the retry, never beside it; with whatever time the run has left.
+  const weeklyBudget = Math.max(0, Math.min(budgets.weekly, (budgets.run ?? RUN_BUDGET_MS) - (clock() - started)));
+  const weeklyStage = await stage(() => weekly(weeklyBudget), weeklyBudget);
   if (!holdStage.ok) console.warn("[cron/morning] hold check failed:", holdStage.error);
   if (!recurringStage.ok) console.warn("[cron/morning] recurring failed:", recurringStage.error);
   if (!emailStage.ok) console.warn("[cron/morning] email retry failed:", emailStage.error);
-  return { holds: holdStage, recurring: recurringStage, emails: emailStage, failed: !holdStage.ok || !recurringStage.ok };
+  if (!weeklyStage.ok) console.warn("[cron/morning] weekly summary failed:", weeklyStage.error);
+  return { holds: holdStage, recurring: recurringStage, emails: emailStage, weekly: weeklyStage, failed: !holdStage.ok || !recurringStage.ok };
 }

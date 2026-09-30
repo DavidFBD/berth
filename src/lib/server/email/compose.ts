@@ -41,7 +41,46 @@ export type Notice =
       dipUnpriced?: boolean;
       /** The draft link's path and query on Berth ("/?open=…&run=…"), never another host. */
       path: string;
-    };
+    }
+  | WeeklyNotice;
+
+/**
+ * The weekly summary (lib/server/weekly), every value already formatted.
+ * A part is null (or the list empty) when the app has nothing it trusts
+ * to say there; that section is then left out of the email.
+ */
+export type WeeklyNotice = {
+  type: "weekly";
+  /** The week's Monday: "22 September". */
+  weekOf: string;
+  /** The last close the week has: "Friday 26 September"; null when no day of it is stored. */
+  closeDay: string | null;
+  account: {
+    /** "$1,234.56" */
+    worth: string;
+    /** "+1.24%", or null when the change cannot be told (money moved without an order, a week not yet filled). */
+    change: string | null;
+    /** The benchmark's name and its change over the same days, or null when the app would not show one. */
+    benchmark: { name: string; change: string } | null;
+  } | null;
+  /** Largest first; the listing's plain name, never the ticker. `move` is the price's change over the week. */
+  holdings: { name: string; worth: string; move: string | null }[];
+  /**
+   * What the list leaves out (past the largest, or not a listing Berth
+   * names), as a count and a worth, so the rows add up to the account's
+   * worth. Absent or null when nothing is left out (older stored notices
+   * have no such field).
+   */
+  holdingsRest?: { count: number; worth: string } | null;
+  /**
+   * What filled this week (the app's order log: buys and sells, a filled
+   * limit order among them), how many of those were limit orders (a part
+   * of buys + sells, never more), and limit orders that expired unfilled.
+   */
+  orders: { buys: number; sells: number; limitsFilled: number; limitsExpired: number } | null;
+  recurring: { placed: number; skipped: number; next: { name: string; day: string } | null } | null;
+  friends: { added: number; salutes: number } | null;
+};
 
 export type NoticeType = Notice["type"];
 
@@ -54,6 +93,7 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   order_expired: "orders",
   friend_request: "friends",
   recurring_due: "recurring",
+  weekly: "weekly",
 };
 
 export type EmailContent = {
@@ -67,6 +107,14 @@ export type EmailContent = {
   after?: string[];
   /** Label and value pairs, values in the mono face (prices, amounts). */
   facts?: { label: string; value: string }[];
+  /** Titled groups of facts, after everything above (the weekly summary). */
+  sections?: {
+    heading: string;
+    /** `aside` is a second, quieter value beside the first (a holding's move). */
+    facts: { label: string; value: string; aside?: string }[];
+    /** One small line under the group, saying what its numbers are. */
+    note?: string;
+  }[];
   button: { label: string; href: string };
   /** Why this email arrived. */
   why: string;
@@ -156,5 +204,78 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
         why,
       };
     }
+    case "weekly":
+      return composeWeekly(notice, { kind, button, why });
   }
+}
+
+function composeWeekly(
+  notice: WeeklyNotice,
+  { kind, button, why }: Pick<EmailContent, "kind" | "button" | "why">,
+): EmailContent {
+  const words = COPY.email.weeklySummary;
+  const sections: NonNullable<EmailContent["sections"]> = [];
+  const paragraphs = [words.intro(notice.weekOf, notice.closeDay)];
+  if (notice.account) {
+    const facts = [{ label: words.account.worth, value: notice.account.worth }];
+    if (notice.account.change) facts.push({ label: words.account.change, value: notice.account.change });
+    if (notice.account.change && notice.account.benchmark) {
+      facts.push({ label: words.account.benchmark(plain(notice.account.benchmark.name)), value: notice.account.benchmark.change });
+    }
+    sections.push({ heading: words.account.heading, facts });
+  }
+  const rest = notice.holdingsRest && notice.holdingsRest.count > 0 ? notice.holdingsRest : null;
+  if (notice.holdings.length > 0 || rest) {
+    const facts: { label: string; value: string; aside?: string }[] = notice.holdings.map((holding) =>
+      holding.move ? { label: plain(holding.name), value: holding.worth, aside: holding.move } : { label: plain(holding.name), value: holding.worth },
+    );
+    if (rest) facts.push({ label: words.holdings.more(rest.count, notice.holdings.length > 0), value: rest.worth });
+    sections.push({
+      heading: words.holdings.heading,
+      facts,
+      ...(notice.holdings.some((holding) => holding.move) ? { note: words.holdings.note } : {}),
+    });
+  }
+  if (notice.orders) {
+    const facts: { label: string; value: string }[] = [];
+    if (notice.orders.buys + notice.orders.sells > 0) {
+      const limits = Math.min(notice.orders.limitsFilled, notice.orders.buys + notice.orders.sells);
+      facts.push({ label: words.orders.filled, value: words.orders.filledValue(notice.orders.buys, notice.orders.sells, limits) });
+    }
+    if (notice.orders.limitsExpired > 0) {
+      facts.push({ label: words.orders.limits, value: words.orders.limitsValue(notice.orders.limitsExpired) });
+    }
+    if (facts.length > 0) sections.push({ heading: words.orders.heading, facts });
+  }
+  if (notice.recurring) {
+    const facts: { label: string; value: string }[] = [];
+    if (notice.recurring.placed > 0) facts.push({ label: words.recurring.placed, value: String(notice.recurring.placed) });
+    if (notice.recurring.skipped > 0) facts.push({ label: words.recurring.skipped, value: String(notice.recurring.skipped) });
+    if (notice.recurring.next) {
+      facts.push({ label: words.recurring.next, value: words.recurring.nextValue(plain(notice.recurring.next.name), notice.recurring.next.day) });
+    }
+    if (facts.length > 0) sections.push({ heading: words.recurring.heading, facts });
+  }
+  if (notice.friends) {
+    const facts: { label: string; value: string }[] = [];
+    if (notice.friends.added > 0) facts.push({ label: words.friends.added, value: String(notice.friends.added) });
+    if (notice.friends.salutes > 0) facts.push({ label: words.friends.salutes, value: String(notice.friends.salutes) });
+    if (facts.length > 0) sections.push({ heading: words.friends.heading, facts });
+  }
+  return {
+    kind,
+    subject: words.subject(notice.weekOf),
+    preview: notice.account && notice.closeDay ? words.previewWorth(notice.account.worth, notice.closeDay) : words.previewPlain,
+    heading: words.heading,
+    paragraphs,
+    sections,
+    after: notice.account?.change ? [words.account.changeNote, words.after] : [words.after],
+    button,
+    why,
+  };
+}
+
+/** Whether a weekly summary has anything to say: an empty week sends nothing. */
+export function weeklyHasContent(notice: WeeklyNotice): boolean {
+  return (composeWeekly(notice, { kind: "weekly", button: { label: "", href: "" }, why: "" }).sections ?? []).length > 0;
 }
