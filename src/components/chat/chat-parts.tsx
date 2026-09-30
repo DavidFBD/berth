@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Receipt, WarningCircle } from "@phosphor-icons/react";
+import { ArrowsClockwise, Check, Receipt, WarningCircle } from "@phosphor-icons/react";
 import { getToolName, isTextUIPart, isToolUIPart, type UIMessage } from "ai";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
@@ -10,6 +10,8 @@ import { isBerthToolName } from "@/lib/berth-tool-names";
 import { formatUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { DraftSummary } from "@/lib/draft-order";
+import { openPlanSheet } from "@/components/recurring/plan-sheet-events";
+import { ordinal } from "@/lib/recurring";
 
 /**
  * One message of the chat. A person's words sit in a quiet bubble on the
@@ -32,6 +34,7 @@ export function orbStateForTool(name: string): OrbState {
     case "get_account":
       return "solving";
     case "draft_order":
+    case "draft_recurring":
       return "composing";
     default:
       return "working";
@@ -40,10 +43,31 @@ export function orbStateForTool(name: string): OrbState {
 
 export type ChatDraft = DraftSummary;
 
+/** A recurring buy draft_recurring checked on the server (lib/server/berth-tools PlanDraftCard). */
+export type ChatPlanDraft = { symbol: string; name: string; usd: number; cadence: "weekly" | "monthly"; day: number; dipPct?: number };
+
+function isPlanDraft(value: unknown): value is ChatPlanDraft {
+  const plan = value as ChatPlanDraft | undefined;
+  return (
+    !!plan &&
+    typeof plan.symbol === "string" &&
+    typeof plan.name === "string" &&
+    typeof plan.usd === "number" &&
+    (plan.cadence === "weekly" || plan.cadence === "monthly") &&
+    Number.isInteger(plan.day)
+  );
+}
+
 /** The tool lines, draft cards and text of an assistant message, in the order they arrived. */
-export function readAssistantParts(message: UIMessage): { tools: ToolLine[]; drafts: { id: string; draft: ChatDraft }[]; text: string } {
+export function readAssistantParts(message: UIMessage): {
+  tools: ToolLine[];
+  drafts: { id: string; draft: ChatDraft }[];
+  plans: { id: string; plan: ChatPlanDraft }[];
+  text: string;
+} {
   const tools: ToolLine[] = [];
   const drafts: { id: string; draft: ChatDraft }[] = [];
+  const plans: { id: string; plan: ChatPlanDraft }[] = [];
   const texts: string[] = [];
   for (const part of message.parts) {
     if (isTextUIPart(part)) {
@@ -60,8 +84,12 @@ export function readAssistantParts(message: UIMessage): { tools: ToolLine[]; dra
       const draft = (part.output as { draft?: ChatDraft } | undefined)?.draft;
       if (draft && typeof draft.symbol === "string" && (draft.side === "buy" || draft.side === "sell")) drafts.push({ id, draft });
     }
+    if (name === "draft_recurring" && part.state === "output-available") {
+      const plan = (part.output as { plan?: unknown } | undefined)?.plan;
+      if (isPlanDraft(plan)) plans.push({ id, plan });
+    }
   }
-  return { tools, drafts, text: texts.join("\n\n") };
+  return { tools, drafts, plans, text: texts.join("\n\n") };
 }
 
 export function UserBubble({ text }: { text: string }) {
@@ -84,9 +112,9 @@ export function AssistantMessage({
   /** The answer still coming in: its newest running tool carries the orb. */
   live?: boolean;
 }) {
-  const { tools, drafts, text } = readAssistantParts(message);
+  const { tools, drafts, plans, text } = readAssistantParts(message);
   // A draft shows as its card; its line only while it is being drafted, or if it failed.
-  const lines = tools.filter((tool) => tool.name !== "draft_order" || tool.state !== "done");
+  const lines = tools.filter((tool) => (tool.name !== "draft_order" && tool.name !== "draft_recurring") || tool.state !== "done");
   return (
     <div className="flex flex-col gap-2">
       {lines.length > 0 && <ToolLines tools={lines} folded={text.length > 0} live={live} />}
@@ -97,6 +125,13 @@ export function AssistantMessage({
       )}
       {drafts.map(({ id, draft }) => (
         <DraftCard key={id} draft={draft} onOpen={() => onOpenDraft(draft)} />
+      ))}
+      {plans.map(({ id, plan }) => (
+        <PlanDraftCard
+          key={id}
+          plan={plan}
+          onOpen={() => openPlanSheet({ symbol: plan.symbol, usd: plan.usd, cadence: plan.cadence, day: plan.day, dipPct: plan.dipPct, via: "assistant" })}
+        />
       ))}
     </div>
   );
@@ -188,6 +223,39 @@ export function DraftCard({ draft, onOpen, className }: { draft: ChatDraft; onOp
       </div>
       <Button className="h-10 w-full text-sm" onClick={onOpen}>
         {copy.chatDraftOpen}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * A drafted recurring buy, from the values draft_recurring checked on the
+ * server. Its button opens the plan sheet filled in; nothing is saved until
+ * the person saves it there, and nothing is bought until they sign.
+ */
+export function PlanDraftCard({ plan, onOpen, className }: { plan: ChatPlanDraft; onOpen: () => void; className?: string }) {
+  const copy = useCopy();
+  const words = copy.recurring;
+  const when = plan.cadence === "weekly" ? words.cardWeekly(words.weekdays[plan.day] ?? "") : words.cardMonthly(ordinal(plan.day));
+  return (
+    <div className={cn("flex flex-col gap-3 rounded-xl border border-border bg-card p-3.5", className)} data-testid="chat-plan-card">
+      <div className="flex items-start gap-2.5">
+        <ArrowsClockwise weight="duotone" className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{words.cardLabel}</span>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[15px] font-semibold text-foreground">{plan.name}</span>
+            <span className="shrink-0 font-mono text-[15px] font-medium text-foreground tabular-nums">{formatUsd(plan.usd)}</span>
+          </div>
+          <span className="text-xs text-secondary-foreground">
+            {when}
+            {plan.dipPct !== undefined ? `. ${words.asDip(`${plan.dipPct}%`)}` : ""}
+          </span>
+          <span className="text-xs text-muted-foreground">{words.cardNothingYet}</span>
+        </div>
+      </div>
+      <Button className="h-10 w-full text-sm" onClick={onOpen}>
+        {words.cardOpen}
       </Button>
     </div>
   );

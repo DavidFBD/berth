@@ -12,6 +12,7 @@ import {
   readOrder,
   type OrderRecord,
 } from "@/lib/orders";
+import { placeRunForOrder } from "@/lib/server/recurring";
 import { cachedMultiplierHistories, toTokenPrices, type MultiplierReader } from "@/lib/server/token-multipliers";
 import { LLAMA_SHARE_QUOTES_FROM_MS } from "@/lib/token-multiplier";
 
@@ -257,7 +258,14 @@ export async function buildOrder({
   });
 }
 
-/** Insert or complete, returning the row's id. Known values are never overwritten with unknowns. */
+/**
+ * Insert or complete, returning the row's id. Known values are never
+ * overwritten with unknowns. Every path that records a buy comes through
+ * here (the pour route, the evening pass over pour claims, a limit order's
+ * fill), so this is where a buy answers its recurring run
+ * (lib/server/recurring placeRunForOrder, idempotent and owned by the
+ * row's own user_id).
+ */
 export async function saveOrder(userId: string | null, order: OrderRecord): Promise<string | undefined> {
   const rows = (await getSql().query(
     `insert into orders (
@@ -299,7 +307,9 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
       order.deliveredTo,
     ],
   )) as { id: string }[];
-  return rows[0]?.id;
+  const id = rows[0]?.id;
+  if (id && order.direction === "buy") await placeRunForOrder(id);
+  return id;
 }
 
 /**
@@ -315,13 +325,15 @@ export async function recordOrder(args: {
   direction: "buy" | "sell";
   intent: Intent;
   claimedFillTx?: string | null;
-}): Promise<void> {
+}): Promise<{ id: string; order: OrderRecord } | undefined> {
   try {
     const order = await buildOrder(args);
-    if (!order) return;
+    if (!order) return undefined;
     const id = await saveOrder(args.userId, order);
     if (id && order.placedAt) await recordOrderMarks(id, order.placedAt, POUR_ORDER_MARKS_MS);
+    return id ? { id, order } : undefined;
   } catch (error) {
     console.warn("[orders] not recorded", args.intentTx, error instanceof Error ? error.message : error);
+    return undefined;
   }
 }

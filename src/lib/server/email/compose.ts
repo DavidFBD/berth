@@ -26,7 +26,22 @@ export type Notice =
       received: string | null;
     }
   | { type: "order_expired"; side: "buy" | "sell"; name: string }
-  | { type: "friend_request"; username: string };
+  | { type: "friend_request"; username: string }
+  | {
+      type: "recurring_due";
+      /** "Monday" for a weekly plan, "monthly" for a monthly one. */
+      lead: string;
+      /** The listing's plain name. */
+      name: string;
+      /** Formatted: "$20.00". */
+      usd: string;
+      /** A dip plan's limit, formatted, or null for a market buy. */
+      limitPrice: string | null;
+      /** A dip plan whose price could not be set today: the draft is an ordinary buy, and the email says so. */
+      dipUnpriced?: boolean;
+      /** The draft link's path and query on Berth ("/?open=…&run=…"), never another host. */
+      path: string;
+    };
 
 export type NoticeType = Notice["type"];
 
@@ -38,6 +53,7 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   order_filled: "orders",
   order_expired: "orders",
   friend_request: "friends",
+  recurring_due: "recurring",
 };
 
 export type EmailContent = {
@@ -66,7 +82,7 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
   const email = COPY.email;
   const kind = NOTICE_KIND[notice.type];
   const button = { label: email.openBerth, href: `${baseUrl}/` };
-  const why = kind === "security" ? email.securityWhy : email.why[kind as "orders" | "friends" | "weekly"];
+  const why = kind === "security" ? email.securityWhy : email.why[kind as "orders" | "friends" | "weekly" | "recurring"];
   switch (notice.type) {
     case "wallet_added":
     case "wallet_removed": {
@@ -119,6 +135,26 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
       const username = plain(notice.username, 32);
       const body = words.body(username);
       return { kind, subject: words.subject(username), preview: body, heading: words.heading, paragraphs: [body], button, why };
+    }
+    case "recurring_due": {
+      const words = email.recurringDue;
+      const name = plain(notice.name);
+      const body = words.body(notice.lead, notice.usd, name);
+      const path = notice.path.startsWith("/?") ? notice.path : "/";
+      return {
+        kind,
+        subject: words.subject(notice.lead, name),
+        preview: body,
+        heading: words.heading,
+        paragraphs: notice.limitPrice
+          ? [body, words.limitBody(notice.limitPrice)]
+          : notice.dipUnpriced
+            ? [body, words.unpricedBody]
+            : [body],
+        after: [words.after],
+        button: { label: words.button, href: `${baseUrl}${path}` },
+        why,
+      };
     }
   }
 }

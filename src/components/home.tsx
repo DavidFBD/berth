@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
 import { AccountButton, useAssistantReachable } from "@/components/account-button";
@@ -48,6 +48,10 @@ import dynamic from "next/dynamic";
 import { ChatButton } from "@/components/chat/chat-button";
 import type { ChatDraft } from "@/components/chat/chat-parts";
 import { draftOpening, type BuyPrefill, type SellPrefill } from "@/lib/draft-open";
+import { RecurringStrip, useRecurringStripShowing } from "@/components/recurring/recurring-strip";
+import { PlanSheetHost } from "@/components/recurring/plan-sheet";
+import { useAccountHeaders } from "@/hooks/use-profile";
+import { onPlanSheet, openPlanSheet } from "@/components/recurring/plan-sheet-events";
 
 /** The board's frame, shared with the dev gallery (/dev/board?home=…) so the two cannot drift. */
 export const BOARD_PAGE = "mx-auto flex w-full max-w-lg flex-col px-4 pb-12 lg:max-w-[80rem] lg:px-10";
@@ -121,7 +125,24 @@ export function Home() {
   // Whether a higher-priority strip already holds the email nudge's slot.
   const waitingOrdersShowing = useWaitingOrdersShowing();
   const unlinkedWalletShowing = useUnlinkedWalletShowing(accountOpen);
+  const recurringShowing = useRecurringStripShowing();
+  // A plan needs an account to belong to: signed out, the buy drawer does not offer one.
+  const hasAccount = useAccountHeaders({ prompt: false }).key !== null;
   const [chatReturn, setChatReturn] = useState(false);
+  // The plan sheet takes the screen: whichever drawer asked for it has closed, and the chat does too.
+  // Asked for from the chat (the Assistant's plan card), closing the sheet brings the chat back.
+  const chatOpenNow = useRef(false);
+  useEffect(() => {
+    chatOpenNow.current = chatOpen;
+  }, [chatOpen]);
+  useEffect(
+    () =>
+      onPlanSheet(() => {
+        if (chatOpenNow.current) setChatReturn(true);
+        setChatOpen(false);
+      }),
+    [],
+  );
   const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
   // Once the account owns something, what it owns leads the panel, since
@@ -258,6 +279,8 @@ export function Home() {
         <div className={BOARD_GRID}>
           <div className={BOARD_TRACK}>
             <AccountTotal />
+            {/* Only on a recurring plan's day (lib/recurring): Berth reminds, the person signs. */}
+            <RecurringStrip onOpen={openDraftBuy} />
             {/* Only while a limit order waits, and only behind its switch. */}
             <WaitingOrders />
             <UnlinkedWalletPrompt hidden={accountOpen} />
@@ -265,7 +288,7 @@ export function Home() {
                 and the unlinked-wallet prompt above both outrank this one
                 (lib/email-nudge). */}
             <EmailNudgeLine
-              otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing}
+              otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing}
               onOpen={openAccountForEmail}
             />
             <NudgeLine
@@ -306,6 +329,7 @@ export function Home() {
         </div>
 
         <DraftLinkOpener onBuy={openDraftBuy} onSell={openDraftSell} />
+        <PlanSheetHost onSignIn={openWallet} onClosed={returnToChat} />
         <DepositDrawer
           listing={buyListing}
           prefill={buyPrefill}
@@ -319,6 +343,15 @@ export function Home() {
             setBuyOpen(false);
             openAccount();
           }}
+          onMakeRecurring={
+            hasAccount
+              ? (listing, usd) => {
+                  setChatReturn(false);
+                  setBuyOpen(false);
+                  openPlanSheet({ symbol: listing.symbol, usd });
+                }
+              : undefined
+          }
         />
         <SellHost
           listing={sellListing}

@@ -807,6 +807,25 @@ declare
   ; get diagnostics n = row_count
   ; v_moved := v_moved || jsonb_build_object('mcpCalls', n)
 
+  -- Recurring buys (lib/server/recurring): the plans and their runs move,
+  -- so future buys, recorded under the survivor, still answer them. The
+  -- cap of ten is checked only when a plan is made, so past ten the
+  -- newest wait paused, their waiting runs let go, none deleted.
+  ; update recurring_plans set user_id = s where user_id = a
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('recurringPlans', n)
+  ; update recurring_runs set user_id = s where user_id = a
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('recurringRuns', n)
+  ; update recurring_plans p set paused = true, updated_at = now()
+      from (select id, row_number() over (order by created_at, id) as rn from recurring_plans where user_id = s) ranked
+     where p.id = ranked.id and ranked.rn > 10 and not p.paused
+  ; get diagnostics n = row_count
+  ; v_moved := v_moved || jsonb_build_object('recurringPaused', n)
+  ; update recurring_runs r set status = 'skipped', closed_at = now()
+      from recurring_plans p
+     where p.id = r.plan_id and p.user_id = s and p.paused and r.status in ('due', 'opened')
+
   ; if a_first is not null then
       update users set portfolio_rebuild_at = now() where id = s
   ; end if
@@ -1025,3 +1044,98 @@ create index if not exists email_sends_user_idx on email_sends (user_id, type, c
 create index if not exists email_sends_pending_idx on email_sends (created_at) where status = 'pending';
 create unique index if not exists email_sends_friend_daily
   on email_sends (user_id, day_key) where type = 'friend_request';
+
+-- Recurring buys (docs/adr/0007, lib/recurring, lib/server/recurring):
+-- reminders the person signs, never automatic execution. A plan is a
+-- listing, a dollar amount and a day (weekly: weekday 0 Sunday to 6
+-- Saturday; monthly: month_day 1 to 28, so February never skips), read in
+-- the person's own time zone. next_due_at is the start (local midnight) of
+-- the next day it comes due. At most ten plans an account, $1 to $10,000.
+-- order_type 'limit' ("buy on the dip") only for accounts with limit
+-- orders switched on: the draft is a limit buy dip_pct under the price at
+-- reminder time.
+create table if not exists recurring_plans (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  listing_symbol text not null,
+  usd numeric not null check (usd >= 1 and usd <= 10000),
+  cadence text not null check (cadence in ('weekly', 'monthly')),
+  weekday smallint check (weekday between 0 and 6),
+  month_day smallint check (month_day between 1 and 28),
+  time_zone text not null,
+  order_type text not null default 'market' check (order_type in ('market', 'limit')),
+  dip_pct numeric check (dip_pct is null or (dip_pct > 0 and dip_pct <= 50)),
+  paused boolean not null default false,
+  created_via text not null default 'app' check (created_via in ('app', 'assistant')),
+  next_due_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint recurring_plans_day check (
+    (cadence = 'weekly' and weekday is not null and month_day is null)
+    or (cadence = 'monthly' and month_day is not null and weekday is null)
+  )
+);
+
+create index if not exists recurring_plans_user_idx on recurring_plans (user_id, created_at);
+create index if not exists recurring_plans_due_idx on recurring_plans (next_due_at) where not paused;
+
+-- The cap of ten, race safe: after each new plan the trigger takes the
+-- account's advisory lock and counts afresh, so two creates at nine cannot
+-- both land (as friends_cap does). An account merge moves plans by update
+-- and never meets it; it pauses the extras instead. One line body, for
+-- db:push's split.
+create or replace function recurring_plans_cap() returns trigger language plpgsql as $$
+begin perform pg_advisory_xact_lock(hashtextextended('recurring:' || new.user_id::text, 0)); if (select count(*) from recurring_plans where user_id = new.user_id) > 10 then raise exception 'recurring plans cap reached' using errcode = 'check_violation'; end if; return null; end $$;
+
+drop trigger if exists recurring_plans_cap on recurring_plans;
+
+create trigger recurring_plans_cap after insert on recurring_plans for each row execute function recurring_plans_cap();
+
+-- One run per plan per due day: 'due' when the morning run (or the app)
+-- finds it, 'opened' once the person opens its draft, 'placed' when an
+-- order for that listing and amount is recorded within its window (the
+-- pour route, or a limit order's record), 'skipped' when the person says
+-- so or three days pass. limit_price is the dip price worked out at
+-- reminder time, for a limit plan. order_id / limit_order_id link what
+-- was signed. listing_symbol, usd and order_type are the plan as it stood
+-- when the run was made: an edit afterwards never changes what a waiting
+-- run asks for, or what answers it.
+create table if not exists recurring_runs (
+  id uuid primary key default gen_random_uuid(),
+  plan_id uuid not null references recurring_plans(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  due_at timestamptz not null,
+  status text not null default 'due' check (status in ('due', 'opened', 'placed', 'skipped')),
+  listing_symbol text not null,
+  usd numeric not null,
+  order_type text not null default 'market' check (order_type in ('market', 'limit')),
+  limit_price numeric,
+  order_id uuid references orders(id) on delete set null,
+  limit_order_id uuid references limit_orders(id) on delete set null,
+  emailed_at timestamptz,
+  -- The reminder's final outcome: 'sent', or 'final' (switch off, no
+  -- address, suppressed, already claimed). Null while a retry may still
+  -- send it (the day's cap, a provider error).
+  email_outcome text check (email_outcome is null or email_outcome in ('sent', 'final')),
+  opened_at timestamptz,
+  closed_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint recurring_runs_plan_due unique (plan_id, due_at)
+);
+
+create index if not exists recurring_runs_open_idx on recurring_runs (user_id, due_at) where status in ('due', 'opened');
+-- One order answers at most one run, and so does one limit order: a replay
+-- of the same intent never closes a second run.
+create unique index if not exists recurring_runs_order_once on recurring_runs (order_id) where order_id is not null;
+create unique index if not exists recurring_runs_limit_once on recurring_runs (limit_order_id) where limit_order_id is not null;
+
+-- The recurring reminder's own switch, on by default for anyone with a plan.
+-- Production's only check on kind was email_prefs_kind_check (read
+-- 2026-09-30); any other check naming kind, whatever it is called, is
+-- dropped first too, so an older name can never keep refusing
+-- 'recurring'. One line body, for db:push's split.
+do $$ declare c record; begin for c in select conname from pg_constraint where conrelid = 'email_prefs'::regclass and contype = 'c' and conname <> 'email_prefs_kind_check' and pg_get_constraintdef(oid) ilike '%kind%' loop execute format('alter table email_prefs drop constraint %I', c.conname); end loop; end $$;
+
+alter table email_prefs drop constraint if exists email_prefs_kind_check;
+alter table email_prefs add constraint email_prefs_kind_check
+  check (kind in ('orders', 'friends', 'weekly', 'recurring'));

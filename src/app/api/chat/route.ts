@@ -27,7 +27,7 @@ export const maxDuration = 60;
  * every account route) → the gate (switched on, a key, the chat rung, the
  * house budget, the person's day) → the message itself (history trimmed,
  * too long refused) → one place in the minute and the day → the model,
- * with the eleven Berth tools and at most five steps → one chat_usage row
+ * with the thirteen Berth tools and at most five steps → one chat_usage row
  * when the message ends, however it ends. A refusal before the model runs
  * is plain JSON with a code the browser turns into words.
  *

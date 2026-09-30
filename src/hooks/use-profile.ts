@@ -7,6 +7,7 @@ import { useXAccount } from "@sodax/wallet-sdk-react";
 import { ChainKeys } from "@sodax/sdk";
 import { getAddress } from "viem";
 import { createSiweMessage } from "viem/siwe";
+import { RECURRING_QUERY_KEY } from "@/lib/recurring";
 import { proofResource, proofStatement, targetKey, type ProofAct, type ProofFamily } from "@/lib/account-proof";
 import { createSiwsMessage } from "@/lib/siws";
 import { createSiwbMessage } from "@/lib/siwb";
@@ -307,6 +308,8 @@ function useProfileMutation<TVars>(
       // flow in the portfolio's line.
       void queryClient.invalidateQueries({ queryKey: ["orders", key] });
       void queryClient.invalidateQueries({ queryKey: ["portfolio-history", key] });
+      // A buy can answer a recurring run on the server; the strip must not still say it is ready.
+      void queryClient.invalidateQueries({ queryKey: RECURRING_QUERY_KEY });
     },
   });
 }
@@ -499,7 +502,7 @@ export function useEmailSettings(enabled: boolean) {
     enabled,
     staleTime: 60_000,
     // Not deployed yet: no address, so the section offers to add one.
-    notFound: { address: null, deliverable: false, prefs: { orders: true, friends: true, weekly: false } },
+    notFound: { address: null, deliverable: false, prefs: { orders: true, friends: true, weekly: false, recurring: true } },
   });
 }
 

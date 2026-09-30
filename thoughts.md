@@ -4,6 +4,7 @@ _(Struck-through = tackled — with a short status note from Claude. 🟡 = part
 
 ## Settled rounds (compressed)
 
+- ~~Recurring buys (docs/plans/recurring-email.md §1)~~ → **Done** on branch `recurring-buys` (2026-09-30), ADR-0007: reminders the person signs, never automatic. Plans and runs, the morning run (renamed from the hold cron), one reminder email per run, strip, account drawer section, Make this recurring, list_recurring and draft_recurring. **Open**: `pnpm db:push`; not verified live; privacy policy line for reminder emails.
 - ~~Privy email login as the default, wallet demoted to desktop~~ → **Done** for EVM + Solana embedded wallets; funding via address copy/QR/Privy modal. Bitcoin/Sui/Stellar/NEAR embedded signers deferred; Stacks/ICON stay external-only.
 - ~~Design system via Claude Design master prompt~~ → **Done**, implemented app-wide.
 - ~~Abstract away crypto language into the tea game~~ → **Done**: Earl Grey / English Breakfast / Sencha, full tea voice.

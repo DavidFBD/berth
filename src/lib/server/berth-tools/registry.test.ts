@@ -81,6 +81,29 @@ vi.mock("@/lib/server/berth-tools/account", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/server/recurring", () => ({
+  listPlans: vi.fn(async () => [
+    {
+      id: "p1",
+      symbol: "SPY",
+      usd: 20,
+      cadence: "weekly",
+      weekday: 1,
+      monthDay: null,
+      timeZone: "Europe/Amsterdam",
+      orderType: "market",
+      dipPct: null,
+      paused: false,
+      nextDueAt: "2026-10-04T22:00:00.000Z",
+      createdVia: "app",
+      runs: [
+        { id: "r2", planId: "p1", dueAt: "2026-09-27T22:00:00.000Z", status: "placed", limitPrice: null },
+        { id: "r1", planId: "p1", dueAt: "2026-09-20T22:00:00.000Z", status: "skipped", limitPrice: null },
+      ],
+    },
+  ]),
+}));
+
 vi.mock("@/lib/server/social/handles", () => ({
   mySocial: vi.fn(async () => ({ hasEmail: true, handle: "mira", visible: true, nextChangeAt: null, requests: 1 })),
 }));
@@ -127,9 +150,9 @@ function mcpCtx(scopes: string[]): ServerContext {
 }
 
 describe("the registry", () => {
-  it("holds the eleven tools the client's copy is keyed on, in order", () => {
+  it("holds the thirteen tools the client's copy is keyed on, in order", () => {
     expect(REGISTRY_TOOL_NAMES).toEqual([...BERTH_TOOL_NAMES]);
-    expect(BERTH_TOOLS).toHaveLength(11);
+    expect(BERTH_TOOLS).toHaveLength(13);
   });
 });
 
@@ -153,7 +176,17 @@ describe("parity: MCP and chat see identical tools", () => {
 
   it("MCP keeps its annotations and asks for a scope exactly where it did", () => {
     const scoped = mcp.filter((tool) => "scopeChallenge" in tool.config).map((tool) => tool.name);
-    expect(scoped).toEqual(["get_account", "get_holdings", "get_performance", "get_orders", "get_my_profile", "get_friends_board", "draft_order"]);
+    expect(scoped).toEqual([
+      "get_account",
+      "get_holdings",
+      "get_performance",
+      "get_orders",
+      "get_my_profile",
+      "get_friends_board",
+      "draft_order",
+      "list_recurring",
+      "draft_recurring",
+    ]);
     const byName = Object.fromEntries(mcp.map((tool) => [tool.name, tool.config.annotations as Record<string, unknown>]));
     expect(byName.list_listings).toEqual({ title: "List what Berth offers", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
     expect(byName.get_listing.openWorldHint).toBe(true);
@@ -385,5 +418,61 @@ describe("an account with more than one linked EVM address", () => {
     const sell = await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 1 } as never, ctx);
     expect(sell.isError).toBeUndefined();
     vi.mocked(spokesOf).mockReset();
+  });
+});
+
+describe("recurring buys", () => {
+  const mcp = Object.fromEntries(mcpTools().map((tool) => [tool.name, tool]));
+  const chat = Object.fromEntries(BERTH_TOOLS.map((tool) => [tool.name, tool]));
+  const chatCtx = chatToolContext("u1", "https://www.berthmarkets.com");
+
+  it("list_recurring reads the plans and their runs, and needs berth.read", async () => {
+    const denied = await mcp.list_recurring.handler({}, mcpCtx(["berth.draft"]));
+    expect(denied.isError).toBe(true);
+    const result = await mcp.list_recurring.handler({}, mcpCtx(["berth.read"]));
+    expect(result.content[0].text).toBe(
+      [
+        "1 recurring buy. Berth reminds the person on the day and they sign, nothing is bought by itself:",
+        "S&P 500 ETF (SPY): $20.00 every Monday. Next on 5 October. Last runs: 28 September signed, 21 September let pass.",
+      ].join("\n"),
+    );
+  });
+
+  it("draft_recurring writes a link to the plan screen on MCP, never saving anything", async () => {
+    const result = await mcp.draft_recurring.handler(
+      { listing: "SPY", usd_amount: 20, cadence: "weekly", weekday: "monday" },
+      mcpCtx(["berth.draft"]),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toBe(
+      [
+        "Draft recurring buy: $20.00 of S&P 500 ETF (SPY) every Monday.",
+        "Open in Berth to review and save: https://www.berthmarkets.com/?plan=SPY&usd=20&every=weekly&day=1",
+        "Nothing is saved yet. The plan is only set if the person opens it and saves it in Berth, and even then nothing is bought by itself: on each day Berth reminds them, and they sign the buy or let it pass.",
+      ].join("\n"),
+    );
+  });
+
+  it("draft_recurring gives the chat a card, not a link", async () => {
+    const result = await chat.draft_recurring.run(
+      { listing: "NVIDIA", usd_amount: 50, cadence: "monthly", month_day: 15 } as never,
+      chatCtx,
+    );
+    expect(result.plan).toEqual({ symbol: "NVDA", name: "NVIDIA", usd: 50, cadence: "monthly", day: 15 });
+    expect(result.text).not.toContain("http");
+  });
+
+  it("refuses what the plan sheet would refuse", async () => {
+    const tooMuch = await mcp.draft_recurring.handler({ listing: "SPY", usd_amount: 20_000, cadence: "weekly", weekday: "monday" }, mcpCtx(["berth.draft"]));
+    expect(tooMuch.content[0].text).toBe("A recurring buy is $1.00 to $10,000.00 each time.");
+    const noDay = await mcp.draft_recurring.handler({ listing: "SPY", usd_amount: 20, cadence: "weekly" }, mcpCtx(["berth.draft"]));
+    expect(noDay.content[0].text).toBe("A weekly plan needs a weekday.");
+    const cash = await mcp.draft_recurring.handler({ listing: "SGOV", usd_amount: 20, cadence: "monthly", month_day: 1 }, mcpCtx(["berth.draft"]));
+    expect(cash.isError).toBe(true);
+    const dip = await mcp.draft_recurring.handler(
+      { listing: "SPY", usd_amount: 20, cadence: "monthly", month_day: 1, dip_pct: 5 },
+      mcpCtx(["berth.draft"]),
+    );
+    expect(dip.content[0].text).toBe("Buy on the dip needs limit orders, which are not open on this account. Draft it without dip_pct.");
   });
 });

@@ -27,7 +27,7 @@ function todayInput(): string {
 const CHIP =
   "h-8 rounded-full border px-3 text-[13px] outline-none transition-[transform,background-color,color,border-color] duration-150 ease-lift active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/50";
 
-function Chip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
+export function Chip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"

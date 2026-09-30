@@ -59,6 +59,20 @@ export function dailyCap(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isFinite(value) && value >= 0 && env.EMAIL_DAILY_CAP?.trim() ? Math.floor(value) : DEFAULT_DAILY_CAP;
 }
 
+/**
+ * Recurring reminders' own share of the day: half the daily cap, so a
+ * Monday full of plans never takes the room an order filling or a friend
+ * asking needs. A reminder past it waits for the next morning's retry
+ * (lib/server/recurring, over the run's life); the strip shows it anyway.
+ * EMAIL_RECURRING_DAILY_CAP overrides it, never past the daily cap.
+ */
+export function recurringDailyCap(env: NodeJS.ProcessEnv = process.env): number {
+  const cap = dailyCap(env);
+  const value = Number(env.EMAIL_RECURRING_DAILY_CAP);
+  const wanted = Number.isFinite(value) && value >= 0 && env.EMAIL_RECURRING_DAILY_CAP?.trim() ? Math.floor(value) : Math.floor(cap / 2);
+  return Math.min(wanted, cap);
+}
+
 /** Waits before each retry of a rate limited send. */
 let backoffMs: readonly number[] = [1_000, 3_000];
 /** Test injection point for the waits. */
@@ -186,6 +200,7 @@ export async function deliver(input: NoticeInput): Promise<DeliverOutcome> {
   const checked = await recipient(input);
   if (typeof checked === "string") return checked;
   if (NOTICE_KIND[input.notice.type] !== "security" && (await sendsToday()) >= dailyCap()) return "daily_volume";
+  if (input.notice.type === "recurring_due" && (await sendsToday("recurring_due")) >= recurringDailyCap()) return "daily_volume";
   const claim = await claimSend(input.userId, input.notice.type, input.ref, input.notice);
   if (typeof claim === "string") return claim;
   return sendClaimed(claim.id, input, checked.to);
@@ -251,6 +266,10 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
   { name: "order-filled", notice: { type: "order_filled", side: "buy", name: "NVIDIA", price: "$198.20", received: "0.5046 NVIDIA" } },
   { name: "order-expired", notice: { type: "order_expired", side: "buy", name: "NVIDIA" } },
   { name: "friend-request", notice: { type: "friend_request", username: "harbourmaster" } },
+  {
+    name: "recurring-due",
+    notice: { type: "recurring_due", lead: "Monday", name: "S&P 500 ETF", usd: "$20.00", limitPrice: null, path: "/?open=SPY&side=buy&usd=20&run=sample" },
+  },
 ];
 
 /** Renders a sample to HTML and text without a database, a token secret or a provider. */

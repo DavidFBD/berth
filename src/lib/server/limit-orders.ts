@@ -4,6 +4,7 @@ import { formatUnits } from "viem";
 import { getSql } from "@/lib/server/db";
 import { getSodax, receiptSucceeded } from "@/lib/server/pour-verify";
 import { recordOrderMarks, saveOrder } from "@/lib/server/orders";
+import { placeRunForLimitOrder } from "@/lib/server/recurring";
 import { readOrder } from "@/lib/orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { formatTokenAmount, formatUsdPrecise } from "@/lib/format";
@@ -342,6 +343,8 @@ export async function saveVerifiedIntent({
     ],
   )) as Row[];
   if (!rows[0]) return { ok: false, reason: "not yours" };
+  // A dip plan's run is answered by the limit buy the person signed (lib/server/recurring), once.
+  if (direction === "buy") await placeRunForLimitOrder(intentTx);
   return { ok: true, order: viewOf(rows[0]) };
 }
 

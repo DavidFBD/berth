@@ -9,8 +9,8 @@ import { settlePourClaims, type ClaimSummary } from "@/lib/server/pour-claims";
 
 /**
  * The one evening cron (vercel.json, 22:00 UTC on weekdays; the Hobby plan
- * allows two crons a project, once a day each, and the other is the hold
- * check). Three stages in order, each with its own budget inside the
+ * allows two crons a project, once a day each, and the other is the morning
+ * run, lib/server/morning). Three stages in order, each with its own budget inside the
  * function's sixty seconds, each run whatever the one before it did:
  *
  * 1. Marks: the last seven days' closes for every listing and benchmark

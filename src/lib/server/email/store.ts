@@ -123,10 +123,13 @@ export async function finishSend(
 }
 
 /** Sends counted against the day's volume (UTC day): everything sent or going out since midnight. */
-export async function sendsToday(): Promise<number> {
+/** Sends claimed today (UTC), sent or pending; of one type when given. */
+export async function sendsToday(type?: string): Promise<number> {
   const rows = (await getSql().query(
     `select count(*)::int as n from email_sends
-      where status in ('sent', 'pending') and created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'`,
+      where status in ('sent', 'pending') and created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'
+        ${type ? "and type = $1" : ""}`,
+    type ? [type] : [],
   )) as { n: number }[];
   return rows[0]?.n ?? 0;
 }

@@ -952,6 +952,7 @@ export type Copy = {
   chatLockedBody: (xp: number) => string;
   /* — email (lib/server/email): notices by mail, and the settings that choose them — */
   email: EmailCopy;
+  recurring: RecurringCopy;
 
   /* — the privacy policy (app/privacy): public, signed in or not — */
   /** The small link to /privacy, in the settings drawer and under the consent screen. */
@@ -1194,6 +1195,77 @@ export type LegalDocument = {
 };
 
 /**
+ * Recurring buys (docs/adr/0007): reminders the person signs. Never
+ * "automatic", "autopilot", "set and forget" or "DCA", and never a claim
+ * that buying regularly lowers risk. Skipping is never a loss.
+ */
+export type RecurringCopy = {
+  sectionLabel: string;
+  empty: string;
+  add: string;
+  whenWeekly: (day: string) => string;
+  whenMonthly: (ordinal: string) => string;
+  row: (usd: string, when: string) => string;
+  next: (day: string) => string;
+  paused: string;
+  asDip: (pct: string) => string;
+  runWords: Record<"due" | "opened" | "placed" | "skipped", string>;
+  lastRuns: (list: string) => string;
+  pause: string;
+  resume: string;
+  edit: string;
+  remove: string;
+  /** Delete asks once, in place: the plan and its history go together. */
+  removeConfirm: string;
+  removeConfirmYes: string;
+  removeConfirmNo: string;
+  removed: string;
+  sheetTitle: string;
+  sheetSub: string;
+  listingLabel: string;
+  amountLabel: string;
+  weekly: string;
+  monthly: string;
+  dayOfMonth: string;
+  dipLabel: string;
+  dipSub: (pct: string) => string;
+  dipPctLabel: string;
+  nothingUntil: string;
+  /** The plan sheet signed out: what saving needs, and that the choice waits. */
+  signInToSave: string;
+  signInToSaveButton: string;
+  save: string;
+  saved: (day: string) => string;
+  errors: Record<"amount" | "too_many" | "failed" | "day" | "listing" | "limit_off" | "dip" | "time_zone", string>;
+  strip: (lead: string, name: string, usd: string) => string;
+  stripLimit: (price: string) => string;
+  /** A dip plan whose price could not be set today: the draft is an ordinary buy. */
+  stripUnpriced: string;
+  /** The toast when a reminder email's link opens the buy drawer: Berth reminded, nobody suggested. */
+  linkOpenedTitle: string;
+  linkOpenedBody: string;
+  stripOpen: string;
+  stripSkip: string;
+  skipped: (day: string) => string;
+  monthlyLead: string;
+  /** Sunday first, as lib/recurring numbers them. */
+  weekdays: readonly string[];
+  /** "1st", "2nd", "23rd": a day of the month as a person says it. */
+  ordinal: (day: number) => string;
+  /** The locale a due day is written in ("6 October"). */
+  dateLocale: string;
+  weekdaysShort: readonly string[];
+  makeRecurring: string;
+  cardLabel: string;
+  /** The card's schedule line, on its own, so it starts a sentence. */
+  cardWeekly: (day: string) => string;
+  cardMonthly: (ordinal: string) => string;
+  cardOpen: string;
+  cardNothingYet: string;
+  planOpened: string;
+};
+
+/**
  * Every word an email says (lib/server/email/compose), and the Email
  * section of the settings drawer and the unsubscribe page. One fact, one
  * button, one line on why the email arrived. Security notices never ask
@@ -1204,7 +1276,7 @@ export type EmailCopy = {
   /** Before the privacy contact's address, at the foot of every security notice. */
   notYou: string;
   securityWhy: string;
-  why: Record<"orders" | "friends" | "weekly", string>;
+  why: Record<"orders" | "friends" | "weekly" | "recurring", string>;
   unsubscribe: string;
   signoff: string;
   /** With its article, as a sentence opens: "An EVM", "A Solana". */
@@ -1234,11 +1306,20 @@ export type EmailCopy = {
     body: (name: string, side: "buy" | "sell") => string;
   };
   friendRequest: { subject: (username: string) => string; heading: string; body: (username: string) => string };
+  recurringDue: {
+    subject: (lead: string, name: string) => string;
+    heading: string;
+    body: (lead: string, usd: string, name: string) => string;
+    limitBody: (price: string) => string;
+    unpricedBody: string;
+    button: string;
+    after: string;
+  };
   settings: {
     sectionLabel: string;
     goesTo: (address: string) => string;
     securityAlways: string;
-    kinds: Record<"orders" | "friends" | "weekly", { label: string; sub: string }>;
+    kinds: Record<"orders" | "friends" | "weekly" | "recurring", { label: string; sub: string }>;
     addEmail: string;
     addEmailSub: string;
     undeliverable: string;
@@ -1246,7 +1327,7 @@ export type EmailCopy = {
   };
   unsubscribePage: {
     title: string;
-    kindName: Record<"orders" | "friends" | "weekly", string>;
+    kindName: Record<"orders" | "friends" | "weekly" | "recurring", string>;
     confirm: (kind: string) => string;
     confirmSub: string;
     confirmButton: string;
@@ -1459,7 +1540,7 @@ export const COPY: Copy = {
       email: {
         title: "A short email when it matters",
         body: [
-          "Berth writes when a wallet joins or leaves your account, accounts merge or an AI is connected, and when a friend asks. Each kind has its own switch, and one tap unsubscribes. No marketing.",
+          "Berth writes when a wallet joins or leaves your account, accounts merge or an AI is connected, when a limit order fills or expires, when a friend asks, and on the day a recurring buy you set comes due. Each kind has its own switch, and one tap unsubscribes. No marketing.",
         ],
         from: "Berth",
         always: "Security notices always reach you.",
@@ -2120,6 +2201,8 @@ export const COPY: Copy = {
     get_my_profile: { doing: "Reading your card", done: "Read your card" },
     get_friends_board: { doing: "Reading your friends board", done: "Read your friends board" },
     draft_order: { doing: "Drafting an order", done: "Drafted an order" },
+    list_recurring: { doing: "Reading your recurring buys", done: "Read your recurring buys" },
+    draft_recurring: { doing: "Drafting a recurring buy", done: "Drafted a recurring buy" },
   },
   chatToolsFolded: (n) => (n === 1 ? "Read 1 thing" : `Read ${n} things`),
   chatToolFailed: "Could not read that",
@@ -2220,6 +2303,76 @@ export const COPY: Copy = {
   chatLockedTitle: (rankName) => `The Assistant opens at ${rankName}`,
   chatLockedBody: (xp) =>
     `${xp} XP to go. Adding an email to your account or making your first buy gets you there.`,
+  recurring: {
+    sectionLabel: "Recurring",
+    empty: "No recurring buys yet. Nothing is ever bought without your signature.",
+    add: "Add a recurring buy",
+    whenWeekly: (day) => `every ${day}`,
+    whenMonthly: (ordinal) => `on the ${ordinal} of each month`,
+    row: (usd, when) => `${usd} ${when}`,
+    next: (day) => `Next on ${day}`,
+    paused: "Paused",
+    asDip: (pct) => `On the dip, ${pct} under`,
+    runWords: { due: "ready", opened: "opened", placed: "signed", skipped: "let pass" },
+    lastRuns: (list) => `Last: ${list}`,
+    pause: "Pause",
+    resume: "Resume",
+    edit: "Edit",
+    remove: "Delete",
+    removeConfirm: "Delete this plan and its history?",
+    removeConfirmYes: "Delete it",
+    removeConfirmNo: "Keep it",
+    removed: "Recurring buy deleted.",
+    sheetTitle: "Recurring buy",
+    sheetSub: "Berth reminds you. You sign.",
+    listingLabel: "What",
+    amountLabel: "Each time",
+    weekly: "Weekly",
+    monthly: "Monthly",
+    dayOfMonth: "Day of the month",
+    dipLabel: "Buy on the dip",
+    dipSub: (pct) => `Each reminder is a limit buy ${pct} under the price that day.`,
+    dipPctLabel: "Under by",
+    nothingUntil: "On the day, Berth reminds you in the app and by email. Nothing is bought until you sign, and letting one pass costs nothing.",
+    signInToSave: "Sign in to save this plan. What you chose here waits for you.",
+    signInToSaveButton: "Sign in to save",
+    save: "Save",
+    saved: (day) => `Saved. The first reminder is on ${day}.`,
+    errors: {
+      amount: "Between $1 and $10,000 each time.",
+      too_many: "Ten recurring buys is the most an account can have.",
+      failed: "That did not save. Try again.",
+      day: "Pick a day.",
+      listing: "Pick a stock or fund.",
+      limit_off: "Buy on the dip is not open on this account.",
+      dip: "Between 0.5% and 50% under.",
+      time_zone: "Your time zone could not be read. Try again.",
+    },
+    strip: (lead, name, usd) => `Your ${lead} ${name} buy of ${usd} is ready.`,
+    stripLimit: (price) => `At ${price} or lower.`,
+    stripUnpriced: "The dip could not be set today, so this is an ordinary buy.",
+    linkOpenedTitle: "Your recurring buy, as you planned it",
+    linkOpenedBody: "Nothing is bought until you sign. Not this time? Let it pass.",
+    stripOpen: "Open it",
+    stripSkip: "Skip",
+    skipped: (day) => `Skipped. That is fine, the next one is on ${day}.`,
+    monthlyLead: "monthly",
+    weekdays: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    ordinal: (day) => {
+      const rem100 = day % 100;
+      if (rem100 >= 11 && rem100 <= 13) return `${day}th`;
+      return `${day}${["th", "st", "nd", "rd"][day % 10] ?? "th"}`;
+    },
+    dateLocale: "en-GB",
+    weekdaysShort: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    makeRecurring: "Make this recurring",
+    cardLabel: "Recurring buy",
+    cardWeekly: (day) => `Every ${day}`,
+    cardMonthly: (ordinal) => `On the ${ordinal} of each month`,
+    cardOpen: "Check and save",
+    cardNothingYet: "Nothing is saved until you save it, and nothing is bought until you sign.",
+    planOpened: "A recurring buy is filled in. Check it and save, or close it.",
+  },
   email: {
     openBerth: "Open Berth",
     notYou: "Not you? Write to us at",
@@ -2228,6 +2381,7 @@ export const COPY: Copy = {
       orders: "You get this because order emails are on.",
       friends: "You get this because friend emails are on.",
       weekly: "You get this because the weekly summary is on.",
+      recurring: "You get this because you set a recurring buy and its reminders are on.",
     },
     unsubscribe: "Turn these off",
     signoff: "Berth. A place to tie up.",
@@ -2282,6 +2436,15 @@ export const COPY: Copy = {
       heading: "A friend request",
       body: (username) => `${username} asked to be your friend on Berth. Open Berth to accept or decline.`,
     },
+    recurringDue: {
+      subject: (lead, name) => `Your ${lead} ${name} buy is ready to sign`,
+      heading: "Your buy is ready",
+      body: (lead, usd, name) => `Your ${lead} buy of ${usd} in ${name} is ready. Nothing is bought until you sign.`,
+      limitBody: (price) => `It waits for ${price} or lower, the dip you chose.`,
+      unpricedBody: "Berth could not set the dip you chose today, so this one is an ordinary buy at the market price. Let it pass if you would rather wait.",
+      button: "Open it in Berth",
+      after: "Not this time? Let it pass. Nothing happens, and the next one comes as planned.",
+    },
     settings: {
       sectionLabel: "Email",
       goesTo: (address) => `Notices go to ${address}.`,
@@ -2290,6 +2453,7 @@ export const COPY: Copy = {
         orders: { label: "Orders", sub: "When a limit order fills or expires." },
         friends: { label: "Friends", sub: "When someone asks to be your friend." },
         weekly: { label: "Weekly summary", sub: "Your week against your benchmark." },
+        recurring: { label: "Recurring buys", sub: "When a plan's buy is ready to sign." },
       },
       addEmail: "Add an email to get notices",
       addEmailSub: "Security and order notices, by mail.",
@@ -2298,7 +2462,7 @@ export const COPY: Copy = {
     },
     unsubscribePage: {
       title: "Email settings",
-      kindName: { orders: "order", friends: "friend", weekly: "weekly summary" },
+      kindName: { orders: "order", friends: "friend", weekly: "weekly summary", recurring: "recurring buy" },
       confirm: (kind) => `Turn off ${kind} emails?`,
       confirmSub: "Security notices still reach you whatever you choose here.",
       confirmButton: "Turn off",
@@ -2313,7 +2477,7 @@ export const COPY: Copy = {
   privacyLink: "Privacy",
   privacyPolicy: {
     title: "Privacy policy",
-    status: "Effective 29 September 2026.",
+    status: "Effective 30 September 2026.",
     intro: [
       "This policy explains what Berth collects when you use www.berthmarkets.com and the Berth connector for your AI, why, who else sees it, how long we keep it, and what you can ask of us.",
       "Berth is self custodial. We never hold your keys and we never hold your money.",
@@ -2335,6 +2499,7 @@ export const COPY: Copy = {
           "Your sign in. If you sign in with email, our sign in provider Privy checks the address and gives us an account identifier. We store that identifier and your email address. If you sign in with a wallet, we store its public address, after you sign a free message that proves the wallet is yours.",
           "Your account. The avatar you pick, your XP and rank, the rewards you earned and when, your invite code, and who invited you, if anyone.",
           "Your orders. For each order: buy or sell, which listing, the quantity, what you paid with and on which network, the fee, the value in dollars, the transaction identifiers, the delivery address, and the time. We also keep the price of each comparison fund at the minute of the order, so your results can be drawn beside it.",
+          "Your recurring buys. For each plan you set: the listing, the dollar amount, weekly or monthly and on which day, your browser's time zone so the day begins at your own midnight, and, if you chose it, how far under the price to wait. For each time a plan comes due: when it was due, whether you opened it, signed it or let it pass, the order that answered it, and whether its reminder went out.",
           "Your daily value. Once a day, after the New York close, we read your balances from the blockchain and keep that day's holdings and value, so your history can be drawn.",
           "Invite links. When someone opens an invite link, we count the visit against the invite code. We do not record who opened it.",
           "Your AI. If you connect Claude, ChatGPT, Grok or another AI, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what your AI asked or what Berth answered.",
@@ -2372,7 +2537,7 @@ export const COPY: Copy = {
         ],
         list: [
           "Read. Your holdings, orders, results against a benchmark, rank and XP, account addresses, and the public board: listings, prices, what moved and the news.",
-          "Draft. Prepare a buy or a sell as a link. The link opens Berth with the order filled in, and nothing happens unless you check it and sign it yourself.",
+          "Draft. Prepare a buy or a sell as a link. The link opens Berth with the order filled in, and nothing happens unless you check it and sign it yourself. It can also draft a recurring buy, which is saved only if you save it in Berth, and even then only reminds you.",
         ],
         after: [
           "Your AI never holds your keys, never signs and never moves money. It is not given your email address.",
@@ -2405,6 +2570,7 @@ export const COPY: Copy = {
           "Security notices: a wallet added to or removed from your account, two accounts merged, an AI connected. These always go out, because they are how you would learn that someone else is using your account. They never ask you for a code or a password.",
           "Order notices: a limit order filled, or expired and the money came back. On unless you turn them off.",
           "Friend notices: someone asked to be your friend, at most one email a day. On unless you turn them off.",
+          "Recurring buy reminders: on the day a plan you set comes due, one email for that plan, with a link that opens the buy for you to sign or let pass. On unless you turn them off.",
         ],
         after: [
           "We do not track whether you open an email or click its links. Every notice other than a security notice has a link to turn that kind off, and you can change them all under Email in the app's settings. If mail to your address bounces or is reported as spam, we stop sending to it.",
@@ -2458,6 +2624,7 @@ export const COPY: Copy = {
           "Your AI's access tokens last an hour and refresh tokens thirty days. Both are deleted a week after they expire or are revoked.",
           "The log of requests from your AI: 90 days.",
           "Abuse limit counters: one day. They hold a hashed form of the caller's IP address, never the address itself.",
+          "Your recurring plans and the record of each time one came due: until you delete the plan, or your account. Deleting a plan deletes its record with it.",
           "Invite link visits and error reports: up to 12 months.",
           "The record of profile and friend changes: 12 months.",
           "The record of emails sent: 12 months. A block on an address that bounced or reported spam: as long as the account exists, so the block holds.",

@@ -23,6 +23,7 @@ export function GET(request: Request): Response {
 - get_account, get_holdings, get_performance, get_orders: the signed in account.
 - get_my_profile, get_friends_board: the signed in person's own card and friends board. Never anyone else's.
 - draft_order: a buy or sell for the person to approve and sign in Berth.
+- list_recurring, draft_recurring: the person's recurring buys, and a plan drafted for them to save in Berth. A plan never buys by itself: Berth reminds them on the day and they sign.
 
 ## Links
 

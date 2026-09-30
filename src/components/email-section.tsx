@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  * The weekly summary is stored but not sent yet, so it has no switch here:
  * a switch that does nothing would be a promise the app cannot keep.
  */
-const SHOWN_KINDS: readonly SwitchableKind[] = ["orders", "friends"];
+const SHOWN_KINDS: readonly SwitchableKind[] = ["orders", "recurring", "friends"];
 
 export function EmailSection({
   heading = "caps",

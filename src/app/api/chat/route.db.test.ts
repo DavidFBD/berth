@@ -130,7 +130,7 @@ describe("POST /api/chat", () => {
     const prompt = mock.doStreamCalls[0].prompt as { role: string; content: unknown }[];
     expect(prompt[0].role).toBe("system");
     expect(String(prompt[0].content).startsWith(CHAT_SYSTEM_PROMPT)).toBe(true);
-    expect(mock.doStreamCalls[0].tools?.map((tool) => tool.name)).toHaveLength(11);
+    expect(mock.doStreamCalls[0].tools?.map((tool) => tool.name)).toHaveLength(13);
 
     await vi.waitFor(async () => {
       const rows = (await sql.query(`select * from chat_usage where user_id = $1`, [id])) as Record<string, unknown>[];

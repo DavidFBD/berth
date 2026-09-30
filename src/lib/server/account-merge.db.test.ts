@@ -397,6 +397,33 @@ describe("the merge transaction", () => {
     await expect(befriend(s, newcomer)).rejects.toThrow(/friends cap/);
   });
 
+  it("recurring plans and their runs move to the survivor; past ten, the newest wait paused", async () => {
+    const s = await account({ email: "plans@example.com" });
+    const a = await account();
+    const addPlans = (userId: string, count: number, from: string) =>
+      q(
+        `insert into recurring_plans (user_id, listing_symbol, usd, cadence, weekday, time_zone, next_due_at, created_at)
+         select $1, 'NVDA', 50, 'weekly', 1, 'UTC', now() + interval '1 day', $3::timestamptz + g * interval '1 minute'
+           from generate_series(1, $2::int) g`,
+        [userId, count, from],
+      );
+    await addPlans(s, 8, "2026-09-01");
+    await addPlans(a, 4, "2026-09-02");
+    const aPlan = await one<{ id: string }>(`select id from recurring_plans where user_id = $1 order by created_at desc limit 1`, [a]);
+    await q(
+      `insert into recurring_runs (plan_id, user_id, due_at, listing_symbol, usd) values ($1, $2, now(), 'NVDA', 50)`,
+      [aPlan.id, a],
+    );
+    const result = await mergeAccounts({ survivor: s, absorbed: a, reason: "email" });
+    if (!result.ok) throw new Error("merge failed");
+    expect(result.moved).toMatchObject({ recurringPlans: 4, recurringRuns: 1, recurringPaused: 2 });
+    expect(await q(`select 1 from recurring_plans where user_id = $1`, [a])).toHaveLength(0);
+    expect(await q(`select 1 from recurring_plans where user_id = $1 and not paused`, [s])).toHaveLength(10);
+    // The newest two, both from the absorbed account, wait paused; the run of one of them is let go.
+    expect(await one(`select paused from recurring_plans where id = $1`, [aPlan.id])).toEqual({ paused: true });
+    expect(await one(`select user_id, status from recurring_runs where plan_id = $1`, [aPlan.id])).toEqual({ user_id: s, status: "skipped" });
+  });
+
   it("a retired survivor is refused inside the transaction, and nothing moves", async () => {
     const other = await account({ email: "gone@example.com" });
     const s = await account({ email: "retired@example.com" });

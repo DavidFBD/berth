@@ -113,6 +113,15 @@ a round that changes behaviour.
   that binds makes the pair friends at once, no request (ADR-0006).
 - **Friends board** — you and your friends ranked on board points
   (ADR-0005), this calendar month.
+- **Recurring buy** — a plan (`recurring_plans`): a listing, a dollar
+  amount, weekly on a weekday or monthly on a day from 1 to 28, in the
+  person's own time zone. On its day Berth makes a **run**
+  (`recurring_runs`: due, opened, placed or skipped) with a draft attached,
+  shows the strip and sends one reminder email. The person signs it or lets
+  it pass (ADR-0007). Never automatic buying.
+- **Morning run** — the 06:00 UTC cron (`/api/cron/morning`,
+  `lib/server/morning`): the hold check, the recurring runs and their
+  reminders, the email retry. The evening run is the other of Hobby's two.
 - **Appearance** — light, dark or system (`lib/appearance`), stamped by
   next-themes before hydration. The `useCopy()` seam returns the one voice.
 
@@ -120,13 +129,15 @@ a round that changes behaviour.
 
 Load-bearing decisions live in `docs/adr/` (base-voice rewards copy, the
 level-3 invite gate, no leaderboard of strangers, referral pays at first
-verified order, the friends board on capped points, referral is friendship)
+verified order, the friends board on capped points, referral is friendship,
+recurring buys are reminders)
 and in `docs/research/2026-09-16-colosseum-pivot-deep-dive.md` (the pivot,
 the account model, the name). Recorded in `thoughts.md`: the account-linking
 edge is accepted; SIWE and order-ownership proof are done. The
 `useVaultAction` pipeline body, the Privy EVM provider bridge and the gas
 buffer model were reviewed (2026-08-07) and confirmed deep — leave them whole.
-Cut, do not build: cross-wrapper best execution, recurring DCA, any money
+No automatic buying. Recurring buys are reminders the person signs
+(ADR-0007). Cut, do not build: cross-wrapper best execution, any money
 market supply, a harbour-wide or all-time leaderboard, any ranking on
 returns, agent as wallet. The friends board (ADR-0005) ranks board points:
 this month's XP with order XP capped at 300, plus at most 10 salute points. Agents read and draft, the

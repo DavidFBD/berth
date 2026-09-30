@@ -12,6 +12,17 @@ import { loadMoves } from "@/lib/server/moves";
 import { SCOPE_DRAFT, SCOPE_READ } from "@/lib/server/oauth/config";
 import { loadOrderLog } from "@/lib/server/order-marks";
 import { limitOrdersOn } from "@/lib/server/limit-orders";
+import { listPlans } from "@/lib/server/recurring";
+import {
+  MAX_PLAN_USD,
+  MIN_PLAN_USD,
+  WEEKDAY_NAMES,
+  checkPlan,
+  dueDayWords,
+  ordinal,
+  planDraftUrl,
+  type PlanView,
+} from "@/lib/recurring";
 import { liveListingPrices } from "@/lib/server/portfolio";
 import { loadPortfolioHistory } from "@/lib/server/portfolio-view";
 import { ago, clip, day, moment, named, pct, units, usd } from "@/lib/server/mcp/text";
@@ -63,7 +74,18 @@ export type ToolContext = {
 /** A draft as the chat renders it: server-validated values, never the model's prose. */
 export type DraftCard = DraftSummary;
 
-export type ToolOutput = { text: string; isError?: boolean; draft?: DraftCard };
+/** A drafted recurring plan as the chat renders it: the values draft_recurring checked, never the model's prose. */
+export type PlanDraftCard = {
+  symbol: string;
+  name: string;
+  usd: number;
+  cadence: "weekly" | "monthly";
+  /** The weekday (0 Sunday) or the day of the month. */
+  day: number;
+  dipPct?: number;
+};
+
+export type ToolOutput = { text: string; isError?: boolean; draft?: DraftCard; plan?: PlanDraftCard };
 
 export type ToolAnnotations = {
   title: string;
@@ -612,7 +634,135 @@ const draftOrderTool = defineTool({
   },
 });
 
-/** The eleven tools, in the order both doors list them. */
+/** "every Monday", "on the 15th of each month": a plan's day as the tools say it. */
+function planWhen(plan: Pick<PlanView, "cadence" | "weekday" | "monthDay">): string {
+  return plan.cadence === "weekly" ? `every ${WEEKDAY_NAMES[plan.weekday ?? 1]}` : `on the ${ordinal(plan.monthDay ?? 1)} of each month`;
+}
+
+const RUN_WORDS = { due: "ready, not yet opened", opened: "opened, not signed", placed: "signed", skipped: "let pass" } as const;
+
+const listRecurring = defineTool({
+  name: "list_recurring",
+  title: "Recurring buys",
+  description:
+    "The account's recurring buys: each plan's listing, amount, day and next date, whether it is paused, and how its last few runs went (signed, or let pass). A plan never buys by itself: on its day Berth reminds the person, who signs the buy in Berth or lets it pass.",
+  input: z.object({}),
+  annotations: { title: "Recurring buys", ...READ_ONLY },
+  scope: SCOPE_READ,
+  run: async (_args, ctx) => {
+    const plans = await listPlans(userOf(ctx));
+    if (plans.length === 0) return ok("No recurring buys. One can be set in Berth, or drafted with draft_recurring.");
+    const out = [
+      `${plans.length} recurring buy${plans.length === 1 ? "" : "s"}. Berth reminds the person on the day and they sign, nothing is bought by itself:`,
+    ];
+    for (const plan of plans) {
+      const listing = TOKEN_LISTINGS.find((candidate) => candidate.symbol === plan.symbol);
+      const name = listing ? named(listing) : plan.symbol;
+      const dip = plan.orderType === "limit" && plan.dipPct !== null ? `, as a limit buy ${plan.dipPct}% under the price on the day` : "";
+      const state = plan.paused ? "Paused." : `Next on ${dueDayWords(plan.nextDueAt, plan.timeZone)}.`;
+      const runs = plan.runs.length
+        ? ` Last runs: ${plan.runs.map((run) => `${dueDayWords(run.dueAt, plan.timeZone)} ${RUN_WORDS[run.status]}`).join(", ")}.`
+        : "";
+      out.push(`${name}: ${usd(plan.usd)} ${planWhen(plan)}${dip}. ${state}${runs}`);
+    }
+    return ok(out.join("\n"));
+  },
+});
+
+const draftRecurring = defineTool({
+  name: "draft_recurring",
+  title: "Draft a recurring buy",
+  description: `Prepare a recurring buy for the person to save in Berth: a listing, a dollar amount (${usd(MIN_PLAN_USD)} to ${usd(MAX_PLAN_USD)}), and weekly on a weekday or monthly on a day from 1 to 28. Returns a link that opens Berth's plan screen filled in. Nothing is saved until the person saves it there, and even then nothing is bought by itself: on each day Berth reminds them and they sign the buy, or let it pass. Never describe it as automatic. Where the account has limit orders switched on, dip_pct drafts "buy on the dip": each reminder is a limit buy that much under the price on the day.`,
+  input: z.object({
+    listing: LISTING_ARG,
+    usd_amount: z.number().positive().describe("Dollars each time."),
+    cadence: z.enum(["weekly", "monthly"]).describe("weekly on a weekday, or monthly on a day of the month."),
+    weekday: z
+      .enum(["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"])
+      .optional()
+      .describe("Weekly only: the day of the week."),
+    month_day: z.number().int().min(1).max(28).optional().describe("Monthly only: the day of the month, 1 to 28, so no month skips."),
+    dip_pct: z
+      .number()
+      .positive()
+      .max(50)
+      .optional()
+      .describe("Buy on the dip, only where limit orders are switched on: each reminder is a limit buy this many percent under the price on the day."),
+  }),
+  annotations: { title: "Draft a recurring buy", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  scope: SCOPE_DRAFT,
+  run: async ({ listing: query, usd_amount, cadence, weekday, month_day, dip_pct }, ctx) => {
+    const userId = userOf(ctx);
+    const listing = findTokenListing(query);
+    if (!listing) return unknownListing(query);
+    if (listing.kind !== "stock") return no(`A recurring buy is for stocks and funds, not ${listing.name}.`);
+    if (cadence === "weekly" && !weekday) return no("A weekly plan needs a weekday.");
+    if (cadence === "monthly" && !month_day) return no("A monthly plan needs month_day, 1 to 28.");
+    let limitAllowed = false;
+    if (dip_pct !== undefined) {
+      const row = await loadAccountRow(userId).catch(() => null);
+      limitAllowed = !!row && limitOrdersOn([row.id, row.wallet_address]);
+    }
+    const weekdayIndex = weekday ? WEEKDAY_NAMES.findIndex((name) => name.toLowerCase() === weekday) : null;
+    // The zone is the person's, set by their browser when they save; the check only needs a real one.
+    const checked = checkPlan(
+      {
+        listing: listing.symbol,
+        usd: usd_amount,
+        cadence,
+        weekday: cadence === "weekly" ? weekdayIndex : null,
+        monthDay: cadence === "monthly" ? month_day : null,
+        timeZone: "UTC",
+        orderType: dip_pct !== undefined ? "limit" : "market",
+        dipPct: dip_pct ?? null,
+      },
+      { limitAllowed },
+    );
+    if (!checked.ok) {
+      const reasons: Record<typeof checked.reason, string> = {
+        listing: `A recurring buy is for stocks and funds, not ${listing.name}.`,
+        amount: `A recurring buy is ${usd(MIN_PLAN_USD)} to ${usd(MAX_PLAN_USD)} each time.`,
+        day: "That day does not work. Weekly takes a weekday, monthly a day from 1 to 28.",
+        time_zone: "That time zone is not known.",
+        limit_off: "Buy on the dip needs limit orders, which are not open on this account. Draft it without dip_pct.",
+        dip: "dip_pct must be more than 0 and at most 50.",
+      };
+      return no(reasons[checked.reason]);
+    }
+    const plan = checked.plan;
+    const when = planWhen(plan.schedule);
+    const dip = plan.dipPct !== null ? `, as a limit buy ${plan.dipPct}% under the price on the day` : "";
+    const what = `${usd(plan.usd)} of ${named(listing)} ${when}${dip}`;
+    const nothingYet =
+      "Nothing is saved yet. The plan is only set if the person opens it and saves it in Berth, and even then nothing is bought by itself: on each day Berth reminds them, and they sign the buy or let it pass.";
+    if (ctx.surface === "chat") {
+      return {
+        text: [
+          `Draft recurring buy: ${what}.`,
+          "The person sees it as a card under your answer, with a button that opens Berth's plan screen filled in. Do not write a link.",
+          nothingYet,
+        ].join("\n"),
+        plan: {
+          symbol: listing.symbol,
+          name: listing.name,
+          usd: plan.usd,
+          cadence: plan.schedule.cadence,
+          day: (plan.schedule.cadence === "weekly" ? plan.schedule.weekday : plan.schedule.monthDay) ?? 1,
+          ...(plan.dipPct !== null && { dipPct: plan.dipPct }),
+        },
+      };
+    }
+    return ok(
+      [
+        `Draft recurring buy: ${what}.`,
+        `Open in Berth to review and save: ${planDraftUrl(ctx.origin, { symbol: listing.symbol, usd: plan.usd, schedule: plan.schedule, dipPct: plan.dipPct })}`,
+        nothingYet,
+      ].join("\n"),
+    );
+  },
+});
+
+/** The thirteen tools, in the order both doors list them. */
 export const BERTH_TOOLS = [
   listListings,
   getListing,
@@ -625,6 +775,8 @@ export const BERTH_TOOLS = [
   getMyProfile,
   getFriendsBoard,
   draftOrderTool,
+  listRecurring,
+  draftRecurring,
 ] as const;
 
 /** The registry's names, checked against the shared list the client's copy is keyed on (lib/berth-tool-names). */

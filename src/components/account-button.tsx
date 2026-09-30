@@ -32,6 +32,7 @@ import { EmailSection } from "@/components/email-section";
 import { AssistantSection } from "@/components/assistant/assistant-section";
 import { WalletsSection } from "@/components/account-wallets";
 import { SocialSection } from "@/components/social/social-section";
+import { RecurringSection } from "@/components/recurring/recurring-section";
 import { RankChip, RewardsPanel } from "@/components/rewards-panel";
 import { ADD_EMAIL_ANCHOR } from "@/components/social/social-section";
 import { useCopy } from "@/components/settings-provider";
@@ -116,6 +117,10 @@ export function AccountButton({
             {/* Username, profile and friends (lib/server/social). */}
             <Panel>
               <SocialSection />
+            </Panel>
+            {/* Recurring buys (lib/recurring): reminders the person signs. */}
+            <Panel>
+              <RecurringSection onLeave={() => setAccountOpen(false)} />
             </Panel>
             {/*
               One panel with ruled rows, not five cards stacked inside a
@@ -288,6 +293,10 @@ function ExternalAccountEntry({
             <WalletsSection />
             <Panel>
               <SocialSection />
+            </Panel>
+            {/* Recurring buys (lib/recurring): reminders the person signs. */}
+            <Panel>
+              <RecurringSection onLeave={() => setServiceOpen(false)} />
             </Panel>
             <Panel>
               <EmailSection heading="row" />
