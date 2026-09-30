@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NewsFeed } from "@/components/board";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ListingXResponse } from "@/app/api/listing-x/route";
+import type { ListingNewsResponse } from "@/app/api/listing-news/route";
 
 /**
  * Dev-only: the news column's posts tab from a fixture, so the "Live
@@ -15,6 +16,10 @@ import type { ListingXResponse } from "@/app/api/listing-x/route";
  *   /dev/jev                   settled: Jev's still mark, "Updated 3 minutes ago"
  *   /dev/jev?state=refreshing  a background fetch that never lands: the orb by Jev
  *   /dev/jev?state=pressed     the refresh button pressed, never landing: its orb
+ *
+ * The first post carries Jev's reading and two desks' copies of the same
+ * story folded into it (lib/story-groups); tap Headlines for their readings
+ * and the headlines' own credit in the (i).
  */
 
 const FIXTURE: ListingXResponse = {
@@ -31,6 +36,11 @@ const FIXTURE: ListingXResponse = {
       replies: 88,
       symbol: "NVDA",
       name: "NVIDIA",
+      verdict: "material",
+      alsoBy: [
+        { name: "First Squawk", username: "FirstSquawk", url: "https://x.com/FirstSquawk" },
+        { name: "financialjuice", username: "financialjuice", url: "https://x.com/financialjuice" },
+      ],
     },
     {
       id: "2",
@@ -44,11 +54,37 @@ const FIXTURE: ListingXResponse = {
       replies: 61,
       symbol: "TSLA",
       name: "Tesla",
+      verdict: "fact",
     },
   ],
   reserve: [],
   curation: { seen: 412, accounts: 96, read: 58, kept: 12 },
   updatedAt: Date.now() - 3 * 60_000,
+};
+
+const HEADLINES: ListingNewsResponse = {
+  items: [
+    {
+      title: "Micron Earnings: Watch These Key Metrics",
+      url: "https://www.nasdaq.com/",
+      publishedAt: Date.now() - 2 * 3_600_000,
+      source: "Zacks",
+      symbol: "MU",
+      name: "Micron",
+      verdict: "analysis",
+    },
+    {
+      title: "Tesla Secures $30 Billion in New Credit Facilities",
+      url: "https://www.nasdaq.com/",
+      publishedAt: Date.now() - 5 * 3_600_000,
+      source: "Barchart",
+      symbol: "TSLA",
+      name: "Tesla",
+      verdict: "material",
+    },
+  ],
+  updatedAt: Date.now() - 4 * 60_000,
+  judged: { read: 182, kept: 71 },
 };
 
 export default function JevGalleryPage() {
@@ -67,8 +103,7 @@ function Gallery() {
   const [client] = useState(() => {
     const seeded = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     seeded.setQueryData(["listings", "x", "all"], FIXTURE);
-    // News and performance stay empty and settled; only the posts matter here.
-    seeded.setQueryData(["listings", "news", "all"], { items: [] });
+    seeded.setQueryData(["listings", "news", "all"], HEADLINES);
     return seeded;
   });
   useEffect(() => {

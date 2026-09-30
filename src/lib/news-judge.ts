@@ -6,6 +6,7 @@ import type {
   ScoreAnswer,
   ScoreQuestion,
 } from "@/lib/server/jev";
+import { symbolsForText } from "@/lib/x-feed";
 
 /**
  * What Jev is asked about a piece of news, and what its answers mean.
@@ -237,6 +238,33 @@ export function headlineQuestions(): HeadlineQuestions {
  * tried and dropped: it flagged Ryan Cohen's $26.4M insider buy (0.92)
  * because the headline ended "Is GME Now a Buy?".
  */
-export function keepHeadline(answers: HeadlineAnswers): boolean {
-  return answers.about.noul >= 0.35 && answers.substance.score >= 2.2;
+export function keepHeadline(answers: HeadlineAnswers, named = true): boolean {
+  const aboutFloor = named ? HEADLINE_ABOUT_NAMED : HEADLINE_ABOUT_UNNAMED;
+  return answers.about.noul >= aboutFloor && answers.substance.score >= 2.2;
+}
+
+/**
+ * How sure Jev must be that a headline is about the listing it was filed
+ * under. Nasdaq files a piece under every ticker it touches, and a company's
+ * headline that never names the company is the usual stray: measured
+ * 2026-09-30, "Is FLNC's Long-Term Agreement on Battery Supply a Game
+ * Changer?" under Tesla read 0.37 and passed the old single floor, while a
+ * real Tesla story that names only Musk ("Elon Musk Says Robotaxi Service
+ * Will Reach 10 More Cities") reads 0.87. Funds are never named by the
+ * market news that moves them, so they keep the lower floor.
+ */
+const HEADLINE_ABOUT_NAMED = 0.35;
+const HEADLINE_ABOUT_UNNAMED = 0.7;
+const FUND_SYMBOLS = new Set(["SPY", "QQQ", "SGOV", "USO", "SLV"]);
+
+/** Whether a headline names the listing it was filed under, by any of its words or its bare ticker. */
+export function headlineNamesListing(title: string, symbol: string): boolean {
+  if (FUND_SYMBOLS.has(symbol)) return true;
+  if (symbolsForText(title).includes(symbol)) return true;
+  return new RegExp(`\\b${symbol}\\b`).test(title);
+}
+
+/** Jev's reading of a kept headline in the reader's three words, as the posts carry it. */
+export function headlineVerdict(answers: HeadlineAnswers): "material" | "fact" | "analysis" {
+  return verdictFor(substanceToWeight(answers.substance.score));
 }

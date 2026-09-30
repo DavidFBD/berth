@@ -15,8 +15,11 @@ import { unstable_cache } from "next/cache";
  * before Jev existed. Jev makes the app better; its absence never breaks it.
  *
  * What it costs, because the credit is prepaid and small. Input tokens only,
- * $0.042 a million; a judged post is ~600 tokens with its questions, so a
- * thousand judgements is about three hundredths of a cent. The real guard is
+ * $0.042 a million; a judged post is ~950 tokens with its questions and a
+ * headline ~460, so a thousand judgements is about four cents (measured
+ * 2026-09-30; this line said three hundredths of a cent, a hundred times
+ * too little). There is no balance endpoint: an empty credit shows only as
+ * `[jev] answered 4xx` and the gatherings' "unanswered" lines. The real guard is
  * `cachedVerdict`: a post's verdict is asked for once and kept for weeks, so a
  * refresh pays only for what is new since the last one.
  */

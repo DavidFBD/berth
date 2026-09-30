@@ -343,6 +343,11 @@ export type Copy = {
    */
   postsMetrics: (replies: string, reposts: string, likes: string) => string;
   /**
+   * Under a post that other accounts carried too, folded into its first
+   * report (lib/story-groups). Names, in the order they posted.
+   */
+  postsAlsoBy: (names: readonly string[]) => string;
+  /**
    * The posts tab's credit line. Jev (TypeSafe's model) reads every post
    * before it is shown, and saying so is the point: the column is chosen,
    * not scraped. The counts are real, from this refresh; see x-column.
@@ -351,6 +356,9 @@ export type Copy = {
   jevCuration: (seen: string, accounts: string, read: string, kept: string) => string;
   /** What Jev is, first line of the (i). */
   jevAbout: string;
+  /** The same (i) on the headlines tab, with what Jev read this time. */
+  jevAboutHeadlines: string;
+  jevHeadlineCuration: (read: string, kept: string) => string;
   /** The link out to its maker, inside the (i). */
   jevLinkLabel: string;
   /** Jev's reading of one post, on its card. Absent when Jev did not read it. */
@@ -1607,6 +1615,10 @@ export const COPY: Copy = {
   postsSourceLabel: "Posted on X",
   postsMetrics: (replies, reposts, likes) =>
     `${replies} replies, ${reposts} reposts, ${likes} likes`,
+  postsAlsoBy: (names) =>
+    names.length <= 2
+      ? `Also posted by ${names.join(" and ")}.`
+      : `Also posted by ${names[0]}, ${names[1]} and ${names.length - 2} more.`,
 
   cashTitle: "Cash",
   cashHint: "Idle dollars sit in a token tracking a fund of short Treasury bills, not in a lending pool.",
@@ -1957,6 +1969,9 @@ export const COPY: Copy = {
   jevCuration: (seen, accounts, read, kept) =>
     `X returned ${seen} posts from ${accounts} accounts this week. Jev read ${read} and kept ${kept}.`,
   jevAbout: "Jev is a model by TypeSafe. It reads each post before it is shown, and keeps the ones that report something.",
+  jevAboutHeadlines:
+    "Jev is a model by TypeSafe. It reads each headline before it is shown, and keeps the ones mainly about the listing that report something.",
+  jevHeadlineCuration: (read, kept) => `Jev read the newest ${read} headlines and kept ${kept}.`,
   jevLinkLabel: "About Jev, by TypeSafe",
   jevVerdictMaterial: "Material news",
   jevVerdictFact: "New fact",

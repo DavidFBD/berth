@@ -20,6 +20,8 @@ export type NewsItem = {
   symbol: string;
   /** That listing's plain name, for the chip on the card. */
   name: string;
+  /** Jev's reading of the headline, as on a post (lib/news-judge). Absent when Jev did not read it. */
+  verdict?: "material" | "fact" | "analysis";
 };
 
 /** What a feed document yields before a listing is attached to it. */

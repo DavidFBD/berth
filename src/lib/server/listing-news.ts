@@ -9,8 +9,10 @@ import {
 } from "@/lib/news";
 import {
   JUDGE_VERSION,
+  headlineNamesListing,
   headlineQuestions,
   headlineState,
+  headlineVerdict,
   keepHeadline,
   type HeadlineAnswers,
 } from "@/lib/news-judge";
@@ -85,6 +87,8 @@ export type ListingNewsResponse = {
   items: NewsItem[];
   /** When the oldest of the feeds behind this was fetched, epoch ms. */
   updatedAt?: number;
+  /** How many of the newest headlines Jev read this time, and kept. Absent when it read none. */
+  judged?: { read: number; kept: number };
   /** Present only when something degraded, for the console. */
   reason?: string;
 };
@@ -123,7 +127,9 @@ function readFeed(listing: TokenListing, fresh: boolean, now: number) {
 /** The newest this many per listing are read; a card never reaches further back. */
 const JUDGE_PER_SYMBOL = 14;
 
-async function judgeHeadlines(items: readonly NewsItem[]): Promise<NewsItem[]> {
+async function judgeHeadlines(
+  items: readonly NewsItem[],
+): Promise<{ items: NewsItem[]; read: number; kept: number }> {
   const questions = headlineQuestions();
   const newest = [...items].sort((a, b) => b.publishedAt - a.publishedAt);
   const counts = new Map<string, number>();
@@ -132,17 +138,28 @@ async function judgeHeadlines(items: readonly NewsItem[]): Promise<NewsItem[]> {
     counts.set(item.symbol, count + 1);
     return count < JUDGE_PER_SYMBOL;
   });
-  const kept = await Promise.all(
-    pool.map(async (item) => {
+  let read = 0;
+  let kept = 0;
+  const judged = await Promise.all(
+    pool.map(async (item): Promise<NewsItem | undefined> => {
       const answers = (await cachedVerdict(
         JUDGE_VERSION,
         headlineState(item, item.symbol, item.name),
         questions,
       )) as HeadlineAnswers | undefined;
-      return !answers || keepHeadline(answers) ? item : undefined;
+      // Unread is kept exactly as before Jev, and carries no reading.
+      if (!answers) return item;
+      read += 1;
+      if (!keepHeadline(answers, headlineNamesListing(item.title, item.symbol))) return undefined;
+      kept += 1;
+      return { ...item, verdict: headlineVerdict(answers) };
     }),
   );
-  return kept.filter((item): item is NewsItem => item !== undefined);
+  const missing = pool.length - read;
+  (missing > 0 ? console.warn : console.info)(
+    `[jev] headlines: asked ${pool.length}, answered ${read}, kept ${kept}${missing > 0 ? `, ${missing} unanswered kept unread` : ""}`,
+  );
+  return { items: judged.filter((item): item is NewsItem => item !== undefined), read, kept };
 }
 
 /** Headlines for every listing, or for one when `symbol` names it. Never throws. */
@@ -178,10 +195,10 @@ export async function loadListingNews(
     }
   }
 
-  const judged = jevConfigured() ? await judgeHeadlines(gathered) : gathered;
+  const judged = jevConfigured() ? await judgeHeadlines(gathered) : undefined;
 
   const payload: ListingNewsResponse = {
-    items: mergeNews(judged, {
+    items: mergeNews(judged?.items ?? gathered, {
       limit: wanted ? SYMBOL_LIMIT : FEED_LIMIT,
       // One listing asked about may fill its own card entirely.
       perSymbol: wanted ? SYMBOL_LIMIT : PER_SYMBOL_LIMIT,
@@ -189,6 +206,8 @@ export async function loadListingNews(
     // The oldest, so "Updated" never claims more freshness than every feed has.
     updatedAt: fetched.length ? Math.min(...fetched) : undefined,
   };
+  // Credit only where Jev actually read something, as on the posts.
+  if (judged && judged.read > 0) payload.judged = { read: judged.read, kept: judged.kept };
   if (failures.length > 0) payload.reason = [...new Set(failures)].join("; ");
   return payload;
 }

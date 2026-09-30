@@ -70,6 +70,11 @@ export type XPost = {
    * that did not happen.
    */
   verdict?: Verdict;
+  /**
+   * The same story posted by other accounts, folded into this card, its
+   * first report (lib/story-groups). Absent when nobody else carried it.
+   */
+  alsoBy?: { name: string; username: string; url: string }[];
 };
 
 export type Verdict = "material" | "fact" | "analysis";

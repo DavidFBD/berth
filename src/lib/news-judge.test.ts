@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import {
   LISTING_BRIEFS,
+  headlineNamesListing,
+  headlineVerdict,
   keepHeadline,
   postQuestions,
   readPostAnswers,
@@ -122,6 +124,52 @@ describe("keepHeadline", () => {
   it("drops the past-returns what-if, which scores just under the floor", () => {
     // "If You Invested $1000 in Nvidia a Decade Ago..." scored 2.08.
     expect(keepHeadline(headline(0.97, 2.08))).toBe(false);
+  });
+});
+
+describe("keepHeadline for a headline that never names its listing", () => {
+  const headline = (about: number, score: number) => ({
+    about: { type: "noul" as const, noul: about },
+    substance: { type: "score" as const, score, probabilities: {}, confidence: 0.8 },
+  });
+
+  it("drops another company's story filed under ours", () => {
+    // "Is FLNC's Long-Term Agreement on Battery Supply a Game Changer?" under Tesla: 0.37, 3.22.
+    expect(keepHeadline(headline(0.37, 3.22), false)).toBe(false);
+    expect(keepHeadline(headline(0.37, 3.22), true)).toBe(true);
+  });
+
+  it("keeps a story Jev is sure is ours though it names only the chief", () => {
+    // "Elon Musk Says Robotaxi Service Will Reach 10 More Cities This Year": 0.87, 3.07.
+    expect(keepHeadline(headline(0.87, 3.07), false)).toBe(true);
+  });
+});
+
+describe("headlineNamesListing", () => {
+  it("hears the company's name or its bare ticker", () => {
+    expect(headlineNamesListing("Another Roadster Delay, But Tesla's Real Story", "TSLA")).toBe(true);
+    expect(headlineNamesListing("Strategy (MSTR) Stock Drops Despite Market Gains", "MSTR")).toBe(true);
+    expect(headlineNamesListing("Is FLNC's Long-Term Agreement on Battery Supply a Game Changer?", "TSLA")).toBe(false);
+  });
+
+  it("counts every fund as named, since market news never names the fund", () => {
+    expect(headlineNamesListing("Stocks Settle Lower on Rising Bond Yields", "SPY")).toBe(true);
+  });
+
+  it("does not hear a ticker inside another word", () => {
+    expect(headlineNamesListing("Mustang sales climb", "MU")).toBe(false);
+  });
+});
+
+describe("headlineVerdict", () => {
+  it("reads the headline's substance in the posts' three words", () => {
+    const answers = (score: number) => ({
+      about: { type: "noul" as const, noul: 0.9 },
+      substance: { type: "score" as const, score, probabilities: {}, confidence: 0.8 },
+    });
+    expect(headlineVerdict(answers(3.7))).toBe("material");
+    expect(headlineVerdict(answers(3.0))).toBe("fact");
+    expect(headlineVerdict(answers(2.3))).toBe("analysis");
   });
 });
 

@@ -22,6 +22,8 @@ export function useListingNews(symbol?: string): {
   refresh: () => Promise<void>;
   items: NewsItem[];
   updatedAt: number | undefined;
+  /** What Jev read this time, for the headlines' credit. Absent when it read none. */
+  judged: ListingNewsResponse["judged"];
 } {
   const fresh = useRef(false);
   const query = useQuery({
@@ -36,7 +38,7 @@ export function useListingNews(symbol?: string): {
       if (!response.ok) return { items: [] };
       const payload = (await response.json()) as ListingNewsResponse;
       if (payload.reason) console.warn("[listing-news]", payload.reason);
-      return { items: payload.items ?? [], updatedAt: payload.updatedAt };
+      return { items: payload.items ?? [], updatedAt: payload.updatedAt, judged: payload.judged };
     },
     staleTime: NEWS_REFETCH_MS,
     refetchInterval: NEWS_REFETCH_MS,
@@ -58,5 +60,6 @@ export function useListingNews(symbol?: string): {
     refresh,
     items: query.data?.items ?? [],
     updatedAt: query.data?.updatedAt,
+    judged: query.data?.judged,
   };
 }

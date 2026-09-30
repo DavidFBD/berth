@@ -183,6 +183,18 @@ export function NewsFeed({
   const count = (value: number) => value.toLocaleString("en-US");
 
   const showing = tab === "posts" ? posts : news;
+  /** Jev read what this tab shows, so its credit line stands above it. */
+  const curated = tab === "posts" ? posts.curation !== undefined : news.judged !== undefined;
+  const verdictChip = (verdict: Verdict) => (
+    <span
+      title={copy.jevVerdictLabel(verdictWord[verdict])}
+      aria-label={copy.jevVerdictLabel(verdictWord[verdict])}
+      className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground"
+    >
+      <JevMark className="size-2.5" />
+      {verdictWord[verdict]}
+    </span>
+  );
   const tabs: { id: Tab; label: string }[] = [
     { id: "posts", label: copy.newsTabPosts },
     { id: "headlines", label: copy.newsTabHeadlines },
@@ -206,7 +218,23 @@ export function NewsFeed({
         title={copy.newsTitle}
         hint={tab === "posts" ? copy.postsHint : copy.newsHint}
         more={
-          tab === "posts" && posts.curation ? (
+          tab === "headlines" && news.judged ? (
+            <>
+              <p className="mt-1.5">{copy.jevAboutHeadlines}</p>
+              <p className="mt-1.5 text-muted-foreground">
+                {copy.jevHeadlineCuration(count(news.judged.read), count(news.judged.kept))}
+              </p>
+              <a
+                href={JEV_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1.5 inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-2 hover:underline"
+              >
+                {copy.jevLinkLabel}
+                <ArrowUpRight className="size-3" aria-hidden />
+              </a>
+            </>
+          ) : tab === "posts" && posts.curation ? (
             <>
               <p className="mt-1.5">{copy.jevAbout}</p>
               <p className="mt-1.5 text-muted-foreground">
@@ -315,14 +343,14 @@ export function NewsFeed({
         </AnimatePresence>
       </div>
 
-      {((tab === "posts" && posts.curation) || updatedAt !== undefined) && (
+      {(curated || updatedAt !== undefined) && (
         <div className="flex min-h-5 items-center gap-1.5 px-[18px] lg:px-6 pb-3 text-[11px]">
-          {tab === "posts" && posts.curation && (
+          {curated && (
             <>
               {/* A 20px slot either way: Jev's still mark, or an orb while
                   the feed is fetched in the background. A refresh the reader
                   asked for shows its orb on the button instead. */}
-              {posts.isFetching && !refreshing ? (
+              {tab === "posts" && posts.isFetching && !refreshing ? (
                 <ThinkingOrb state="searching" size={20} decorative />
               ) : (
                 <span className="flex size-5 items-center justify-center" aria-hidden>
@@ -454,6 +482,14 @@ export function NewsFeed({
                           <p className="mt-1 line-clamp-5 text-sm leading-normal whitespace-pre-line text-foreground">
                             {post.text}
                           </p>
+                          {/* The same story from other accounts, folded
+                              into this, its first report. Words, not links:
+                              the card is already one link. */}
+                          {post.alsoBy && post.alsoBy.length > 0 && (
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              {copy.postsAlsoBy(post.alsoBy.map((other) => other.name))}
+                            </p>
+                          )}
                           {/* Wraps rather than squeezes: at a narrow column
                               the counts drop to their own line instead of
                               crushing the listing's name to nothing. */}
@@ -467,16 +503,7 @@ export function NewsFeed({
                                   {formatPercentChange(moved.changePct, 1)}
                                 </span>
                               )}
-                              {post.verdict && (
-                                <span
-                                  title={copy.jevVerdictLabel(verdictWord[post.verdict])}
-                                  aria-label={copy.jevVerdictLabel(verdictWord[post.verdict])}
-                                  className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground"
-                                >
-                                  <JevMark className="size-2.5" />
-                                  {verdictWord[post.verdict]}
-                                </span>
-                              )}
+                              {post.verdict && verdictChip(post.verdict)}
                             </p>
                             {/* How far the post carried, in X's own order.
                                 Quiet on purpose: it is context for the post
@@ -560,19 +587,22 @@ export function NewsFeed({
                           <p className="line-clamp-2 text-sm leading-snug font-medium text-foreground">
                             {item.title}
                           </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            <span className="text-foreground/70">
-                              {item.name}
-                            </span>
-                            {/* Punctuation, not copy: the separator belongs
-                                to the layout, the words on either side to
-                                lib/copy. */}
-                            <span aria-hidden="true"> · </span>
-                            {copy.newsByline(
-                              item.source,
-                              formatTimeAgo(item.publishedAt, now),
-                            )}
-                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+                            <p className="min-w-0">
+                              <span className="text-foreground/70">
+                                {item.name}
+                              </span>
+                              {/* Punctuation, not copy: the separator belongs
+                                  to the layout, the words on either side to
+                                  lib/copy. */}
+                              <span aria-hidden="true"> · </span>
+                              {copy.newsByline(
+                                item.source,
+                                formatTimeAgo(item.publishedAt, now),
+                              )}
+                            </p>
+                            {item.verdict && verdictChip(item.verdict)}
+                          </div>
                         </div>
                         <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                       </a>

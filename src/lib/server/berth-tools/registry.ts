@@ -141,6 +141,15 @@ const listListings = defineTool({
   },
 });
 
+/** Jev's reading in words the assistant can pass on, credited to Jev. */
+const VERDICT_WORDS = { material: "material news", fact: "a new fact", analysis: "analysis" } as const;
+function readAs(verdict: keyof typeof VERDICT_WORDS | undefined): string {
+  return verdict ? `, which Jev reads as ${VERDICT_WORDS[verdict]}` : "";
+}
+function alsoBy(ctx: ToolContext, others: { name: string }[] | undefined): string {
+  return others && others.length > 0 ? `, also posted by ${others.map((other) => said(ctx, "x", other.name)).join(", ")}` : "";
+}
+
 const getListing = defineTool({
   name: "get_listing",
   title: "Look at one listing",
@@ -182,16 +191,16 @@ const getListing = defineTool({
       );
     }
     const move = moves.moves.find((candidate) => candidate.symbol === listing.symbol);
-    if (move) out.push(`Around that move, ${said(ctx, "x", move.post.name)} (@${said(ctx, "x", move.post.username)}) posted: ${said(ctx, "x", move.post.url)}`);
+    if (move) out.push(`Around that move, ${said(ctx, "x", move.post.name)} (@${said(ctx, "x", move.post.username)}) posted: ${said(ctx, "x", clip(move.post.text))} ${said(ctx, "x", move.post.url)}`);
     if (news.items.length > 0) {
       out.push("", "Headlines:");
-      for (const item of news.items.slice(0, 5)) out.push(`${said(ctx, "news", item.title)} (${said(ctx, "news", item.source)}, ${ago(item.publishedAt)}) ${said(ctx, "news", item.url)}`);
+      for (const item of news.items.slice(0, 5)) out.push(`${said(ctx, "news", item.title)} (${said(ctx, "news", item.source)}, ${ago(item.publishedAt)}${readAs(item.verdict)}) ${said(ctx, "news", item.url)}`);
     }
     if (posts.items.length > 0) {
       out.push("", "On X:");
       for (const post of posts.items.slice(0, 5)) {
         out.push(
-          `${said(ctx, "x", post.author.name)} (@${said(ctx, "x", post.author.username)}), ${ago(post.publishedAt)}${post.verdict ? `, read as ${post.verdict}` : ""}: ${said(ctx, "x", clip(post.text))} ${said(ctx, "x", post.url)}`,
+          `${said(ctx, "x", post.author.name)} (@${said(ctx, "x", post.author.username)}), ${ago(post.publishedAt)}${readAs(post.verdict)}${alsoBy(ctx, post.alsoBy)}: ${said(ctx, "x", clip(post.text))} ${said(ctx, "x", post.url)}`,
         );
       }
     }
@@ -219,7 +228,7 @@ const getMoves = defineTool({
       const notable = isNotableMove(entry!.series ?? [], entry!.changePct);
       const move = moves.moves.find((candidate) => candidate.symbol === listing.symbol);
       out.push(
-        `${named(listing)}: ${pct(entry!.changePct)}${notable ? ", large for it" : ""}${move ? `. In the news: ${said(ctx, "x", move.post.name)}, ${said(ctx, "x", move.post.url)}` : ""}`,
+        `${named(listing)}: ${pct(entry!.changePct)}${notable ? ", large for it" : ""}${move ? `. In the news: ${said(ctx, "x", move.post.name)}: ${said(ctx, "x", clip(move.post.text))} ${said(ctx, "x", move.post.url)}` : ""}`,
       );
     }
     const unclean = TOKEN_LISTINGS.filter((listing) => performance.performance[listing.symbol]?.noCleanClose);
@@ -246,7 +255,7 @@ const getMarketFeed = defineTool({
       : ["Newest and most substantial first:"];
     for (const post of feed.items) {
       out.push(
-        `About ${post.name}: ${said(ctx, "x", post.author.name)} (@${said(ctx, "x", post.author.username)}), ${ago(post.publishedAt)}${post.verdict ? `, read as ${post.verdict}` : ""}. ${said(ctx, "x", clip(post.text))} ${said(ctx, "x", post.url)}`,
+        `About ${post.name}: ${said(ctx, "x", post.author.name)} (@${said(ctx, "x", post.author.username)}), ${ago(post.publishedAt)}${readAs(post.verdict)}${alsoBy(ctx, post.alsoBy)}. ${said(ctx, "x", clip(post.text))} ${said(ctx, "x", post.url)}`,
       );
     }
     return ok(out.join("\n"));

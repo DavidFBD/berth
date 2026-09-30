@@ -26,6 +26,7 @@ import {
   type PostAnswers,
 } from "@/lib/news-judge";
 import { cachedVerdict, jevConfigured } from "@/lib/server/jev";
+import { foldStories } from "@/lib/server/story-groups";
 import {
   COMPANY_SOURCES,
   MAX_AGE_MS,
@@ -495,15 +496,24 @@ export async function gatherPosts({ fresh = false }: { fresh?: boolean } = {}): 
   });
 
   if (!canJudge) {
-    return {
-      posts: candidates.map((candidate) => candidate.post),
-      substance: undefined,
-      failures,
-      curation: undefined,
-      updatedAt,
-    };
+    const folded = await foldStories(
+      candidates.map((candidate) => candidate.post),
+      undefined,
+    );
+    return { posts: folded.posts, substance: undefined, failures, curation: undefined, updatedAt };
   }
-  const { posts, substance, read, kept } = await judge(shortlist(candidates, now));
+  const asked = shortlist(candidates, now);
+  const judged = await judge(asked);
+  const { read, kept } = judged;
+  // One copy of each story (lib/story-groups), after Jev's reading so the
+  // pairs it is asked about are only ever posts it kept.
+  const { posts, substance, folded } = await foldStories(judged.posts, judged.substance);
+  // One line per gathering, so a Jev that has gone quiet shows in the logs
+  // rather than only as cards without a reading.
+  const missing = asked.length - read;
+  (missing > 0 ? console.warn : console.info)(
+    `[jev] x-column: asked ${asked.length}, answered ${read}, kept ${kept}, folded ${folded}${missing > 0 ? `, ${missing} unanswered shown by keywords` : ""}`,
+  );
   // No line at all when Jev answered for nothing: "read 0, kept 40" would be
   // the keyword rules wearing Jev's name.
   const curation =

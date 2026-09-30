@@ -31,7 +31,8 @@ export type MoveNews = {
   changePct: number;
   /** The mark the move ends on, ISO date. */
   asOf: string;
-  post: { url: string; name: string; username: string; publishedAt: number };
+  /** `text` is the post verbatim, for the Assistant to quote; the board shows only who. */
+  post: { url: string; name: string; username: string; publishedAt: number; text: string };
 };
 
 export type MovesResponse = { moves: MoveNews[] };
@@ -90,6 +91,7 @@ export async function loadMoves(
           name: post.author.name,
           username: post.author.username,
           publishedAt: post.publishedAt,
+          text: post.text,
         },
       });
     }),
