@@ -112,6 +112,12 @@ export type Copy = {
     emailCta: string;
     /** "on Base": a coin's network, under its name. */
     onNetwork: (network: string) => string;
+    /**
+     * The quiet entry badge near the eyebrow. `href` points at Colosseum's
+     * own site for now; swap it for Berth's own Colosseum project page once
+     * one exists.
+     */
+    colosseum: { label: string; href: string };
     /** The three sections between the hero and the Wall Street film: one line of headline, one short line, a compact visual. */
     sections: {
       what: { title: string; line: string };
@@ -1497,6 +1503,8 @@ export const COPY: Copy = {
     headlineMark: "already lives onchain.",
     emailCta: "Sign in with email",
     onNetwork: (network) => `on ${network}`,
+    // Swap this href for Berth's own Colosseum project page once it exists.
+    colosseum: { label: "Colosseum 2026 entry", href: "https://colosseum.com/" },
     sections: {
       what: {
         title: "US stocks and funds, held in your own wallet.",
