@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
-import { STOCK_LISTINGS } from "@/lib/listings";
+import { STOCK_LISTINGS, rowName } from "@/lib/listings";
 import {
   changeDirection,
   formatPercentChange,
@@ -59,8 +59,8 @@ export function MarketPreview({ count = SHOWN.length }: { count?: number } = {})
               className="grid grid-cols-[minmax(0,1fr)_3.5rem_auto] items-center gap-3 px-[18px] lg:px-6 py-2.5"
             >
               <div className="flex min-w-0 items-baseline gap-2">
-                <span className="truncate text-[14.5px] font-medium text-foreground">
-                  {listing.name}
+                <span title={listing.name} className="truncate text-[14.5px] font-medium text-foreground">
+                  {rowName(listing)}
                 </span>
                 <span className="money text-xs text-muted-foreground">
                   {listing.symbol}

@@ -35,6 +35,15 @@ const LOG_SPAN_BLOCKS = 10_000_000;
 const MAX_SPANS = 20;
 /** Multipliers change about once a month; an hour's memo is generous. */
 const MEMO_MS = 60 * 60 * 1000;
+/**
+ * The memo for a read in which some token stood at exactly one, and so had
+ * its events skipped. `UIMultiplierUpdated` is emitted about ten minutes
+ * before its `effectiveAt` (TSM's first dividend: 577 s), while
+ * `uiMultiplier()` still reads one, so a first dividend can be pending
+ * behind a one. Five minutes bounds how long such a read stands after the
+ * multiplier moves.
+ */
+export const MEMO_AT_ONE_MS = 5 * 60 * 1000;
 
 export type MultiplierRead = {
   histories: Record<string, MultiplierHistory>;
@@ -107,8 +116,9 @@ function groups<T>(items: readonly T[], size: number): T[][] {
 
 /**
  * Each symbol's multiplier now and every change since `sinceMs`. A symbol
- * that is not a Robinhood token is left out and is not a failure. Throws
- * only when the RPC cannot be reached at all.
+ * that is not a Robinhood token is left out and is not a failure. A batch
+ * that fails (429 past its tries, a timeout) marks only its own tokens as
+ * failures; the read throws only when no batch reached the RPC at all.
  *
  * A token whose multiplier reads exactly one has never paid a dividend
  * into it (the multiplier only grows as dividends are reinvested), so its
@@ -130,20 +140,28 @@ export async function readMultiplierHistories(
   const failed = new Set<string>();
   let latest: number | undefined;
   for (const group of groups(tokens, TOKENS_PER_BATCH)) {
-    const head = await batch(
-      [
-        { method: "eth_blockNumber", params: [] },
-        ...group.map(({ address }) => ({
-          method: "eth_call",
-          params: [{ to: address, data: UI_MULTIPLIER_SELECTOR }, "latest"],
-        })),
-      ],
-      timeoutMs,
-    );
-    if (latest === undefined) {
-      if (typeof head[0].result !== "string") throw new Error("Robinhood Chain RPC gave no block number");
-      latest = Number.parseInt(head[0].result, 16);
+    let head: RpcAnswer[];
+    try {
+      head = await batch(
+        [
+          { method: "eth_blockNumber", params: [] },
+          ...group.map(({ address }) => ({
+            method: "eth_call",
+            params: [{ to: address, data: UI_MULTIPLIER_SELECTOR }, "latest"],
+          })),
+        ],
+        timeoutMs,
+      );
+    } catch (error) {
+      // One batch lost marks only its own tokens unread; the others stand.
+      const why = error instanceof Error ? error.message : String(error);
+      for (const { symbol } of group) {
+        failed.add(symbol);
+        out.failures.push(`${symbol}: uiMultiplier unread (${why})`);
+      }
+      continue;
     }
+    if (latest === undefined && typeof head[0].result === "string") latest = Number.parseInt(head[0].result, 16);
     group.forEach(({ symbol }, index) => {
       const answer = head[index + 1];
       if (typeof answer.result === "string" && answer.result.length >= 66) {
@@ -154,7 +172,10 @@ export async function readMultiplierHistories(
       }
     });
   }
-  if (latest === undefined) throw new Error("Robinhood Chain RPC gave no block number");
+  if (latest === undefined) {
+    if (current.size === 0 && out.failures.length > 0) throw new Error(`Robinhood Chain RPC unreachable: ${out.failures[0]}`);
+    throw new Error("Robinhood Chain RPC gave no block number");
+  }
 
   const changes = new Map<string, MultiplierChange[]>(tokens.map(({ symbol }) => [symbol, []]));
   const moved = tokens.filter(({ symbol }) => !failed.has(symbol) && current.get(symbol) !== MULTIPLIER_ONE);
@@ -163,16 +184,26 @@ export async function readMultiplierHistories(
     let end = latest;
     for (let span = 0; span < MAX_SPANS && end >= 0; span += 1) {
       const start = Math.max(0, end - LOG_SPAN_BLOCKS + 1);
-      const answers = await batch(
-        [
-          { method: "eth_getBlockByNumber", params: [hex(start), false] },
-          ...group.map(({ address }) => ({
-            method: "eth_getLogs",
-            params: [{ address, fromBlock: hex(start), toBlock: hex(end), topics: [UI_MULTIPLIER_UPDATED_TOPIC] }],
-          })),
-        ],
-        timeoutMs,
-      );
+      let answers: RpcAnswer[];
+      try {
+        answers = await batch(
+          [
+            { method: "eth_getBlockByNumber", params: [hex(start), false] },
+            ...group.map(({ address }) => ({
+              method: "eth_getLogs",
+              params: [{ address, fromBlock: hex(start), toBlock: hex(end), topics: [UI_MULTIPLIER_UPDATED_TOPIC] }],
+            })),
+          ],
+          timeoutMs,
+        );
+      } catch (error) {
+        const why = error instanceof Error ? error.message : String(error);
+        for (const { symbol } of group) {
+          if (!failed.has(symbol)) out.failures.push(`${symbol}: multiplier events unread (${why})`);
+          failed.add(symbol);
+        }
+        break;
+      }
       group.forEach(({ symbol }, index) => {
         const answer = answers[index + 1];
         if (!Array.isArray(answer.result)) {
@@ -199,22 +230,31 @@ export async function readMultiplierHistories(
   return out;
 }
 
-const memo = new Map<string, { at: number; read: Promise<MultiplierRead> }>();
+const memo = new Map<string, { at: number; ttl: number; read: Promise<MultiplierRead> }>();
 
 /**
  * readMultiplierHistories, remembered for an hour per symbol set and UTC
  * day of `sinceMs` (the window reaches back to that day's start, which only
- * widens it). A read that throws is forgotten at once.
+ * widens it), or for five minutes when any token read exactly one
+ * (MEMO_AT_ONE_MS says why) or any token went unread. A read that throws
+ * is forgotten at once.
  */
 export const cachedMultiplierHistories: MultiplierReader = (symbols, sinceMs) => {
   const dayStart = Math.floor(sinceMs / 86_400_000) * 86_400_000;
   const key = `${[...symbols].sort().join(",")}|${dayStart}`;
   const now = Date.now();
   const hit = memo.get(key);
-  if (hit && now - hit.at < MEMO_MS) return hit.read;
+  if (hit && now - hit.at < hit.ttl) return hit.read;
   const read = readMultiplierHistories(symbols, dayStart);
-  memo.set(key, { at: now, read });
-  read.catch(() => memo.delete(key));
+  const entry = { at: now, ttl: MEMO_AT_ONE_MS, read };
+  memo.set(key, entry);
+  read.then(
+    ({ histories, failures }) => {
+      const settled = failures.length === 0 && Object.values(histories).every((history) => history.current !== 1);
+      if (settled) entry.ttl = MEMO_MS;
+    },
+    () => memo.delete(key),
+  );
   return read;
 };
 

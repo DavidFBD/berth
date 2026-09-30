@@ -17,7 +17,7 @@ import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
-import { STOCK_LISTINGS, type TokenListing } from "@/lib/listings";
+import { STOCK_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT, SPRING_POP } from "@/lib/motion";
 import {
   changeDirection,
@@ -150,7 +150,7 @@ export function ListingBoard({
           <TickerTile symbol={listing.symbol} />
           <div className="min-w-0">
             {/* No "Held" tag: every held row sits under "Yours". */}
-            <div className="truncate text-[14.5px] leading-snug font-medium text-foreground">{listing.name}</div>
+            <div title={listing.name} className="truncate text-[14.5px] leading-snug font-medium text-foreground">{rowName(listing)}</div>
             <div className="money text-xs text-muted-foreground">{listing.symbol}</div>
             {/* Only when there is something to say. Twelve rows reading
                 "Stock" under twelve company names is a column of noise,

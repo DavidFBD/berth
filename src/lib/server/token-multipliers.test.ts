@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } from "@/lib/market-ids";
 import { robinhoodRpcFake } from "@/lib/server/robinhood-rpc-fake";
-import { readMultiplierHistories, toTokenPrices, type MultiplierReader } from "@/lib/server/token-multipliers";
+import {
+  MEMO_AT_ONE_MS,
+  cachedMultiplierHistories,
+  readMultiplierHistories,
+  toTokenPrices,
+  type MultiplierReader,
+} from "@/lib/server/token-multipliers";
 
 const s = (iso: string) => Date.parse(iso) / 1000;
 const SPY_CHANGE = { from: 1, to: 1.001717991, effectiveAt: s("2026-09-18T00:10:33Z") };
@@ -71,11 +77,88 @@ describe("reading the multipliers from Robinhood Chain", () => {
     expect(calls).toBe(3);
   });
 
+  it("keeps the batches that were answered when one batch fails, and names only that batch's tokens", async () => {
+    const symbols = Object.keys(ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL);
+    const second = symbols.slice(12, 24);
+    const fake = robinhoodRpcFake({ multipliers: { SGOV: 1.00510177, SPY: 1.001717991 }, latestBlock: 1_000 });
+    let heads = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(init?.body).includes("eth_blockNumber") && ++heads === 2) return new Response("down", { status: 503 });
+        return fake(url, init);
+      }),
+    );
+    const read = await readMultiplierHistories(symbols, 0);
+    expect(Object.keys(read.histories).sort()).toEqual(symbols.slice(0, 12).sort());
+    expect(read.failures.map((failure) => failure.split(":")[0]).sort()).toEqual([...second].sort());
+    expect(read.failures[0]).toContain("503");
+  });
+
+  it("marks only a group's tokens unread when its event batch fails", async () => {
+    const fake = robinhoodRpcFake({ multipliers: { SGOV: 1.00510177, SPY: 1.001717991 }, latestBlock: 1_000 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) =>
+        String(init?.body).includes("eth_getLogs") ? new Response("down", { status: 503 }) : fake(url, init),
+      ),
+    );
+    const read = await readMultiplierHistories(["SGOV", "SPY", "AMZN"], 0);
+    expect(Object.keys(read.histories)).toEqual(["AMZN"]);
+    expect(read.failures.map((failure) => failure.split(":")[0]).sort()).toEqual(["SGOV", "SPY"]);
+  });
+
+  it("throws when no batch reaches the RPC at all", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));
+    await expect(readMultiplierHistories(["SGOV", "SPY"], 0)).rejects.toThrow(/503/);
+  });
+
   it("asks nothing for symbols that are not Robinhood tokens", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     expect(await readMultiplierHistories(["BTC", "PAXG"], 0)).toEqual({ histories: {}, failures: [] });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("remembering a multiplier read", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const heads = (fetchMock: ReturnType<typeof vi.fn>) =>
+    fetchMock.mock.calls.filter(([, init]) => String((init as RequestInit).body).includes("eth_blockNumber")).length;
+
+  it("reads again within minutes when a token stood at exactly one, so a first dividend announced ahead is not missed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-09-30T12:00:00Z"));
+    const multipliers: Record<string, number> = { AMZN: 1 };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => robinhoodRpcFake({ multipliers, latestBlock: 1_000 })(url, init));
+    vi.stubGlobal("fetch", fetchMock);
+    const since = Date.parse("2026-09-21T00:00:00Z");
+    expect((await cachedMultiplierHistories(["AMZN"], since)).histories.AMZN.current).toBe(1);
+    await Promise.resolve();
+    vi.setSystemTime(Date.now() + MEMO_AT_ONE_MS - 1_000);
+    await cachedMultiplierHistories(["AMZN"], since);
+    expect(heads(fetchMock)).toBe(1);
+    multipliers.AMZN = 1.0021;
+    vi.setSystemTime(Date.now() + 2_000);
+    expect((await cachedMultiplierHistories(["AMZN"], since)).histories.AMZN.current).toBeCloseTo(1.0021, 8);
+    expect(heads(fetchMock)).toBe(2);
+  });
+
+  it("keeps a read for the hour when every token has already moved", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-09-30T12:00:00Z"));
+    const fetchMock = vi.fn(robinhoodRpcFake({ multipliers: { SGOV: 1.00510177 }, latestBlock: 1_000 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const since = Date.parse("2026-09-22T00:00:00Z");
+    await cachedMultiplierHistories(["SGOV"], since);
+    await Promise.resolve();
+    vi.setSystemTime(Date.now() + 30 * 60 * 1000);
+    await cachedMultiplierHistories(["SGOV"], since);
+    expect(heads(fetchMock)).toBe(1);
   });
 });
 

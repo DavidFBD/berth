@@ -51,6 +51,13 @@ export type TokenListing = {
   symbol: string;
   /** Plain display name: "NVIDIA", "S&P 500 ETF". Never the ticker. */
   name: string;
+  /**
+   * The name a narrow row shows where `name` would not fit on an iPhone,
+   * and only where the company goes by it in everyday speech ("TSMC",
+   * "AMD"). Everything else, from the buy sheet to the assistant, says
+   * `name`.
+   */
+  shortName?: string;
   /** The token's on-chain `name()`, verbatim, for the ownership screen. */
   issuerName: string;
   category: StockCategory;
@@ -269,22 +276,29 @@ export const TOKEN_LISTINGS: readonly TokenListing[] = [
     "equity",
     "0xA24710Ab6A5e1ef3a7CF3a0333d8bE2bf22782DC",
   ),
-  robinhood(
-    "stock",
-    "TSM",
-    "Taiwan Semiconductor",
-    "Taiwan Semiconductor Manufacturing • Robinhood Token",
-    "equity",
-    "0xAF9992b0cA54e014ff1EC7fA77AADE973Dba793e",
-  ),
-  robinhood(
-    "stock",
-    "AMD",
-    "Advanced Micro Devices",
-    "AMD • Robinhood Token",
-    "equity",
-    "0xc8124Db156d8F6C7446C040c503FFEAe82383D1B",
-  ),
+  {
+    ...robinhood(
+      "stock",
+      "TSM",
+      "Taiwan Semiconductor",
+      "Taiwan Semiconductor Manufacturing • Robinhood Token",
+      "equity",
+      "0xAF9992b0cA54e014ff1EC7fA77AADE973Dba793e",
+    ),
+    shortName: "TSMC",
+  },
+  {
+    ...robinhood(
+      "stock",
+      "AMD",
+      "Advanced Micro Devices",
+      "AMD • Robinhood Token",
+      "equity",
+      "0xc8124Db156d8F6C7446C040c503FFEAe82383D1B",
+    ),
+    // The company's own everyday name, which is also its ticker.
+    shortName: "AMD",
+  },
   robinhood(
     "stock",
     "INTC",
@@ -352,6 +366,11 @@ export const CASH_LISTING: TokenListing = (() => {
  * so hub asset and vault are the token itself (matches the backend's
  * hub-asset table for every one of these).
  */
+/** What a narrow board row calls a listing: its short name where it has one. */
+export function rowName(listing: TokenListing): string {
+  return listing.shortName ?? listing.name;
+}
+
 export function toXToken(listing: TokenListing): XToken {
   return {
     symbol: listing.symbol,

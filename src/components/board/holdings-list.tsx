@@ -15,7 +15,7 @@ import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { useOrders } from "@/hooks/use-profile";
 import { compareHolding, type HoldingComparison } from "@/lib/benchmark";
 import { formatTokenAmount } from "@/lib/format";
-import { LISTING_MARK_BY_SYMBOL, TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
+import { LISTING_MARK_BY_SYMBOL, TOKEN_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
 import { CompanyMark } from "@/components/company-marks";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 import { formatUnits } from "viem";
@@ -239,7 +239,7 @@ export function HoldingsView({
               <li key={listing.address} className="flex items-center gap-3 px-[18px] py-[13px] lg:px-6">
                 <TickerTile symbol={listing.symbol} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[14.5px] leading-snug font-medium text-foreground">{listing.name}</div>
+                  <div title={listing.name} className="truncate text-[14.5px] leading-snug font-medium text-foreground">{rowName(listing)}</div>
                   <div className="money truncate text-xs text-muted-foreground">
                     {formatTokenAmount(balance, listing.decimals, 6)} {listing.symbol}
                   </div>

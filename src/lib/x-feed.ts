@@ -192,6 +192,15 @@ export type Topic = {
    */
   query?: readonly string[];
   not?: readonly string[];
+  /**
+   * The company's plain name where it is also an everyday word ("fresh
+   * intel", "the Amazon rainforest", "google it"). It never places a post
+   * on its own; it counts only where the text is already filed under this
+   * listing, as a headline Nasdaq filed under the ticker is
+   * (news-judge headlineNamesListing). Elsewhere the fine net above needs
+   * a disambiguating phrase, or Jev places it.
+   */
+  inContext?: readonly string[];
 };
 
 export const TOPICS: readonly Topic[] = [
@@ -236,14 +245,46 @@ export const TOPICS: readonly Topic[] = [
   },
   { symbol: "SLV", terms: ["$SLV", "silver"], query: ["silver"] },
   // The second shelf (2026-09-30). Where a company's plain name is also a
-  // common word (Meta, Circle), the fine net takes only the longer name and
-  // the products, and Jev's placement reads the rest.
+  // common word (Meta, Circle, Google, Amazon, Intel), the fine net takes
+  // only the longer name, the handle, the products and phrases no one says
+  // of the everyday word, and Jev's placement reads the rest.
   {
     symbol: "GOOGL",
-    terms: ["$GOOGL", "$GOOG", "Alphabet", "Google", "Waymo"],
+    terms: [
+      "$GOOGL",
+      "$GOOG",
+      "@Google",
+      "Alphabet",
+      "Google's",
+      "Google’s",
+      "Google Cloud",
+      "Google stock",
+      "Google shares",
+      "Google CEO",
+      "DeepMind",
+      "Pichai",
+      "Waymo",
+    ],
     query: ["Google"],
+    inContext: ["Google"],
   },
-  { symbol: "AMZN", terms: ["$AMZN", "Amazon", "AWS"], query: ["Amazon"] },
+  {
+    symbol: "AMZN",
+    terms: [
+      "$AMZN",
+      "@amazon",
+      "Amazon.com",
+      "AWS",
+      "Amazon Web Services",
+      "Amazon stock",
+      "Amazon shares",
+      "Amazon CEO",
+      "Amazon Prime",
+      "Jassy",
+    ],
+    query: ["Amazon"],
+    inContext: ["Amazon"],
+  },
   { symbol: "MSFT", terms: ["$MSFT", "Microsoft"], query: ["Microsoft"] },
   {
     symbol: "META",
@@ -269,7 +310,24 @@ export const TOPICS: readonly Topic[] = [
     terms: ["$AMD", "AMD", "Advanced Micro Devices", "Lisa Su"],
     query: ["AMD"],
   },
-  { symbol: "INTC", terms: ["$INTC", "Intel"], query: ["Intel"] },
+  {
+    symbol: "INTC",
+    terms: [
+      "$INTC",
+      "@intel",
+      "Intel Corp",
+      "Intel Corporation",
+      "Intel stock",
+      "Intel shares",
+      "Intel CEO",
+      "Intel Foundry",
+      "Intel chip",
+      "Intel chips",
+      "Lip-Bu Tan",
+    ],
+    query: ["Intel"],
+    inContext: ["Intel"],
+  },
   { symbol: "BABA", terms: ["$BABA", "Alibaba"], query: ["Alibaba"] },
 ];
 
@@ -362,12 +420,16 @@ export function buildPressQueries(
   return queries;
 }
 
-/** Whether `text` says `term`, on a word boundary where that means anything. */
+/**
+ * Whether `text` says `term`, with a word boundary at each end of the term
+ * that is a letter or digit: "$MU" is not "$MUSK", "@intel" is not
+ * "@intelligence", and "S&P 500" still matches.
+ */
 function mentions(text: string, term: string): boolean {
-  const haystack = text.toLowerCase();
-  const needle = term.toLowerCase();
-  if (!/^[a-z0-9]+$/.test(needle)) return haystack.includes(needle);
-  return new RegExp(`\\b${needle}\\b`).test(haystack);
+  const needle = term.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const start = /^[a-z0-9]/.test(needle) ? "\\b" : "";
+  const end = /[a-z0-9]$/.test(needle) ? "\\b" : "";
+  return new RegExp(`${start}${needle}${end}`).test(text.toLowerCase());
 }
 
 /** Every listing a post is about, in registry order. */
@@ -381,6 +443,22 @@ export function symbolsForText(
     if (topic.terms.some((term) => mentions(text, term))) found.push(topic.symbol);
   }
   return found;
+}
+
+/**
+ * Whether `text`, already filed under `symbol`, names it: by any word
+ * symbolsForText would place it with, or by its plain everyday name
+ * (Topic.inContext).
+ */
+export function namesListingInContext(
+  text: string,
+  symbol: string,
+  topics: readonly Topic[] = TOPICS,
+): boolean {
+  if (symbolsForText(text, topics).includes(symbol)) return true;
+  const topic = topics.find((candidate) => candidate.symbol === symbol);
+  if (!topic || topic.not?.some((term) => mentions(text, term))) return false;
+  return (topic.inContext ?? []).some((term) => mentions(text, term));
 }
 
 /**

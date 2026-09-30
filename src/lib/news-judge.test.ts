@@ -156,6 +156,12 @@ describe("headlineNamesListing", () => {
     expect(headlineNamesListing("Stocks Settle Lower on Rising Bond Yields", "SPY")).toBe(true);
   });
 
+  it("hears a plain name that is also an everyday word, since the headline is already filed under it", () => {
+    expect(headlineNamesListing("Intel Lands a New Foundry Customer", "INTC")).toBe(true);
+    expect(headlineNamesListing("Why Amazon Could Be the Best AI Stock", "AMZN")).toBe(true);
+    expect(headlineNamesListing("Google Faces a New Antitrust Ruling", "GOOGL")).toBe(true);
+  });
+
   it("does not hear a ticker inside another word", () => {
     expect(headlineNamesListing("Mustang sales climb", "MU")).toBe(false);
   });

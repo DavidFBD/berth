@@ -11,6 +11,7 @@ import {
   findListing,
   isTokenListingAddress,
   listListings,
+  rowName,
   toXToken,
   vaultListing,
 } from "./listings";
@@ -115,6 +116,16 @@ describe("token listings", () => {
       expect(listing.name).not.toBe(listing.symbol);
       expect(listing.name.length).toBeGreaterThan(2);
     }
+  });
+
+  it("gives a short row name only where the full name would not fit, and keeps the full name for the rest", () => {
+    const short = TOKEN_LISTINGS.filter((listing) => listing.shortName);
+    expect(Object.fromEntries(short.map((listing) => [listing.symbol, listing.shortName]))).toEqual({ TSM: "TSMC", AMD: "AMD" });
+    for (const listing of short) expect(listing.shortName!.length).toBeLessThan(listing.name.length);
+    const bySymbol = (symbol: string) => TOKEN_LISTINGS.find((listing) => listing.symbol === symbol)!;
+    expect(rowName(bySymbol("AMD"))).toBe("AMD");
+    expect(bySymbol("AMD").name).toBe("Advanced Micro Devices");
+    expect(rowName(bySymbol("NVDA"))).toBe("NVIDIA");
   });
 
   it("has SGOV as the one cash listing and twenty three stocks", () => {

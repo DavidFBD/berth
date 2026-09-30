@@ -6,7 +6,7 @@ import type {
   ScoreAnswer,
   ScoreQuestion,
 } from "@/lib/server/jev";
-import { symbolsForText } from "@/lib/x-feed";
+import { namesListingInContext } from "@/lib/x-feed";
 
 /**
  * What Jev is asked about a piece of news, and what its answers mean.
@@ -271,7 +271,7 @@ const FUND_SYMBOLS = new Set(["SPY", "QQQ", "SGOV", "USO", "SLV"]);
 /** Whether a headline names the listing it was filed under, by any of its words or its bare ticker. */
 export function headlineNamesListing(title: string, symbol: string): boolean {
   if (FUND_SYMBOLS.has(symbol)) return true;
-  if (symbolsForText(title).includes(symbol)) return true;
+  if (namesListingInContext(title, symbol)) return true;
   return new RegExp(`\\b${symbol}\\b`).test(title);
 }
 

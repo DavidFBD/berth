@@ -22,6 +22,7 @@ import {
   recencyWeight,
   stripLinks,
   substanceWeight,
+  namesListingInContext,
   symbolsForText,
   type XPost,
 } from "./x-feed";
@@ -120,6 +121,36 @@ describe("symbolsForText", () => {
   it("keeps a word boundary, so silver is not Silverman", () => {
     expect(symbolsForText("A profile of Ben Silverman")).not.toContain("SLV");
     expect(symbolsForText("Silver hits a new high")).toContain("SLV");
+  });
+
+  it("does not file an everyday word under the company that shares it", () => {
+    expect(symbolsForText("Fresh intel on the ceasefire talks")).toEqual([]);
+    expect(symbolsForText("Fires spread across the Amazon rainforest")).toEqual([]);
+    expect(symbolsForText("Not sure? Just google it")).toEqual([]);
+    expect(symbolsForText("Reporters at @intelligencer say")).toEqual([]);
+  });
+
+  it("files the company where the words can only mean it", () => {
+    expect(symbolsForText("Intel shares jump on foundry deal")).toEqual(["INTC"]);
+    expect(symbolsForText("Intel Corp. names a new chief")).toEqual(["INTC"]);
+    expect(symbolsForText("$INTC up 4% premarket")).toEqual(["INTC"]);
+    expect(symbolsForText("Amazon.com beats on retail margins")).toEqual(["AMZN"]);
+    expect(symbolsForText("AWS outage hits banks")).toEqual(["AMZN"]);
+    expect(symbolsForText("Alphabet raises its buyback")).toEqual(["GOOGL"]);
+    expect(symbolsForText("Google's cloud unit grows 30%")).toEqual(["GOOGL"]);
+  });
+
+  it("counts the plain name only where the text is already filed under the company", () => {
+    expect(namesListingInContext("Intel to cut 10% of staff", "INTC")).toBe(true);
+    expect(namesListingInContext("Amazon opens a new warehouse", "AMZN")).toBe(true);
+    expect(namesListingInContext("Google unveils a new phone", "GOOGL")).toBe(true);
+    expect(namesListingInContext("Intel to cut 10% of staff", "AMZN")).toBe(false);
+    expect(symbolsForText("Intel to cut 10% of staff")).toEqual([]);
+  });
+
+  it("keeps a cashtag whole, so $MU is not $MUSK", () => {
+    expect(symbolsForText("$MUSK memecoin pumps")).not.toContain("MU");
+    expect(symbolsForText("$MU rallies")).toContain("MU");
   });
 
   it("says nothing about a post that is about nothing we list", () => {
