@@ -1,15 +1,17 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Bank, Coins, EnvelopeSimple, HandHeart, Key, PencilSimpleLine, ShieldCheck, Wallet } from "@phosphor-icons/react";
 import { BerthMark } from "@/components/berth-mark";
 import { MarketPreview, NewsFeed } from "@/components/board";
 import { ProviderMark } from "@/components/assistant/provider-marks";
-import { RankGlyph } from "@/components/rank-glyph";
+import { AvatarWithRank, RankGlyph } from "@/components/rank-glyph";
 import { BoardView } from "@/components/social/friends-board";
 import { SampleChart } from "@/components/welcome/sample-chart";
 import { useCopy } from "@/components/settings-provider";
+import { AVATARS, type AvatarId } from "@/lib/avatars";
 import { RANKS } from "@/lib/xp";
 import type { FriendsBoard } from "@/lib/social-types";
 import { cn } from "@/lib/utils";
@@ -448,7 +450,46 @@ function RanksVisual() {
       <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
         <i className="block h-full w-[37%] bg-foreground" />
       </div>
+      <Faces />
     </Visual>
+  );
+}
+
+/**
+ * Faces from the real set (lib/avatars), under the ladder they belong to:
+ * three of the eight anyone can wear, then the three that open with rank,
+ * each wearing the mark of the rank it opens at. A curated six, not the
+ * shelf: one quiet row on a wide screen, two rows of three on a phone.
+ */
+const OPEN_FACES: AvatarId[] = ["bollard", "ring", "lantern"];
+
+function Faces() {
+  const f = useCopy().welcomePage.features.ranks;
+  const faces = [
+    ...OPEN_FACES.map((id) => AVATARS.find((a) => a.id === id)!),
+    ...AVATARS.filter((a) => "unlockLevel" in a),
+  ];
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <p className="text-[12.5px] text-muted-foreground">{f.faces}</p>
+      <ul className="mt-3.5 grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-6">
+        {faces.map((face) => {
+          const level = "unlockLevel" in face ? face.unlockLevel : null;
+          return (
+            <li key={face.id} className="flex flex-col items-center text-center">
+              {level ? (
+                <AvatarWithRank avatarId={face.id} level={level} size={52} />
+              ) : (
+                <Image src={face.src} alt="" width={52} height={52} className="size-[52px] rounded-full bg-avatar-disc" />
+              )}
+              <small className="mt-2 block text-[11px] leading-tight text-muted-foreground">
+                {level ? f.faceAt(RANKS[level - 1].name) : face.label.replace(/^The /, "")}
+              </small>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

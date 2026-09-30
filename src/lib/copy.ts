@@ -132,7 +132,16 @@ export type Copy = {
       friends: { title: string; body: string[] };
       wallets: { title: string; body: string[]; home: string; linked: string; evm: string; solana: string; bitcoin: string };
       email: { title: string; body: string[]; from: string; always: string; switches: string };
-      ranks: { title: string; body: string[]; xp: string; now: (rank: string, level: number) => string };
+      ranks: {
+        title: string;
+        body: string[];
+        xp: string;
+        now: (rank: string, level: number) => string;
+        /** Over the row of faces under the ladder. */
+        faces: string;
+        /** Under a face that opens with rank: the rank it opens at. */
+        faceAt: (rank: string) => string;
+      };
     };
     comingTitle: string;
     coming: { name: string; line: string }[];
@@ -1556,6 +1565,8 @@ export const COPY: Copy = {
         ],
         xp: "1,120 / 1,500 XP",
         now: (rank, level) => `${rank}, level ${level}`,
+        faces: "Eight faces to wear from the start. Three more open on the climb.",
+        faceAt: (rank) => `At ${rank}`,
       },
     },
     comingTitle: "Coming",
