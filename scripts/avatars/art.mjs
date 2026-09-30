@@ -163,21 +163,26 @@ const heron = {
   ${eye(47, 31, 3.6)}`,
 };
 
-// A cormorant on a blue post, drying its wings.
+// A cormorant on a blue bollard, holding its wings out to dry, head turned
+// to the viewer: the white chin and the yellow gape of a great cormorant.
 const cormorant = {
   bg: P.disc,
   body: `
-  <rect x="52" y="100" width="24" height="30" fill="${P.blue}"/>
-  <ellipse cx="64" cy="100" rx="12" ry="4" fill="${P.blueDeep}"/>
-  <path d="M52 66 C42 54 24 50 10 58 C16 62 14 68 20 72 C16 76 22 82 28 82 C26 88 34 90 40 88 C46 88 52 82 56 76Z" fill="#3A3530"/>
-  <path d="M76 66 C86 54 104 50 118 58 C112 62 114 68 108 72 C112 76 106 82 100 82 C102 88 94 90 88 88 C82 88 76 82 72 76Z" fill="#3A3530"/>
-  <ellipse cx="64" cy="78" rx="15" ry="24" fill="${P.feather}"/>
-  <g stroke="${P.feather}" stroke-width="3" stroke-linecap="round"><path d="M58 100 V104"/><path d="M70 100 V104"/></g>
-  <path d="M60 60 C58 50 60 46 64 44 L72 46 C70 52 70 56 72 62Z" fill="${P.feather}"/>
-  <circle cx="66" cy="40" r="13" fill="${P.feather}"/>
-  <path d="M76 38 L95 40.5 Q99 41.5 97.5 45.5 L95.5 43.5 L77 45Z" fill="${P.muted}"/>
-  <path d="M73 43 L80 45 L78 51 C75 51 72.5 47.5 73 43Z" fill="${P.ochre}"/>
-  <circle cx="69" cy="37" r="4.2" fill="#fff"/><circle cx="69.8" cy="37" r="2.4" fill="${P.ink}"/>`,
+  <path d="M42 110 H86 V128 H42Z" fill="${P.blue}"/>
+  <ellipse cx="64" cy="110" rx="22" ry="5" fill="${P.blueDeep}"/>
+  <path d="M54 68 C44 54 28 48 14 56 C12 70 18 88 24 98 C28 97 31 96 33 99 C36 96 40 95 42 97 C46 94 50 90 53 84Z" fill="#3A3530"/>
+  <path d="M74 68 C84 54 100 48 114 56 C116 70 110 88 104 98 C100 97 97 96 95 99 C92 96 88 95 86 97 C82 94 78 90 75 84Z" fill="#3A3530"/>
+  <path d="M54 68 C44 56 30 52 17 58 C30 58 42 64 50 78Z" fill="#524B45"/>
+  <path d="M74 68 C84 56 98 52 111 58 C98 58 86 64 78 78Z" fill="#524B45"/>
+  <path d="M64 60 C78 60 82 76 80 92 C78 104 72 110 64 110 C56 110 50 104 48 92 C46 76 50 60 64 60Z" fill="${P.feather}"/>
+  <g stroke="${P.ochreDark}" stroke-width="3" stroke-linecap="round"><path d="M59 106 V111"/><path d="M69 106 V111"/></g>
+  <path d="M56 64 C54 56 54 50 56 44 L72 44 C70 50 70 56 72 64Z" fill="${P.feather}"/>
+  <circle cx="62" cy="36" r="18" fill="${P.feather}"/>
+  <path d="M58 50 C62 54 70 54 74 48 C70 46 64 46 58 50Z" fill="#fff"/>
+  <path d="M72 36 L101 38.5 C105.5 39 107.5 42 106 46 C104.5 43.8 102.5 43 100.5 43 L74 45Z" fill="${P.muted}"/>
+  <path d="M68 38 L80 41 L77 48 C72 48 68 44 68 38Z" fill="${P.ochre}"/>
+  <path d="M75 44.5 Q88 46 98 42.5" fill="none" stroke="${P.ink}" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="64" cy="31" r="6" fill="#fff"/>${eye(65, 31.4, 3.8)}`,
 };
 
 /* ---- opened by rank ---- */
@@ -205,17 +210,21 @@ const crab = {
   <path d="M56 84 Q64 91 72 84" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>`,
 };
 
-// Quay: a harbour porpoise leaping clear of blue water.
+// Quay: a harbour porpoise surfacing, round head and a small smile; the
+// water is its blue.
 const porpoise = {
   bg: P.disc,
   body: `
-  <path d="M24 112 C24 80 46 50 80 40 C96 36 110 42 110 54 C110 64 100 68 90 68 C70 70 52 88 50 112Z" fill="#5E5A57"/>
-  <path d="M50 112 C52 88 70 70 90 68 C98 68 106 65 109 58 C106 70 96 74 88 75 C72 77 60 92 58 112Z" fill="${P.stoneLight}"/>
-  <path d="M46 70 C46 60 50 52 58 48 C58 56 58 62 62 66Z" fill="#4A4643"/>
-  ${eye(92, 50, 4)}
-  <path d="M98 60 Q103 60 106 57" fill="none" stroke="${P.ink}" stroke-width="2" stroke-linecap="round"/>
-  <path d="M0 104 Q14 98 28 104 Q38 96 48 104 Q56 98 64 104 T96 104 T128 104 V128 H0Z" fill="${P.blue}"/>
-  <g fill="${P.blue}"><circle cx="18" cy="92" r="3.4"/><circle cx="28" cy="84" r="2.4"/><circle cx="106" cy="94" r="2.8"/><circle cx="12" cy="80" r="1.8"/></g>`,
+  <path d="M38 76 C38 68 41 62 46 58 C47 64 49 68 53 72Z" fill="#4A4643"/>
+  <path d="M26 112 C26 86 38 68 58 58 L88 70 C72 76 64 92 64 112Z" fill="#5E5A57"/>
+  <ellipse cx="76" cy="50" rx="27" ry="24" fill="#5E5A57"/>
+  <ellipse cx="100" cy="60" rx="13" ry="9" transform="rotate(14 100 60)" fill="#5E5A57"/>
+  <path d="M112 62 C108 70 96 73 86 72 C72 72 62 88 60 112 H52 C54 86 66 68 80 64 C92 62 104 66 112 62Z" fill="${P.stoneLight}"/>
+  <path d="M74 80 C82 82 88 88 90 96 C82 94 76 90 72 84Z" fill="#4A4643"/>
+  ${eye(84, 46, 4.8)}
+  <path d="M111 61.5 Q101 69.5 90 62.5" fill="none" stroke="${P.ink}" stroke-width="2.2" stroke-linecap="round"/><path d="M89.5 60.5 Q89 63 91 64.5" fill="none" stroke="${P.ink}" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M0 106 Q16 100 32 106 Q46 98 60 106 Q76 100 96 106 T128 106 V128 H0Z" fill="${P.blue}"/>
+  <g fill="${P.blue}"><circle cx="18" cy="94" r="3.2"/><circle cx="24" cy="85" r="2.2"/><circle cx="96" cy="94" r="2.6"/><circle cx="14" cy="82" r="1.6"/></g>`,
 };
 
 // Harbour Master: the blue lobster, about one in two million in the wild,
