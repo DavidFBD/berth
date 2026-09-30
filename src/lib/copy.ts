@@ -143,6 +143,19 @@ export type Copy = {
         faceAt: (rank: string) => string;
       };
     };
+    /**
+     * The two launch films (components/welcome/welcome-films). `line` is the
+     * one sentence beside or under a film, `label` its accessible name.
+     */
+    films: {
+      habit: { line: string; label: string };
+      wallStreet: { line: string; label: string };
+      /** The pill's words: what a tap will do. */
+      soundOn: string;
+      soundOff: string;
+      /** Shown instead of autoplay when reduced motion is asked for. */
+      play: string;
+    };
     comingTitle: string;
     coming: { name: string; line: string }[];
     legal: string;
@@ -1620,6 +1633,19 @@ export const COPY: Copy = {
         faces: "Eight faces to wear from the start. Three more open on the climb.",
         faceAt: (rank) => `At ${rank}`,
       },
+    },
+    films: {
+      habit: {
+        line: "A little, every Monday. Sign it, climb a rank, salute a friend.",
+        label: "A short film: a buy set for every Monday, the reminder you sign, the harbour ranks and a friends board.",
+      },
+      wallStreet: {
+        line: "One buy of NVIDIA, from the board to your own wallet, in one signature.",
+        label: "A short film: a $50 buy of NVIDIA, paid with crypto from any of 20 networks and signed once in your own wallet.",
+      },
+      soundOn: "Sound on",
+      soundOff: "Sound off",
+      play: "Play the film",
     },
     comingTitle: "Coming",
     coming: [

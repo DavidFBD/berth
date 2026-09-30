@@ -15,6 +15,12 @@
  *   pnpm shot --reload-out second.png          # reload in the same context, shoot again
  *   pnpm shot --full                           # the whole page, not just the viewport
  *   pnpm shot --reduced-motion                 # emulates prefers-reduced-motion: reduce
+ *   pnpm shot --scroll-to "[data-film-phone]" --scroll-offset -200
+ *                                               # bring an element to the top of the
+ *                                               # viewport, then nudge by px (a still
+ *                                               # of scroll-linked motion mid-scroll)
+ *   pnpm shot --probe "document.querySelector('video').paused"
+ *                                               # print a page expression after the shutter
  *
  * The last two exist for state a browser keeps between visits (the posts
  * column's "new to you" mark): seed it, shoot, reload, shoot again.
@@ -73,6 +79,9 @@ if (storageSeedRaw) {
   }
 }
 const reloadOut = arg("reload-out", null);
+const scrollTo = arg("scroll-to", null);
+const scrollOffset = Number(arg("scroll-offset", "0"));
+const probe = arg("probe", null);
 const fullPage = process.argv.includes("--full");
 const reducedMotion = process.argv.includes("--reduced-motion") ? "reduce" : "no-preference";
 
@@ -143,10 +152,29 @@ if (fullPage) {
   await page.waitForLoadState("networkidle").catch(() => {});
   await page.waitForTimeout(400);
 }
+if (scrollTo) {
+  // Step there so scroll-linked motion and in-view observers see a real scroll.
+  await page.waitForSelector(scrollTo, { state: "attached", timeout: 60_000 });
+  await page.evaluate(
+    async ({ selector, offset }) => {
+      const el = document.querySelector(selector);
+      if (!el) throw new Error(`--scroll-to found nothing for ${selector}`);
+      const target = el.getBoundingClientRect().top + window.scrollY + offset;
+      const from = window.scrollY;
+      for (let i = 1; i <= 12; i++) {
+        window.scrollTo(0, from + ((target - from) * i) / 12);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    },
+    { selector: scrollTo, offset: scrollOffset },
+  );
+  await page.waitForTimeout(settleMs);
+}
 await page.screenshot({ path: out, fullPage });
 console.log(
   `${out} (${browserName} ${width}x${height} ${colorScheme})`,
 );
+if (probe) console.log(`probe: ${JSON.stringify(await page.evaluate(probe))}`);
 if (reloadOut) {
   await page.reload({ waitUntil: "networkidle", timeout: 90_000 });
   await page.waitForTimeout(settleMs);

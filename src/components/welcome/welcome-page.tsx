@@ -10,6 +10,7 @@ import { ProviderMark } from "@/components/assistant/provider-marks";
 import { AvatarWithRank, RankGlyph } from "@/components/rank-glyph";
 import { BoardView } from "@/components/social/friends-board";
 import { SampleChart } from "@/components/welcome/sample-chart";
+import { HabitFilm, WallStreetFilm } from "@/components/welcome/welcome-films";
 import { useCopy } from "@/components/settings-provider";
 import { AVATARS, type AvatarId } from "@/lib/avatars";
 import { RANKS } from "@/lib/xp";
@@ -114,6 +115,8 @@ export function WelcomePage({
         <Feature n="09" title={page.features.ranks.title} body={page.features.ranks.body}>
           <RanksVisual />
         </Feature>
+        {/* The habit film closes the harbour story: a Monday buy, a rank, a friend. */}
+        <HabitFilm />
 
         <section className="grid gap-5 border-t border-border py-11 lg:grid-cols-2 lg:gap-16 lg:py-14">
           <h2 className="font-display text-xl leading-tight tracking-[-0.015em] text-foreground">{page.comingTitle}</h2>
@@ -330,6 +333,8 @@ function ValueBlock() {
           );
         })}
       </ul>
+      {/* The Wall Street film proves the block in use: one buy, one signature. */}
+      <WallStreetFilm />
     </section>
   );
 }
