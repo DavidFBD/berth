@@ -1455,7 +1455,7 @@ export const COPY: Copy = {
   welcomePage: {
     navLabel: "Berth",
     nav: { how: "What it is", assistant: "The Assistant", ai: "For your AI" },
-    eyebrow: "US stocks and funds, in your own custody",
+    eyebrow: "Wall Street, in your wallet.",
     headlineLead: "Stocks for the money that ",
     headlineMark: "already lives onchain.",
     emailCta: "Sign in with email",
