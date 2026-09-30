@@ -1,6 +1,7 @@
 import { ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } from "@/lib/market-ids";
 import {
   LLAMA_SHARE_QUOTES_FROM_MS,
+  MULTIPLIER_ONE,
   llamaQuotesShares,
   llamaTokenPrice,
   multiplierFromFixed,
@@ -87,82 +88,113 @@ function decodeChange(log: Log): MultiplierChange | undefined {
 }
 
 /**
+ * How many tokens share one batched request. The public RPC meters every
+ * call inside a batch: measured 2026-09-30, it lets about fifty calls
+ * through at once and then about three a second, answering 429 in
+ * between. A batch of 25 calls (the 24 listings and a block read) could
+ * not get through at all, so batches carry at most twelve tokens and go
+ * one after another, never side by side.
+ */
+export const TOKENS_PER_BATCH = 12;
+
+type Token = { symbol: string; address: `0x${string}` };
+
+function groups<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let index = 0; index < items.length; index += size) out.push(items.slice(index, index + size));
+  return out;
+}
+
+/**
  * Each symbol's multiplier now and every change since `sinceMs`. A symbol
  * that is not a Robinhood token is left out and is not a failure. Throws
  * only when the RPC cannot be reached at all.
+ *
+ * A token whose multiplier reads exactly one has never paid a dividend
+ * into it (the multiplier only grows as dividends are reinvested), so its
+ * events are not read: on 2026-09-30 that was half the listings, and the
+ * event reads are nearly every call this makes.
  */
 export async function readMultiplierHistories(
   symbols: readonly string[],
   sinceMs: number,
   timeoutMs = 8_000,
 ): Promise<MultiplierRead> {
-  const tokens = symbols
+  const tokens: Token[] = symbols
     .filter((symbol) => ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[symbol])
     .map((symbol) => ({ symbol, address: ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[symbol] }));
   const out: MultiplierRead = { histories: {}, failures: [] };
   if (tokens.length === 0) return out;
 
-  const head = await batch(
-    [
-      { method: "eth_blockNumber", params: [] },
-      ...tokens.map(({ address }) => ({
-        method: "eth_call",
-        params: [{ to: address, data: UI_MULTIPLIER_SELECTOR }, "latest"],
-      })),
-    ],
-    timeoutMs,
-  );
-  if (typeof head[0].result !== "string") throw new Error("Robinhood Chain RPC gave no block number");
-  const latest = Number.parseInt(head[0].result, 16);
-
-  const current = new Map<string, number>();
+  const current = new Map<string, bigint>();
   const failed = new Set<string>();
-  tokens.forEach(({ symbol }, index) => {
-    const answer = head[index + 1];
-    if (typeof answer.result === "string" && answer.result.length >= 66) {
-      current.set(symbol, multiplierFromFixed(BigInt(answer.result.slice(0, 66))));
-    } else {
-      failed.add(symbol);
-      out.failures.push(`${symbol}: uiMultiplier unread (${answer.error?.message ?? "empty"})`);
-    }
-  });
-
-  const changes = new Map<string, MultiplierChange[]>(tokens.map(({ symbol }) => [symbol, []]));
-  const sinceSeconds = Math.floor(sinceMs / 1000);
-  let end = latest;
-  for (let span = 0; span < MAX_SPANS && end >= 0; span += 1) {
-    const start = Math.max(0, end - LOG_SPAN_BLOCKS + 1);
-    const answers = await batch(
+  let latest: number | undefined;
+  for (const group of groups(tokens, TOKENS_PER_BATCH)) {
+    const head = await batch(
       [
-        { method: "eth_getBlockByNumber", params: [hex(start), false] },
-        ...tokens.map(({ address }) => ({
-          method: "eth_getLogs",
-          params: [{ address, fromBlock: hex(start), toBlock: hex(end), topics: [UI_MULTIPLIER_UPDATED_TOPIC] }],
+        { method: "eth_blockNumber", params: [] },
+        ...group.map(({ address }) => ({
+          method: "eth_call",
+          params: [{ to: address, data: UI_MULTIPLIER_SELECTOR }, "latest"],
         })),
       ],
       timeoutMs,
     );
-    tokens.forEach(({ symbol }, index) => {
-      const answer = answers[index + 1];
-      if (!Array.isArray(answer.result)) {
-        if (!failed.has(symbol)) out.failures.push(`${symbol}: multiplier events unread (${answer.error?.message ?? "empty"})`);
+    if (latest === undefined) {
+      if (typeof head[0].result !== "string") throw new Error("Robinhood Chain RPC gave no block number");
+      latest = Number.parseInt(head[0].result, 16);
+    }
+    group.forEach(({ symbol }, index) => {
+      const answer = head[index + 1];
+      if (typeof answer.result === "string" && answer.result.length >= 66) {
+        current.set(symbol, BigInt(answer.result.slice(0, 66)));
+      } else {
         failed.add(symbol);
-        return;
-      }
-      for (const log of answer.result as Log[]) {
-        const change = decodeChange(log);
-        if (change) changes.get(symbol)!.push(change);
+        out.failures.push(`${symbol}: uiMultiplier unread (${answer.error?.message ?? "empty"})`);
       }
     });
-    const block = answers[0].result as { timestamp?: string } | null | undefined;
-    const startSeconds = block?.timestamp ? Number.parseInt(block.timestamp, 16) : undefined;
-    if (start === 0 || startSeconds === undefined || startSeconds <= sinceSeconds) break;
-    end = start - 1;
+  }
+  if (latest === undefined) throw new Error("Robinhood Chain RPC gave no block number");
+
+  const changes = new Map<string, MultiplierChange[]>(tokens.map(({ symbol }) => [symbol, []]));
+  const moved = tokens.filter(({ symbol }) => !failed.has(symbol) && current.get(symbol) !== MULTIPLIER_ONE);
+  const sinceSeconds = Math.floor(sinceMs / 1000);
+  for (const group of groups(moved, TOKENS_PER_BATCH)) {
+    let end = latest;
+    for (let span = 0; span < MAX_SPANS && end >= 0; span += 1) {
+      const start = Math.max(0, end - LOG_SPAN_BLOCKS + 1);
+      const answers = await batch(
+        [
+          { method: "eth_getBlockByNumber", params: [hex(start), false] },
+          ...group.map(({ address }) => ({
+            method: "eth_getLogs",
+            params: [{ address, fromBlock: hex(start), toBlock: hex(end), topics: [UI_MULTIPLIER_UPDATED_TOPIC] }],
+          })),
+        ],
+        timeoutMs,
+      );
+      group.forEach(({ symbol }, index) => {
+        const answer = answers[index + 1];
+        if (!Array.isArray(answer.result)) {
+          if (!failed.has(symbol)) out.failures.push(`${symbol}: multiplier events unread (${answer.error?.message ?? "empty"})`);
+          failed.add(symbol);
+          return;
+        }
+        for (const log of answer.result as Log[]) {
+          const change = decodeChange(log);
+          if (change) changes.get(symbol)!.push(change);
+        }
+      });
+      const block = answers[0].result as { timestamp?: string } | null | undefined;
+      const startSeconds = block?.timestamp ? Number.parseInt(block.timestamp, 16) : undefined;
+      if (start === 0 || startSeconds === undefined || startSeconds <= sinceSeconds) break;
+      end = start - 1;
+    }
   }
 
   for (const { symbol } of tokens) {
     if (failed.has(symbol)) continue;
-    out.histories[symbol] = { current: current.get(symbol)!, changes: changes.get(symbol)! };
+    out.histories[symbol] = { current: multiplierFromFixed(current.get(symbol)!), changes: changes.get(symbol)! };
   }
   return out;
 }

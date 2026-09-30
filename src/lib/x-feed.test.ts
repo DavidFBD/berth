@@ -42,12 +42,13 @@ describe("query building", () => {
     expect(query).toContain("-is:retweet");
   });
 
-  it("asks for the whole press tier in two requests", () => {
+  it("asks for the whole press tier in three requests", () => {
     // Twenty-seven accounts since 2026-09-30: their from: list alone is
     // about the 512-character limit, so it splits into groups, each asking
-    // every topic. Two is what that costs; more means the list grew.
+    // every topic. Two was the cost with thirteen listings; the second
+    // shelf's eleven topics make it three, and more means the list grew.
     const queries = buildPressQueries();
-    expect(queries).toHaveLength(2);
+    expect(queries).toHaveLength(3);
     for (const query of queries) {
       expect(query.length).toBeLessThanOrEqual(MAX_QUERY_CHARS);
     }
@@ -74,9 +75,11 @@ describe("query building", () => {
     expect(press.length).toBeLessThan(MAX_QUERY_CHARS - 50);
   });
 
-  it("is three queries in total, the company tier and two press groups", () => {
-    // Each runs at ten posts whenever lib/x-schedule gives it a turn.
-    expect(1 + buildPressQueries().length).toBe(3);
+  it("is four queries in total, the company tier and three press groups", () => {
+    // Each runs at ten posts whenever lib/x-schedule gives it a turn. Three
+    // until the second shelf (2026-09-30): twenty four topics do not fit
+    // two press groups at any split (lib/x-feed FROM_GROUP_CHARS).
+    expect(1 + buildPressQueries().length).toBe(4);
   });
 
   it("splits rather than overrun when there is more to ask", () => {

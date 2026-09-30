@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, leverageYieldVaults } from "@sodax/sdk";
 import { getAddress, isAddress } from "viem";
+import { MARKET_ID_BY_SYMBOL, ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } from "./market-ids";
+import { TOPICS } from "./x-feed";
 import {
   CASH_LISTING,
+  LISTING_MARK_BY_SYMBOL,
   STOCK_LISTINGS,
   TOKEN_LISTINGS,
   findListing,
@@ -19,7 +22,7 @@ import {
  * leans on, offline.
  */
 describe("token listings", () => {
-  it("carries the thirteen Robinhood tokens the solver trades on Sonic", () => {
+  it("carries the twenty four Robinhood tokens the solver trades on Sonic", () => {
     expect(TOKEN_LISTINGS.map((listing) => listing.symbol)).toEqual([
       "SPCX",
       "NVDA",
@@ -34,6 +37,17 @@ describe("token listings", () => {
       "SGOV",
       "USO",
       "SLV",
+      "GOOGL",
+      "AMZN",
+      "MSFT",
+      "META",
+      "CRCL",
+      "COIN",
+      "PLTR",
+      "TSM",
+      "AMD",
+      "INTC",
+      "BABA",
     ]);
   });
 
@@ -55,6 +69,17 @@ describe("token listings", () => {
       SGOV: "0xf6938087cf794B08739b926B41FF8F1E90816E74",
       USO: "0x8DaBbADcecfc1a0B91fc68c72301090bc220D2bc",
       SLV: "0x690B92c27ac80015E57DB8cc02A81255814f49A2",
+      GOOGL: "0xBdB4445a05726E26C26EA30dF0C1970DF4Cf4Be3",
+      AMZN: "0xc467cAC3e69C2eb41Cc9b32Aa1A7a54F942243Ba",
+      MSFT: "0x66A3bc5a66D3c66dc42031775Ea3eedc37347FeC",
+      META: "0xB7686E0a03542230927CAC76Fe7566656439F3c6",
+      CRCL: "0x1e264ceEEb59F7425D64362Bf12A5b2648B6e66d",
+      COIN: "0x5540d60F879F5D470bF9Ed7d23FFd59Acc10da0c",
+      PLTR: "0xA24710Ab6A5e1ef3a7CF3a0333d8bE2bf22782DC",
+      TSM: "0xAF9992b0cA54e014ff1EC7fA77AADE973Dba793e",
+      AMD: "0xc8124Db156d8F6C7446C040c503FFEAe82383D1B",
+      INTC: "0x5352F9Bf2f58720f8a8CC4D4eDEE56700Bd3d053",
+      BABA: "0x1BeD0547D76F6424e9A3465b36F6dcDCF798A5cf",
     });
   });
 
@@ -92,11 +117,11 @@ describe("token listings", () => {
     }
   });
 
-  it("has SGOV as the one cash listing and twelve stocks", () => {
+  it("has SGOV as the one cash listing and twenty three stocks", () => {
     expect(CASH_LISTING.symbol).toBe("SGOV");
     expect(CASH_LISTING.kind).toBe("cash");
     expect(CASH_LISTING.category).toBe("treasury");
-    expect(STOCK_LISTINGS).toHaveLength(12);
+    expect(STOCK_LISTINGS).toHaveLength(23);
     expect(STOCK_LISTINGS.every((listing) => listing.kind === "stock")).toBe(
       true,
     );
@@ -187,5 +212,37 @@ describe("isTokenListingAddress", () => {
     expect(
       isTokenListingAddress("0x29219dd400f2Bf60E5a23d13Be72B486D4038894"),
     ).toBe(false);
+  });
+});
+
+/**
+ * A listing is only whole when every table keyed by its ticker knows it:
+ * without a history id the board row has no line and the evening marks skip
+ * it, without the Robinhood Chain address a dividend reads as a fall, and
+ * without a topic the news column never files a post under it. The second
+ * shelf (2026-09-30) is where forgetting one of these would have happened.
+ */
+describe("every listing is known to every per ticker table", () => {
+  it("has a history id, a Robinhood Chain address, a topic and a mark if pinned", () => {
+    for (const listing of TOKEN_LISTINGS) {
+      expect(MARKET_ID_BY_SYMBOL[listing.symbol], listing.symbol).toMatch(
+        /-robinhood-tokenized-stock$/,
+      );
+      const address = ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[listing.symbol];
+      expect(address && getAddress(address), listing.symbol).toBe(address);
+      expect(
+        TOPICS.some((topic) => topic.symbol === listing.symbol),
+        listing.symbol,
+      ).toBe(true);
+    }
+    for (const symbol of Object.keys(LISTING_MARK_BY_SYMBOL)) {
+      expect(TOKEN_LISTINGS.some((listing) => listing.symbol === symbol), symbol).toBe(true);
+    }
+  });
+
+  it("has no history id or address for a ticker that is not listed", () => {
+    const symbols = new Set(TOKEN_LISTINGS.map((listing) => listing.symbol));
+    for (const symbol of Object.keys(MARKET_ID_BY_SYMBOL)) expect(symbols.has(symbol), symbol).toBe(true);
+    for (const symbol of Object.keys(ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL)) expect(symbols.has(symbol), symbol).toBe(true);
   });
 });

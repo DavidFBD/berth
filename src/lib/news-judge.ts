@@ -45,6 +45,17 @@ export const LISTING_BRIEFS: Readonly<Record<string, string>> = {
   SGOV: "a short-term US Treasury bill fund: news about T-bill yields, Fed rate decisions or short-term interest rates",
   USO: "an oil fund: news about crude oil prices, OPEC, Brent or WTI",
   SLV: "a silver fund: news about the price of silver",
+  GOOGL: "Alphabet, the parent of Google, YouTube and Waymo",
+  AMZN: "Amazon, the online retailer and AWS cloud company",
+  MSFT: "Microsoft, the Windows, Office, Azure cloud and Xbox company",
+  META: "Meta Platforms, the owner of Facebook, Instagram and WhatsApp",
+  CRCL: "Circle Internet Group, the issuer of the USDC stablecoin",
+  COIN: "Coinbase, the US crypto exchange",
+  PLTR: "Palantir, the data analytics and defence software company",
+  TSM: "TSMC (Taiwan Semiconductor Manufacturing), the contract chip maker",
+  AMD: "AMD (Advanced Micro Devices), the maker of processors and AI chips",
+  INTC: "Intel, the processor maker and chip foundry",
+  BABA: "Alibaba, the Chinese e-commerce and cloud company",
 };
 
 export type Tier = "company" | "press";

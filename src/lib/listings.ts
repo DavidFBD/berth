@@ -21,12 +21,14 @@ import type { CompanyMarkId } from "@/components/company-marks";
  * either static table (`sonicSupportedTokens`, `getSupportedSolverTokens`),
  * and the SDK config is a module constant frozen at first render, so the
  * table has to exist at import time. The backend does serve them
- * (`GET /v1/tokens` for sonic lists 49 tokens, these thirteen among them),
+ * (`GET /v1/swaps/tokens/sonic` lists 63 tokens on 2026-09-30, these
+ * twenty four among them, each flagged `isRwa`),
  * and `pnpm listings:verify` diffs this file against that live list AND
  * against `symbol()` / `decimals()` read on chain, so drift fails loudly
  * instead of shipping.
  *
- * Verified on chain 2026-09-16 (sonic-rpc.publicnode.com): every address
+ * Verified on chain 2026-09-16, and 2026-09-30 for the second shelf
+ * (sonic-rpc.publicnode.com): every address
  * below answers the symbol in `symbol`, the name in `issuerName`, and 18
  * decimals. The backend's hub-asset table lists each with
  * `asset === vault === address`, so for these tokens the tradeable ERC-20 and
@@ -92,9 +94,10 @@ const robinhood = (
 });
 
 /**
- * The thirteen Robinhood tokens the solver trades on Sonic as of 2026-09-16,
- * in the order the backend lists them. Twelve are stocks and ETFs; SGOV is
- * cash. Addresses are EIP-55 as the backend serves them.
+ * The Robinhood tokens the solver trades on Sonic, in the order the backend
+ * lists them: thirteen as of 2026-09-16, twenty four as of 2026-09-30.
+ * Twenty three are stocks and ETFs; SGOV is cash. Addresses are EIP-55 as
+ * the backend serves them.
  */
 export const TOKEN_LISTINGS: readonly TokenListing[] = [
   // SpaceX was private when this registry was written on 2026-09-16. It
@@ -205,15 +208,113 @@ export const TOKEN_LISTINGS: readonly TokenListing[] = [
     "etf",
     "0x690B92c27ac80015E57DB8cc02A81255814f49A2",
   ),
+  // The second shelf, served by the backend from late September 2026 and
+  // pinned 2026-09-30: eleven more companies, all US listed common stock
+  // (TSM and BABA are the American depositary shares on the NYSE, which is
+  // the instrument Robinhood tokenises). Checked the same way as the first
+  // thirteen, and each one quoted both ways by the solver from Base USDC.
+  robinhood(
+    "stock",
+    "GOOGL",
+    "Alphabet",
+    "Alphabet Class A • Robinhood Token",
+    "equity",
+    "0xBdB4445a05726E26C26EA30dF0C1970DF4Cf4Be3",
+  ),
+  robinhood(
+    "stock",
+    "AMZN",
+    "Amazon",
+    "Amazon • Robinhood Token",
+    "equity",
+    "0xc467cAC3e69C2eb41Cc9b32Aa1A7a54F942243Ba",
+  ),
+  robinhood(
+    "stock",
+    "MSFT",
+    "Microsoft",
+    "Microsoft • Robinhood Token",
+    "equity",
+    "0x66A3bc5a66D3c66dc42031775Ea3eedc37347FeC",
+  ),
+  robinhood(
+    "stock",
+    "META",
+    "Meta",
+    "Meta Platforms • Robinhood Token",
+    "equity",
+    "0xB7686E0a03542230927CAC76Fe7566656439F3c6",
+  ),
+  robinhood(
+    "stock",
+    "CRCL",
+    "Circle",
+    "Circle Internet Group • Robinhood Token",
+    "equity",
+    "0x1e264ceEEb59F7425D64362Bf12A5b2648B6e66d",
+  ),
+  robinhood(
+    "stock",
+    "COIN",
+    "Coinbase",
+    "Coinbase • Robinhood Token",
+    "equity",
+    "0x5540d60F879F5D470bF9Ed7d23FFd59Acc10da0c",
+  ),
+  robinhood(
+    "stock",
+    "PLTR",
+    "Palantir",
+    "Palantir Technologies • Robinhood Token",
+    "equity",
+    "0xA24710Ab6A5e1ef3a7CF3a0333d8bE2bf22782DC",
+  ),
+  robinhood(
+    "stock",
+    "TSM",
+    "Taiwan Semiconductor",
+    "Taiwan Semiconductor Manufacturing • Robinhood Token",
+    "equity",
+    "0xAF9992b0cA54e014ff1EC7fA77AADE973Dba793e",
+  ),
+  robinhood(
+    "stock",
+    "AMD",
+    "Advanced Micro Devices",
+    "AMD • Robinhood Token",
+    "equity",
+    "0xc8124Db156d8F6C7446C040c503FFEAe82383D1B",
+  ),
+  robinhood(
+    "stock",
+    "INTC",
+    "Intel",
+    "Intel • Robinhood Token",
+    "equity",
+    "0x5352F9Bf2f58720f8a8CC4D4eDEE56700Bd3d053",
+  ),
+  robinhood(
+    "stock",
+    "BABA",
+    "Alibaba",
+    "Alibaba • Robinhood Token",
+    "equity",
+    "0x1BeD0547D76F6424e9A3465b36F6dcDCF798A5cf",
+  ),
 ];
 
 /**
  * Symbol → the listed company's own mark, for the ticker tile's icon where
  * one exists (company-marks.tsx). The single source of truth so the tile,
  * `pnpm listings:verify`'s letter-badge report, and any future consumer
- * agree on the same five. A listing absent here draws the lettered fallback,
- * which is deliberate for GME, MU and SNDK (no Simple Icons mark) and for
- * the four ETFs (no issuer mark that clearly represents the fund itself).
+ * agree on the same set. A listing absent here draws the lettered fallback,
+ * which is deliberate for GME, MU, SNDK, AMZN, MSFT and TSM (no Simple Icons
+ * mark), for COIN, AMD and INTC (wordmarks only, illegible at tile size),
+ * for BABA (only the marks of two subsidiaries, Alibaba.com and
+ * Alibaba Cloud, not the group's) and for the five funds (no issuer mark
+ * that clearly represents the fund itself). Alphabet draws Google's G: the
+ * holding company has no mark of its own, and the G is how the share is
+ * shown wherever it is quoted.
  */
 export const LISTING_MARK_BY_SYMBOL: Readonly<Record<string, CompanyMarkId>> = {
   SPCX: "spacex",
@@ -221,6 +322,10 @@ export const LISTING_MARK_BY_SYMBOL: Readonly<Record<string, CompanyMarkId>> = {
   MSTR: "microstrategy",
   AAPL: "apple",
   TSLA: "tesla",
+  GOOGL: "google",
+  META: "meta",
+  CRCL: "circle",
+  PLTR: "palantir",
 };
 
 /** The stocks and ETFs on offer: every token listing that is not cash. */

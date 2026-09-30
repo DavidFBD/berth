@@ -1,6 +1,8 @@
 // Checks the pinned token listings (src/lib/listings.ts) against the world:
-// the backend's live Sonic token list, and symbol() / decimals() read from
-// the token contracts on chain. The registry is a hand-carried snapshot
+// the backend's live Sonic token list, the Robinhood Chain twins
+// (lib/market-ids) against the backend's robinhood list, a price from the
+// solver oracle for each, and symbol() / decimals() read from the token
+// contracts on chain. The registry is a hand-carried snapshot
 // because @sodax/sdk 2.0.0 knows none of these tokens and the SDK config is
 // frozen at import time; this script is what makes "pinned" honest.
 //
@@ -14,8 +16,11 @@ import { createPublicClient, http, parseAbi } from "viem";
 const { TOKEN_LISTINGS, CASH_LISTING, LISTING_MARK_BY_SYMBOL } = await import(
   "../src/lib/listings.ts"
 );
+const { ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } = await import("../src/lib/market-ids.ts");
 
 const TOKENS_URL = "https://api.sodax.com/v1/swaps/tokens/sonic";
+const ROBINHOOD_TOKENS_URL = "https://api.sodax.com/v1/swaps/tokens/robinhood";
+const ORACLE_URL = "https://api.sodax.com/v1/intent/oracle";
 const SONIC_RPC =
   process.env.SONIC_RPC_URL ?? "https://sonic-rpc.publicnode.com";
 
@@ -65,6 +70,51 @@ const robinhood = live.filter((token) => /Robinhood Token$/.test(token.name ?? "
 for (const token of robinhood) {
   if (!pinned.has(lower(token.address)))
     note(`backend trades ${token.symbol} (${token.address}) but the registry doesn't list it`);
+}
+// Any other real world asset the backend flags on Sonic (a second issuer's
+// stock, a bond fund) is a question for a person, not drift: said, not failed.
+const otherRwa = live.filter(
+  (token) => token.isRwa && !pinned.has(lower(token.address)) && !/Robinhood Token$/.test(token.name ?? ""),
+);
+if (otherRwa.length > 0) {
+  console.log(
+    `Other real world assets on Sonic, not listed: ${otherRwa.map((token) => `${token.symbol} (${token.name})`).join(", ")}.`,
+  );
+}
+
+// 1b. The Robinhood Chain twins, where the dividend multiplier is read: the
+//     backend's robinhood spoke list names each one, and its vault is the
+//     listing on Sonic, so a wrong pin here shows as a mismatch.
+const twinsResponse = await fetch(ROBINHOOD_TOKENS_URL, { signal: AbortSignal.timeout(20_000) });
+if (twinsResponse.ok) {
+  const twins = await twinsResponse.json();
+  const twinByVault = new Map(twins.map((token) => [lower(token.vault ?? ""), token]));
+  for (const listing of TOKEN_LISTINGS) {
+    const twin = twinByVault.get(lower(listing.address));
+    const pinnedTwin = ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[listing.symbol];
+    if (!pinnedTwin) note(`${listing.symbol}: no Robinhood Chain address pinned in lib/market-ids`);
+    else if (!twin) note(`${listing.symbol}: the backend's robinhood list has no token vaulted as it`);
+    else if (lower(twin.address) !== lower(pinnedTwin))
+      note(`${listing.symbol}: Robinhood Chain address pinned ${pinnedTwin}, backend serves ${twin.address}`);
+  }
+} else {
+  note(`GET ${ROBINHOOD_TOKENS_URL} answered ${twinsResponse.status}`);
+}
+
+// 1c. The solver oracle, which the board and the portfolio price from.
+const oracleResponse = await fetch(ORACLE_URL, { signal: AbortSignal.timeout(20_000) });
+if (oracleResponse.ok) {
+  const entries = await oracleResponse.json();
+  const priced = new Set(
+    entries
+      .filter((entry) => entry.chainId === "146" && typeof entry.priceUsd === "number" && entry.priceUsd > 0)
+      .map((entry) => lower(entry.address ?? "")),
+  );
+  for (const listing of TOKEN_LISTINGS) {
+    if (!priced.has(lower(listing.address))) note(`${listing.symbol}: the solver oracle has no price for it`);
+  }
+} else {
+  note(`GET ${ORACLE_URL} answered ${oracleResponse.status}`);
 }
 
 // 2. The chain: the contract at each address must answer the pinned symbol

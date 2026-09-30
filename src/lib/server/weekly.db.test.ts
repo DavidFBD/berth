@@ -263,6 +263,23 @@ describe("weeklyNotice", () => {
     expect(facts?.at(-1)).toEqual({ label: "And 1 more", value: "$10.00" });
   });
 
+  it("names a holding from the second shelf by its company, never its ticker", async () => {
+    const id = await account("deckhand@example.com");
+    const holdings = [
+      { symbol: "GOOGL", quantity: 0.5, price: 344, source: "mark" as const },
+      { symbol: "AMD", quantity: 0.2, price: 608, source: "mark" as const },
+      { symbol: "TSM", quantity: 0.1, price: 456, source: "mark" as const },
+    ];
+    await savePortfolioDay(id, "2026-09-25", { value: 339.2, holdings }, "snapshot", "2026-09-25T22:10:00Z");
+    const notice = await weeklyNotice(id, weeklyWindow(MONDAY)!);
+    expect(notice.holdings.map((holding) => holding.name)).toEqual([
+      "Alphabet",
+      "Advanced Micro Devices",
+      "Taiwan Semiconductor",
+    ]);
+    expect(notice.holdingsRest).toBeNull();
+  });
+
   it("starts each holding's move where the account's change starts, after a market holiday too", async () => {
     const id = await account("sailor@example.com");
     // The Friday before the week is a holiday: no close, no stored day.

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } from "@/lib/market-ids";
 import { robinhoodRpcFake } from "@/lib/server/robinhood-rpc-fake";
 import { readMultiplierHistories, toTokenPrices, type MultiplierReader } from "@/lib/server/token-multipliers";
 
@@ -26,6 +27,36 @@ describe("reading the multipliers from Robinhood Chain", () => {
     expect(read.histories.SGOV.changes).toHaveLength(1);
     // One head batch and one batch per ten million blocks reached back.
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads every listing in batches of at most twelve tokens, and no events for a multiplier of exactly one", async () => {
+    const symbols = Object.keys(ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL);
+    const fake = robinhoodRpcFake({
+      multipliers: { SGOV: 1.00510177, SPY: 1.001717991, GOOGL: 1.000193924 },
+      changes: { SPY: [SPY_CHANGE] },
+      genesisSeconds: s("2026-06-10T00:00:00Z"),
+      latestBlock: s("2026-09-29T12:00:00Z") - s("2026-06-10T00:00:00Z"),
+    });
+    const sizes: number[] = [];
+    const logsAsked = new Set<string>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const calls = JSON.parse(String(init?.body)) as { method: string; params: [{ address?: string }] }[];
+        sizes.push(calls.length);
+        for (const call of calls) if (call.method === "eth_getLogs") logsAsked.add(String(call.params[0].address).toLowerCase());
+        return fake(url, init);
+      }),
+    );
+    const read = await readMultiplierHistories(symbols, Date.parse("2026-08-25T00:00:00Z"));
+    expect(read.failures).toEqual([]);
+    expect(Object.keys(read.histories)).toHaveLength(symbols.length);
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(13);
+    expect([...logsAsked].sort()).toEqual(
+      ["SGOV", "SPY", "GOOGL"].map((symbol) => ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[symbol].toLowerCase()).sort(),
+    );
+    expect(read.histories.AMZN).toEqual({ current: 1, changes: [] });
+    expect(read.histories.SPY.changes).toHaveLength(1);
   });
 
   it("waits and asks again when the public RPC answers 429", async () => {

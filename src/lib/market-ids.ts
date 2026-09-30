@@ -18,7 +18,7 @@
  * Ids are pinned by hand, never derived from the ticker: CoinGecko carries
  * five or more tokenised wrappers of the same stock (xStock, Ondo, bStocks,
  * Dinari, Coinbase), and a symbol match would silently pick another issuer's
- * token. Verified 2026-09-17: all thirteen answer
+ * token. Verified 2026-09-17: the first thirteen answer
  * `coins.llama.fi/percentage/coingecko:<id>` and carry daily closes from
  * 2026-06-26 (SGOV from 2026-07-08).
  *
@@ -45,6 +45,20 @@ export const MARKET_ID_BY_SYMBOL: Readonly<Record<string, string>> = {
   SGOV: "ishares-0-3-month-treasury-bond-etf-robinhood-tokenized-stock",
   USO: "united-states-oil-fund-robinhood-tokenized-stock",
   SLV: "ishares-silver-trust-robinhood-tokenized-stock",
+  // The second shelf, verified 2026-09-30: each id's CoinGecko platform is
+  // `robinhood` at the address pinned below, and each answers
+  // `coins.llama.fi/chart` with daily closes from 2026-07-02.
+  GOOGL: "alphabet-class-a-robinhood-tokenized-stock",
+  AMZN: "amazon-robinhood-tokenized-stock",
+  MSFT: "microsoft-robinhood-tokenized-stock",
+  META: "meta-platforms-robinhood-tokenized-stock",
+  CRCL: "circle-internet-group-robinhood-tokenized-stock",
+  COIN: "coinbase-robinhood-tokenized-stock",
+  PLTR: "palantir-technologies-robinhood-tokenized-stock",
+  TSM: "taiwan-semiconductor-manufacturing-robinhood-tokenized-stock",
+  AMD: "amd-robinhood-tokenized-stock",
+  INTC: "intel-robinhood-tokenized-stock",
+  BABA: "alibaba-robinhood-tokenized-stock",
 };
 
 /**
@@ -70,6 +84,19 @@ export const ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL: Readonly<Record<string, `0x${str
   SGOV: "0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5",
   USO: "0xa30FA36Db767ad9eD3f7a60fC79526fB4d56D344",
   SLV: "0x411eFb0E7f985935DAec3D4C3ebaEa0d0AD7D89f",
+  // Verified 2026-09-30 the same way, against the backend's `robinhood`
+  // token list (whose NVDA entry is the NVDA pinned above) and on chain.
+  GOOGL: "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3",
+  AMZN: "0x12f190a9F9d7D37a250758b26824B97CE941bF54",
+  MSFT: "0xe93237C50D904957Cf27E7B1133b510C669c2e74",
+  META: "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35",
+  CRCL: "0xdF0992E440dD0be65BD8439b609d6D4366bf1CB5",
+  COIN: "0x6330D8C3178a418788dF01a47479c0ce7CCF450b",
+  PLTR: "0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A",
+  TSM: "0x58FfE4a942d3885bAa22D7520691F611EF09e7AA",
+  AMD: "0x86923f96303D656E4aa86D9d42D1e57ad2023fdC",
+  INTC: "0xc72b96e0E48ecd4DC75E1e45396e26300BC39681",
+  BABA: "0xad25Ac6C84D497db898fa1E8387bf6Af3532a1c4",
 };
 
 /** CoinGecko id → ticker, to read a keyed upstream response back. */

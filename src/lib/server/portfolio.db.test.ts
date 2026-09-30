@@ -140,6 +140,25 @@ describe("portfolio days", () => {
     expect(row.value).toBeCloseTo(203, 10);
   });
 
+  it("values the second shelf like the first: a stored close where there is one, the oracle where not", async () => {
+    const user = await account(1);
+    await placeOrder(user.id);
+    await writeMarks("GOOGL", [{ day: "2026-09-25", close: 344 }], []);
+    const summary = await runPortfolioSnapshot({
+      now: FRIDAY_EVENING,
+      deriveHubWallet: async (spoke) => spoke,
+      readBalances: async () => ({ GOOGL: 0.5, BABA: 2 }),
+      livePrices: async () => ({ GOOGL: 345, BABA: 108.5 }),
+    });
+    expect(summary).toMatchObject({ written: 1, oraclePriced: 1, failed: 0 });
+    const [row] = await loadPortfolioDays(user.id);
+    expect(row.holdings).toEqual([
+      { symbol: "BABA", quantity: 2, price: 108.5, source: "oracle" },
+      { symbol: "GOOGL", quantity: 0.5, price: 344, source: "mark" },
+    ]);
+    expect(row.value).toBeCloseTo(389, 10);
+  });
+
   it("chooses the close or the oracle by how far apart they stand", () => {
     expect(snapshotPrice(100, 104)).toEqual({ price: 100, source: "mark" });
     expect(snapshotPrice(100, 106)).toEqual({ price: 106, source: "oracle" });

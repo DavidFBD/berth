@@ -106,6 +106,18 @@ export const COMPANY_SOURCES: readonly CompanySource[] = [
   // post, and falls back to the first.
   { username: "iShares", symbols: ["SGOV", "SLV"] },
   { username: "USCFInvestments", symbols: ["USO"] },
+  // The second shelf, each handle checked against the API on 2026-09-30
+  // (business verified, the company's own). TSMC has no account on X.
+  { username: "Google", symbols: ["GOOGL"] },
+  { username: "amazon", symbols: ["AMZN"] },
+  { username: "Microsoft", symbols: ["MSFT"] },
+  { username: "Meta", symbols: ["META"] },
+  { username: "circle", symbols: ["CRCL"] },
+  { username: "coinbase", symbols: ["COIN"] },
+  { username: "PalantirTech", symbols: ["PLTR"] },
+  { username: "AMD", symbols: ["AMD"] },
+  { username: "intel", symbols: ["INTC"] },
+  { username: "AlibabaGroup", symbols: ["BABA"] },
 ];
 
 /**
@@ -223,6 +235,42 @@ export const TOPICS: readonly Topic[] = [
     query: ["oil"],
   },
   { symbol: "SLV", terms: ["$SLV", "silver"], query: ["silver"] },
+  // The second shelf (2026-09-30). Where a company's plain name is also a
+  // common word (Meta, Circle), the fine net takes only the longer name and
+  // the products, and Jev's placement reads the rest.
+  {
+    symbol: "GOOGL",
+    terms: ["$GOOGL", "$GOOG", "Alphabet", "Google", "Waymo"],
+    query: ["Google"],
+  },
+  { symbol: "AMZN", terms: ["$AMZN", "Amazon", "AWS"], query: ["Amazon"] },
+  { symbol: "MSFT", terms: ["$MSFT", "Microsoft"], query: ["Microsoft"] },
+  {
+    symbol: "META",
+    terms: ["$META", "Meta Platforms", "Facebook", "Instagram", "WhatsApp", "Zuckerberg"],
+    // The coarse net may say the bare word: what it drags in, Jev places or
+    // drops, and the fine net above never matches "meta" alone.
+    query: ["Meta"],
+  },
+  {
+    symbol: "CRCL",
+    terms: ["$CRCL", "Circle Internet", "Allaire"],
+    query: ["Circle"],
+  },
+  { symbol: "COIN", terms: ["$COIN", "Coinbase"], query: ["Coinbase"] },
+  { symbol: "PLTR", terms: ["$PLTR", "Palantir"], query: ["Palantir"] },
+  {
+    symbol: "TSM",
+    terms: ["$TSM", "TSMC", "Taiwan Semiconductor"],
+    query: ["TSMC"],
+  },
+  {
+    symbol: "AMD",
+    terms: ["$AMD", "AMD", "Advanced Micro Devices", "Lisa Su"],
+    query: ["AMD"],
+  },
+  { symbol: "INTC", terms: ["$INTC", "Intel"], query: ["Intel"] },
+  { symbol: "BABA", terms: ["$BABA", "Alibaba"], query: ["Alibaba"] },
 ];
 
 /**
@@ -254,8 +302,15 @@ export function buildCompanyQuery(
  * 512-character budget on their own, so they cannot share one query. Two
  * groups, not three: every query costs its ten posts whenever it runs
  * (lib/x-schedule), so a query fewer is a third more turns for the rest.
+ *
+ * Three groups since 2026-09-30, when the second shelf took the topics
+ * from thirteen to twenty four (about 250 characters of topics). Two
+ * groups cannot hold them: the accounts' 501 characters plus the topics
+ * and filters twice come to more than two queries' 1,024. At 180 the three
+ * groups each keep fifty characters of room; at 280 the greedy packer made
+ * three press queries anyway, two of them within ten characters of 512.
  */
-const FROM_GROUP_CHARS = 280;
+const FROM_GROUP_CHARS = 180;
 
 export function groupSources(press: readonly string[]): string[][] {
   const groups: string[][] = [];
