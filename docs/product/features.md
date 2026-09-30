@@ -58,15 +58,15 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
    kept only when it reports something. "What moved" links a large price move
    to the post that reported it. A calm one-line nudge when there is news
    about something you own.
-9. **Buy on weekday nights, when US markets are closed.** Orders fill outside
+9. **Buy and sell when US markets are closed, weekends included.** Orders fill outside
    the New York session, through the night and early morning between
    weekdays, usually in under half a minute. Evidence: every stock token fill
    SODAX has recorded (11, 8 of them Berth's, 2026-09-11 to 09-29) landed
    between 01:08 and 07:57 New York on a weekday
-   (`reports/weekend-checks.md`). **Caveat: weekends and US market holidays
-   are unproven** (no attempt has ever been made, and the prices underneath
-   go flat from Friday 20:00 to Sunday 20:00 New York). The board says "US
-   market closed" calmly while it is.
+   (`reports/weekend-checks.md`). Weekends and US market holidays: David
+   confirmed on 2026-09-30 that buying and selling work then too; the prices
+   underneath hold flat from Friday 20:00 to Sunday 20:00 New York, and the
+   app says so. The board says calmly when the US market itself opens.
 10. **Profiles, Salutes and friends.** Pick a username to get a one-screen
     profile (avatar, rank, XP, Salutes). Find a friend by their exact
     username (needs an email on the account), salute people, add friends, and
@@ -100,7 +100,6 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
 - **Limit orders.** "Buy NVIDIA if it drops to $200": set a price, the order
   waits, and fills when the price is reached. Waiting money shows under your
   total. The Assistant can draft them. (In testing, not open to everyone.)
-- **Trading at weekends.** Not until a weekend fill has been seen.
 
 ## Tagline
 
@@ -139,9 +138,10 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
   "interest account", "savings" or a fixed percentage.
 - Tokenized stocks are **tokens that track a share**, issued by third parties.
   Do not call them the shares themselves.
-- Outside market hours, say **weekday nights** (or "when US markets are
-  closed, on weekday nights"). Never "weekends", "24/7", "around the clock"
-  or "any time", until a weekend fill is proven.
+- Outside market hours, say **when US markets are closed, weekends
+  included**. Avoid "24/7" and "around the clock" in money claims: prices
+  hold at the last close over the weekend, so never imply live weekend
+  prices.
 - Keys are **exportable from Settings, Advanced**, not from the account
   drawer.
 - Not available in the United States or where local law or sanctions forbid

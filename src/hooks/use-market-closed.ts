@@ -13,13 +13,13 @@ export const MarketClockContext = createContext<Date | null>(null);
 /** Checked once a minute: the bell moves no faster than that. */
 const TICK_MS = 60_000;
 
-/** A shut market shorter than this is a weekday night, when the tokens are known to trade. */
+/** A shut market shorter than this is a weekday night; longer is a weekend or holiday, when prices hold at the last close. */
 const OVERNIGHT_MS = 24 * 60 * 60 * 1000;
 
 /**
  * When the US market is shut: the next open in the viewer's zone, and
- * whether this is only a weekday night (trading on is proven then) rather
- * than a weekend or holiday (not yet proven). Null while it is open, and on
+ * whether this is only a weekday night rather than a weekend or holiday
+ * (when the price underneath holds at the last close). Null while it is open, and on
  * the server and the hydration render, because the answer depends on the
  * viewer's clock and zone.
  */
