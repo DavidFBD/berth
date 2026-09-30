@@ -10,7 +10,7 @@ Positioning line: Stocks for the money that already lives onchain.
 
 ## The value proposition (say this first)
 
-One headline, one paragraph, four points. The welcome page opens on it.
+One headline, one paragraph, four points. The welcome page says it in its lede and three short sections (what it is, what you pay with, whose custody); the habit film carries friends and ranks.
 
 > **Buy US stocks with the crypto you hold. Keep them in your own wallet.**
 > Berth is software, not a broker. Choose what to pay with, sign once in your

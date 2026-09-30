@@ -85,11 +85,3 @@ describe("rank-gated faces", () => {
     expect(canUseAvatar("capstan", 10)).toBe(true);
   });
 });
-
-describe("the welcome page's count of faces", () => {
-  it("still has eight open and three earned, as COPY.welcomePage.features.ranks.faces says", () => {
-    const earned = AVATARS.filter((a) => "unlockLevel" in a).length;
-    expect(AVATARS.length - earned).toBe(8);
-    expect(earned).toBe(3);
-  });
-});
