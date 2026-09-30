@@ -1668,7 +1668,7 @@ export const COPY: Copy = {
   newsUpdated: (when) => `Updated ${when}`,
   newsUpToDate: (when) => `Up to date, updated ${when}`,
   postsHint:
-    "What the companies and the market desks are posting on X. Tapping one opens the post. The list refreshes every half hour, or when you ask, and the posts you have not seen yet are marked New.",
+    "What the companies and the market desks are posting on X. Tapping one opens the post. New posts come in a few times a day, most often while the US market is open. You can also ask for them. The posts you have not seen yet are marked New.",
   postsEmpty: "The accounts we follow have been quiet.",
   postsEmptyFor: (name) => `Nothing about ${name} on X right now.`,
   postsHandle: (handle) => `@${handle},`,

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { MoveNews, MovesResponse } from "@/app/api/moves/route";
 
-/** The marks change once a day and the posts every six hours; half an hour is plenty. */
+/** The marks change once a day and the posts a few times a day (lib/x-schedule); half an hour is plenty. */
 const MOVES_REFETCH_MS = 30 * 60 * 1000;
 
 /**

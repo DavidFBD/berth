@@ -42,12 +42,12 @@ describe("query building", () => {
     expect(query).toContain("-is:retweet");
   });
 
-  it("asks for the whole press tier in three requests", () => {
-    // Thirty accounts since Jev (2026-09-22): their from: list alone is over
-    // the 512-character limit, so it splits into groups, each asking every
-    // topic. Three is what that costs; more means the list grew.
+  it("asks for the whole press tier in two requests", () => {
+    // Twenty-seven accounts since 2026-09-30: their from: list alone is
+    // about the 512-character limit, so it splits into groups, each asking
+    // every topic. Two is what that costs; more means the list grew.
     const queries = buildPressQueries();
-    expect(queries).toHaveLength(3);
+    expect(queries).toHaveLength(2);
     for (const query of queries) {
       expect(query.length).toBeLessThanOrEqual(MAX_QUERY_CHARS);
     }
@@ -70,13 +70,13 @@ describe("query building", () => {
 
   it("leaves room to spare, so one added name is not one added call", () => {
     const [press] = buildPressQueries();
-    expect(press.length).toBeLessThan(MAX_QUERY_CHARS - 80);
+    for (const query of buildPressQueries()) expect(query.length).toBeLessThan(MAX_QUERY_CHARS - 50);
+    expect(press.length).toBeLessThan(MAX_QUERY_CHARS - 50);
   });
 
-  it("is four calls a refresh in total, well inside the monthly cap", () => {
-    // Four calls every six hours is 16 a day and ~48,000 posts a month
-    // against a cap of three million.
-    expect(1 + buildPressQueries().length).toBe(4);
+  it("is three queries in total, the company tier and two press groups", () => {
+    // Each runs at ten posts whenever lib/x-schedule gives it a turn.
+    expect(1 + buildPressQueries().length).toBe(3);
   });
 
   it("splits rather than overrun when there is more to ask", () => {

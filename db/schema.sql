@@ -1173,3 +1173,61 @@ do $$ declare c record; begin for c in select conname from pg_constraint where c
 alter table email_prefs drop constraint if exists email_prefs_kind_check;
 alter table email_prefs add constraint email_prefs_kind_check
   check (kind in ('orders', 'friends', 'weekly', 'recurring'));
+
+-- The X column's own store (lib/server/x-store, lib/x-schedule). X bills
+-- every post it returns, once per UTC day per post, so the posts are kept
+-- here and each query asks X only for what is newer than its last post.
+-- Nothing in these tables is about a person: they are public posts by the
+-- accounts in lib/x-feed and the bookkeeping of reading them.
+--
+-- x_posts: every post a query returned, the post as X sent it (author
+-- included) in `tweet`. A post returned again replaces its copy, so the
+-- counts are the latest read. Pruned after eight days.
+create table if not exists x_posts (
+  id text primary key,
+  query_key text not null,
+  tier text not null check (tier in ('company', 'press')),
+  tweet jsonb not null,
+  posted_at timestamptz not null,
+  fetched_at timestamptz not null
+);
+
+create index if not exists x_posts_posted_idx on x_posts (posted_at desc);
+
+-- x_queries: per query, the newest post it has seen (`since_id`), when it
+-- last got an answer (`fetched_at`) and when it last failed (`failed_at`,
+-- which moves it down the rotation without touching since_id). `query` is
+-- the text asked: when lib/x-feed changes a query, its since_id no longer
+-- applies and it starts again.
+create table if not exists x_queries (
+  key text primary key,
+  query text not null,
+  since_id text,
+  fetched_at timestamptz,
+  failed_at timestamptz
+);
+
+-- x_fetch_slots: one row per slot of lib/x-schedule that some instance
+-- claimed, so two instances never fetch the same slot. `ok` is null while
+-- the fetch runs, true once anything came back, false when it all failed
+-- (retried once, five minutes later). `queries` is the x_queries keys the
+-- fetch asks, so a refresh running beside it asks the others.
+create table if not exists x_fetch_slots (
+  slot text primary key,
+  attempts int not null default 1,
+  claimed_at timestamptz not null,
+  ok boolean,
+  posts int,
+  requests int,
+  queries text[]
+);
+
+-- x_read_budget: posts read per UTC day, the day X bills by. `reserved`
+-- is what requests in flight could still return, taken before they are
+-- sent, so used + reserved never passes X_DAILY_POST_CAP.
+create table if not exists x_read_budget (
+  day text primary key,
+  used int not null default 0,
+  reserved int not null default 0,
+  requests int not null default 0
+);

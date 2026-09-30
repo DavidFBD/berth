@@ -9,9 +9,13 @@ export type { ListingXResponse } from "@/lib/server/listing-x";
  */
 export async function GET(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams;
-  // `fresh=1` is the column's refresh button: at most one fetch per five
-  // minutes for everyone (lib/feed-refresh), otherwise the shared cache.
+  // `fresh=1` is the column's refresh button: at most one extra fetch per
+  // slot for everyone, inside the day's cap (lib/x-schedule).
   return Response.json(
-    await loadListingX(params.get("symbol"), undefined, { fresh: params.get("fresh") === "1" }),
+    await loadListingX(params.get("symbol"), undefined, {
+      fresh: params.get("fresh") === "1",
+      // The column is the one reader allowed to go to X; everyone else peeks.
+      mayFetch: true,
+    }),
   );
 }

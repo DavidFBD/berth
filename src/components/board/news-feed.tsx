@@ -84,7 +84,7 @@ type Tab = "posts" | "headlines";
 /**
  * What is being said about the listings, newest first, in two registers.
  *
- * **Posts** is X: the companies' own accounts and thirty market desks,
+ * **Posts** is X: the companies' own accounts and twenty-seven market desks,
  * whitelisted, because a cashtag search returns watchlist spam and
  * copypasta. It leads, since a wire story is usually two hours old by the
  * time Nasdaq carries it and a post is minutes old.

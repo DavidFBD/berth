@@ -6,11 +6,12 @@ import type { ListingXResponse } from "@/app/api/listing-x/route";
 import type { XPost } from "@/lib/x-feed";
 
 /**
- * The route fetches the newest posts once per half-hour slot for everyone
- * (lib/feed-refresh), so a poll every quarter hour sees each new slot within
- * fifteen minutes and costs X nothing extra: the fetch happens once per slot
- * however many visitors poll. TanStack's refetch on window focus only fires
- * once the data is stale, so a tab that comes back later asks once on return.
+ * The route fetches new posts at most once per slot for everyone
+ * (lib/x-schedule: about every two hours on a trading day), so a poll every
+ * quarter hour sees each fetch within fifteen minutes and costs X nothing
+ * extra: the fetch happens once per slot however many visitors poll.
+ * TanStack's refetch on window focus only fires once the data is stale, so
+ * a tab that comes back later asks once on return.
  */
 const X_REFETCH_MS = 15 * 60 * 1000;
 
@@ -19,8 +20,8 @@ const X_REFETCH_MS = 15 * 60 * 1000;
  * listing's own run, nothing for the river across all of them.
  *
  * `refresh` is the column's button: it asks the route for `fresh=1`, which
- * the server honours at most once per five minutes for everyone and
- * otherwise answers from the shared cache.
+ * the server honours at most once per slot for everyone, inside the day's
+ * cap, and otherwise answers from what is kept.
  */
 export function useListingX(symbol?: string): {
   isLoading: boolean;

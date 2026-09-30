@@ -194,7 +194,7 @@ export function newYorkDate(now: Date): IsoDate {
  * settle the offset; session times sit far from the 02:00 daylight saving
  * change, so there is never an ambiguous hour to resolve.
  */
-function newYorkInstant(date: IsoDate, hour: number, minute: number): Date {
+export function newYorkInstant(date: IsoDate, hour: number, minute: number): Date {
   const [year, month, day] = date.split("-").map(Number);
   const wall = Date.UTC(year, month - 1, day, hour, minute);
   let at = wall;
@@ -227,7 +227,7 @@ export function sessionOn(date: IsoDate): Session | null {
 const DAY_MS = 86_400_000;
 
 /** A New York calendar day moved by whole days. */
-function shiftDate(date: IsoDate, days: number): IsoDate {
+export function shiftDate(date: IsoDate, days: number): IsoDate {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day) + days * DAY_MS)
     .toISOString()

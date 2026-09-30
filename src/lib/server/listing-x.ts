@@ -40,19 +40,19 @@ export type ListingXResponse = {
 /**
  * The ranked column for every listing, or for one when `symbol` names it.
  * `gathered` reuses a gathering the caller already has (get_listing);
- * `fresh` is the column's refresh button (throttled in lib/feed-refresh).
+ * `fresh` is the column's refresh button (throttled in lib/x-schedule).
  */
 export async function loadListingX(
   symbol?: string | null,
   gathered?: Promise<GatheredPosts>,
-  { fresh = false }: { fresh?: boolean } = {},
+  { fresh = false, mayFetch = false }: { fresh?: boolean; mayFetch?: boolean } = {},
 ): Promise<ListingXResponse> {
   const wanted = symbol?.toUpperCase();
   if (wanted && !NAME_BY_SYMBOL.has(wanted)) {
     return { items: [], reserve: [], reason: `no listing called ${wanted}` };
   }
 
-  const { posts, substance, failures, curation, updatedAt } = await (gathered ?? gatherPosts({ fresh }));
+  const { posts, substance, failures, curation, updatedAt } = await (gathered ?? gatherPosts({ fresh, mayFetch }));
   const mine = wanted ? posts.filter((post) => post.symbol === wanted) : posts;
 
   const visible = wanted ? SYMBOL_LIMIT : FEED_LIMIT;

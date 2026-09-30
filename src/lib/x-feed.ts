@@ -119,6 +119,14 @@ export const COMPANY_SOURCES: readonly CompanySource[] = [
  * handle was checked against the API the same day, per the note on
  * CompanySource: Forbes was left out (contributor churn), Kitco and sec_news
  * are near-dead accounts, and NYTBusiness does not exist.
+ *
+ * Three left on 2026-09-30, when X began billing by the post: over the
+ * week's sample (a recency and a relevancy pass of every query, every post
+ * judged), barronsonline returned 18 posts and Jev kept 5, FoxBusiness 7
+ * and 1, OilandEnergy 24 and 10, and not one of the 49 reached the
+ * column's 36 cards. The rule was five posts or more, none on a card and
+ * under half kept; the sample is in the x-cost-fix report. Quiet accounts
+ * cost nothing (a post is billed, a query is not) and stay.
  */
 export const PRESS_SOURCES: readonly string[] = [
   "Reuters",
@@ -138,10 +146,8 @@ export const PRESS_SOURCES: readonly string[] = [
   "axios",
   "BBCBusiness",
   "TheEconomist",
-  "barronsonline",
   "MarketWatch",
   "FortuneMagazine",
-  "FoxBusiness",
   "FirstSquawk",
   "LiveSquawk",
   "financialjuice",
@@ -150,7 +156,6 @@ export const PRESS_SOURCES: readonly string[] = [
   "ElectrekCo",
   "SpaceflightNow",
   "SpaceNews_Inc",
-  "OilandEnergy",
 ];
 
 /**
@@ -245,10 +250,12 @@ export function buildCompanyQuery(
 
 /**
  * The press accounts, packed into `from:` groups short enough to leave room
- * for topics. Thirty accounts spell out to more than the whole 512-character
- * budget on their own, so they cannot share one query any more.
+ * for topics. Twenty-seven accounts spell out to about the whole
+ * 512-character budget on their own, so they cannot share one query. Two
+ * groups, not three: every query costs its ten posts whenever it runs
+ * (lib/x-schedule), so a query fewer is a third more turns for the rest.
  */
-const FROM_GROUP_CHARS = 250;
+const FROM_GROUP_CHARS = 280;
 
 export function groupSources(press: readonly string[]): string[][] {
   const groups: string[][] = [];
@@ -491,9 +498,9 @@ export function relativeReach(
  * wins, and a post needs four times its author's normal reach to hold level
  * with a fresh one a day later. It was three days until 2026-09-24 and a day
  * until 2026-09-29, when David had been reading the same posts for days: the
- * column now also fetches the newest posts every half hour (lib/server/
- * x-column), so there is always something fresh for this to prefer. This is
- * the dial to turn if the column feels stale or feels twitchy.
+ * column now takes in new posts several times a trading day (lib/x-schedule),
+ * so there is usually something fresh for this to prefer. This is the dial
+ * to turn if the column feels stale or feels twitchy.
  */
 export const HALF_LIFE_MS = 12 * 60 * 60 * 1000;
 
