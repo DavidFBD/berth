@@ -8,6 +8,7 @@ import { MarketPreview } from "@/components/board";
 import { HeroPhone, WallStreetFilm } from "@/components/welcome/welcome-films";
 import { useCopy } from "@/components/settings-provider";
 import { cn } from "@/lib/utils";
+import { PILL } from "@/components/ui/pill";
 
 /**
  * The front door, short on purpose (2026-09-30): the positioning line and
@@ -24,6 +25,7 @@ export function WelcomePage({
   lead,
   invited,
   ctas,
+  notice,
   onSignIn,
 }: {
   /** Said instead of the usual lede when the visitor came for one thing. */
@@ -31,7 +33,13 @@ export function WelcomePage({
   invited: boolean;
   /** The way in, drawn in the hero and again at the close. */
   ctas: () => ReactNode;
-  onSignIn: () => void;
+  /**
+   * Where Berth is not available (lib/availability): drawn in place of the
+   * way in under the hero, and the closing way in is left out.
+   */
+  notice?: ReactNode;
+  /** Absent where no sign in is offered at all (a comprehensively sanctioned place). */
+  onSignIn?: () => void;
 }) {
   const copy = useCopy();
   const page = copy.welcomePage;
@@ -43,9 +51,11 @@ export function WelcomePage({
           <BerthMark className="size-[22px]" />
           <span className="font-wordmark text-[19px] leading-none text-foreground">{copy.brand}</span>
         </span>
-        <button type="button" onClick={onSignIn} className={cn(PILL, "h-8 px-3.5 text-[13px] font-normal")}>
-          {copy.signIn}
-        </button>
+        {onSignIn && (
+          <button type="button" onClick={onSignIn} className={cn(PILL, "h-8 px-3.5 text-[13px] font-normal")}>
+            {copy.signIn}
+          </button>
+        )}
       </nav>
 
       <header className="grid gap-8 pt-7 pb-12 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-16 lg:pt-10 lg:pb-16">
@@ -71,14 +81,20 @@ export function WelcomePage({
           </p>
           {/* The invitation announces itself before sign-in: name the deal
               while the visitor decides. */}
-          {invited && (
+          {invited && !notice && (
             <p className="mt-5 flex w-fit items-center gap-2.5 rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground">
               <HandHeart weight="duotone" className="size-5 shrink-0 text-muted-foreground" aria-hidden />
               {copy.inviteWaiting}
             </p>
           )}
-          <div className="mt-6 lg:mt-8">{ctas()}</div>
-          <p className="mt-3.5 text-[13px] text-muted-foreground">{copy.noSeedPhrases}</p>
+          {notice ? (
+            <div className="mt-6 lg:mt-8">{notice}</div>
+          ) : (
+            <>
+              <div className="mt-6 lg:mt-8">{ctas()}</div>
+              <p className="mt-3.5 text-[13px] text-muted-foreground">{copy.noSeedPhrases}</p>
+            </>
+          )}
         </div>
         <HeroPhone />
       </header>
@@ -104,7 +120,7 @@ export function WelcomePage({
 
       <section className="border-t border-border py-14 text-center lg:py-[72px]">
         <h2 className="font-display text-[32px] leading-[1.15] tracking-[-0.025em] text-foreground lg:text-[44px]">{copy.tagline}</h2>
-        <div className="mt-[26px] flex justify-center lg:mt-8">{ctas()}</div>
+        {!notice && <div className="mt-[26px] flex justify-center lg:mt-8">{ctas()}</div>}
       </section>
 
       <footer className="flex flex-col gap-4 border-t border-border pt-7 pb-12 text-[12.5px] text-muted-foreground sm:flex-row sm:justify-between sm:gap-6">
@@ -118,9 +134,8 @@ export function WelcomePage({
   );
 }
 
-/** The ghost pill, also used by the page's own small controls. */
-export const PILL =
-  "inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card text-foreground outline-none transition-colors duration-150 ease-lift hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50";
+/** The ghost pill, also used by the page's own small controls (components/ui/pill). */
+export { PILL };
 
 /** The card a visual sits in. */
 function Visual({ className, children }: { className?: string; children: ReactNode }) {

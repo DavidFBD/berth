@@ -100,6 +100,44 @@ export type Copy = {
   /** The live board beside the sign-in: what is on offer, priced now. */
   welcomePreviewTitle: string;
   welcomePreviewHint: string;
+  /**
+   * The soft landing where Berth is not available (lib/availability): what
+   * an excluded visitor reads instead of a way in, a buy, a plan or an
+   * assistant connection, and the quiet banner an existing account sees
+   * while it is there. Plain, never an error.
+   */
+  unavailable: {
+    title: string;
+    /** For a comprehensively sanctioned place, where nothing beyond the public pages is served. */
+    sanctionsTitle: string;
+    /** There, instead of "nothing was stored": what someone who holds something needs to hear. */
+    fundsStay: string;
+    /** Why, in one line, by reason. */
+    reason: { "united-states": string; sanctions: string };
+    /** Only to a visitor with no account: before any sign in, nothing was kept. */
+    nothingKept: string;
+    /** To a signed in account instead: its data is kept, as it always is. */
+    accountKept: string;
+    readOn: string;
+    links: { welcome: string; terms: string; privacy: string; assistants: string };
+    /** Before the address, which is PRIVACY_OPERATOR.email. */
+    support: string;
+    haveAccount: string;
+    /** In place of the buy drawer or the plan sheet. */
+    drawerTitle: string;
+    drawerBody: string;
+    close: string;
+    /** On the consent screen: nothing was connected. */
+    authorizeBody: string;
+    /** A sign in that would have made a new account here. */
+    noAccountTitle: string;
+    noAccountBody: string;
+    signOut: string;
+    /** The banner an existing account sees while it is somewhere Berth is not available. */
+    banner: string;
+    /** What the Assistant's draft tools answer; the model retells it. */
+    draftRefused: string;
+  };
   /** Footer line under "powered by": the one honest sentence about risk. */
   footerNote: string;
   /** The welcome page around the way in (components/welcome): hero with the habit film, three short sections, the Wall Street film, the close. */
@@ -1413,19 +1451,73 @@ export const PRIVACY_OPERATOR = {
 } as const;
 
 /**
- * Where Berth may be used, as the terms of use state it. This is a DEFAULT,
- * not a decision: Robinhood's stock tokens are issued for customers outside
- * the United States, so the United States is excluded until someone with
- * standing says otherwise.
+ * Where Berth may be used, as the terms of use state it, and the one list
+ * the availability gate (lib/availability, lib/server/availability) reads,
+ * so the terms and the gate can never disagree. This is a DEFAULT, not a
+ * decision: Robinhood's stock tokens are issued for customers outside the
+ * United States, so the United States is excluded until someone with
+ * standing says otherwise, and the sanctioned places are the ones under
+ * comprehensive sanctions that the sanctions clause already covers.
  *
- * TODO(David): confirm this list, ideally with counsel, before the terms
- * are relied on or a directory listing names its countries. Add a country
- * here and the terms say it; the sanctions and local law clause stays
- * whatever the list holds.
+ * TODO(David): confirm this list with counsel before the terms are relied
+ * on or a directory listing names its countries. Add a place here and both
+ * the terms and the gate follow.
+ *
+ * Codes are what Vercel reports: `x-vercel-ip-country` is ISO 3166-1
+ * alpha-2, `x-vercel-ip-country-region` the region part of ISO 3166-2
+ * ("43" for UA-43). A region is written here in full ("UA-43").
+ *   US and its territories: PR Puerto Rico, GU Guam, VI US Virgin Islands,
+ *   AS American Samoa, MP Northern Mariana Islands, UM the minor outlying
+ *   islands. Ukraine: UA-43 Crimea, UA-40 Sevastopol, UA-14 Donetsk,
+ *   UA-09 Luhansk (every region here is in Ukraine; the terms say so).
+ *
+ * The occupied regions may not arrive as Ukraine (checked 2026-09-30):
+ * - Vercel does not say which geolocation database it uses, or what it
+ *   answers for these areas. Unverified; worth one real request from there.
+ * - ISO 3166-2:RU has no code for Crimea or Sevastopol, so an ISO faithful
+ *   database answers UA-43 and UA-40 (MaxMind places Crimea in UA).
+ * - Some databases still use the old FIPS codes, UA-11 Krym and UA-20
+ *   Sevastopol; neither is an ISO code for anywhere else in Ukraine, so
+ *   both are gated. The FIPS codes for Donetsk and Luhansk collide with
+ *   ISO codes for free oblasts, so they are not.
+ * - IPs of the Russian ISPs serving these areas can geolocate to RU. Codes
+ *   some databases use for them, RU-CR and RU-SEV (Crimea,
+ *   Sevastopol) and RU-DPR and RU-LPR (Donetsk, Luhansk), are gated,
+ *   unverified. Where such an IP reads as a Russian oblast (Rostov, say)
+ *   nothing here can tell it apart, and it passes.
  */
 export const TERMS_AVAILABILITY = {
-  excluded: ["the United States"],
+  /** Not offered at all: the stock tokens are issued for people outside it. */
+  excluded: [{ name: "the United States", countries: ["US", "PR", "GU", "VI", "AS", "MP", "UM"] }],
+  /**
+   * Under comprehensive sanctions: whole countries. Here, and in the
+   * regions below, Berth serves nothing beyond its public pages, not even
+   * an account that already exists: no sign in, buy, sell, withdraw, limit
+   * order, plan or assistant approval (decided 2026-09-30). The traveller's
+   * exception is for the United States and its territories only.
+   * TODO(David): confirm with counsel, both the lists and that a person
+   * there must not even withdraw through Berth (their funds stay in their
+   * own wallet either way).
+   */
+  sanctionedCountries: [
+    { name: "Cuba", countries: ["CU"] },
+    { name: "Iran", countries: ["IR"] },
+    { name: "North Korea", countries: ["KP"] },
+    { name: "Syria", countries: ["SY"] },
+  ],
+  /** Under comprehensive sanctions: regions of Ukraine. */
+  sanctionedRegions: [
+    { name: "Crimea", regions: ["UA-43", "UA-40", "UA-11", "UA-20", "RU-CR", "RU-SEV"] },
+    { name: "Donetsk", regions: ["UA-14", "RU-DPR"] },
+    { name: "Luhansk", regions: ["UA-09", "RU-LPR"] },
+  ],
 } as const;
+
+/** "A", "A and B", "A, B and C". */
+function andList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
 
 /** "the United States", "the United States or Canada", "A, B or C". */
 function orList(items: readonly string[]): string {
@@ -1494,6 +1586,34 @@ export const COPY: Copy = {
   inviteWaiting: "A friend invited you. Sign in and the invite is yours.",
   welcomePreviewTitle: "On the board today",
   welcomePreviewHint: "Live prices, and the last months of each. Sign in to buy any of them.",
+  unavailable: {
+    title: "Berth isn't available where you are",
+    sanctionsTitle: "Berth can't serve this place",
+    fundsStay: "Anything you hold stays in your own wallet. Berth never held it, so nothing of yours is kept here.",
+    reason: {
+      "united-states":
+        "The stocks on Berth are tokens issued for people outside the United States, so Berth can't open an account or take an order here.",
+      sanctions:
+        "Berth can't be used from a country or region under sanctions, so it offers nothing here beyond these public pages.",
+    },
+    nothingKept: "Nothing was taken, and nothing about you was stored.",
+    accountKept: "Nothing was taken. Your account and what you own are just as they were.",
+    readOn: "You're welcome to read on.",
+    links: { welcome: "How Berth works", terms: "Terms of use", privacy: "Privacy", assistants: "Assistants" },
+    support: "Questions are welcome at",
+    haveAccount: "Already have a Berth account? You can always see it, sell and withdraw.",
+    drawerTitle: "Buying isn't available where you are",
+    drawerBody: "Selling and withdrawing work as always, and what you own stays yours.",
+    close: "Close",
+    authorizeBody: "No assistant was connected, and nothing was shared.",
+    noAccountTitle: "There's no Berth account for this sign in",
+    noAccountBody: "Berth can't open a new account where you are, so none was made.",
+    signOut: "Sign out",
+    banner:
+      "You're somewhere Berth isn't available. You can see what you own, sell and withdraw as always. Buying waits until you're back.",
+    draftRefused:
+      "Berth isn't available where this person is right now, so it can't draft a buy or a recurring plan. They can still see what they own, sell and withdraw in Berth. Say this plainly and kindly, without guessing where they are, and mention support@berthmarkets.com for questions.",
+  },
   footerNote:
     "Stock tokens track a share; they are not the share. Read what you own before you buy.",
   welcomePage: {
@@ -2533,6 +2653,7 @@ export const COPY: Copy = {
           "Your AI. If you connect Claude, ChatGPT, Grok or another AI, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what your AI asked or what Berth answered.",
           "Error reports. When an order fails or does not settle, the app sends a report so we can fix the cause: the step it stopped at, the networks, the token and amount, the transaction hashes, a shortened form of your address, the error text, recent app logs, the page address, your screen size and your browser's user agent. Keys and tokens are removed first, and it never includes your email address.",
           "Usage statistics. We count page views with Vercel Web Analytics, which uses no cookies.",
+          "Your country. With each visit and each request to your account, our host Vercel tells us the country your connection comes from, and for some countries its region, so Berth can say where it is not offered and not open an account or take an order there. We use it for that one answer and do not store or log it. This rests on our duty to offer Berth only where it may be offered.",
           "Emails we send. For each notice: its type, what it was about (an order, a connection), whether it was sent, and the email provider's message identifier. Never the email's text: while a notice waits to be sent again, we keep only what it will name (such as a listing, a price or a shortened wallet address), and delete that once it is sent. Your choices of which emails to get, and whether mail to your address bounced or was reported as spam.",
         ],
         after: [
@@ -2709,7 +2830,7 @@ export const COPY: Copy = {
   termsLink: "Terms",
   termsOfUse: {
     title: "Terms of use",
-    status: "Effective 28 September 2026.",
+    status: "Effective 30 September 2026.",
     intro: [
       "These terms apply when you use www.berthmarkets.com, the Berth app and the Berth connector for your AI. By using Berth you agree to them. If you do not agree, please do not use Berth.",
       "Berth is software. It never holds your keys or your money, and it does not give investment advice.",
@@ -2768,8 +2889,8 @@ export const COPY: Copy = {
         body: [],
         list: [
           "You must be 18 or older, and able to enter a binding agreement where you live.",
-          `Berth is not offered in ${orList(TERMS_AVAILABILITY.excluded)}. You may not use it if you live there or are there when you use it.`,
-          "You may not use Berth where the law that applies to you prohibits it, if you are subject to sanctions, or from a country or region under sanctions.",
+          `Berth is not offered in ${orList(TERMS_AVAILABILITY.excluded.map((place) => place.name))}. You may not use it if you live there or are there when you use it.`,
+          `You may not use Berth where the law that applies to you prohibits it, if you are subject to sanctions, or from a country or region under sanctions, including ${andList(TERMS_AVAILABILITY.sanctionedCountries.map((place) => place.name))} and the ${andList(TERMS_AVAILABILITY.sanctionedRegions.map((place) => place.name))} regions of Ukraine.`,
           "You are responsible for knowing and following the laws that apply to you, including tax rules.",
         ],
       },

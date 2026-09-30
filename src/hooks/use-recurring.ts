@@ -3,6 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccountHeaders } from "@/hooks/use-profile";
 import { RECURRING_QUERY_KEY, type PlanInput, type RecurringResponse } from "@/lib/recurring";
+import { RECURRING_PATH, RECURRING_UNAVAILABLE, RecurringError, readRecurringResponse } from "@/lib/recurring-response";
+
+export { RECURRING_PATH, RECURRING_UNAVAILABLE, RecurringError, readRecurringResponse };
 
 /**
  * Recurring buys on the page (app/api/recurring, lib/server/recurring):
@@ -20,23 +23,13 @@ export type RecurringAction =
   | { action: "pause" | "resume" | "delete"; planId: string }
   | { action: "open" | "skip"; runId: string };
 
-export class RecurringError extends Error {
-  constructor(readonly reason: string) {
-    super(reason);
-  }
-}
-
 async function post(headers: Record<string, string>, body: Record<string, unknown>): Promise<RecurringResponse> {
-  const response = await fetch("/api/recurring", {
+  const response = await fetch(RECURRING_PATH, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    const reason = ((await response.json().catch(() => ({}))) as { error?: string }).error ?? "failed";
-    throw new RecurringError(reason);
-  }
-  return response.json() as Promise<RecurringResponse>;
+  return readRecurringResponse(response);
 }
 
 export function useRecurring() {

@@ -4,7 +4,7 @@ import { getClient } from "@/lib/server/oauth/clients";
 import { publicOrigin } from "@/lib/server/oauth/config";
 import { issueCode } from "@/lib/server/oauth/tokens";
 import { redirectUriMatches } from "@/lib/server/oauth/validation";
-import { readRewardsCaller, resolveRewardsUser } from "@/lib/server/rewards-route";
+import { readRewardsCaller, refuseWhereUnavailable, resolveRewardsUser } from "@/lib/server/rewards-route";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +49,9 @@ export async function POST(request: NextRequest) {
 
   const read = await readRewardsCaller(request);
   if (!read.ok) return read.response;
+  // No assistant is connected where Berth is not available (lib/availability).
+  const refused = refuseWhereUnavailable(read.caller);
+  if (refused) return refused;
   const resolved = await resolveRewardsUser(read.caller);
   if (!resolved.ok) return resolved.response;
 

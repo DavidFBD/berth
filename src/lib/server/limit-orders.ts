@@ -4,6 +4,7 @@ import { formatUnits } from "viem";
 import { getSql } from "@/lib/server/db";
 import { getSodax, receiptSucceeded } from "@/lib/server/pour-verify";
 import { recordOrderMarks, saveOrder } from "@/lib/server/orders";
+import { forgoHold, isNoXp, markNoXp } from "@/lib/server/no-xp";
 import { placeRunForLimitOrder } from "@/lib/server/recurring";
 import { readOrder } from "@/lib/orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
@@ -418,6 +419,8 @@ async function recordFill(row: Row, userId: string, response: IntentResponse, st
     }
     const id = await saveOrder(userId, order);
     if (!id) return false;
+    // A limit buy first seen from where Berth is not available pays nothing (lib/server/no-xp).
+    if (row.direction === "buy" && (await isNoXp(row.intent_tx))) await forgoHold(row.intent_tx);
     await getSql().query(`update orders set order_type = 'limit', limit_price = $2 where id = $1`, [id, row.limit_price]);
     await recordOrderMarks(id, order.filledAt ?? new Date(), 3_000);
     return true;
@@ -623,7 +626,20 @@ export async function sweepMissing(
     force = false,
     fetchIntents = fetchUserIntents,
     homeHub,
-  }: { now?: Date; force?: boolean; fetchIntents?: (address: string) => Promise<IntentResponse[]>; homeHub?: string | null } = {},
+    noXpBuys = false,
+  }: {
+    now?: Date;
+    force?: boolean;
+    fetchIntents?: (address: string) => Promise<IntentResponse[]>;
+    homeHub?: string | null;
+    /**
+     * The sweep runs for a caller where Berth is not available: every limit
+     * buy it finds, proven this account's, pays nothing (lib/server/no-xp).
+     * The route refused to record it; the sweep keeps it visible and
+     * cancellable, never paid.
+     */
+    noXpBuys?: boolean;
+  } = {},
 ): Promise<number> {
   const last = lastSweep.get(userId) ?? 0;
   // A page holding an unsaved order may ask for one sooner, but never more
@@ -663,7 +679,10 @@ export async function sweepMissing(
       minWaitSeconds: SWEEP_MIN_WAIT_SECONDS,
       homeHub,
     });
-    if (saved.ok) recorded += 1;
+    if (saved.ok) {
+      recorded += 1;
+      if (noXpBuys && direction === "buy") await markNoXp(intentTx);
+    }
   }
   return recorded;
 }

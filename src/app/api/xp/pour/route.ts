@@ -3,6 +3,7 @@ import type { RewardList } from "@/lib/profile-types";
 import { flushUnannounced } from "@/lib/server/accounts";
 import { linkedWallets } from "@/lib/server/identities";
 import { awardFilledPour, closePourClaim, fillVerdict, savePourClaim } from "@/lib/server/pour-claims";
+import { forgoHold, isNoXp, markNoXp, pourPaid } from "@/lib/server/no-xp";
 import { orderListingSymbol, recordOrder } from "@/lib/server/orders";
 import { verifyPourTx } from "@/lib/server/pour-verify";
 import {
@@ -24,6 +25,15 @@ export async function POST(request: NextRequest) {
   if (!read.ok) return read.response;
 
   const kind = read.caller.body.direction === "out" ? "pour_out" : "pour_in";
+  // A buy reported from where Berth is not available (lib/availability) is
+  // still recorded, so the ledger stays true (the order, its marks, the
+  // recurring run it answers), but it pays no XP and judges no hold, then
+  // or ever: it is marked by intent (lib/server/no-xp), so a report of the
+  // same buy from anywhere else pays nothing either. The app does not
+  // offer such a buy; this is for one that happened anyway. Availability is
+  // judged when the buy is reported. A sell is always recorded and paid.
+  const availability = read.caller.availability;
+  const away = kind === "pour_in" && availability !== undefined && !availability.available ? availability : null;
   const txHash =
     typeof read.caller.body.intentTxHash === "string"
       ? read.caller.body.intentTxHash.toLowerCase()
@@ -67,10 +77,35 @@ export async function POST(request: NextRequest) {
   }
   const rewards: RewardList = [];
   let xp = user.xp;
+  // Marked only once the intent is proven real and this account's (above).
+  // A buy already paid is a replay, never marked after the fact.
+  let noXp = false;
+  if (kind === "pour_in") {
+    if (away && !(await pourPaid(txHash))) {
+      await markNoXp(txHash);
+      noXp = true;
+      // That it happened, nothing about where or who: the privacy policy
+      // says the country is never stored or logged.
+      console.info("[availability] buy recorded from an excluded place");
+    } else if (await isNoXp(txHash)) {
+      noXp = true;
+    }
+  }
   if (verdict === "unknown") {
     // The claim keeps its listing, so a recurring run it may answer is not
     // offered again (a second buy) while the evening pass confirms it.
     await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction));
+  } else if (noXp) {
+    await recordOrder({
+      sodax: verified.sodax,
+      userId: user.id,
+      intentTx: txHash,
+      direction,
+      intent: verified.intent,
+      claimedFillTx: claimedFill,
+    });
+    await forgoHold(txHash);
+    await closePourClaim(txHash, new Date(), "recorded_no_xp");
   } else {
     // Awaited, not fired and forgotten: a serverless function may be frozen
     // the moment it answers. recordOrder never throws, so the award is safe.

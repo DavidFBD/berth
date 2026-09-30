@@ -209,6 +209,22 @@ create index if not exists pour_claims_open_idx on pour_claims (created_at) wher
 -- it takes the least recently looked at first, so a stuck one rotates.
 alter table pour_claims add column if not exists last_checked_at timestamptz;
 
+-- Buys that pay nothing, keyed by intent (lib/server/no-xp): a buy reported
+-- from where Berth is not available (lib/availability). The ledger stays
+-- true (the order row, its marks, the recurring run it answers), but no XP
+-- is paid and no hold is judged, on every path: the pour route from any
+-- country, the evening pass over claims, a limit fill, the hold check.
+-- Written once, never removed.
+create table if not exists no_xp_intents (
+  intent_tx text primary key,
+  created_at timestamptz not null default now()
+);
+
+-- A claim settled for such a buy says so: recorded, nothing paid.
+alter table pour_claims drop constraint if exists pour_claims_outcome_check;
+alter table pour_claims add constraint pour_claims_outcome_check
+  check (outcome in ('paid', 'dropped', 'recorded_no_xp'));
+
 -- The listing a claim buys or sells, read from the intent when the claim is
 -- kept (the pour route). An open buy claim holds back a recurring run of
 -- the same listing (lib/server/recurring): the strip and the reminder do not

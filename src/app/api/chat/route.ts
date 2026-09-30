@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     model,
     system: chatSystem({ now: new Date(), rankName: gate.rank.name, level: gate.rank.level }),
     messages: history.messages,
-    tools: chatTools(chatToolContext(user.id, origin)),
+    tools: chatTools(chatToolContext(user.id, origin, read.caller.availability)),
     stopWhen: stepCountIs(CHAT_LIMITS.maxSteps),
     maxOutputTokens: CHAT_LIMITS.maxOutputTokens,
     providerOptions: gate.provider.kind === "openai" ? openAiOptions(user.id) : undefined,

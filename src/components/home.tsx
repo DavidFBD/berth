@@ -52,6 +52,8 @@ import { RecurringStrip, useRecurringStripShowing } from "@/components/recurring
 import { PlanSheetHost } from "@/components/recurring/plan-sheet";
 import { useAccountHeaders } from "@/hooks/use-profile";
 import { onPlanSheet, openPlanSheet } from "@/components/recurring/plan-sheet-events";
+import { NoAccountHere, NotHereBanner, useAvailability } from "@/components/availability/availability";
+import { useUnavailableRefused } from "@/lib/unavailable-refusal";
 
 /** The board's frame, shared with the dev gallery (/dev/board?home=…) so the two cannot drift. */
 export const BOARD_PAGE = "mx-auto flex w-full max-w-lg flex-col px-4 pb-12 lg:max-w-[80rem] lg:px-10";
@@ -257,8 +259,17 @@ export function Home() {
     </Panel>
   );
 
+  // Where Berth is not available, a sign in the server made no account
+  // for (lib/server/availability) says so instead of an empty board.
+  const availability = useAvailability();
+  const noAccountHere = useUnavailableRefused("/api/profile");
+
   return (
     <AuthGate>
+      {noAccountHere ? (
+        <NoAccountHere availability={availability} />
+      ) : (
+      <>
       {/*
         The ledger (2026-09-28): one column on a phone, two from 1024px.
         The left track is the account, top to bottom: its figure beside a
@@ -278,6 +289,8 @@ export function Home() {
 
         <div className={BOARD_GRID}>
           <div className={BOARD_TRACK}>
+            {/* Only where Berth is not available: what still works, quietly. */}
+            <NotHereBanner />
             <AccountTotal />
             {/* Only on a recurring plan's day (lib/recurring): Berth reminds, the person signs. */}
             <RecurringStrip onOpen={openDraftBuy} />
@@ -389,6 +402,8 @@ export function Home() {
         </footer>
       </div>
       {askAvailable && <AskDock onOpen={() => openChat()} hidden={anyDrawerOpen} busy={chatBusy} />}
+      </>
+      )}
     </AuthGate>
   );
 }

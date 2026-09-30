@@ -1,4 +1,5 @@
 import { erc20Abi, parseUnits, type Address } from "viem";
+import { NOT_NO_XP } from "@/lib/server/no-xp";
 import { getSql } from "@/lib/server/db";
 import { awardXp } from "@/lib/server/accounts";
 import { getSodax } from "@/lib/server/pour-verify";
@@ -62,10 +63,13 @@ const EFFECTIVE_AT = "coalesce(o.filled_at, o.placed_at, o.created_at)";
 /**
  * A filled buy with a known delivery wallet. Quantity on a buy is what the
  * fill delivered (lib/orders readOrder); a buy whose fill was never read has
- * no quantity, is not judged, and waits for saveOrder to complete it.
+ * no quantity, is not judged, and waits for saveOrder to complete it. A no
+ * XP buy (lib/server/no-xp, reported from where Berth is not available) is
+ * never judged: it earns no hold, whatever path recorded it.
  */
 const FILLED_UNCHECKED_BUY = `o.direction = 'buy'
   and o.hold_checked_at is null
+  and ${NOT_NO_XP("o")}
   and o.quantity is not null
   and o.quantity > 0
   and o.delivered_to is not null

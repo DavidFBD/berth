@@ -1,5 +1,6 @@
 "use client";
 
+import { DevAvailability } from "@/components/availability/dev-availability";
 import { Suspense, useEffect, useState } from "react";
 import { ChainKeys } from "@sodax/sdk";
 import { notFound, useSearchParams } from "next/navigation";
@@ -55,6 +56,10 @@ import {
  *                                       out, from fixtures (home-gallery.tsx);
  *                                       home=new for a first visit, &dock=0
  *                                       without the docked Ask
+ *   /dev/board?open=NVDA&country=US     any of these as seen where Berth is
+ *                                       not available (lib/availability): the
+ *                                       buy drawer is the soft landing, the
+ *                                       home scenes carry the banner
  *   /dev/board?open=NVDA&now=2026-10-03T12:00:00Z
  *                                       any of the above with the market
  *                                       clock stopped at that instant, so
@@ -65,7 +70,9 @@ export default function BoardGalleryPage() {
   if (process.env.NODE_ENV === "production") notFound();
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-      <Galleries />
+      <DevAvailability>
+        <Galleries />
+      </DevAvailability>
     </Suspense>
   );
 }

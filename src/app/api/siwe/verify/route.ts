@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySiwe } from "@/lib/server/siwe";
+import { refuseSanctioned } from "@/lib/server/availability";
 import {
   issueWalletSession,
   readNonceToken,
@@ -13,6 +14,9 @@ import {
  * callers.
  */
 export async function POST(request: NextRequest) {
+  // No sign in from a comprehensively sanctioned place (lib/server/availability).
+  const refused = refuseSanctioned(request.headers, request.url);
+  if (refused) return refused;
   const body = (await request.json().catch(() => ({}))) as {
     message?: unknown;
     signature?: unknown;

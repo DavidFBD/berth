@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { Availability } from "@/lib/availability";
+import { COPY } from "@/lib/copy";
 import { findBenchmark } from "@/lib/benchmarks";
 import { draftOrder, findTokenListing, type DraftSummary } from "@/lib/draft-order";
 import { TOKEN_LISTINGS } from "@/lib/listings";
@@ -69,7 +71,21 @@ export type ToolContext = {
   /** Where Berth is served, for the draft link. */
   origin: string;
   surface: ToolSurface;
+  /**
+   * Whether Berth can start something new where the person is
+   * (lib/server/availability). Only the chat knows: its request comes from
+   * the person's own browser. On MCP the request comes from the
+   * assistant's servers, whose country says nothing about the person, so
+   * it is absent there and the draft link lands on the same soft landing
+   * when opened. Absent reads as available.
+   */
+  availability?: Availability;
 };
+
+/** Whether a draft that starts something (a buy, a plan) is refused here: sells never are. */
+function refusedHere(ctx: ToolContext): boolean {
+  return ctx.availability?.available === false;
+}
 
 /** A draft as the chat renders it: server-validated values, never the model's prose. */
 export type DraftCard = DraftSummary;
@@ -563,6 +579,7 @@ const draftOrderTool = defineTool({
   scope: SCOPE_DRAFT,
   run: async ({ listing: query, side, usd_amount, quantity, order_type, limit_price, expires }, ctx) => {
     const userId = userOf(ctx);
+    if (side === "buy" && refusedHere(ctx)) return no(COPY.unavailable.draftRefused);
     const listing = findTokenListing(query);
     if (!listing) return unknownListing(query);
     const prices = await liveListingPrices().catch(() => ({}) as Record<string, number>);
@@ -693,6 +710,7 @@ const draftRecurring = defineTool({
   scope: SCOPE_DRAFT,
   run: async ({ listing: query, usd_amount, cadence, weekday, month_day, dip_pct }, ctx) => {
     const userId = userOf(ctx);
+    if (refusedHere(ctx)) return no(COPY.unavailable.draftRefused);
     const listing = findTokenListing(query);
     if (!listing) return unknownListing(query);
     if (listing.kind !== "stock") return no(`A recurring buy is for stocks and funds, not ${listing.name}.`);

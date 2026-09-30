@@ -1,5 +1,7 @@
 "use client";
 
+import { NotHereDrawer, useAvailability } from "@/components/availability/availability";
+import { DevAvailability } from "@/components/availability/dev-availability";
 import { Suspense, useState } from "react";
 import { notFound, useSearchParams } from "next/navigation";
 import { Panel } from "@/components/ui/panel";
@@ -20,12 +22,15 @@ import type { PlanView, ReadyRun } from "@/lib/recurring";
  *   /dev/recurring?sheet=1      the plan sheet open, filled in
  *   /dev/recurring?sheet=dip    the same with Buy on the dip, as a switched on account sees it
  *   /dev/recurring?empty=1      the section with no plans
+ *   /dev/recurring?sheet=1&country=US  the sheet where Berth is not available
  */
 export default function RecurringGalleryPage() {
   if (process.env.NODE_ENV === "production") notFound();
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-      <Gallery />
+      <DevAvailability>
+        <Gallery />
+      </DevAvailability>
     </Suspense>
   );
 }
@@ -82,6 +87,8 @@ const READY: ReadyRun = {
 function Gallery() {
   const params = useSearchParams();
   const sheet = params.get("sheet");
+  // As PlanSheetHost does where Berth is not available (?country=US).
+  const availability = useAvailability();
   const [open, setOpen] = useState(sheet !== null);
   const [state, setState] = useState<PlanDraftState>(() =>
     draftFromRequest(sheet === "dip" ? { symbol: "NVDA", usd: 50, cadence: "monthly", day: 15, dipPct: 5 } : { symbol: "SPY", usd: 20, cadence: "weekly", day: 1 }),
@@ -101,6 +108,9 @@ function Gallery() {
         />
       </Panel>
       <PlanDraftCard plan={{ symbol: "SPY", name: "S&P 500 ETF", usd: 20, cadence: "weekly", day: 1 }} onOpen={() => setOpen(true)} />
+      {!availability.available ? (
+        <NotHereDrawer availability={availability} open={open} onOpenChange={setOpen} />
+      ) : (
       <PlanSheetView
         open={open}
         onOpenChange={setOpen}
@@ -112,6 +122,7 @@ function Gallery() {
         onSave={() => setOpen(false)}
         signIn={params.get("signedout") === "1" ? () => setOpen(false) : undefined}
       />
+      )}
     </div>
   );
 }

@@ -79,6 +79,18 @@ export class IdentityUnavailableError extends Error {
   }
 }
 
+/**
+ * A new account asked for where Berth is not available (lib/availability).
+ * Nothing was written: an existing account is always found, only a new one
+ * is refused.
+ */
+export class NewAccountUnavailableError extends Error {
+  constructor() {
+    super("new account not available here");
+    this.name = "NewAccountUnavailableError";
+  }
+}
+
 /** The users row with this id, or undefined. */
 async function userById(id: string): Promise<UserRow | undefined> {
   return (
@@ -141,9 +153,16 @@ export async function accountForWallet(wallet: string): Promise<UserRow | undefi
 export async function getOrCreateUser({
   did,
   wallet,
+  mayCreate = true,
 }: {
   did: string | null;
   wallet: string | null;
+  /**
+   * false where Berth is not available (lib/availability): an account that
+   * already exists is found as always, a new one is not made, and
+   * NewAccountUnavailableError says so.
+   */
+  mayCreate?: boolean;
 }): Promise<{ user: UserRow; created: boolean } | null> {
   if (!did && !wallet) return null;
   const sql = getSql();
@@ -181,6 +200,7 @@ export async function getOrCreateUser({
         )) as UserRow[]
       )[0];
     }
+    if (!user && !mayCreate) throw new NewAccountUnavailableError();
     if (!user) {
       user = (
         (await sql.query(
@@ -276,6 +296,7 @@ export async function getOrCreateUser({
   )) as UserRow[];
   if (existing[0]) return { user: existing[0], created: false };
   if (owner === undefined) throw new IdentityUnavailableError();
+  if (!mayCreate) throw new NewAccountUnavailableError();
   const inserted = (await sql.query(
     `insert into users (wallet_address) values ($1)
      on conflict (wallet_address) do update set updated_at = now()

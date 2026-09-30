@@ -1,4 +1,5 @@
 import { EvmSolverService, IntentsAbi, type Intent, type IntentResponse } from "@sodax/sdk";
+import { forgoHold, isNoXp } from "@/lib/server/no-xp";
 import { parseEventLogs, type Log } from "viem";
 import { awardXp } from "@/lib/server/accounts";
 import { getSql } from "@/lib/server/db";
@@ -124,11 +125,15 @@ async function orderExists(intentTx: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** A claim the client's own later call paid: closed, so the evening pass never looks at it again. */
-export async function closePourClaim(intentTx: string, now = new Date()): Promise<void> {
-  await getSql().query(`update pour_claims set settled_at = $2, outcome = 'paid' where intent_tx = $1 and settled_at is null`, [
+/** How a settled claim ended: paid, dropped unfilled, or recorded for a buy that pays nothing (lib/server/no-xp). */
+export type ClaimOutcome = "paid" | "dropped" | "recorded_no_xp";
+
+/** A claim the client's own later call settled: closed, so the evening pass never looks at it again. */
+export async function closePourClaim(intentTx: string, now = new Date(), outcome: Exclude<ClaimOutcome, "dropped"> = "paid"): Promise<void> {
+  await getSql().query(`update pour_claims set settled_at = $2, outcome = $3 where intent_tx = $1 and settled_at is null`, [
     intentTx.toLowerCase(),
     now.toISOString(),
+    outcome,
   ]);
 }
 
@@ -136,7 +141,8 @@ export async function closePourClaim(intentTx: string, now = new Date()): Promis
  * Keep a claim for a pour that could not be judged filled yet. Idempotent
  * per intent. `listingSymbol`, when the intent names a listing, lets an
  * open buy claim hold back a recurring run of that listing until the
- * evening pass settles it (lib/server/recurring).
+ * evening pass settles it (lib/server/recurring). Whether it will pay is
+ * not the claim's to say: a no XP buy is marked by intent (lib/server/no-xp).
  */
 export async function savePourClaim(
   userId: string,
@@ -154,11 +160,41 @@ export async function savePourClaim(
   );
 }
 
-export type ClaimSummary = { checked: number; paid: number; dropped: number };
+/** `recorded`: filled claims for a no XP buy, written into the ledger and paid nothing. */
+export type ClaimSummary = { checked: number; paid: number; dropped: number; recorded: number };
+
+export type SettledClaim = {
+  user_id: string;
+  intent_tx: string;
+  direction: "buy" | "sell";
+  referred_by: string | null;
+  fill_tx: string | null;
+  /** A no XP buy (lib/server/no-xp): record the order, pay nothing. Absent reads as false. */
+  no_xp?: boolean;
+};
+
+/**
+ * What a claim earns once its order row stands: the pour's XP (parked for
+ * the next profile sync), or, for a no XP buy, nothing, and no hold is
+ * judged. Answers which it was.
+ */
+export async function payRecordedClaim(claim: SettledClaim): Promise<"paid" | "recorded_no_xp"> {
+  if (claim.no_xp || (claim.direction === "buy" && (await isNoXp(claim.intent_tx)))) {
+    await forgoHold(claim.intent_tx);
+    return "recorded_no_xp";
+  }
+  await awardFilledPour({ id: claim.user_id, referred_by: claim.referred_by }, claim.direction === "sell" ? "pour_out" : "pour_in", claim.intent_tx, {
+    announced: false,
+  });
+  return "paid";
+}
+
+export { forgoHold };
 
 /**
  * The evening's pass over open claims, oldest first: a filled one is
- * recorded as an order and paid (parked for the next profile sync), a
+ * recorded as an order and paid (parked for the next profile sync), or
+ * for a no XP buy recorded and paid nothing (lib/server/no-xp), a
  * closed one is dropped unpaid, anything still undecided waits for the
  * next night. A claim older than 30 days that never filled is dropped.
  */
@@ -166,7 +202,7 @@ export async function settlePourClaims({
   limit = 15,
   now = new Date(),
   verdictOf = async (intentTx: string) => verdictFromRecord(await fetchIntentRecord(intentTx), now),
-  pay = async (claim: { user_id: string; intent_tx: string; direction: "buy" | "sell"; referred_by: string | null; fill_tx: string | null }) => {
+  pay = async (claim: SettledClaim) => {
     // The order row first: a claim is only settled once `orders` holds
     // it, so a failed intent read leaves the claim for the next night.
     const sodax = getSodax();
@@ -174,10 +210,7 @@ export async function settlePourClaims({
     if (!intent?.ok) return false;
     await recordOrder({ sodax, userId: claim.user_id, intentTx: claim.intent_tx, direction: claim.direction, intent: intent.value, claimedFillTx: claim.fill_tx });
     if (!(await orderExists(claim.intent_tx))) return false;
-    await awardFilledPour({ id: claim.user_id, referred_by: claim.referred_by }, claim.direction === "sell" ? "pour_out" : "pour_in", claim.intent_tx, {
-      announced: false,
-    });
-    return true;
+    return payRecordedClaim(claim);
   },
   budgetMs = CLAIMS_BUDGET_MS,
   clock = Date.now,
@@ -185,8 +218,12 @@ export async function settlePourClaims({
   limit?: number;
   now?: Date;
   verdictOf?: (intentTx: string) => Promise<FillVerdict>;
-  /** Resolves true once the order is recorded and paid; false leaves the claim open. */
-  pay?: (claim: { user_id: string; intent_tx: string; direction: "buy" | "sell"; referred_by: string | null; fill_tx: string | null }) => Promise<boolean>;
+  /**
+   * Resolves how the claim settled once its order is recorded: "paid", or
+   * "recorded_no_xp" for a no XP buy. true reads as "paid"; false leaves the
+   * claim open.
+   */
+  pay?: (claim: SettledClaim) => Promise<boolean | "paid" | "recorded_no_xp">;
   /** Starts no claim after this long, inside the evening stage's own budget. */
   budgetMs?: number;
   clock?: () => number;
@@ -194,13 +231,14 @@ export async function settlePourClaims({
   const sql = getSql();
   const started = clock();
   const claims = (await sql.query(
-    `select c.intent_tx, c.user_id, c.direction, c.fill_tx, c.created_at, u.referred_by
+    `select c.intent_tx, c.user_id, c.direction, c.fill_tx, c.created_at, u.referred_by,
+            exists (select 1 from no_xp_intents n where n.intent_tx = c.intent_tx) as no_xp
        from pour_claims c join users u on u.id = c.user_id
       where c.settled_at is null
       order by c.last_checked_at asc nulls first, c.created_at asc limit $1`,
     [limit],
-  )) as { intent_tx: string; user_id: string; direction: "buy" | "sell"; fill_tx: string | null; created_at: string | Date; referred_by: string | null }[];
-  const summary: ClaimSummary = { checked: claims.length, paid: 0, dropped: 0 };
+  )) as (SettledClaim & { created_at: string | Date })[];
+  const summary: ClaimSummary = { checked: claims.length, paid: 0, dropped: 0, recorded: 0 };
   for (const claim of claims) {
     if (clock() - started > budgetMs) break;
     const verdict = await verdictOf(claim.intent_tx);
@@ -208,23 +246,24 @@ export async function settlePourClaims({
     // Undecided or unpaid claims go to the back of the line, so one that
     // stays stuck can never starve the ones behind it.
     const later = () => sql.query(`update pour_claims set last_checked_at = $2 where intent_tx = $1`, [claim.intent_tx, now.toISOString()]);
+    let outcome: ClaimOutcome;
     if (verdict === "filled") {
-      if (!(await pay(claim))) {
+      const settled = await pay(claim);
+      if (!settled) {
         await later();
         continue;
       }
-      summary.paid += 1;
+      outcome = settled === "recorded_no_xp" ? "recorded_no_xp" : "paid";
+      if (outcome === "paid") summary.paid += 1;
+      else summary.recorded += 1;
     } else if (verdict === "notFilled" || stale) {
+      outcome = "dropped";
       summary.dropped += 1;
     } else {
       await later();
       continue;
     }
-    await sql.query(`update pour_claims set settled_at = $2, outcome = $3 where intent_tx = $1`, [
-      claim.intent_tx,
-      now.toISOString(),
-      verdict === "filled" ? "paid" : "dropped",
-    ]);
+    await sql.query(`update pour_claims set settled_at = $2, outcome = $3 where intent_tx = $1`, [claim.intent_tx, now.toISOString(), outcome]);
   }
   return summary;
 }

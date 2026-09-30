@@ -8,6 +8,8 @@ import { judgeAuthorizeRequest, signConsent, type AuthorizeOutcome } from "@/lib
 import { publicOrigin } from "@/lib/server/oauth/config";
 import { callerKeyFrom } from "@/lib/server/oauth/http";
 import { scopeList } from "@/lib/server/oauth/validation";
+import { requestAvailability } from "@/lib/server/availability";
+import { AuthorizeUnavailable } from "@/components/availability/authorize-unavailable";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +92,15 @@ export default async function AuthorizePage({
       </main>
     );
   }
+
+  // Where Berth is not available (lib/availability) no assistant is
+  // connected: the soft landing instead of the consent screen, and the
+  // decision route refuses an approval on its own too. In `next dev` only,
+  // `?country=US` stands in for the header.
+  const availability = requestAvailability(requestHeaders, {
+    override: { country: one("country"), region: one("region") },
+  });
+  if (!availability.available) return <AuthorizeUnavailable availability={availability} />;
 
   return (
     <AuthorizeConsent

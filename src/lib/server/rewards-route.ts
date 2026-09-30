@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { fetchPrivyWallet, verifyPrivyAuth } from "@/lib/server/privy";
 import { readWalletSession } from "@/lib/server/wallet-session";
 import { getSql } from "@/lib/server/db";
+import { AVAILABLE, requestAvailability, unavailableResponse, type Availability } from "@/lib/server/availability";
 import { detectFamily, toCaip10 } from "@/lib/identity/caip";
 import {
   awardXp,
@@ -9,6 +10,7 @@ import {
   getOrCreateUser,
   normalizeWallet,
   IdentityUnavailableError,
+  NewAccountUnavailableError,
   WalletCoolingDownError,
   toProfile,
   type UserRow,
@@ -30,6 +32,13 @@ export type RewardsCaller = {
   wallet: string | null;
   /** Parsed JSON body; each route reads its own fields from it. */
   body: Record<string, unknown>;
+  /**
+   * Whether Berth can start something new for this request's country
+   * (lib/server/availability). Absent reads as available. It decides
+   * whether a new account may be made here, and the routes that start a
+   * buy, a limit buy or a plan read it; never stored.
+   */
+  availability?: Availability;
 };
 
 export type CallerResult =
@@ -47,6 +56,13 @@ export type CallerResult =
 export async function readRewardsCaller(
   request: NextRequest,
 ): Promise<CallerResult> {
+  // From a comprehensively sanctioned place no account is served at all,
+  // an existing one included (lib/server/availability refuseSanctioned):
+  // refused before anyone is looked up.
+  const availability = availabilityOf(request);
+  if (!availability.available && availability.reason === "sanctions") {
+    return { ok: false, response: unavailableResponse(availability) };
+  }
   let did: string | null;
   try {
     did = await verifyPrivyAuth(request.headers.get("authorization"));
@@ -70,7 +86,7 @@ export async function readRewardsCaller(
         response: NextResponse.json({ error: "identity lookup failed" }, { status: 503 }),
       };
     }
-    return { ok: true, caller: { did, wallet: normalizeWallet(lookup.address), body } };
+    return { ok: true, caller: { did, wallet: normalizeWallet(lookup.address), body, availability } };
   }
 
   const sessionToken = request.headers.get("x-wallet-session");
@@ -85,7 +101,20 @@ export async function readRewardsCaller(
       ),
     };
   }
-  return { ok: true, caller: { did: null, wallet, body } };
+  return { ok: true, caller: { did: null, wallet, body, availability } };
+}
+
+function availabilityOf(request: NextRequest): Availability {
+  return requestAvailability(request.headers, { url: request.url });
+}
+
+/**
+ * The refusal a route answers when this caller may not start something
+ * new here, else null. Selling, withdrawing and reading never ask.
+ */
+export function refuseWhereUnavailable(caller: RewardsCaller): NextResponse | null {
+  const availability = caller.availability ?? AVAILABLE;
+  return availability.available ? null : unavailableResponse(availability);
 }
 
 /**
@@ -127,8 +156,15 @@ export async function resolveRewardsUser(
     result = await getOrCreateUser({
       did: caller.did,
       wallet: caller.wallet,
+      // Where Berth is not available an existing account is found as
+      // always (someone who travels can still see, sell and withdraw),
+      // and no new one is made.
+      mayCreate: (caller.availability ?? AVAILABLE).available,
     });
   } catch (error) {
+    if (error instanceof NewAccountUnavailableError) {
+      return { ok: false, response: unavailableResponse(caller.availability ?? AVAILABLE) };
+    }
     if (error instanceof IdentityUnavailableError) {
       // Never guess who this is (as with a failed Privy lookup).
       return {

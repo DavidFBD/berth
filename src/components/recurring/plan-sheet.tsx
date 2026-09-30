@@ -1,5 +1,9 @@
 "use client";
 
+import { useUnavailableReason } from "@/lib/unavailable-refusal";
+import { RECURRING_PATH } from "@/hooks/use-recurring";
+import type { Availability } from "@/lib/availability";
+import { NotHereDrawer, useAvailability } from "@/components/availability/availability";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -87,6 +91,12 @@ export function planInputOf(state: PlanDraftState, timeZone: string): PlanInput 
  */
 export function PlanSheetHost({ onSignIn, onClosed }: { onSignIn?: () => void; onClosed?: () => void } = {}) {
   const copy = useCopy().recurring;
+  // The page's answer, or the route's own 451 on a plan action (hooks/use-recurring).
+  const pageAvailability = useAvailability();
+  const refusedFor = useUnavailableReason(RECURRING_PATH);
+  const refusedHere = refusedFor !== null;
+  const availability: Availability =
+    !pageAvailability.available || refusedFor === null ? pageAvailability : { available: false, reason: refusedFor };
   const recurring = useRecurring();
   const action = useRecurringAction();
   const { key } = useAccountHeaders({ prompt: false });
@@ -179,6 +189,23 @@ export function PlanSheetHost({ onSignIn, onClosed }: { onSignIn?: () => void; o
       },
     });
   };
+
+  // Where Berth is not available (lib/availability) no plan is made: the
+  // sheet says so instead. Existing plans can still be paused or deleted.
+  if (!availability.available || refusedHere) {
+    return (
+      <NotHereDrawer
+        availability={availability}
+        open={shown}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next) return;
+          setResumeSince(null);
+          onClosed?.();
+        }}
+      />
+    );
+  }
 
   return (
     <PlanSheetView

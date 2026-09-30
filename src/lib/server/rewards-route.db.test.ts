@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setSqlClient, type SqlClient } from "./db";
 import { makeTestDb } from "./pglite-test-db";
 import { awardXp, flushUnannounced, getOrCreateUser } from "./accounts";
-import { awardAndRespond } from "./rewards-route";
+import { awardAndRespond, resolveRewardsUser } from "./rewards-route";
 import { XP_ACTIONS } from "@/lib/xp";
 
 /**
@@ -60,5 +60,40 @@ describe("awardAndRespond", () => {
     expect(body.rewards).toEqual([
       { kind: "held_30_days", amount: XP_ACTIONS.held_30_days.amount },
     ]);
+  });
+});
+
+describe("resolveRewardsUser where Berth is not available", () => {
+  const away = { available: false, reason: "united-states" } as const;
+
+  it("makes no new account, for a wallet or an email, and answers 451", async () => {
+    const wallet = await resolveRewardsUser({ did: null, wallet: `0x${"5".repeat(40)}`, body: {}, availability: away });
+    expect(wallet.ok).toBe(false);
+    if (!wallet.ok) {
+      expect(wallet.response.status).toBe(451);
+      expect(await wallet.response.json()).toMatchObject({ code: "unavailable_here" });
+    }
+    const email = await resolveRewardsUser({ did: "did:privy:away", wallet: null, body: {}, availability: away });
+    expect(email.ok).toBe(false);
+    const rows = (await sql.query("select count(*)::int as n from users")) as { n: number }[];
+    expect(rows[0].n).toBe(0);
+  });
+
+  it("finds an account that already exists: someone who travels still sees, sells and withdraws", async () => {
+    const wallet = `0x${"6".repeat(40)}`;
+    const made = (await getOrCreateUser({ did: null, wallet }))!.user;
+    const byWallet = await resolveRewardsUser({ did: null, wallet, body: {}, availability: away });
+    expect(byWallet).toMatchObject({ ok: true, created: false });
+    if (byWallet.ok) expect(byWallet.user.id).toBe(made.id);
+
+    const byDid = (await getOrCreateUser({ did: "did:privy:home", wallet: null }))!.user;
+    const again = await resolveRewardsUser({ did: "did:privy:home", wallet: null, body: {}, availability: away });
+    expect(again).toMatchObject({ ok: true, created: false });
+    if (again.ok) expect(again.user.id).toBe(byDid.id);
+  });
+
+  it("makes an account where Berth is available, as before", async () => {
+    const made = await resolveRewardsUser({ did: null, wallet: `0x${"7".repeat(40)}`, body: {}, availability: { available: true } });
+    expect(made).toMatchObject({ ok: true, created: true });
   });
 });

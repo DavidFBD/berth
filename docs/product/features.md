@@ -146,6 +146,31 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
   drawer.
 - Not available in the United States or where local law or sanctions forbid
   it.
+- **What we say to excluded visitors** (the soft landing,
+  `src/lib/availability.ts`, copy `unavailable` in `src/lib/copy.ts`): "Berth
+  isn't available where you are." Then one plain reason: "The stocks on Berth
+  are tokens issued for people outside the United States, so Berth can't open
+  an account or take an order here." (or, for a sanctioned place, "Berth can't
+  be used from a country or region under sanctions"), then "Nothing was taken,
+  and nothing about you was stored." It offers the public pages (the welcome
+  page, terms, privacy, assistants) and support@berthmarkets.com. Never a
+  waitlist, never an email capture, never "yet" or "coming soon" for a
+  country. Someone who already has an account and travels is told quietly
+  that they can see what they own, sell and withdraw as always; buying waits
+  until they are back. That exception is for the United States and its
+  territories only. From Cuba, Iran, North Korea, Syria, and the Crimea,
+  Donetsk and Luhansk regions of Ukraine, Berth serves nothing beyond its
+  public pages, an existing account included: "Berth can't serve this
+  place", and "Anything you hold stays in your own wallet" (true: Berth
+  never holds funds), with support@berthmarkets.com. The lists are
+  `TERMS_AVAILABILITY`, the same ones the terms name, to be confirmed with
+  counsel.
+- **When availability is judged, for support:** when a buy is reported to
+  Berth, not when it was placed. A buy placed at home but first reported
+  from abroad (or a limit buy that fills while its owner is away and is
+  first seen there) is recorded in full but earns no XP and no hold bonus,
+  and a report of the same buy from home later changes nothing. Selling is
+  never affected.
 - No price predictions, no promises of returns, no "get rich".
 
 ## Where to look in the product (for screen capture)

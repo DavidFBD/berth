@@ -1,5 +1,6 @@
 "use client";
 
+import { NotHereDrawer, useAvailability } from "@/components/availability/availability";
 import { MarketClosedLine } from "@/components/market/market-closed-line";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -155,6 +156,7 @@ export function DepositDrawer({
   const meta =
     listing?.kind === "vault" ? getVaultMeta(listing.vault.name) : null;
   const copy = useCopy();
+  const availability = useAvailability();
 
   // Where a buy lands: the account. Vault deposits ignore this (see RunDepositArgs).
   const account = useHubAccount();
@@ -527,6 +529,13 @@ export function DepositDrawer({
       }
     }
   })();
+
+  // Where Berth is not available (lib/availability) a buy is not started:
+  // the drawer says so instead. Selling has its own drawer and is never
+  // replaced. Dev galleries set the availability themselves.
+  if (!availability.available) {
+    return <NotHereDrawer availability={availability} open={open} onOpenChange={onOpenChange} />;
+  }
 
   return (
     <>

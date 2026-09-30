@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Home } from "@/components/home";
+import { AvailabilityProvider } from "@/components/availability/availability";
+import { requestAvailability } from "@/lib/server/availability";
 import { isInviteCode } from "@/lib/invite-code";
 import { inviteCardMetadata } from "@/lib/invite-card";
 
@@ -20,6 +23,26 @@ export async function generateMetadata({
   return inviteCardMetadata();
 }
 
-export default function Page() {
-  return <Home />;
+/**
+ * Whether Berth can start something new for this visitor is judged here,
+ * from the request's country (lib/server/availability), and handed down:
+ * where it cannot, the welcome page, buys and plans become the soft
+ * landing, and an existing account keeps seeing, selling and withdrawing.
+ * In `next dev` only, `?country=US` stands in for the header.
+ */
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ country?: string | string[]; region?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const one = (value: string | string[] | undefined) => (typeof value === "string" ? value : null);
+  const availability = requestAvailability(await headers(), {
+    override: { country: one(params.country), region: one(params.region) },
+  });
+  return (
+    <AvailabilityProvider value={availability}>
+      <Home />
+    </AvailabilityProvider>
+  );
 }

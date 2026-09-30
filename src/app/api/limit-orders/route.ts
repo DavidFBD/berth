@@ -10,7 +10,7 @@ import {
   sweepMissing,
   type LimitOrderView,
 } from "@/lib/server/limit-orders";
-import { readRewardsCaller, resolveRewardsUser } from "@/lib/server/rewards-route";
+import { readRewardsCaller, refuseWhereUnavailable, resolveRewardsUser } from "@/lib/server/rewards-route";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -70,7 +70,12 @@ export async function POST(request: NextRequest) {
       // recorded (lib/server/limit-orders sweepMissing). Throttled, unless
       // the page holds an order it could not save.
       if (enabled) {
-        await sweepMissing(user.id, await ownersOf(), { force: body.sweep === true, homeHub: await homeHubOf() }).catch((error) =>
+        await sweepMissing(user.id, await ownersOf(), {
+          force: body.sweep === true,
+          homeHub: await homeHubOf(),
+          // A limit buy found while Berth is not available here pays nothing (lib/server/no-xp).
+          noXpBuys: read.caller.availability?.available === false,
+        }).catch((error) =>
           console.warn("[limit-orders] sweep failed", error instanceof Error ? error.message : error),
         );
       }
@@ -94,6 +99,11 @@ export async function POST(request: NextRequest) {
   if (action === "record" && enabled) {
     const direction = body.direction === "sell" ? "sell" : body.direction === "buy" ? "buy" : null;
     if (!direction) return NextResponse.json({ error: "bad direction" }, { status: 400 });
+    // A limit buy is not taken where Berth is not available; a limit sell is (lib/availability).
+    if (direction === "buy") {
+      const refused = refuseWhereUnavailable(read.caller);
+      if (refused) return refused;
+    }
     const owners = await ownersOf();
     const typed = Number(body.limitPrice);
     const placed = await placeLimitOrder({

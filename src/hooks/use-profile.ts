@@ -1,5 +1,6 @@
 "use client";
 
+import { isUnavailableResponse, noteUnavailable, unavailableReasonOf } from "@/lib/unavailable-refusal";
 import { useCallback, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
@@ -140,6 +141,7 @@ function useRewardsCall() {
     });
     if (response.status === 404 && notFound !== undefined) return notFound;
     refusedSession(response, auth);
+    if (isUnavailableResponse(response)) noteUnavailable(path, await unavailableReasonOf(response));
     if (!response.ok) return null;
     return response.json();
   };
@@ -158,6 +160,7 @@ function useRewardsCall() {
       body: JSON.stringify(body),
     });
     refusedSession(response, auth);
+    if (isUnavailableResponse(response)) noteUnavailable(path, await unavailableReasonOf(response));
     return { status: response.status, data: response.ok ? ((await response.json()) as T) : null };
   };
 

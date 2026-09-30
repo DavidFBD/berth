@@ -1,5 +1,6 @@
 "use client";
 
+import { NotHereBanner } from "@/components/availability/availability";
 import { useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { parseUnits } from "viem";
@@ -102,6 +103,7 @@ export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeSce
         </HomeHeader>
         <div className={BOARD_GRID}>
           <div className={BOARD_TRACK}>
+            <NotHereBanner />
             <AccountTotalView
               figures={{ holdings: holdingsUsd, cash: cashUsd ?? 0, funds: funds.totalUsd, holdsAnything: rows.length > 0 }}
             />

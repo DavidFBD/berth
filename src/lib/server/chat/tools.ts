@@ -1,3 +1,4 @@
+import type { Availability } from "@/lib/availability";
 import { tool, type ToolSet } from "ai";
 import { BERTH_TOOLS, type BerthTool, type ToolContext, type ToolOutput } from "@/lib/server/berth-tools/registry";
 import { SCOPE_DRAFT, SCOPE_READ } from "@/lib/server/oauth/config";
@@ -17,8 +18,8 @@ import { SCOPE_DRAFT, SCOPE_READ } from "@/lib/server/oauth/config";
 
 const FAILED_TEXT = "Berth could not answer that just now. Try again in a minute.";
 
-export function chatToolContext(userId: string, origin: string): ToolContext {
-  return { userId, scopes: [SCOPE_READ, SCOPE_DRAFT], origin, surface: "chat" };
+export function chatToolContext(userId: string, origin: string, availability?: Availability): ToolContext {
+  return { userId, scopes: [SCOPE_READ, SCOPE_DRAFT], origin, surface: "chat", availability };
 }
 
 export function chatTools(ctx: ToolContext): ToolSet {

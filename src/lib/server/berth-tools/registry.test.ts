@@ -135,6 +135,7 @@ const { BERTH_TOOLS, REGISTRY_TOOL_NAMES, said } = await import("./registry");
 const { registerBerthTools } = await import("@/lib/server/mcp/tools");
 const { chatTools, chatToolContext } = await import("@/lib/server/chat/tools");
 const { BERTH_TOOL_NAMES } = await import("@/lib/berth-tool-names");
+const { COPY } = await import("@/lib/copy");
 
 type Registered = { name: string; config: Record<string, unknown>; handler: (args: unknown, ctx: ServerContext) => Promise<{ content: { text: string }[]; isError?: boolean }> };
 
@@ -474,5 +475,37 @@ describe("recurring buys", () => {
       mcpCtx(["berth.draft"]),
     );
     expect(dip.content[0].text).toBe("Buy on the dip needs limit orders, which are not open on this account. Draft it without dip_pct.");
+  });
+});
+
+describe("the chat door where Berth is not available", () => {
+  const away = chatToolContext("u1", "https://www.berthmarkets.com", { available: false, reason: "united-states" });
+  const tools = Object.fromEntries(BERTH_TOOLS.map((tool) => [tool.name, tool]));
+
+  it("declines a buy and a plan politely, with no card", async () => {
+    const buy = await tools.draft_order.run({ listing: "NVDA", side: "buy", usd_amount: 20 } as never, away);
+    expect(buy).toEqual({ text: COPY.unavailable.draftRefused, isError: true });
+    const plan = await tools.draft_recurring.run({ listing: "SPY", usd_amount: 20, cadence: "weekly", weekday: "monday" } as never, away);
+    expect(plan).toEqual({ text: COPY.unavailable.draftRefused, isError: true });
+  });
+
+  it("still drafts a sell: someone who travels can always get their money out", async () => {
+    const sell = await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 0.25 } as never, away);
+    expect(sell.isError).toBeUndefined();
+    expect(sell.draft).toMatchObject({ symbol: "TSLA", side: "sell", quantity: 0.25 });
+  });
+
+  it("reads as always", async () => {
+    const out = await tools.get_listing.run({ listing: "NVDA" } as never, away);
+    expect(out.isError).toBeUndefined();
+  });
+});
+
+describe("the MCP door carries no availability", () => {
+  it("drafts a buy: the assistant's servers say nothing about where the person is, and the link lands on the landing", async () => {
+    const mcp = Object.fromEntries(mcpTools().map((tool) => [tool.name, tool]));
+    const result = await mcp.draft_order.handler({ listing: "NVDA", side: "buy", usd_amount: 20 }, mcpCtx(["berth.read", "berth.draft"]));
+    expect(result.content[0].text).not.toBe(COPY.unavailable.draftRefused);
+    expect(result.isError).toBeFalsy();
   });
 });

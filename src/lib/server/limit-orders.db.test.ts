@@ -205,6 +205,22 @@ describe("the sweep", () => {
     const later = new Date(Date.now() + 2 * 60_000 + 1_000);
     expect(await sweepMissing(userId, owners, { now: later, fetchIntents })).toBe(0);
     expect(await sweepMissing(userId, owners, { now: later, force: true, fetchIntents })).toBe(1);
+    // Neither was found for a caller where Berth is not available: no mark.
+    const { isNoXp } = await import("./no-xp");
+    expect(await isNoXp("0xswept")).toBe(false);
+  });
+
+  it("marks a limit buy it finds for a caller where Berth is not available, and only a proven one", async () => {
+    const { sweepMissing } = await import("./limit-orders");
+    const { isNoXp } = await import("./no-xp");
+    const usdc = "0x29219dd400f2bf60e5a23d13be72b486d4038894";
+    const item = (txHash: string, over: Record<string, unknown> = {}) =>
+      ({ ...response(), txHash, intent: { ...response().intent, inputToken: usdc, creator: "0xhub2", srcAddress: "0xhub2", ...over } }) as IntentResponse;
+    const intents = [item("0xawaysweep"), item("0xnotmine", { creator: "0xother", srcAddress: "0xother" })];
+    const other = (await sql.query(`insert into users (wallet_address) values ('0xsweeper') returning id`)) as { id: string }[];
+    expect(await sweepMissing(other[0].id, new Set(["0xhub2"]), { force: true, fetchIntents: async () => intents, noXpBuys: true })).toBe(1);
+    expect(await isNoXp("0xawaysweep")).toBe(true);
+    expect(await isNoXp("0xnotmine")).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { limitOrdersOn } from "@/lib/server/limit-orders";
 import { lazyPrices } from "@/lib/server/morning";
-import { readRewardsCaller, resolveRewardsUser } from "@/lib/server/rewards-route";
+import { readRewardsCaller, refuseWhereUnavailable, resolveRewardsUser } from "@/lib/server/rewards-route";
 import {
   ageRuns,
   createPlan,
@@ -82,6 +82,13 @@ export async function POST(request: NextRequest) {
   };
 
   if (action === "list") return answer();
+
+  // Where Berth is not available no plan is made, changed or resumed
+  // (lib/availability). Pausing, deleting and letting a run pass always work.
+  if (action === "create" || action === "update" || action === "resume") {
+    const refused = refuseWhereUnavailable(read.caller);
+    if (refused) return refused;
+  }
 
   // A plan or run id that is not a uuid is a bad request, never a database error.
   const needsPlan = action === "update" || action === "pause" || action === "resume" || action === "delete";

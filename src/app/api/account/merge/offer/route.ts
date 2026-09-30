@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { refuseSanctioned } from "@/lib/server/availability";
 import { emailOffer } from "@/lib/server/account-merge-route";
 
 export const dynamic = "force-dynamic";
@@ -10,5 +11,6 @@ export const dynamic = "force-dynamic";
  * (lib/server/account-merge-route).
  */
 export async function POST(request: NextRequest) {
-  return emailOffer(request);
+  // No account is served from a comprehensively sanctioned place (lib/server/availability).
+  return refuseSanctioned(request.headers, request.url) ?? emailOffer(request);
 }

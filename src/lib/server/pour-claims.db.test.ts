@@ -3,7 +3,8 @@ import { encodeAbiParameters, encodeEventTopics, getAbiItem, type Log } from "vi
 import { IntentsAbi, type IntentResponse } from "@sodax/sdk";
 import { setSqlClient, type SqlClient } from "./db";
 import { makeTestDb } from "./pglite-test-db";
-import { fillsIntent, savePourClaim, settlePourClaims, verdictFromRecord } from "./pour-claims";
+import { fillsIntent, forgoHold, payRecordedClaim, savePourClaim, settlePourClaims, verdictFromRecord, type SettledClaim } from "./pour-claims";
+import { isNoXp, markNoXp, pourPaid } from "./no-xp";
 
 const CONTRACT = "0x6382d6ccd780758c5e8a6123c33ee8f4472f96ef";
 const HASH = `0x${"11".repeat(32)}` as const;
@@ -72,11 +73,11 @@ describe("claims the evening settles", () => {
     const verdicts: Record<string, "filled" | "notFilled" | "unknown"> = { "0xfilled": "filled", "0xcancelled": "notFilled", "0xwaiting": "unknown" };
     const pay = vi.fn(async () => true);
     const summary = await settlePourClaims({ verdictOf: async (tx) => verdicts[tx], pay });
-    expect(summary).toEqual({ checked: 3, paid: 1, dropped: 1 });
+    expect(summary).toEqual({ checked: 3, paid: 1, dropped: 1, recorded: 0 });
     expect(pay).toHaveBeenCalledTimes(1);
     expect(pay.mock.calls[0]).toEqual([expect.objectContaining({ intent_tx: "0xfilled", fill_tx: "0xfilltx", direction: "buy" })]);
     const again = await settlePourClaims({ verdictOf: async (tx) => verdicts[tx], pay });
-    expect(again).toEqual({ checked: 1, paid: 0, dropped: 0 });
+    expect(again).toEqual({ checked: 1, paid: 0, dropped: 0, recorded: 0 });
     expect(pay).toHaveBeenCalledTimes(1);
   });
 });
@@ -118,5 +119,79 @@ describe("claims that cannot be paid yet", () => {
     await closePourClaim("0xNOROW");
     const still = (await sql.query(`select intent_tx from pour_claims where settled_at is null and user_id = $1`, [userId])) as { intent_tx: string }[];
     expect(still.map((row) => row.intent_tx)).toEqual(["0xnext"]);
+  });
+});
+
+describe("a buy recorded where Berth is not available", () => {
+  const newUser = async (wallet: string) =>
+    ((await sql.query(`insert into users (wallet_address) values ($1) returning id`, [wallet])) as { id: string }[])[0].id;
+  const orderFor = (userId: string, tx: string) =>
+    sql.query(
+      `insert into orders (user_id, intent_tx, direction, listing_symbol, listing_address, quantity, delivered_to, created_at)
+       values ($1, $2, 'buy', 'NVDA', '0x${"b".repeat(40)}', 1, '0x${"a".repeat(40)}', now() - interval '40 days')`,
+      [userId, tx],
+    );
+
+  it("is marked once by intent, and the mark is permanent", async () => {
+    expect(await isNoXp("0xMARK1")).toBe(false);
+    await markNoXp("0xMARK1");
+    await markNoXp("0xmark1");
+    expect(await isNoXp("0xmark1")).toBe(true);
+    expect(await sql.query(`select count(*)::int as n from no_xp_intents where intent_tx = '0xmark1'`)).toEqual([{ n: 1 }]);
+  });
+
+  it("settles its claim in the evening as recorded, not paid, with its order standing, no XP and no hold", async () => {
+    const userId = await newUser("0xaway1");
+    await savePourClaim(userId, "0xawayclaim", "buy", null, "NVDA");
+    await savePourClaim(userId, "0xhomeclaim", "buy", null, "NVDA");
+    await markNoXp("0xawayclaim");
+    const pay = vi.fn(async (claim: SettledClaim) => {
+      await orderFor(userId, claim.intent_tx);
+      return payRecordedClaim(claim);
+    });
+    const mine = new Set(["0xawayclaim", "0xhomeclaim"]);
+    const summary = await settlePourClaims({ limit: 50, verdictOf: async (tx) => (mine.has(tx) ? "filled" : "unknown"), pay });
+    expect(summary).toMatchObject({ paid: 1, recorded: 1 });
+    expect(pay).toHaveBeenCalledWith(expect.objectContaining({ intent_tx: "0xawayclaim", no_xp: true }));
+    expect(await sql.query(`select intent_tx, outcome from pour_claims where user_id = $1 order by intent_tx`, [userId])).toEqual([
+      { intent_tx: "0xawayclaim", outcome: "recorded_no_xp" },
+      { intent_tx: "0xhomeclaim", outcome: "paid" },
+    ]);
+    const events = (await sql.query(`select ref from xp_events where user_id = $1 and kind = 'pour_in'`, [userId])) as { ref: string }[];
+    expect(events.map((row) => row.ref)).toEqual(["0xhomeclaim"]);
+    expect(await sql.query(`select intent_tx, hold_outcome from orders where user_id = $1 order by intent_tx`, [userId])).toEqual([
+      { intent_tx: "0xawayclaim", hold_outcome: "forfeit" },
+      { intent_tx: "0xhomeclaim", hold_outcome: null },
+    ]);
+  });
+
+  it("pays nothing even when the claim itself does not say so: the mark is read at payment", async () => {
+    const userId = await newUser("0xaway2");
+    await orderFor(userId, "0xlatemark");
+    await markNoXp("0xlatemark");
+    expect(await payRecordedClaim({ user_id: userId, intent_tx: "0xlatemark", direction: "buy", referred_by: null, fill_tx: null })).toBe(
+      "recorded_no_xp",
+    );
+    expect(await pourPaid("0xlatemark")).toBe(false);
+  });
+
+  it("is never offered to the daily hold check, even if an order path left its hold unjudged", async () => {
+    const userId = await newUser("0xaway3");
+    await orderFor(userId, "0xunjudged");
+    await orderFor(userId, "0xjudgeme");
+    await markNoXp("0xunjudged");
+    const { holdCandidates } = await import("./holds");
+    const scope = { listingAddresses: [`0x${"b".repeat(40)}`] };
+    const candidates = await holdCandidates(new Date(), 50, scope as never);
+    const mine = candidates.filter((candidate) => candidate.userId === userId).map((candidate) => candidate.intentTx);
+    expect(mine).toEqual(["0xjudgeme"]);
+  });
+
+  it("forgoHold is idempotent and keeps an earlier verdict", async () => {
+    const userId = await newUser("0xaway4");
+    await orderFor(userId, "0xjudged");
+    await sql.query(`update orders set hold_checked_at = now(), hold_outcome = 'paid' where intent_tx = '0xjudged'`);
+    await forgoHold("0xJUDGED");
+    expect(await sql.query(`select hold_outcome from orders where intent_tx = '0xjudged'`)).toEqual([{ hold_outcome: "paid" }]);
   });
 });

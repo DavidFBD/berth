@@ -7,7 +7,13 @@ const all = (doc: typeof COPY.termsOfUse) =>
 describe("the terms of use", () => {
   it("names every excluded country and the operator", () => {
     const text = all(COPY.termsOfUse);
-    for (const country of TERMS_AVAILABILITY.excluded) expect(text).toContain(country);
+    for (const place of [
+      ...TERMS_AVAILABILITY.excluded,
+      ...TERMS_AVAILABILITY.sanctionedCountries,
+      ...TERMS_AVAILABILITY.sanctionedRegions,
+    ]) {
+      expect(text).toContain(place.name);
+    }
     expect(text).toContain(PRIVACY_OPERATOR.name);
     expect(text).toContain(PRIVACY_OPERATOR.email);
   });
