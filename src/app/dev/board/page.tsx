@@ -85,6 +85,8 @@ function Galleries() {
         dock={params.get("dock") !== "0"}
         streaming={params.get("streaming") === "1"}
         drawer={drawer === "board" || drawer === "news" ? drawer : null}
+        look={params.get("look") === "fixture" || params.get("look") === "quiet" ? (params.get("look") as "fixture" | "quiet") : undefined}
+        firstStock={params.get("first") === "1"}
       />
     );
   }

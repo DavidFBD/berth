@@ -9,6 +9,9 @@ import { TickerTile } from "@/components/board/holdings-list";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
+import { useFirstLook } from "@/hooks/use-first-look";
+import { FIRST_LOOK_SYMBOLS } from "@/lib/first-look";
+import { FirstLookReadingView } from "@/components/first-look";
 import { STOCK_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 import { cn } from "@/lib/utils";
@@ -107,7 +110,8 @@ export function AddMoneyStep({
 }
 
 /** Four well known names, in the registry's own words; nothing is chosen for the person. */
-const PICK_SYMBOLS = ["SPY", "NVDA", "AAPL", "TSLA"] as const;
+/** The first look's examples (lib/first-look), so the names offered and the names looked at never drift apart. */
+const PICK_SYMBOLS = FIRST_LOOK_SYMBOLS;
 const PICKS: readonly TokenListing[] = PICK_SYMBOLS.map((symbol) =>
   STOCK_LISTINGS.find((listing) => listing.symbol === symbol),
 ).filter((listing): listing is TokenListing => listing !== undefined);
@@ -128,7 +132,13 @@ export function FirstBuyStep({
   loading = false,
   onBuy,
   onBrowse,
+  onAsk,
+  onReadNews,
 }: {
+  /** Opens Ask with a factual question about the chosen name; absent while Ask is locked or off. */
+  onAsk?: (prompt: string) => void;
+  /** Opens the news drawer on a listing, from the first look's quiet link. */
+  onReadNews?: (listing: TokenListing) => void;
   /** Spendable money the oracle prices; undefined when only unpriced crypto proved there is some. */
   readyUsd: number | undefined;
   /** While the funds are read: the line's place is held. */
@@ -141,6 +151,7 @@ export function FirstBuyStep({
   const prices = useListingPrices();
   const performance = useListingPerformance();
   const [chosen, setChosen] = useState<TokenListing | null>(null);
+  const { lookOf } = useFirstLook();
   const line = loading ? (
     <Skeleton className="h-4 w-56 max-w-full" />
   ) : readyUsd === undefined ? (
@@ -174,7 +185,13 @@ export function FirstBuyStep({
                 <span title={listing.name} className="block truncate text-[14.5px] leading-snug font-medium text-foreground">
                   {rowName(listing)}
                 </span>
-                <span className="money block text-xs text-muted-foreground">{listing.symbol}</span>
+                <span className="block text-xs text-muted-foreground">
+                  <span className="money">{listing.symbol}</span>
+                  {(() => {
+                    const look = lookOf(listing.symbol);
+                    return look.kind === "shown" && look.look.looked && look.look.inNews ? copy.firstLook.rowInNews : null;
+                  })()}
+                </span>
               </span>
               <span className="shrink-0 text-right">
                 <span className="money block text-sm tabular-nums text-foreground">
@@ -200,6 +217,17 @@ export function FirstBuyStep({
           );
         })}
       </div>
+      {/* Once a name is chosen: today's reading about it, before the buy (lib/first-look). */}
+      {chosen && lookOf(chosen.symbol).kind !== "hidden" && (
+        <div className="px-[18px] pt-4 lg:px-6">
+          <FirstLookReadingView
+            listing={chosen}
+            look={lookOf(chosen.symbol)}
+            onAsk={onAsk}
+            onReadNews={onReadNews ? () => onReadNews(chosen) : undefined}
+          />
+        </div>
+      )}
       <div className="flex flex-col gap-1 px-[18px] pt-4 pb-3 lg:px-6 lg:pb-4">
         {/* Until a name is chosen the button is a quiet outline that says
             so; the accent arrives with the choice, on the one thing to do. */}

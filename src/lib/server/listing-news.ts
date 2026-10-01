@@ -16,7 +16,7 @@ import {
   keepHeadline,
   type HeadlineAnswers,
 } from "@/lib/news-judge";
-import { cachedVerdict, jevConfigured } from "@/lib/server/jev";
+import { cachedVerdict, cachedVerdictsOnly, jevConfigured } from "@/lib/server/jev";
 
 /**
  * Headlines about the listings, newest first. Served by app/api/listing-news
@@ -152,13 +152,17 @@ async function judgeHeadlines(
       read += 1;
       if (!keepHeadline(answers, headlineNamesListing(item.title, item.symbol))) return undefined;
       kept += 1;
-      return { ...item, verdict: headlineVerdict(answers) };
+      return { ...item, verdict: headlineVerdict(answers), about: answers.about.noul };
     }),
   );
   const missing = pool.length - read;
-  (missing > 0 ? console.warn : console.info)(
-    `[jev] headlines: asked ${pool.length}, answered ${read}, kept ${kept}${missing > 0 ? `, ${missing} unanswered kept unread` : ""}`,
-  );
+  // A cache-only read (the first look) never asked, so its misses are not
+  // "unanswered": this line is how an empty credit shows, keep it true.
+  if (!cachedVerdictsOnly()) {
+    (missing > 0 ? console.warn : console.info)(
+      `[jev] headlines: asked ${pool.length}, answered ${read}, kept ${kept}${missing > 0 ? `, ${missing} unanswered kept unread` : ""}`,
+    );
+  }
   return { items: judged.filter((item): item is NewsItem => item !== undefined), read, kept };
 }
 

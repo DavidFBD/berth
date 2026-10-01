@@ -28,6 +28,7 @@ import type { ChatStatusResponse } from "@/app/api/chat/status/route";
 import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route";
 import type { WalletsResponse } from "@/app/api/account/wallets/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
+import type { FirstStockResponse } from "@/lib/first-stock";
 import type { EmailSettingsResponse, SwitchableKind } from "@/lib/email-kinds";
 import { CHAT_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
 import { announceRewards } from "@/components/xp-toast";
@@ -521,6 +522,38 @@ export function useSetEmailPref() {
       return data;
     },
     onSuccess: (data) => queryClient.setQueryData(["email-settings", key], data),
+  });
+}
+
+/**
+ * The first stock card's state on this account (lib/first-stock): whether
+ * "Got it" was tapped anywhere and whether the two weeks are still running.
+ * Asked only while the account holds exactly one stock.
+ */
+export function useFirstStock(enabled: boolean) {
+  // A minute fresh, so another device's "Got it" lands at the next focus.
+  return useRewardsQuery<FirstStockResponse>("first-stock", "/api/first-stock", { enabled, staleTime: 60_000 });
+}
+
+/** "Got it": the card closes at once, and the server keeps it closed on every device. */
+export function useCloseFirstStock() {
+  const queryClient = useQueryClient();
+  const { key, call } = useRewardsCall();
+  return useMutation({
+    // The close is idempotent on the server, so a lost answer is simply asked again.
+    retry: 3,
+    retryDelay: (attempt) => Math.min(8_000, 1_000 * 2 ** attempt),
+    mutationFn: async () => {
+      if (!key) throw new Error("no account");
+      const data = await call<FirstStockResponse>("/api/first-stock", { close: true });
+      if (!data) throw new Error("not saved");
+      return data;
+    },
+    onMutate: () =>
+      queryClient.setQueryData<FirstStockResponse>(["first-stock", key], (previous) =>
+        previous ? { ...previous, closed: true, show: false } : previous,
+      ),
+    onSuccess: (data) => queryClient.setQueryData(["first-stock", key], data),
   });
 }
 

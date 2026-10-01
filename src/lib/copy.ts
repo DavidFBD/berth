@@ -145,6 +145,32 @@ export type Copy = {
   /** Footer line under "powered by": the one honest sentence about risk. */
   footerNote: string;
   /**
+   * The first look (lib/first-look), beside the first buy's examples and on
+   * the first stock's card. Only these fixed lines: no headline or post text
+   * ever sits beside Buy. Jev only decides which line is true.
+   */
+  firstLook: {
+    /** After the ticker in the pick list, when Jev read today's headlines and one passed. */
+    rowInNews: string;
+    /** Berth's own fixed line: never a headline, never a post (lib/first-look). */
+    inNews: (name: string) => string;
+    /** Opens the news drawer on the listing, where the news column's own rules apply. */
+    readNews: string;
+    /** Only when Jev read every one of today's headlines about it and none passed. */
+    nothingToday: (name: string) => string;
+    /** The last trading day's move, only when it was large for the listing. Code's numbers, no cause. */
+    move: (name: string, direction: "rose" | "fell", pct: string) => string;
+    /** Under the news line when news is linked. */
+    newsNote: string;
+    /** Under the news line when Jev found nothing: who read. */
+    credit: string;
+    ask: (name: string) => string;
+    askPrompt: (name: string) => string;
+    firstStockTitle: string;
+    firstStockLine: (name: string) => string;
+    dismiss: string;
+  };
+  /**
    * The signed-in home's one next step per state (components/home-next-step):
    * add money, buy the first stock, or buy more; and the short list of what
    * sits behind a tap (components/home-more).
@@ -1660,6 +1686,21 @@ export const COPY: Copy = {
   },
   footerNote:
     "Stock tokens track a share; they are not the share. Read what you own before you buy.",
+  firstLook: {
+    rowInNews: ", in today's news",
+    inNews: (name) => `${name} is in today's news.`,
+    readNews: "Read the news",
+    nothingToday: (name) => `Nothing in today's news about ${name}.`,
+    move: (name, direction, pct) => `${name} ${direction} ${pct} on the last trading day, more than it usually moves.`,
+    newsNote: "News to read, not advice. Jev, a model by TypeSafe, read today's headlines.",
+    credit: "Jev, a model by TypeSafe, read today's headlines.",
+    ask: (name) => `Ask about ${name}`,
+    askPrompt: (name) => `What has been in the news about ${name} this week?`,
+    firstStockTitle: "Your first stock",
+    firstStockLine: (name) =>
+      `${name} is in your account as a token that tracks its share price. It is yours, in your own wallet, and you can sell it any day under What you own.`,
+    dismiss: "Got it",
+  },
   calmHome: {
     addTitle: "Add money to begin",
     addLine: "Pay by card or bank, or send crypto you already hold. Then choose a stock.",

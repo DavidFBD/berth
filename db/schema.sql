@@ -1247,3 +1247,7 @@ create table if not exists x_read_budget (
   reserved int not null default 0,
   requests int not null default 0
 );
+
+-- The first stock's card (lib/first-stock): "Got it" closes it for good on
+-- the account, on every device. The first close is kept; null is open.
+alter table users add column if not exists first_stock_closed_at timestamptz;

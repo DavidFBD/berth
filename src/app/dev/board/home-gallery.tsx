@@ -24,6 +24,33 @@ import { CASH_LISTING, type TokenListing } from "@/lib/listings";
 import type { Nudge } from "@/lib/nudge";
 import { cn } from "@/lib/utils";
 import { seededPortfolioClient } from "../account/portfolio-gallery";
+import { FirstStockCard } from "@/components/first-look";
+import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
+import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
+import { STOCK_LISTINGS } from "@/lib/listings";
+
+/**
+ * The first look's fixture (lib/first-look): NVIDIA in today's news, Tesla
+ * read with nothing passing and a large move, the S&P 500 fund read with
+ * nothing, Apple not read (no box). `&look=quiet` is a day when Jev read all
+ * four and nothing passed.
+ */
+function firstLookFixture(look: "fixture" | "quiet"): FirstLookResponse {
+  const asOf = Date.now();
+  if (look === "quiet") {
+    return { judged: true, asOf, looks: Object.fromEntries(FIRST_LOOK_SYMBOLS.map((symbol) => [symbol, { looked: true, inNews: false }])) };
+  }
+  return {
+    judged: true,
+    asOf,
+    looks: {
+      NVDA: { looked: true, inNews: true },
+      TSLA: { looked: true, inNews: false, movePct: -3.6 },
+      SPY: { looked: true, inNews: false },
+      AAPL: { looked: false, inNews: false },
+    },
+  };
+}
 
 /**
  * Dev-only: the signed-in board as Home composes it, from fixtures, so the
@@ -73,7 +100,13 @@ export function HomeGallery({
   dock,
   streaming = false,
   drawer: initialDrawer = null,
+  look,
+  firstStock = false,
 }: {
+  /** Seeds the first look (`&look=fixture` or `&look=quiet`); absent asks the live route. */
+  look?: "fixture" | "quiet";
+  /** `&first=1` on a held scene: the first stock's card, on NVIDIA. */
+  firstStock?: boolean;
   scene: HomeScene;
   dock: boolean;
   streaming?: boolean;
@@ -82,7 +115,13 @@ export function HomeGallery({
   const [drawer, setDrawer] = useState<"board" | "news" | null>(initialDrawer);
   const walletEmail = scene === "walletEmail";
   const held = scene === "held" || walletEmail;
-  const [{ client, rows }] = useState(() => seededPortfolioClient(held ? "three-months" : "empty", { xp: 900 }));
+  const [{ client, rows }] = useState(() => {
+    const seeded = seededPortfolioClient(held ? "three-months" : "empty", { xp: 900 });
+    if (look) seeded.client.setQueryData(FIRST_LOOK_QUERY_KEY, firstLookFixture(look));
+    return seeded;
+  });
+  const [firstOpen, setFirstOpen] = useState(firstStock);
+  const nvidia = STOCK_LISTINGS.find((listing) => listing.symbol === "NVDA");
   const mounted = useMounted();
   const [nudge, setNudge] = useState<Nudge | null>(
     held
@@ -92,6 +131,10 @@ export function HomeGallery({
         : { kind: "firstBuy" },
   );
   const [newsFilter, setNewsFilter] = useState<TokenListing | null>(null);
+  const openNewsOn = (listing: TokenListing) => {
+    setNewsFilter(listing);
+    setDrawer("news");
+  };
   const cashScene = scene === "cash";
   const cash = held ? parseUnits("2", CASH_LISTING.decimals) : cashScene ? parseUnits("20", CASH_LISTING.decimals) : 0n;
   const cashUsd = held ? 2.01 : cashScene ? 20.1 : undefined;
@@ -147,11 +190,13 @@ export function HomeGallery({
             stage === "empty" ? (
               <AddMoneyStep walletAccount={false} onAddMoney={noop} onBrowse={noop} aside={cashScene ? { kind: "cash" } : undefined} />
             ) : (
-              <FirstBuyStep readyUsd={funds.totalUsd} onBuy={noop} onBrowse={noop} />
+              <FirstBuyStep readyUsd={funds.totalUsd} onBuy={noop} onBrowse={noop} onAsk={look ? noop : undefined} onReadNews={look ? openNewsOn : undefined} />
             )
           }
           strips={
-            walletEmail ? (
+            firstOpen && nvidia ? (
+              <FirstStockCard listing={nvidia} onAsk={noop} onReadNews={openNewsOn} onDismiss={() => setFirstOpen(false)} />
+            ) : walletEmail ? (
               <EmailNudgeLineView show onOpen={noop} onDismiss={noop} />
             ) : (
               <NudgeLineView

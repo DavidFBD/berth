@@ -10,7 +10,7 @@ import {
   readPostAnswers,
   type PostAnswers,
 } from "@/lib/news-judge";
-import { cachedVerdict, jevConfigured } from "@/lib/server/jev";
+import { cachedVerdict, cachedVerdictsOnly, jevConfigured } from "@/lib/server/jev";
 import { foldStories } from "@/lib/server/story-groups";
 import {
   COMPANY_SOURCES,
@@ -333,7 +333,8 @@ export async function gatherPosts({
   const { posts, substance, folded } = await foldStories(judged.posts, judged.substance);
   // One line per fetch rather than per read: the reads are many and cost nothing.
   const missing = asked.length - read;
-  if (mayFetch || missing > 0) {
+  // A cache-only read (the first look) asked nothing: its misses are not "unanswered".
+  if ((mayFetch || missing > 0) && !cachedVerdictsOnly()) {
     (missing > 0 ? console.warn : console.info)(
       `[jev] x-column: asked ${asked.length}, answered ${read}, kept ${kept}, folded ${folded}${missing > 0 ? `, ${missing} unanswered shown by keywords` : ""}`,
     );

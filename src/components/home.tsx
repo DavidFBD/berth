@@ -29,13 +29,14 @@ import { VaultPositions } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { FirstStockCard } from "@/components/first-look";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { AddMoneyStep, BuyMoreButton, FirstBuyStep, NextStepSkeleton } from "@/components/home-next-step";
 import { HomeMore, SectionDrawer } from "@/components/home-more";
 import { ADDRESS_WAIT_MS, hasMoneyAside, homeStage, parseHomeStage, NUDGES_SAID_BY_STEP, type HomeStage } from "@/lib/home-stage";
 import { MIN_ORDER_USD } from "@/lib/order-minimum";
 import { useLimitOrders } from "@/hooks/use-limit-orders";
-import { useAccountWallets } from "@/hooks/use-profile";
+import { useAccountWallets, useCloseFirstStock, useFirstStock } from "@/hooks/use-profile";
 import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-account-wallets";
 import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
@@ -216,6 +217,32 @@ function SignedInHome() {
     if (proven !== undefined && rememberedStage !== proven) rememberStage(proven);
   }, [proven, rememberedStage, rememberStage]);
   const holdsCash = holdings.held.some((holding) => holding.listing.kind === "cash");
+  // The first stock's card (components/first-look, lib/first-stock): while
+  // the account holds exactly one stock, for two weeks from its first buy,
+  // until "Got it" closes it on the account. This browser remembers the
+  // close too, so the card never flashes back while the server is asked.
+  const [firstStockClosed, rememberFirstStockClosed] = useStoredChoice(
+    accountKey ? `berth.first-stock-closed.${accountKey.toLowerCase()}` : null,
+  );
+  const stocksHeld = holdings.held.filter((holding) => holding.listing.kind === "stock");
+  const oneStock = proven === "owns" && holdings.settled && stocksHeld.length === 1;
+  const firstStockState = useFirstStock(oneStock);
+  const closeFirstStock = useCloseFirstStock();
+  const firstStock =
+    oneStock && firstStockClosed !== "1" && firstStockState.data?.show === true
+      ? (stocksHeld[0].listing as TokenListing)
+      : null;
+  // Closed here but the save never landed (offline through every retry):
+  // say it again, so the other devices learn it too.
+  const closeSaved = firstStockState.data?.closed;
+  const closeFirstStockMutate = closeFirstStock.mutate;
+  const closePending = closeFirstStock.isPending;
+  const closeResent = useRef(false);
+  useEffect(() => {
+    if (closeResent.current || firstStockClosed !== "1" || closeSaved !== false || closePending) return;
+    closeResent.current = true; // once a visit, so a server that keeps refusing is not asked in a loop
+    closeFirstStockMutate();
+  }, [firstStockClosed, closeSaved, closePending, closeFirstStockMutate]);
   // Earlier vault positions (components/vaults), reported by the section
   // itself: a vault holder's step says what the position is worth.
   const [vaults, setVaults] = useState<{ present: boolean; usd: number | undefined }>({ present: false, usd: undefined });
@@ -231,6 +258,11 @@ function SignedInHome() {
   // What sits one tap away (components/home-more), and the add-money drawer.
   const [boardOpen, setBoardOpen] = useState(false);
   const [newsOpen, setNewsOpen] = useState(false);
+  // The first look's "Read the news": the news drawer, pointed at that listing.
+  const openNewsOn = (listing: TokenListing) => {
+    setNewsFilter(listing);
+    setNewsOpen(true);
+  };
   const [aiOpen, setAiOpen] = useState(false);
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
   // Decided from the session, not from whether the embedded wallet exists
@@ -397,11 +429,29 @@ function SignedInHome() {
             ) : (
               // Only a live "funded" may say the wallet holds money; one from
               // memory holds the line's place until the balances are known.
-              <FirstBuyStep readyUsd={spendable} loading={live.stage !== "funded"} onBuy={openBuy} onBrowse={openBoard} />
+              <FirstBuyStep
+                readyUsd={spendable}
+                loading={live.stage !== "funded"}
+                onBuy={openBuy}
+                onBrowse={openBoard}
+                onAsk={askAvailable ? openChat : undefined}
+                onReadNews={openNewsOn}
+              />
             )
           }
           strips={
             <>
+              {firstStock && (
+                <FirstStockCard
+                  listing={firstStock}
+                  onAsk={askAvailable ? openChat : undefined}
+                  onReadNews={openNewsOn}
+                  onDismiss={() => {
+                    rememberFirstStockClosed("1");
+                    closeFirstStock.mutate();
+                  }}
+                />
+              )}
               {/* Only on a recurring plan's day (lib/recurring): Berth reminds, the person signs. */}
               <RecurringStrip onOpen={openDraftBuy} />
               {/* Only while a limit order waits, and only behind its switch. */}

@@ -11,6 +11,7 @@
     "shot": "node scripts/screenshot.mjs",
     "email:test": "node scripts/email-test.mjs",
     "db:push": "node scripts/db-push.mjs",
+    "first-buys": "node scripts/first-buys.mjs",
     "mcp:usage": "node scripts/mcp-usage.mjs",
     "listings:verify": "node --no-warnings --experimental-strip-types scripts/verify-listings.mjs",
     "privy:config": "node scripts/privy-config.mjs",

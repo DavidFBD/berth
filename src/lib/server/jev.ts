@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { unstable_cache } from "next/cache";
 
@@ -75,6 +76,23 @@ export function jevConfigured(): boolean {
   return Boolean(process.env.JEV_API_KEY) && process.env.JEV_DISABLED !== "1";
 }
 
+/**
+ * A scope in which Jev is never asked: `cachedVerdict` answers only what an
+ * earlier ask already put in the cache, and a miss is nothing (not cached,
+ * so the gathering that owns the question still asks it later). For a read
+ * that rides on verdicts other surfaces paid for, such as the first look
+ * (lib/server/first-look), so its traffic can never become Jev traffic.
+ */
+const cachedOnly = new AsyncLocalStorage<true>();
+
+export function withCachedVerdictsOnly<T>(work: () => Promise<T>): Promise<T> {
+  return cachedOnly.run(true, work);
+}
+
+export function cachedVerdictsOnly(): boolean {
+  return cachedOnly.getStore() === true;
+}
+
 /** A small semaphore, so a feed of four hundred posts is not four hundred sockets. */
 let inFlight = 0;
 const waiting: (() => void)[] = [];
@@ -99,7 +117,7 @@ export async function askJev<Q extends Record<string, JevQuestion | undefined>>(
   state: unknown,
   questions: Q,
 ): Promise<AnswersFor<Q> | undefined> {
-  if (!jevConfigured()) return undefined;
+  if (!jevConfigured() || cachedVerdictsOnly()) return undefined;
   const key = process.env.JEV_API_KEY as string;
 
   return slot(async () => {

@@ -22,6 +22,12 @@ export type NewsItem = {
   name: string;
   /** Jev's reading of the headline, as on a post (lib/news-judge). Absent when Jev did not read it. */
   verdict?: "material" | "fact" | "analysis";
+  /**
+   * How surely Jev read the headline as mainly about this listing, 0 to 1
+   * (the "about" Noul). Absent when Jev did not read it. The column keeps a
+   * named headline from 0.35; the first look asks for far more.
+   */
+  about?: number;
 };
 
 /** What a feed document yields before a listing is attached to it. */
