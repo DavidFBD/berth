@@ -34,7 +34,7 @@ import {
   belowMinimum,
   minPourUsd,
   pourAmounts,
-  quoteInputFor,
+  swapInputFor,
   withdrawGate,
 } from "@/lib/pour-amount";
 import {
@@ -241,8 +241,8 @@ export function WithdrawDrawer({
   }
 
   // The amount pipeline: money or shares in, shares (18dp) out; the quote is
-  // asked for the post-fee amount and the slippage floor applied — all in
-  // the pour-amount module.
+  // asked for the pre-fee amount (the SDK takes the fee off itself) and the
+  // slippage floor applied, all in the pour-amount module.
   const { moneyMode, buildAmount } = pourAmounts(
     amount,
     denom,
@@ -266,6 +266,7 @@ export function WithdrawDrawer({
         ? { address: outputToken.address, chainKey: dstChainKey }
         : null,
     buildAmount,
+    signingChainKey: srcChainKey,
   });
   const dustBlocked = belowBtcDust(dstChainKey, outputToken?.symbol, quote.minOut);
   // What the quote is worth in the user's money; undefined for unpriced
@@ -293,7 +294,7 @@ export function WithdrawDrawer({
       !sourceIsHome || (!!sellFrom && sellFrom.sources.find((source) => source.spoke === sellFrom.chosen)?.isHome !== true),
   });
   const limitTokenFits = limitTokenOk(outputToken, dstChainKey ? isEvmChainKeyType(dstChainKey) : false);
-  const swapShares = quoteInputFor(buildAmount);
+  const swapShares = swapInputFor(buildAmount);
   const limitMin =
     limit.active && outputToken
       ? limitMinOutput({

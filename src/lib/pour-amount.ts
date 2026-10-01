@@ -3,6 +3,7 @@ import { ChainKeys, adjustAmountByFee, type SpokeChainKey } from "@sodax/sdk";
 import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { parseAmount, usdToTokenAmount } from "@/lib/format";
 import { MIN_ORDER_USD } from "@/lib/order-minimum";
+import { slowSource } from "@/lib/pour-lifecycle";
 
 /**
  * The amount pipeline for a pour, either direction: what the typed text
@@ -51,7 +52,10 @@ export function belowMinimum(
 export type PourAmounts = {
   /** Whether the field is being read as money (priced tokens only). */
   moneyMode: boolean;
-  /** Pre-fee amount, in the entry token's decimals: what the build receives. */
+  /**
+   * Pre-fee amount, in the entry token's decimals: what the build receives,
+   * what leaves the wallet, and what the quote is asked for.
+   */
   buildAmount: bigint | undefined;
   /**
    * Approximate worth of `buildAmount` in the price's own currency — feed a
@@ -88,16 +92,34 @@ export function pourAmounts(
 }
 
 /**
- * The amount a quote must be asked for. The partner fee is deducted from the
- * input before the swap, so quoting the pre-fee amount would produce an
- * unfillable minOutputAmount — this pairing (build on the pre-fee amount,
- * quote on the post-fee amount) is the pipeline's core invariant, and this
- * function is its only implementation.
+ * The amount that is actually swapped: the build amount less the partner fee,
+ * which the SDK takes ONCE, on chain, when it builds the intent
+ * (createVaultIntent: the spoke deposit carries the full build amount, the
+ * intent's `inputAmount` is the build amount less the fee, and the fee goes
+ * to PARTNER_FEE.address). Use it where the app itself prices the swapped
+ * amount, as a limit order's minimum does (lib/limit-orders).
+ *
+ * Never hand it to a quote. `sodax.swaps.getQuote` (dapp-kit's useQuote)
+ * already deducts the same fee from the amount it is given before asking the
+ * solver, so the quote takes the PRE-fee build amount (usePourQuote) and its
+ * `quoted_amount` is already the output of exactly this swapped amount. Until
+ * 2026-10-01 the quote was asked for this amount, the fee came off twice in
+ * the quote only, and every quote and minimum ran 0.4% low.
  */
-export function quoteInputFor(buildAmount: bigint | undefined): bigint | undefined {
-  return buildAmount === undefined
+export function swapInputFor(buildAmount: bigint | undefined): bigint | undefined {
+  return buildAmount === undefined || buildAmount <= 0n
     ? undefined
     : adjustAmountByFee(buildAmount, PARTNER_FEE, "exact_input");
+}
+
+/**
+ * The amount a quote is asked for: the PRE-fee build amount, untouched,
+ * because the SDK's quote takes the fee off itself (see swapInputFor). Its
+ * own function so usePourQuote cannot drift from it and a test can pin the
+ * pair against the SDK.
+ */
+export function quoteAmountFor(buildAmount: bigint | undefined): bigint | undefined {
+  return buildAmount === undefined || buildAmount <= 0n ? undefined : buildAmount;
 }
 
 /** Apply slippage tolerance (in percent, e.g. 0.5) to a quoted output. */
@@ -106,11 +128,28 @@ export function applySlippage(quoted: bigint, slippagePct: number): bigint {
   return (quoted * (10_000n - bps)) / 10_000n;
 }
 
-/** Minimum acceptable output for a quote, at the app's slippage tolerance. */
-export function minReceivedFor(quoted: bigint | undefined): bigint | undefined {
+/**
+ * The slippage tolerance for an order signed on `srcChainKey`, in percent:
+ * a slow source (lib/pour-lifecycle slowSource, Bitcoin) gets its own wider
+ * one because its intent reaches the solver long after the quote; every
+ * other source gets the app's default.
+ */
+export function slippagePctFor(srcChainKey?: SpokeChainKey | null): number {
+  return (srcChainKey && slowSource(srcChainKey)?.slippagePct) || DEFAULT_SLIPPAGE_PCT;
+}
+
+/**
+ * Minimum acceptable output for a quote, at the tolerance for the signing
+ * chain (slippagePctFor). This is the intent's `minOutputAmount`, and the
+ * same value the drawer shows as the least the person gets.
+ */
+export function minReceivedFor(
+  quoted: bigint | undefined,
+  srcChainKey?: SpokeChainKey | null,
+): bigint | undefined {
   return quoted === undefined
     ? undefined
-    : applySlippage(quoted, DEFAULT_SLIPPAGE_PCT);
+    : applySlippage(quoted, slippagePctFor(srcChainKey));
 }
 
 export type DepositMax =

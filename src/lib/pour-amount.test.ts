@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { ChainKeys } from "@sodax/sdk";
+import { describe, expect, it, vi } from "vitest";
+import { ChainKeys, EvmSolverService, Sodax, SolverApiService } from "@sodax/sdk";
+import { PARTNER_FEE, sodaxConfig } from "./sodax-config";
 import {
   BTC_DUST_SATS,
   amountText,
@@ -10,8 +11,10 @@ import {
   depositMax,
   minPourUsd,
   minReceivedFor,
+  slippagePctFor,
   pourAmounts,
-  quoteInputFor,
+  quoteAmountFor,
+  swapInputFor,
   withdrawGate,
 } from "./pour-amount";
 
@@ -55,18 +58,95 @@ describe("pourAmounts", () => {
   });
 });
 
-describe("quoteInputFor (the fee pairing)", () => {
-  it("asks the quote for the post-fee amount", () => {
-    // PARTNER_FEE is 40 bps: the quote input must be under the build amount.
-    const build = 1_000_000n;
-    const quoteInput = quoteInputFor(build);
-    expect(quoteInput).toBeDefined();
-    expect(quoteInput!).toBeLessThan(build);
-    expect(quoteInput!).toBeGreaterThan(0n);
+describe("the partner fee, taken exactly once", () => {
+  // $100 of a 6-decimal stablecoin; PARTNER_FEE is 40 bps.
+  const build = 100_000_000n;
+  const sodax = new Sodax(sodaxConfig);
+
+  it("swaps the build amount less 0.4%", () => {
+    expect(swapInputFor(build)).toBe(99_600_000n);
+    expect(swapInputFor(undefined)).toBeUndefined();
+    expect(swapInputFor(0n)).toBeUndefined();
   });
 
-  it("passes undefined through", () => {
-    expect(quoteInputFor(undefined)).toBeUndefined();
+  it("asks the quote for the pre-fee amount, untouched", () => {
+    expect(quoteAmountFor(build)).toBe(build);
+    expect(quoteAmountFor(undefined)).toBeUndefined();
+    expect(quoteAmountFor(0n)).toBeUndefined();
+  });
+
+  it("the intent takes the same fee once: the full amount leaves, the rest is swapped", () => {
+    // What createVaultIntent builds on a spoke: the deposit carries
+    // `inputAmount` (the build amount), the intent swaps it less the fee.
+    const params = {
+      inputToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      outputToken: "0x2D5D2250EE426cA318efBd03ddf926B23c96f74B",
+      inputAmount: build,
+      minOutputAmount: 1n,
+      deadline: 0n,
+      allowPartialFill: false,
+      srcChainKey: ChainKeys.BASE_MAINNET,
+      dstChainKey: ChainKeys.SONIC_MAINNET,
+      srcAddress: "0x1111111111111111111111111111111111111111",
+      dstAddress: "0x2222222222222222222222222222222222222222",
+      solver: "0x0000000000000000000000000000000000000000",
+      data: "0x",
+    } as const;
+    const [, intent, feeAmount] = EvmSolverService.constructCreateIntentData(
+      params,
+      "0x3333333333333333333333333333333333333333",
+      sodax.config,
+      sodax.config.swapPartnerFee,
+    );
+    expect(sodax.config.swapPartnerFee).toEqual(PARTNER_FEE);
+    expect(feeAmount).toBe(400_000n);
+    expect(intent.inputAmount).toBe(swapInputFor(build));
+    expect(intent.minOutputAmount).toBe(1n);
+  });
+
+  it("the quote takes the pre-fee amount: the SDK deducts the fee itself", async () => {
+    // Read the amount the solver is really asked for, with no network.
+    const asked: bigint[] = [];
+    const spy = vi
+      .spyOn(SolverApiService, "getQuote")
+      .mockImplementation(async (payload) => {
+        asked.push(payload.amount);
+        return { ok: true, value: { quoted_amount: payload.amount * 2n } };
+      });
+    try {
+      const quote = await sodax.swaps.getQuote({
+        token_src: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        token_src_blockchain_id: ChainKeys.BASE_MAINNET,
+        token_dst: "0x2D5D2250EE426cA318efBd03ddf926B23c96f74B",
+        token_dst_blockchain_id: ChainKeys.SONIC_MAINNET,
+        amount: quoteAmountFor(build)!,
+        quote_type: "exact_input",
+      });
+      // Asked for exactly what the intent swaps: the fee came off once.
+      expect(asked).toEqual([swapInputFor(build)]);
+      expect(quote.ok && quote.value.quoted_amount).toBe(199_200_000n);
+      // The minimum sits the app's 0.5% under what the swapped amount buys.
+      expect(minReceivedFor(199_200_000n)).toBe(198_204_000n);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("slippage by signing chain", () => {
+  it("keeps 0.5% for fast sources and gives a Bitcoin signed order 1.5%", () => {
+    expect(slippagePctFor(ChainKeys.BASE_MAINNET)).toBe(0.5);
+    expect(slippagePctFor(ChainKeys.SOLANA_MAINNET)).toBe(0.5);
+    expect(slippagePctFor(ChainKeys.SONIC_MAINNET)).toBe(0.5);
+    expect(slippagePctFor(undefined)).toBe(0.5);
+    expect(slippagePctFor(ChainKeys.BITCOIN_MAINNET)).toBe(1.5);
+  });
+
+  it("sets the intent minimum from the signing chain's tolerance", () => {
+    expect(minReceivedFor(10_000n, ChainKeys.BASE_MAINNET)).toBe(9_950n);
+    expect(minReceivedFor(10_000n, ChainKeys.BITCOIN_MAINNET)).toBe(9_850n);
+    expect(minReceivedFor(10_000n)).toBe(9_950n);
+    expect(minReceivedFor(undefined, ChainKeys.BITCOIN_MAINNET)).toBeUndefined();
   });
 });
 

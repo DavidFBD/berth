@@ -3,17 +3,20 @@
  * drawers, limit orders, recurring plans, and the drafts the Assistant and
  * connected AIs prepare. One number, so no door promises what another refuses.
  *
- * Why $1.50. The solver refuses an order whose input, after the partner fee is
- * taken, is worth under one dollar by its own oracle: it answers "Input amount
- * too low". Measured read only on 2026-10-01 (POST /intent/quote, exact_input,
- * no signatures): USDC on Base, Solana, Arbitrum, Ethereum, Polygon and Sonic,
- * USDT on BSC, ETH on Base and SOL on Solana into NVDA, SPY, SGOV and TSLA
- * all refused a $1.00 order (worth $0.996 after the 0.4% fee) and all routed
- * from $1.006, SOL from $1.004; sells of NVDA, SGOV and TSLA into USDC on Base,
- * Solana and Arbitrum refused $1.00 and routed from $1.01. The floor is the
- * same on every chain and every pair because it is one rule on the hub. Half a
- * dollar over it leaves a third of room for a pay token's price to move while
- * a limit order waits, and for the app's price and the solver's to disagree.
+ * Why $1.50. The solver refuses an order whose swapped input is worth under
+ * about one dollar by its own oracle: it answers "Input amount too low".
+ * Measured read only on 2026-10-01 on the raw POST /intent/quote (exact_input,
+ * no signatures), which takes the amount exactly as given, with no partner
+ * fee (the SDK's swaps.getQuote deducts the fee before it calls that
+ * endpoint): USDC on Base, Solana, Arbitrum, Ethereum, Polygon and Sonic, USDT
+ * on BSC, ETH on Base and SOL on Solana into NVDA, SPY, SGOV and TSLA all
+ * refused $1.00 and all routed from $1.006, SOL from $1.004; sells of NVDA,
+ * SGOV and TSLA into USDC on Base, Solana and Arbitrum refused $1.00 and
+ * routed from $1.01. A Berth order swaps its amount less the 0.4% fee, so the
+ * smallest order that routes is about $1.01 to $1.02. The floor is the same on
+ * every chain and every pair because it is one rule on the hub. Half a dollar
+ * over it leaves a third of room for a pay token's price to move while a
+ * limit order waits, and for the app's price and the solver's to disagree.
  */
 export const MIN_ORDER_USD = 1.5;
 

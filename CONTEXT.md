@@ -65,8 +65,9 @@ a round that changes behaviour.
   leave the machine. A buy is a deposit build with a listing as the
   destination; a sell or a vault withdraw is a withdraw build.
 - **Amount pipeline** — how typed text becomes an order: parse (money or
-  token), the pre-fee/post-fee pairing (`quoteInputFor` is its only
-  implementation), slippage floor, gas-buffered Max, dust floor, and the CTA
+  token), the partner fee taken once (the build and the quote both get
+  the pre-fee amount, the SDK deducts it in each; `swapInputFor` is the
+  post-fee amount for the app's own pricing, as limit minimums), slippage floor, gas-buffered Max, dust floor, and the CTA
   **gate** (the single reason an order cannot go yet, including
   `noAccount` and `accountPending`). All in `lib/pour-amount`; quotes via
   `hooks/use-pour-quote`.

@@ -13,8 +13,11 @@ import { TOKEN_LISTINGS, toXToken } from "@/lib/listings";
 
 /**
  * Partner fee on every vault swap (deposit + withdraw intents). Percentage is
- * in basis points: 40 = 0.4%. The SDK deducts it from the input amount before
- * the swap, so quotes must run on the post-fee amount (adjustAmountByFee).
+ * in basis points: 40 = 0.4%. The SDK takes it once, from the input, when it
+ * builds the intent, and `sodax.swaps.getQuote` deducts the same fee before it
+ * asks the solver: quotes take the PRE-fee amount (lib/pour-amount
+ * swapInputFor is the post-fee one, for the app's own pricing). Both read the
+ * SDK's swap fee, which falls back to the global `fee` below.
  * The info drawer's disclosure line derives from this value — change it here
  * and the copy follows.
  */

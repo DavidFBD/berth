@@ -43,7 +43,7 @@ import {
   depositMax,
   minPourUsd,
   pourAmounts,
-  quoteInputFor,
+  swapInputFor,
 } from "@/lib/pour-amount";
 import {
   dayLabel,
@@ -278,8 +278,9 @@ export function DepositDrawer({
     setAmount((prefill.usd * money.rate).toFixed(money.fractionDigits));
   }
 
-  // The amount pipeline: what the text means, what the quote is asked for
-  // (post-fee), and the slippage floor all live in the pour-amount module.
+  // The amount pipeline: what the text means, the amount actually swapped
+  // after the fee, and the slippage floor all live in the pour-amount module.
+  // The quote takes the pre-fee amount; the SDK takes the fee off itself.
   const { moneyMode, buildAmount } = pourAmounts(
     amount,
     denom,
@@ -303,6 +304,7 @@ export function DepositDrawer({
       ? { address: listing.address, chainKey: ChainKeys.SONIC_MAINNET }
       : null,
     buildAmount,
+    signingChainKey: srcChainKey,
   });
 
   // A limit buy (lib/limit-orders): the price, not a quote, sets the
@@ -312,7 +314,7 @@ export function DepositDrawer({
   const marketPrice = listing?.kind === "stock" ? listingPrices.priceOf(listing) : undefined;
   const limit = useLimitDraft({ side: "buy", open, listing, marketPrice, prefill: prefill?.limit, force: devLimit });
   const limitTokenFits = limitTokenOk(token, isEvmChainKeyType(srcChainKey));
-  const swapInput = quoteInputFor(buildAmount);
+  const swapInput = swapInputFor(buildAmount);
   const limitMin =
     limit.active && token && listing
       ? limitMinOutput({

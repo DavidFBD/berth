@@ -76,7 +76,7 @@ function ceilDiv(numerator: bigint, denominator: bigint): bigint {
 /**
  * The minimum the intent may pay out for a limit price, in the OUTPUT
  * token's smallest units, from the amount that is actually swapped (the
- * input after the partner fee, lib/pour-amount quoteInputFor).
+ * input after the partner fee, lib/pour-amount swapInputFor).
  *
  *   buy:  input dollars / price   = shares   (input: the stablecoin, output: the listing)
  *   sell: input shares  x price   = dollars  (input: the listing, output: the stablecoin)

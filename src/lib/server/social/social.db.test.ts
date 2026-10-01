@@ -547,6 +547,12 @@ describe("the friends board", () => {
     const fans = [];
     for (let i = 0; i < 12; i++) fans.push(await person());
     for (const fan of fans) await setSalute(fan, "board_me", true);
+    // first_at defaults to the database clock; pin it inside the board's
+    // month (September, from `now`) so the count holds on any real date,
+    // the first of October included.
+    await sql.query(`update salutes set first_at = '2026-09-15T00:00:00Z' where giver_id = any($1::uuid[])`, [
+      fans.map((fan) => fan.id),
+    ]);
     const lateFan = await person();
     await setSalute(lateFan, "board_me", true);
     await sql.query(`update salutes set first_at = '2026-08-15T00:00:00Z' where giver_id = $1`, [lateFan.id]);

@@ -3,6 +3,7 @@ import { ChainKeys, SolverIntentStatusCode } from "@sodax/sdk";
 import { fingerprintOf, type ErrorReportContext } from "./error-report";
 import {
   BITCOIN_INTENT_DEADLINE_SECONDS,
+  BITCOIN_SLIPPAGE_PCT,
   BITCOIN_RELAY_WAIT_MS,
   dueOneShot,
   fillPhase,
@@ -304,6 +305,7 @@ describe("a payment from Bitcoin", () => {
     expect(slow).toEqual({
       relayWaitMs: BITCOIN_RELAY_WAIT_MS,
       intentDeadlineSeconds: BITCOIN_INTENT_DEADLINE_SECONDS,
+      slippagePct: BITCOIN_SLIPPAGE_PCT,
     });
     // Longer than the SDK's 120s relay wait and five minute intent window,
     // either of which a single Bitcoin block (ten minutes on average) beats.

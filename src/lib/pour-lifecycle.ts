@@ -70,6 +70,12 @@ export type SlowSource = {
   relayWaitMs: number;
   /** How long after hub time the intent stays fillable. */
   intentDeadlineSeconds: number;
+  /**
+   * Slippage tolerance for the minimum output, in percent. The quote is taken
+   * at signing and the intent reaches the solver up to the relay wait later,
+   * so the usual 0.5% would leave many fills short of the minimum.
+   */
+  slippagePct: number;
 };
 
 /**
@@ -88,12 +94,20 @@ export const BITCOIN_RELAY_WAIT_MS = 90 * 60_000;
  */
 export const BITCOIN_INTENT_DEADLINE_SECONDS = 3 * 60 * 60;
 
+/**
+ * 1.5%: three times the usual tolerance for a quote that may be ninety
+ * minutes old when the solver first sees the intent. Still a hard floor; a
+ * fill never pays less than the minimum the person was shown.
+ */
+export const BITCOIN_SLIPPAGE_PCT = 1.5;
+
 /** The slow-finality profile for a source chain, or null for a fast one. */
 export function slowSource(chainKey: SpokeChainKey): SlowSource | null {
   if (isBitcoinChainKeyType(chainKey)) {
     return {
       relayWaitMs: BITCOIN_RELAY_WAIT_MS,
       intentDeadlineSeconds: BITCOIN_INTENT_DEADLINE_SECONDS,
+      slippagePct: BITCOIN_SLIPPAGE_PCT,
     };
   }
   return null;
