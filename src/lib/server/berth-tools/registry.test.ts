@@ -465,7 +465,7 @@ describe("recurring buys", () => {
 
   it("refuses what the plan sheet would refuse", async () => {
     const tooMuch = await mcp.draft_recurring.handler({ listing: "SPY", usd_amount: 20_000, cadence: "weekly", weekday: "monday" }, mcpCtx(["berth.draft"]));
-    expect(tooMuch.content[0].text).toBe("A recurring buy is $1.00 to $10,000.00 each time.");
+    expect(tooMuch.content[0].text).toBe("A recurring buy is $1.50 to $10,000.00 each time.");
     const noDay = await mcp.draft_recurring.handler({ listing: "SPY", usd_amount: 20, cadence: "weekly" }, mcpCtx(["berth.draft"]));
     expect(noDay.content[0].text).toBe("A weekly plan needs a weekday.");
     const cash = await mcp.draft_recurring.handler({ listing: "SGOV", usd_amount: 20, cadence: "monthly", month_day: 1 }, mcpCtx(["berth.draft"]));

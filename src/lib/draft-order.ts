@@ -1,5 +1,5 @@
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
-import { MIN_POUR_USD } from "@/lib/pour-amount";
+import { MIN_ORDER_LABEL, MIN_ORDER_USD } from "@/lib/order-minimum";
 import { THROUGH_MARKET_PCT } from "@/lib/limit-orders";
 
 /**
@@ -168,8 +168,8 @@ export function draftOrder(input: DraftInput, context: DraftContext): Draft {
 
   if (hasUsd) {
     const usd = Number(input.usd);
-    if (!Number.isFinite(usd) || usd < MIN_POUR_USD) {
-      return { ok: false, reason: `The smallest order Berth takes is $${MIN_POUR_USD}.` };
+    if (!Number.isFinite(usd) || usd < MIN_ORDER_USD) {
+      return { ok: false, reason: `The smallest order Berth takes is ${MIN_ORDER_LABEL}.` };
     }
     if (usd > MAX_DRAFT_USD) return { ok: false, reason: "That amount is larger than a single draft may be." };
     if (input.side === "sell") {
@@ -207,8 +207,8 @@ export function draftOrder(input: DraftInput, context: DraftContext): Draft {
     };
   }
   const approxUsd = context.price !== undefined ? quantity * context.price : undefined;
-  if (approxUsd !== undefined && approxUsd < MIN_POUR_USD) {
-    return { ok: false, reason: `That is worth under $${MIN_POUR_USD}, the smallest order Berth takes.` };
+  if (approxUsd !== undefined && approxUsd < MIN_ORDER_USD) {
+    return { ok: false, reason: `That is worth under ${MIN_ORDER_LABEL}, the smallest order Berth takes.` };
   }
   url.searchParams.set("qty", trimNumber(Math.min(quantity, context.held), 8));
   return { ok: true, listing, side: "sell", quantity: Number(trimNumber(quantity, 8)), approxUsd, ...limit, url: url.toString() };

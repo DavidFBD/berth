@@ -58,15 +58,17 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
    kept only when it reports something. "What moved" links a large price move
    to the post that reported it. A calm one-line nudge when there is news
    about something you own.
-9. **Buy and sell when US markets are closed, weekends included.** Orders fill outside
+9. **Buy and sell any day, weekends included.** Orders fill outside
    the New York session, through the night and early morning between
    weekdays, usually in under half a minute. Evidence: every stock token fill
    SODAX has recorded (11, 8 of them Berth's, 2026-09-11 to 09-29) landed
    between 01:08 and 07:57 New York on a weekday
    (`reports/weekend-checks.md`). Weekends and US market holidays: David
    confirmed on 2026-09-30 that buying and selling work then too; the prices
-   underneath hold flat from Friday 20:00 to Sunday 20:00 New York, and the
-   app says so. The board says calmly when the US market itself opens.
+   underneath hold flat from Friday 20:00 to Sunday 20:00 New York. Since
+   2026-10-01 the app says nothing about US market hours (David: the exchange
+   closing is not a thing on Berth); the market calendar stays internal, for
+   marks, charts and the X schedule.
 10. **Profiles, Salutes and friends.** Pick a username to get a one-screen
     profile (avatar, rank, XP, Salutes). Find a friend by their exact
     username (needs an email on the account), salute people, add friends, and
@@ -138,10 +140,13 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
   "interest account", "savings" or a fixed percentage.
 - Tokenized stocks are **tokens that track a share**, issued by third parties.
   Do not call them the shares themselves.
-- Outside market hours, say **when US markets are closed, weekends
-  included**. Avoid "24/7" and "around the clock" in money claims: prices
-  hold at the last close over the weekend, so never imply live weekend
-  prices.
+- **Do not talk about market hours.** No "the US market is closed", no
+  "opens at", no session times in the app, the Assistant or emails: on Berth
+  buying and selling simply work, any day. The only exceptions are honest
+  price facts (a chart counts the days the market was open; a weekly email
+  says "as of the close on Friday"). Still avoid "24/7" and "around the
+  clock" in money claims: prices hold at the last close over the weekend, so
+  never imply live weekend prices.
 - Keys are **exportable from Settings, Advanced**, not from the account
   drawer.
 - Not available in the United States or where local law or sanctions forbid

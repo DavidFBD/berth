@@ -28,6 +28,7 @@ import {
 import { liveListingPrices } from "@/lib/server/portfolio";
 import { loadPortfolioHistory } from "@/lib/server/portfolio-view";
 import { ago, clip, day, moment, named, pct, units, usd } from "@/lib/server/mcp/text";
+import { MIN_ORDER_USD } from "@/lib/order-minimum";
 import { friendsBoard } from "@/lib/server/social/board";
 import { readCardOf } from "@/lib/server/social/cards";
 import { listFriends } from "@/lib/server/social/friends";
@@ -549,11 +550,11 @@ const draftOrderTool = defineTool({
   name: "draft_order",
   title: "Draft a buy or sell",
   description:
-    "Prepare a buy or a sell for the person to approve in Berth. Returns a link that opens Berth's order screen with the listing and amount filled in, and a plain summary. Nothing is placed, reserved or sent: the person checks it, chooses what to pay with, and signs in Berth, or closes it. Give usd_amount for a buy; for a sell give usd_amount or quantity, never more than the account holds. The person opens the link to review it in Berth. Where the account has limit orders switched on, order_type \"limit\" with limit_price drafts an order that waits for that price instead of filling now, until cancelled or until expires.",
+    `Prepare a buy or a sell for the person to approve in Berth. Returns a link that opens Berth's order screen with the listing and amount filled in, and a plain summary. Nothing is placed, reserved or sent: the person checks it, chooses what to pay with, and signs in Berth, or closes it. Give usd_amount for a buy; for a sell give usd_amount or quantity, never more than the account holds. The smallest order, either way, is ${usd(MIN_ORDER_USD)}. The person opens the link to review it in Berth. Where the account has limit orders switched on, order_type "limit" with limit_price drafts an order that waits for that price instead of filling now, until cancelled or until expires.`,
   input: z.object({
     listing: LISTING_ARG,
     side: z.enum(["buy", "sell"]).describe("buy to spend dollars on the listing, sell to turn some of it back into dollars."),
-    usd_amount: z.number().positive().optional().describe("Dollars to spend (buy) or to receive before fees (sell)."),
+    usd_amount: z.number().positive().optional().describe(`Dollars to spend (buy) or to receive before fees (sell), at least ${usd(MIN_ORDER_USD)}.`),
     quantity: z.number().positive().optional().describe("Units of the listing to sell. Sells only."),
     order_type: z
       .enum(["market", "limit"])

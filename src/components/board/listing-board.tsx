@@ -9,7 +9,6 @@ import { TickerTile } from "@/components/board/holdings-list";
 import { JevMark } from "@/components/jev-mark";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Panel, SectionHeading } from "@/components/ui/panel";
-import { MarketClosedLine } from "@/components/market/market-closed-line";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
@@ -277,7 +276,6 @@ export function ListingBoard({
         }
         className="pb-0"
       />
-      <MarketClosedLine className="px-[18px] pt-1 pb-2.5 lg:px-6" />
       {yours.length > 0 && (
         <>
           <GroupLabel>{copy.boardYours}</GroupLabel>

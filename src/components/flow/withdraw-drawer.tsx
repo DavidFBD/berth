@@ -1,6 +1,5 @@
 "use client";
 
-import { MarketClosedLine } from "@/components/market/market-closed-line";
 import { useState } from "react";
 import { formatUnits } from "viem";
 import { AnimatePresence, motion } from "motion/react";
@@ -414,7 +413,7 @@ export function WithdrawDrawer({
     usingCustomRecipient: usingCustom,
     buildAmount,
     availableShares,
-    belowMinimum: tooSmall,
+    belowMinimum: tooSmall || quote.tooSmall,
     isWrongChain,
     noRoute: quote.noRoute,
     belowDust: dustBlocked,
@@ -537,7 +536,6 @@ export function WithdrawDrawer({
             <DrawerDescription>
               {isSell ? copy.sellSub : copy.withdrawSub}
             </DrawerDescription>
-            {listing?.kind === "stock" && <MarketClosedLine className="pt-1" />}
           </DrawerHeader>
 
           {/* Same three-act wash as the deposit drawer. */}
@@ -865,7 +863,7 @@ export function WithdrawDrawer({
                 {/* Live quote */}
                 {dstChainKey && outputToken && buildAmount && !limit.active ? (
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
-                    {tooSmall ? (
+                    {tooSmall || quote.tooSmall ? (
                       <span className="text-destructive">
                         {copy.smallestOrder(smallestOrderLabel)}
                       </span>

@@ -2,6 +2,7 @@
 
 import { useQuote } from "@sodax/dapp-kit";
 import type { SpokeChainKey } from "@sodax/sdk";
+import { isTooSmallQuoteError } from "@/lib/order-minimum";
 import { minReceivedFor, quoteInputFor } from "@/lib/pour-amount";
 
 export type PourQuote = {
@@ -11,6 +12,12 @@ export type PourQuote = {
   minOut: bigint | undefined;
   /** The solver answered and can't route this pair. */
   noRoute: boolean;
+  /**
+   * The solver refused it as too small ("Input amount too low"): the order sits
+   * under the solver's own floor although the app's priced it over Berth's.
+   * Worded as the smallest order, never as a missing route.
+   */
+  tooSmall: boolean;
 };
 
 /**
@@ -47,9 +54,12 @@ export function usePourQuote(args: {
   const quoted = quoteQuery.data?.ok
     ? quoteQuery.data.value.quoted_amount
     : undefined;
+  const failed = quoteQuery.data && !quoteQuery.data.ok ? quoteQuery.data : undefined;
+  const tooSmall = failed ? isTooSmallQuoteError(failed.error) : false;
   return {
     quoted,
     minOut: minReceivedFor(quoted),
-    noRoute: quoteQuery.data ? !quoteQuery.data.ok : false,
+    noRoute: failed !== undefined && !tooSmall,
+    tooSmall,
   };
 }

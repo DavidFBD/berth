@@ -133,24 +133,24 @@ describe("belowBtcDust", () => {
 });
 
 describe("the pour floor", () => {
-  it("is one dollar in USD", () => {
-    expect(minPourUsd(1)).toBe(1);
-    expect(belowMinimum(0.99)).toBe(true);
-    expect(belowMinimum(1)).toBe(false);
+  it("is a dollar fifty in USD", () => {
+    expect(minPourUsd(1)).toBe(1.5);
+    expect(belowMinimum(1.49)).toBe(true);
+    expect(belowMinimum(1.5)).toBe(false);
   });
 
-  it("rounds up to a whole unit of the display currency", () => {
-    // €0.86 per dollar: the floor becomes €1, which is $1.163.
-    expect(minPourUsd(0.86)).toBeCloseTo(1 / 0.86);
-    expect(belowMinimum(1.1, 0.86)).toBe(true);
-    expect(belowMinimum(1.2, 0.86)).toBe(false);
-    // ¥150 per dollar: ¥150 is exactly a dollar.
-    expect(minPourUsd(150)).toBe(1);
+  it("rounds up to a half unit of the display currency", () => {
+    // €0.86 per dollar: $1.50 is €1.29, so the floor becomes €1.50, which is $1.744.
+    expect(minPourUsd(0.86)).toBeCloseTo(1.5 / 0.86);
+    expect(belowMinimum(1.7, 0.86)).toBe(true);
+    expect(belowMinimum(1.75, 0.86)).toBe(false);
+    // ¥150 per dollar: ¥225 is exactly a dollar fifty.
+    expect(minPourUsd(150)).toBe(1.5);
   });
 
   it("treats an unsettled rate as USD", () => {
-    expect(minPourUsd(0)).toBe(1);
-    expect(minPourUsd(Number.NaN)).toBe(1);
+    expect(minPourUsd(0)).toBe(1.5);
+    expect(minPourUsd(Number.NaN)).toBe(1.5);
   });
 
   it("lets unpriced pours through to the solver", () => {

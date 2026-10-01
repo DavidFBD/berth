@@ -20,7 +20,6 @@ import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useMounted } from "@/hooks/use-mounted";
-import { MarketClockContext } from "@/hooks/use-market-closed";
 import { HOME_CHAIN } from "@/lib/account";
 import { getDepositTokens } from "@/lib/chains";
 import type { EmbeddedHoldingsResult } from "@/hooks/use-embedded-holdings";
@@ -60,11 +59,6 @@ import {
  *                                       not available (lib/availability): the
  *                                       buy drawer is the soft landing, the
  *                                       home scenes carry the banner
- *   /dev/board?open=NVDA&now=2026-10-03T12:00:00Z
- *                                       any of the above with the market
- *                                       clock stopped at that instant, so
- *                                       the closed line can be reviewed
- *                                       on a weekday (hooks/use-market-closed)
  */
 export default function BoardGalleryPage() {
   if (process.env.NODE_ENV === "production") notFound();
@@ -78,18 +72,6 @@ export default function BoardGalleryPage() {
 }
 
 function Galleries() {
-  const params = useSearchParams();
-  const nowParam = params.get("now");
-  const frozen = nowParam ? new Date(nowParam) : null;
-  const [clock] = useState(() => (frozen && !Number.isNaN(frozen.getTime()) ? frozen : null));
-  return (
-    <MarketClockContext.Provider value={clock}>
-      <GalleryScenes />
-    </MarketClockContext.Provider>
-  );
-}
-
-function GalleryScenes() {
   const params = useSearchParams();
   const home = params.get("home");
   if (home === "held" || home === "new" || home === "walletEmail") {

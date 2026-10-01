@@ -1,7 +1,6 @@
 "use client";
 
 import { NotHereDrawer, useAvailability } from "@/components/availability/availability";
-import { MarketClosedLine } from "@/components/market/market-closed-line";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
@@ -430,7 +429,7 @@ export function DepositDrawer({
     address,
     buildAmount,
     balance,
-    belowMinimum: tooSmall,
+    belowMinimum: tooSmall || quote.tooSmall,
     isWrongChain,
     noRoute: quote.noRoute,
     // A limit order needs no quote to be placed: its price is the minimum.
@@ -552,7 +551,6 @@ export function DepositDrawer({
                 : copy.orderTitleFallback}
             </DrawerTitle>
             <DrawerDescription>{copy.buySub}</DrawerDescription>
-            {listing?.kind === "stock" && <MarketClosedLine className="pt-1" />}
           </DrawerHeader>
 
           {/* The three acts (form → working → settling) hand off with a soft
@@ -827,7 +825,7 @@ export function DepositDrawer({
                 {/* Live quote */}
                 {token && buildAmount && !limit.active ? (
                   <div className="flex flex-col gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
-                    {tooSmall ? (
+                    {tooSmall || quote.tooSmall ? (
                       <span className="text-destructive">
                         {copy.smallestOrder(smallestOrderLabel)}
                       </span>

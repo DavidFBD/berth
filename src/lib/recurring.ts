@@ -1,4 +1,5 @@
 import { COPY } from "@/lib/copy";
+import { MIN_ORDER_USD } from "@/lib/order-minimum";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 
 /**
@@ -30,7 +31,8 @@ export const PLAN_RESUME_MS = 30 * 60_000;
 export function resumeLeft(since: number, now: number): number {
   return Math.max(0, since + PLAN_RESUME_MS - now);
 }
-export const MIN_PLAN_USD = 1;
+/** A plan buys the same smallest order as everything else (lib/order-minimum). */
+export const MIN_PLAN_USD = MIN_ORDER_USD;
 export const MAX_PLAN_USD = 10_000;
 /** A run nobody opened or signed is skipped this many days after it came due. */
 export const SKIP_AFTER_DAYS = 3;

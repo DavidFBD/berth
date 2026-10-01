@@ -2,6 +2,7 @@ import { formatUnits } from "viem";
 import { ChainKeys, adjustAmountByFee, type SpokeChainKey } from "@sodax/sdk";
 import { DEFAULT_SLIPPAGE_PCT, PARTNER_FEE } from "@/lib/sodax-config";
 import { parseAmount, usdToTokenAmount } from "@/lib/format";
+import { MIN_ORDER_USD } from "@/lib/order-minimum";
 
 /**
  * The amount pipeline for a pour, either direction: what the typed text
@@ -18,24 +19,21 @@ export const SHARE_DECIMALS = 18;
 export const BTC_DUST_SATS = 546n;
 
 /**
- * The smallest pour the solver will price, in USD. Under about half a dollar
- * the quote comes back "No path was found" for pairs that route perfectly
- * well (measured 2026-09-16 with USDC from Base: lsodaWEETH priced from
- * $0.20, lsodaJITOSOL from $0.50 to $0.60, and the floor moved between runs),
- * and the app would have to word that as "no route". One dollar clears every
- * floor we saw with room for the fee and a price move, and it is the number
- * SODAX themselves give for it.
+ * The smallest pour, in USD: the one shared minimum (lib/order-minimum, where
+ * the measurements behind it live). Under it the solver answers "Input amount
+ * too low", which the app would otherwise have to word as "no route".
  */
-export const MIN_POUR_USD = 1;
+export const MIN_POUR_USD = MIN_ORDER_USD;
 
 /**
- * The floor in USD, rounded up to a whole unit of the user's display currency
- * (`rate` = display units per USD) so the label can say "€1" and mean it. A
- * rate that hasn't settled (0, NaN) counts as USD.
+ * The floor in USD, rounded up to a half unit of the user's display currency
+ * (`rate` = display units per USD) so the label can say "€1.50" and mean it.
+ * A rate that hasn't settled (0, NaN) counts as USD.
  */
 export function minPourUsd(rate = 1): number {
   const fx = rate > 0 && Number.isFinite(rate) ? rate : 1;
-  return Math.ceil(MIN_POUR_USD * fx) / fx;
+  // The epsilon keeps float noise (1.5 × 150 = 225.00000000000003) from adding a half unit.
+  return Math.ceil(MIN_POUR_USD * fx * 2 - 1e-9) / 2 / fx;
 }
 
 /**

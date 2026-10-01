@@ -25,7 +25,7 @@ export const maxDuration = 30;
  * order. One POST, an action each:
  *
  *   { action: "list" }                       plans, the runs ready now, and whether dip plans are open
- *   { action: "create", plan }               at most ten plans, $1 to $10,000
+ *   { action: "create", plan }               at most ten plans, MIN_PLAN_USD ($1.50) to $10,000
  *   { action: "update", planId, plan }
  *   { action: "pause" | "resume", planId }
  *   { action: "delete", planId }

@@ -15,6 +15,7 @@
 import type { Unlock } from "@/lib/unlocks";
 import type { BerthToolName } from "@/lib/berth-tool-names";
 import { REWARD_REASONS } from "@/lib/xp";
+import { MIN_ORDER_LABEL } from "@/lib/order-minimum";
 import type { ConsentParty } from "@/lib/assistant-party";
 import type { HandleRefusal } from "@/lib/handle";
 import type { Relation, ReportReason } from "@/lib/social-types";
@@ -237,16 +238,6 @@ export type Copy = {
   /* — the board: stocks and funds on offer — */
   boardTitle: string;
   boardHint: string;
-  /**
-   * Beside the board and in the buy and sell drawers, only while the US
-   * market is shut. `day` is "today", "tomorrow" or a weekday, `time` the
-   * open in the viewer's own zone. Buying and selling carry on whenever the
-   * US market is shut (David confirmed weekends on 2026-09-30). Over a weekend
-   * or holiday the price underneath holds at the last close until Sunday
-   * 20:00 New York, which marketShutLine says plainly.
-   */
-  marketClosedLine: (day: string, time: string) => string;
-  marketShutLine: (day: string, time: string) => string;
   /** `amount` arrives pre-formatted: "0.0089 NVDA ≈ €1.80". */
   boardYouHold: (amount: string) => string;
   /**
@@ -1713,10 +1704,6 @@ export const COPY: Copy = {
 
   boardTitle: "Stocks and funds",
   boardHint: "Robinhood Stock Tokens. Choose one to buy.",
-  marketClosedLine: (day, time) =>
-    `You can still buy and sell. The US market itself opens ${day} ${time} your time, and until then prices can move more than usual.`,
-  marketShutLine: (day, time) =>
-    `You can still buy and sell. The US market itself opens ${day} ${time} your time, and until then prices mostly hold at the last close.`,
   boardYouHold: (amount) => `You hold ${amount}`,
   boardPerformanceNote: (days) =>
     `The figure under the line is the last ${days} days. The figure by the price is the day. Only days the market was open are counted.`,
@@ -1793,7 +1780,7 @@ export const COPY: Copy = {
   newsUpdated: (when) => `Updated ${when}`,
   newsUpToDate: (when) => `Up to date, updated ${when}`,
   postsHint:
-    "What the companies and the market desks are posting on X. Tapping one opens the post. New posts come in a few times a day, most often while the US market is open. You can also ask for them. The posts you have not seen yet are marked New.",
+    "What the companies and the market desks are posting on X. Tapping one opens the post. New posts come in a few times a day. You can also ask for them. The posts you have not seen yet are marked New.",
   postsEmpty: "The accounts we follow have been quiet.",
   postsEmptyFor: (name) => `Nothing about ${name} on X right now.`,
   postsHandle: (handle) => `@${handle},`,
@@ -2446,7 +2433,7 @@ export const COPY: Copy = {
     save: "Save",
     saved: (day) => `Saved. The first reminder is on ${day}.`,
     errors: {
-      amount: "Between $1 and $10,000 each time.",
+      amount: `Between ${MIN_ORDER_LABEL} and $10,000 each time.`,
       too_many: "Ten recurring buys is the most an account can have.",
       failed: "That did not save. Try again.",
       day: "Pick a day.",
