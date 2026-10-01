@@ -21,6 +21,9 @@
  *                                               # of scroll-linked motion mid-scroll)
  *   pnpm shot --probe "document.querySelector('video').paused"
  *                                               # print a page expression after the shutter
+ *   pnpm shot --cookie "berth-staff=<token>"    # a cookie for the page's origin, before
+ *                                               # first load (the staff area's session;
+ *                                               # repeatable)
  *
  * The last two exist for state a browser keeps between visits (the posts
  * column's "new to you" mark): seed it, shoot, reload, shoot again.
@@ -124,6 +127,15 @@ if (storageSeed) {
       }
     } catch {}
   }, storageSeed);
+}
+const cookies = argAll("cookie");
+if (cookies.length && origin) {
+  await ctx.addCookies(
+    cookies.map((pair) => {
+      const at = pair.indexOf("=");
+      return { name: pair.slice(0, at), value: pair.slice(at + 1), url: origin, sameSite: "Strict", httpOnly: true };
+    }),
+  );
 }
 const page = await ctx.newPage();
 await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });

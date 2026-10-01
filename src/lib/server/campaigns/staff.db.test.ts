@@ -4,6 +4,8 @@ import { setSqlClient, type SqlClient } from "../db";
 import { makeTestDb } from "../pglite-test-db";
 import { getOrCreateUser, type UserRow } from "../accounts";
 import { requireFreshStaff, requireStaff, staffAdminIds } from "../staff-auth";
+import { createStaffSession } from "../staff-sessions";
+import { mintStaffCookie, staffCookieName, staffSessionKey } from "../staff-session";
 import { STOCK_LISTINGS } from "@/lib/listings";
 import { attributeCampaign, claimById } from "./store";
 import { advanceClaim, runCampaignStep } from "./eligibility";
@@ -40,6 +42,7 @@ let sql: SqlClient;
 let close: () => Promise<void>;
 
 beforeAll(async () => {
+  process.env.STAFF_SESSION_SECRET = "c".repeat(48);
   const db = await makeTestDb();
   sql = db.sql;
   close = db.close;
@@ -65,12 +68,19 @@ async function person({ email = true, did }: { email?: boolean; did?: string } =
   return { ...user, email: email ? `s${seq}@example.com` : null };
 }
 
-function request(authorization?: string, body: Record<string, unknown> = { action: "queue" }): NextRequest {
+/** A request carrying a staff session cookie (the staff area's one session system), or none. */
+function request(cookie?: string, body: Record<string, unknown> = { action: "queue" }, origin: string | null = "http://localhost"): NextRequest {
   return new NextRequest("http://localhost/api/staff/campaigns", {
     method: "POST",
-    headers: { "content-type": "application/json", ...(authorization ? { authorization } : {}) },
+    headers: { "content-type": "application/json", host: "localhost", ...(origin ? { origin } : {}), ...(cookie ? { cookie } : {}) },
     body: JSON.stringify(body),
   });
+}
+
+/** A live staff session for this account, its email code entered `minutesAgo` (null: never), as a Cookie header. */
+async function sessionCookie(userId: string, minutesAgo: number | null = 1): Promise<string> {
+  const session = await createStaffSession(userId, minutesAgo === null ? null : Date.now() - minutesAgo * 60_000, Date.now() + 3_600_000);
+  return `${staffCookieName()}=${await mintStaffCookie({ sessionId: session.id, expiresAt: session.expiresAt }, staffSessionKey()!)}`;
 }
 
 async function audits(action: string): Promise<{ target: string | null; detail: Record<string, unknown> }[]> {
@@ -88,54 +98,47 @@ describe("requireStaff", () => {
     expect(staffAdminIds({}).size).toBe(0);
   });
 
-  it("lets in only a signed in account on the allowlist, with one 404 for everyone else, and keeps the probes", async () => {
+  it("lets in only a live staff session of an account on the allowlist, with one 404 for everyone else", async () => {
     const staff = await person({ did: "did:privy:the-admin" });
     const sodax = await person({ did: "did:privy:someone-at-sodax" });
     await sql.query(`update users set email = 'someone@sodax.com' where id = $1`, [sodax.id]);
-    expect((await requireStaff(request("Bearer did:privy:the-admin"), "admin", {})).ok).toBe(false);
+    const cookie = await sessionCookie(staff.id);
+    expect((await requireStaff(request(cookie), "admin", {})).ok).toBe(false);
     const env = { STAFF_ADMIN_IDS: staff.id };
-    const ok = await requireStaff(request("Bearer did:privy:the-admin"), "admin", env);
+    process.env.STAFF_ADMIN_IDS = staff.id;
+    const ok = await requireStaff(request(cookie), "admin", env);
     expect(ok).toEqual({ ok: true, staff: { userId: staff.id, role: "admin" } });
-    for (const authorization of [undefined, "Bearer did:privy:someone-at-sodax", "Bearer did:privy:nobody-yet", "Bearer broken"]) {
-      const gate = await requireStaff(request(authorization), "admin", env);
+    for (const header of [undefined, await sessionCookie(sodax.id), `${staffCookieName()}=forged`]) {
+      const gate = await requireStaff(request(header), "admin", env);
       expect(gate.ok).toBe(false);
       if (!gate.ok) expect(gate.response.status).toBe(404);
     }
-    expect((await sql.query(`select 1 from users where privy_did = 'did:privy:nobody-yet'`)) as unknown[]).toHaveLength(0);
-    // The signed in non staff account asking was kept; the anonymous ones leave nothing.
-    const denied = (await sql.query(`select staff_user_id, target from staff_audit where action = 'staff.denied'`)) as { staff_user_id: string; target: string }[];
-    expect(denied).toEqual([
-      { staff_user_id: staff.id, target: "/api/staff/campaigns" },
-      { staff_user_id: sodax.id, target: "/api/staff/campaigns" },
-    ]);
+    // A Privy token or a wallet session alone is never a staff pass.
+    const bearer = new NextRequest("http://localhost/api/staff/campaigns", { method: "POST", headers: { authorization: "Bearer did:privy:the-admin", "x-wallet-session": "x" } });
+    expect((await requireStaff(bearer, "admin", env)).ok).toBe(false);
   });
 
   it("does not pass an id merged into another account to the survivor", async () => {
     const absorbed = await person({ did: "did:privy:absorbed-admin" });
     const survivor = await person();
+    const cookie = await sessionCookie(absorbed.id);
     await sql.query(`update users set retired_into = $1, privy_did = 'merged:' || privy_did, wallet_address = null where id = $2`, [
       survivor.id,
       absorbed.id,
     ]);
-    const gate = await requireStaff(request("Bearer did:privy:absorbed-admin"), "admin", { STAFF_ADMIN_IDS: absorbed.id });
+    const gate = await requireStaff(request(cookie), "admin", { STAFF_ADMIN_IDS: absorbed.id });
     expect(gate.ok).toBe(false);
   });
 
-  it("asks Privy for a fresh email code on the account's own email for the acts that matter", async () => {
+  it("is fresh only with an email code from the last 15 minutes, the staff area's one rule", async () => {
     const staff = await person({ did: "did:privy:fresh-admin" });
     const env = { STAFF_ADMIN_IDS: staff.id };
-    const now = Date.now();
-    const proof = (address: string, minutesAgo: number | null) => async () => [{ address, at: minutesAgo === null ? null : now - minutesAgo * 60_000 }];
-    const ask = (proofs: Parameters<typeof requireFreshStaff>[4]) => requireFreshStaff(request("Bearer did:privy:fresh-admin"), "admin", env, now, proofs);
-    expect((await ask(proof(staff.email!, 2))).ok).toBe(true);
-    expect(await ask(proof(staff.email!, 20))).toMatchObject({ ok: false, stale: true });
-    expect(await ask(proof(staff.email!, null))).toMatchObject({ ok: false, stale: true });
-    // A fresh code to some other address of the Privy user is not this account's email.
-    expect(await ask(proof("other@example.com", 1))).toMatchObject({ ok: false, stale: true });
-    // Privy not answering: stale, never let through.
-    expect(await ask(async () => null)).toMatchObject({ ok: false, stale: true });
+    process.env.STAFF_ADMIN_IDS = staff.id;
+    expect((await requireFreshStaff(request(await sessionCookie(staff.id, 2)), "admin", env)).ok).toBe(true);
+    expect(await requireFreshStaff(request(await sessionCookie(staff.id, 20)), "admin", env)).toMatchObject({ ok: false, stale: true });
+    expect(await requireFreshStaff(request(await sessionCookie(staff.id, null)), "admin", env)).toMatchObject({ ok: false, stale: true });
     // Not staff at all: the plain 404, never "stale".
-    const stranger = await requireFreshStaff(request("Bearer did:privy:someone-at-sodax"), "admin", env, now, proof("x@example.com", 1));
+    const stranger = await requireFreshStaff(request(), "admin", env);
     expect(stranger.ok).toBe(false);
     expect("stale" in stranger).toBe(false);
   });
@@ -147,7 +150,7 @@ describe("requireStaff", () => {
     vi.stubGlobal("fetch", async () => new Response(page, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } }));
     try {
       for (const response of [
-        await route.POST(request("Bearer did:privy:nobody-at-all", { action: "create", campaign: { code: "sneaky" } })),
+        await route.POST(request(`${staffCookieName()}=forged`, { action: "create", campaign: { code: "sneaky" } })),
         await route.GET(request()),
         await route.DELETE(request()),
       ]) {
@@ -165,14 +168,34 @@ describe("requireStaff", () => {
     const staff = await person({ did: "did:privy:route-admin" });
     process.env.STAFF_ADMIN_IDS = staff.id;
     const { POST } = await import("@/app/api/staff/campaigns/route");
-    const response = await POST(request("Bearer did:privy:route-admin"));
+    const cookie = await sessionCookie(staff.id, 30);
+    const response = await POST(request(cookie));
     expect(response.status).toBe(200);
     const body = (await response.json()) as { campaigns: unknown[]; claims: unknown[] };
     expect(Array.isArray(body.campaigns)).toBe(true);
     expect((await audits("campaign.queue_view")).length).toBeGreaterThanOrEqual(1);
-    const stale = await POST(request("Bearer did:privy:route-admin", { action: "approve", claimId: "00000000-0000-4000-8000-000000000000" }));
-    expect(stale.status).toBe(403);
-    expect(await stale.json()).toEqual({ error: "fresh_session" });
+    const stale = await POST(request(cookie, { action: "approve", claimId: "00000000-0000-4000-8000-000000000000" }));
+    expect(stale.status).toBe(401);
+    expect(await stale.json()).toEqual({ error: "stale" });
+  });
+
+  it("refuses a write from another origin or none, even with a fresh staff session, and writes nothing", async () => {
+    const staff = await person({ did: "did:privy:origin-admin" });
+    process.env.STAFF_ADMIN_IDS = staff.id;
+    const cookie = await sessionCookie(staff.id, 1);
+    const { POST } = await import("@/app/api/staff/campaigns/route");
+    const page = "<html>not here</html>";
+    vi.stubGlobal("fetch", async () => new Response(page, { status: 404, headers: { "content-type": "text/html" } }));
+    try {
+      for (const origin of ["https://evil.berthmarkets.com", null]) {
+        const response = await POST(request(cookie, { action: "create", campaign: { code: "cross-site" } }, origin));
+        expect(response.status).toBe(404);
+        expect(response.headers.get("content-type")).toContain("text/html");
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect((await sql.query(`select 1 from campaigns where code = 'cross-site'`)) as unknown[]).toHaveLength(0);
   });
 });
 
@@ -273,6 +296,23 @@ describe("a claim from qualified to paid", () => {
     expect(claim).toMatchObject({ state: "approved", payout_address: user.wallet_address, payout_chain: "base", approved_by: staff.id });
     expect((await audits("claim.approve")).filter((entry) => entry.target === claimId).map((entry) => entry.detail.outcome)).toEqual(["done"]);
     expect(await approveClaim(staff.id, claimId, held)).toEqual({ ok: false, refusal: "wrong_state" });
+  });
+
+  it("refuses to approve or pay a claim of an account staff marked not eligible", async () => {
+    const staff = await person();
+    const { user, claimId } = await qualified("marked-later");
+    await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [user.id]);
+    expect(await approveClaim(staff.id, claimId, held)).toMatchObject({ ok: false, refusal: "staff_ineligible" });
+    await sql.query(`update users set campaign_ineligible_at = null where id = $1`, [user.id]);
+    expect((await approveClaim(staff.id, claimId, held)).ok).toBe(true);
+    await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [user.id]);
+    expect(await markClaimPaid(staff.id, claimId, `0x${"ab".repeat(32)}`)).toMatchObject({ ok: false, refusal: "staff_ineligible" });
+    // The queue says so on the approved claim, before anyone pays by hand.
+    const flagged = (await staffQueue()).claims.find((claim) => claim.id === claimId)!;
+    expect(flagged).toMatchObject({ state: "approved" });
+    expect(flagged.staffIneligibleAt).not.toBeNull();
+    await sql.query(`update users set campaign_ineligible_at = null where id = $1`, [user.id]);
+    expect((await staffQueue()).claims.find((claim) => claim.id === claimId)!.staffIneligibleAt).toBeNull();
   });
 
   it("reads the hold again at approval, and refuses one no longer kept or unreadable", async () => {

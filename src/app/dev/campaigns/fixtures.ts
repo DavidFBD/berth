@@ -80,6 +80,7 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       paid: null,
       reason: null,
       signals: [],
+      staffIneligibleAt: null,
     },
     {
       id: "00000000-0000-4000-8000-0000000000a2",
@@ -111,6 +112,7 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       paid: null,
       reason: null,
       signals: ["close_signup", "referred_by_claimant"],
+      staffIneligibleAt: null,
     },
     {
       id: "00000000-0000-4000-8000-0000000000a3",
@@ -131,6 +133,7 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       paid: null,
       reason: null,
       signals: [],
+      staffIneligibleAt: null,
     },
     {
       id: "00000000-0000-4000-8000-0000000000a4",
@@ -151,6 +154,7 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       paid: null,
       reason: null,
       signals: [],
+      staffIneligibleAt: null,
     },
     {
       id: "00000000-0000-4000-8000-0000000000a5",
@@ -171,6 +175,7 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       paid: { at: iso(now - DAY), tx: hash(0xbeef), verified: true },
       reason: null,
       signals: [],
+      staffIneligibleAt: null,
     },
     {
       id: "00000000-0000-4000-8000-0000000000a6",
@@ -191,6 +196,7 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       paid: null,
       reason: "not_held",
       signals: ["same_payer"],
+      staffIneligibleAt: null,
     },
   ],
 };

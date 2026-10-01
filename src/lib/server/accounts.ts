@@ -655,3 +655,21 @@ export function toProfile(user: UserRow): Profile {
         : null,
   };
 }
+
+/**
+ * When this account was last seen signed in (users.last_seen_at), bumped
+ * by the profile sync at most once a UTC day: one conditional update that
+ * writes nothing on any other sync that day. Never throws; activity
+ * counting must never fail a sign in.
+ */
+export async function touchLastSeen(userId: string): Promise<void> {
+  try {
+    await getSql().query(
+      `update users set last_seen_at = now()
+        where id = $1 and (last_seen_at is null or last_seen_at < date_trunc('day', now() at time zone 'UTC') at time zone 'UTC')`,
+      [userId],
+    );
+  } catch (error) {
+    console.warn("[accounts] last seen not recorded:", error instanceof Error ? error.name : "error");
+  }
+}

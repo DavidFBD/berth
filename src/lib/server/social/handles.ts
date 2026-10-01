@@ -133,6 +133,8 @@ export async function setVisible(viewer: SocialViewer, visible: boolean, now = n
        hidden_handle = case when $2 then null else (select handle from handles where user_id = $1) end,
        updated_at = $3::timestamptz
      where user_id = $1 and visible is distinct from $2
+       -- A card staff hid (moderation) stays hidden until staff show it.
+       and not ($2 and staff_hidden_at is not null)
      returning visible`,
     [viewer.id, visible, now.toISOString()],
   )) as { visible: boolean }[];

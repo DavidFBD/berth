@@ -25,6 +25,7 @@ vi.mock("@/lib/server/accounts", () => ({
   ensureReferralCode: vi.fn(async (row: unknown) => row),
   flushUnannounced: vi.fn(async () => []),
   setEmail: vi.fn(async () => undefined),
+  touchLastSeen: vi.fn(async () => undefined),
 }));
 vi.mock("@/lib/server/privy", () => ({ fetchPrivyEmail: vi.fn(async () => null) }));
 const attributeCampaign = vi.fn(async (): Promise<string | null> => "claim-1");

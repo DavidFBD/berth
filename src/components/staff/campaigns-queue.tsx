@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
-import { useAccountHeaders } from "@/hooks/use-profile";
 import { usePrivy } from "@privy-io/react-auth";
 import { campaignUsd, REJECT_REASONS } from "@/lib/campaigns";
 import { cn } from "@/lib/utils";
@@ -39,7 +38,8 @@ type Fetched = { status: "missing" } | { status: "stale" } | { status: "ready"; 
 
 export function StaffCampaigns() {
   const copy = useCopy().campaign.staff;
-  const { key, headers } = useAccountHeaders();
+  // The staff session cookie carries who this is (lib/server/staff-auth); no token needed.
+  const key = "staff";
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -47,22 +47,19 @@ export function StaffCampaigns() {
   const privy = usePrivy();
 
   const post = async (body: Record<string, unknown>): Promise<Fetched> => {
-    const auth = await headers();
-    if (!auth) return { status: "missing" };
     const response = await fetch("/api/staff/campaigns", {
       method: "POST",
-      headers: { "content-type": "application/json", ...auth },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
     if (response.status === 404) return { status: "missing" };
-    if (response.status === 403) return { status: "stale" };
+    if (response.status === 401) return { status: "stale" };
     if (!response.ok) throw new Error(`staff campaigns ${response.status}`);
     return { status: "ready", data: (await response.json()) as StaffCampaignsResponse };
   };
 
   const queue = useQuery({
     queryKey: ["staff-campaigns", key],
-    enabled: key !== null,
     retry: false,
     queryFn: () => post({ action: "queue" }),
   });
@@ -86,7 +83,7 @@ export function StaffCampaigns() {
     onError: () => setMessage(copy.failed),
   });
 
-  if (key === null || queue.data?.status === "missing") return <StaffShell>{copy.nothingHere}</StaffShell>;
+  if (queue.data?.status === "missing") return <StaffShell>{copy.nothingHere}</StaffShell>;
   if (queue.isError) return <StaffShell>{copy.failed}</StaffShell>;
   if (queue.data?.status !== "ready") return <StaffShell>{copy.loading}</StaffShell>;
   return (
@@ -158,6 +155,11 @@ export function CampaignsQueueView({
               {copy.signInAgain}
             </Button>
           )}
+        </div>
+      )}
+      {groups.approved.some((claim) => claim.staffIneligibleAt) && (
+        <div role="alert" data-testid="ineligible-approved" className="rounded-lg border border-warn/50 bg-warn-soft px-4 py-3 text-sm text-foreground">
+          {copy.ineligibleApproved(groups.approved.filter((claim) => claim.staffIneligibleAt).length)}
         </div>
       )}
       {queue.campaigns.map((campaign) => (
@@ -467,6 +469,11 @@ function ClaimCard({
             {copy.reject}
           </Button>
         </div>
+      )}
+      {claim.staffIneligibleAt && (claim.state === "approved" || claim.state === "qualified" || claim.state === "holding") && (
+        <p role="alert" data-testid="claim-ineligible" className="rounded-md border border-warn/50 bg-warn-soft px-3 py-2 text-sm font-medium text-foreground">
+          {copy.ineligibleClaim(when(claim.staffIneligibleAt))}
+        </p>
       )}
       {claim.state === "approved" && <p className="text-xs text-muted-foreground">{copy.batchNote}</p>}
       {claim.state === "approved" && (

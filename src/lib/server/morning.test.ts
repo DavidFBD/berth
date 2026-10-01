@@ -37,22 +37,54 @@ describe("runMorning", () => {
   it("gives the weekly stage only what the run has left", async () => {
     let now = 0;
     let budget = -1;
+    let alertsRan = false;
     const summary = await runMorning({
       holds: async () => {
-        now += 55_000;
+        now += 50_000;
         return {} as never;
       },
       recurring,
       emails,
       weekly: async (budgetMs) => {
         budget = budgetMs;
+        now += budgetMs;
         return { week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 };
+      },
+      budgetAlerts: async () => {
+        alertsRan = true;
+        return { low: 0, sent: 0, already: 0, failed: 0 };
       },
       budgets: { holds: 1_000, recurring: 1_000, emails: 1_000, weekly: 10_000, run: 57_000 },
       clock: () => now,
     });
-    expect(budget).toBe(2_000);
+    // 7s left: the weekly stage gets it less the budget alerts' 4s, and the alerts the rest.
+    expect(budget).toBe(3_000);
     expect(summary.weekly.ok).toBe(true);
+    expect(alertsRan).toBe(true);
+    expect(summary.budgets.ok).toBe(true);
+  });
+
+  it("skips the budget alerts when the run has no time left, never running past it", async () => {
+    let now = 0;
+    let alertsRan = false;
+    const summary = await runMorning({
+      holds: async () => {
+        now += 58_000;
+        return {} as never;
+      },
+      recurring,
+      emails,
+      weekly: async () => ({ week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 }),
+      budgetAlerts: async () => {
+        alertsRan = true;
+        return { low: 0, sent: 0, already: 0, failed: 0 };
+      },
+      budgets: { holds: 1_000, recurring: 1_000, emails: 1_000, weekly: 10_000, run: 57_000 },
+      clock: () => now,
+    });
+    expect(alertsRan).toBe(false);
+    expect(summary.budgets).toEqual({ ok: false, error: "no time left" });
+    expect(summary.failed).toBe(false);
   });
 
   it("reports the weekly summary's own result", async () => {
@@ -78,5 +110,31 @@ describe("runMorning", () => {
       campaigns, recurring, emails, weekly: () => new Promise(() => undefined), budgets });
     expect(slow.weekly).toEqual({ ok: false, error: "over its 50ms budget" });
     expect(slow.failed).toBe(false);
+  });
+});
+
+describe("the morning's worst case", () => {
+  it("does not start the weekly stage at all with no time left", async () => {
+    let now = 0;
+    let weeklyCalled = false;
+    const summary = await runMorning({
+      holds: async () => {
+        now += 54_000;
+        return { checked: 0, paid: 0, forfeited: 0, retried: 0 };
+      },
+      campaigns: async () => ({}) as never,
+      recurring: async () => ({ aged: 0, made: 0, emailed: 0, notEmailed: 0 }) as never,
+      emails: async () => ({ retried: 0, sent: 0, gaveUp: 0 }),
+      weekly: async () => {
+        weeklyCalled = true;
+        return { week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 };
+      },
+      budgetAlerts: async () => ({ low: 0, sent: 0, already: 0, failed: 0 }),
+      budgets: { holds: 60_000, recurring: 1_000, emails: 1_000, weekly: 10_000, run: 57_000 },
+      clock: () => now,
+    });
+    expect(weeklyCalled).toBe(false);
+    expect(summary.weekly).toEqual({ ok: false, error: "no time left" });
+    expect(summary.failed).toBe(false);
   });
 });

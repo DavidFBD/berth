@@ -4,7 +4,8 @@ import { staffAdminIds, staffAudit } from "@/lib/server/staff-auth";
 import { sendNotice } from "@/lib/server/email/send";
 import { normalizeCampaignCode, REJECT_REASONS, campaignUsd } from "@/lib/campaigns";
 import { claimById, campaignById } from "@/lib/server/campaigns/store";
-import { personStillEligible, recheckHold } from "@/lib/server/campaigns/eligibility";
+import { claimPerson, personStillEligible, recheckHold, staffIneligible } from "@/lib/server/campaigns/eligibility";
+import { personAccounts } from "@/lib/server/campaigns/store";
 import type { HoldVerifier } from "@/lib/server/campaigns/hold-window";
 import {
   fetchBaseReceipt,
@@ -45,6 +46,7 @@ export type ActionRefusal =
   | "one_per_person"
   | "wallet_used"
   | "existing_customer"
+  | "staff_ineligible"
   | "no_person"
   | "bad_address"
   | "source_exists"
@@ -253,6 +255,8 @@ export async function markClaimPaid(
   if (!claim) return refused(staffUserId, "claim.mark_paid", claimId, "not_found", { txHash });
   if (claim.state !== "approved") return refused(staffUserId, "claim.mark_paid", claimId, "wrong_state", { txHash });
   if (!claim.payout_address) return refused(staffUserId, "claim.mark_paid", claimId, "no_payout_address", { txHash });
+  const claimant = await claimPerson(claim);
+  if (claimant && (await staffIneligible(await personAccounts(claimant.id)))) return refused(staffUserId, "claim.mark_paid", claimId, "staff_ineligible", { txHash });
   const campaign = await campaignById(claim.campaign_id);
   if (!campaign) return refused(staffUserId, "claim.mark_paid", claimId, "not_found", { txHash });
   const senders = await claimPayoutSenders(claim.campaign_id, env);

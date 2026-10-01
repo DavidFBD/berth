@@ -295,11 +295,18 @@ export async function runHoldCheck({
   readBalances = readDeliveredBalances,
   limit = HOLD_BATCH_LIMIT,
   scope = holdScope(),
+  deadline = Number.POSITIVE_INFINITY,
 }: {
   now?: Date;
   readBalances?: BalanceReader;
   limit?: number;
   scope?: HoldScope;
+  /**
+   * Epoch ms past which no new group is judged (the morning run's budget
+   * for this stage). A buy left unjudged is not stamped, so the next run
+   * takes it first; nothing is half written.
+   */
+  deadline?: number;
 } = {}): Promise<HoldRunSummary> {
   const candidates = await holdCandidates(now, limit, scope);
   const summary: HoldRunSummary = {
@@ -364,6 +371,7 @@ export async function runHoldCheck({
   }
 
   for (const group of groups.values()) {
+    if (Date.now() >= deadline) break;
     group.sort(
       (a, b) =>
         a.effectiveAt.getTime() - b.effectiveAt.getTime() ||

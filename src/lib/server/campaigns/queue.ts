@@ -65,6 +65,12 @@ export type QueueClaim = {
   paid: { at: string | null; tx: string | null; verified: boolean | null } | null;
   reason: string | null;
   signals: SignalCode[];
+  /**
+   * When staff marked this person (any of its accounts) not eligible for
+   * campaigns, or null. Mark paid refuses such a claim; the queue says so
+   * first, so nobody sends USDC by hand to an approved claim marked since.
+   */
+  staffIneligibleAt: string | null;
 };
 
 export type CampaignMeter = {
@@ -198,7 +204,8 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
     `select cl.id, cl.campaign_id, c.code, cl.state, cl.created_at, cl.holding_since, cl.eligible_at, cl.intent_tx,
             cl.hold_checked_at, cl.hold_unreadable_since, cl.hold_evidence, cl.payout_address, cl.paid_at, cl.paid_tx, cl.paid_verified,
             coalesce(cl.reject_reason, cl.expire_reason) as reason, c.amount_usd::float8 as amount_usd,
-            p.id as person_id, p.email, p.created_at as signup_at, p.wallet_address as home, p.referred_by,
+            p.id as person_id, p.email,
+            (select max(x.campaign_ineligible_at) from users x where x.id = p.id or x.retired_into = p.id) as staff_ineligible_at, p.created_at as signup_at, p.wallet_address as home, p.referred_by,
             o.listing_address, o.quantity::text as quantity, o.usd_value::float8 as usd, o.filled_at, o.delivered_to,
             coalesce(o.wallet_address, o.src_address) as payer
        from campaign_claims cl
@@ -281,6 +288,7 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
       email: (row.email as string | null) ?? null,
       signupAt: iso(row.signup_at)!,
       attributedAt: iso(row.created_at)!,
+      staffIneligibleAt: iso(row.staff_ineligible_at),
       buy: row.intent_tx
         ? {
             intentTx: String(row.intent_tx),

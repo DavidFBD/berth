@@ -123,6 +123,18 @@ describe("a new customer", () => {
   });
 });
 
+describe("staff marked not eligible", () => {
+  it("refuses a claim of an account staff marked (users.campaign_ineligible_at), before any place is reserved", async () => {
+    await campaign("marked");
+    const { user, claimId } = await arrival("marked");
+    await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [user.id]);
+    await buy(user);
+    expect(await advance(claimId)).toBe("staff_ineligible");
+    expect(await state(claimId)).toEqual({ state: "rejected", reason: "staff_ineligible" });
+    expect((await sql.query(`select 1 from campaign_claim_wallets where claim_id = $1`, [claimId])) as unknown[]).toHaveLength(0);
+  });
+});
+
 describe("the budget and max_claims", () => {
   it("gives the last slot to one of two claims racing for it, and the other waits", async () => {
     await campaign("last-slot", { maxClaims: 1 });

@@ -1407,8 +1407,16 @@ create table if not exists campaign_claim_wallets (
   primary key (campaign_id, wallet)
 );
 
--- Every staff action (lib/server/staff-auth staffAudit): who, what, on what.
--- `detail` never holds a secret.
+
+-- The staff area (docs/adr/0008-staff-area.md, lib/server/staff-auth, app/staff).
+-- Who on staff did what, and why: every page view of a person, every
+-- reveal of a masked field (with its reason), every write. `staff_user_id`
+-- is the staff member's own account; `target` names what was acted on
+-- (`user:<id>`, `grant:<id>`, `send:<id>`, `budget:<service>`, never an
+-- email or a wallet address); `detail` holds the reason and the outcome,
+-- with any email or wallet in it masked before it is written. Rows are
+-- never updated by the app; the evening run deletes rows older than 24
+-- months (lib/server/cron-runs pruneStaffAudit), as the privacy policy says.
 create table if not exists staff_audit (
   id bigint generated always as identity primary key,
   at timestamptz not null default now(),
@@ -1419,6 +1427,116 @@ create table if not exists staff_audit (
 );
 
 create index if not exists staff_audit_at_idx on staff_audit (at desc);
+create index if not exists staff_audit_staff_idx on staff_audit (staff_user_id, at desc);
+create index if not exists staff_audit_target_idx on staff_audit (target, at desc);
+
+-- An account staff marked as not eligible for campaign payouts (abuse, a
+-- duplicate person, staff themselves). The campaigns logic reads
+-- `campaign_ineligible_at is not null` and pays nothing; the why is in
+-- staff_audit (action 'campaign_ineligible'), never here. Cleared by the
+-- same audited action.
+alter table users add column if not exists campaign_ineligible_at timestamptz;
+alter table users add column if not exists campaign_ineligible_by uuid references users(id) on delete set null;
+
+-- The staff area's signup charts and the users list read accounts by when
+-- they were made.
+create index if not exists users_created_idx on users (created_at);
+
+-- One row per cron run (lib/server/cron-runs), written by the morning and
+-- evening routes as they answer: when, whether it counted as a failure,
+-- and the run's own summary (counts and stage outcomes only, the same JSON
+-- the route already logs; never an address or an account id). Kept 90
+-- days; each run deletes its job's older rows.
+create table if not exists cron_runs (
+  id bigint generated always as identity primary key,
+  job text not null check (job in ('morning', 'evening')),
+  started_at timestamptz not null,
+  finished_at timestamptz not null default now(),
+  ok boolean not null,
+  summary jsonb not null default '{}'::jsonb
+);
+
+create index if not exists cron_runs_job_idx on cron_runs (job, started_at desc);
+
+-- What Berth spent on a paid service per UTC day, metered where the call
+-- is made (lib/server/spend-meter), for a service whose own bill Berth
+-- cannot read: Jev (TypeSafe has no usage or balance endpoint), and
+-- Resend's quota headers as last seen. `units` is the service's own unit
+-- (estimated input tokens for Jev, emails for Resend); `cost_micros` is
+-- USD millionths at the documented price, fractional, an estimate.
+-- `provider` is the last quota the provider itself reported, if any.
+-- Nothing in it is about a person.
+create table if not exists service_spend (
+  service text not null,
+  day date not null,
+  calls integer not null default 0,
+  units bigint not null default 0,
+  cost_micros numeric not null default 0,
+  provider jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (service, day)
+);
+
+-- What staff told Berth about each paid service (the Budgets page, every
+-- change audited): the prepaid balance as read off the provider's own
+-- dashboard and when (`balance_at`; remaining is that balance less what
+-- was metered since), and the level below which the morning run emails
+-- the staff admins. Null threshold: the default in lib/staff/budget-math.
+create table if not exists staff_budgets (
+  service text primary key,
+  balance_usd numeric check (balance_usd is null or balance_usd >= 0),
+  balance_at timestamptz,
+  threshold numeric check (threshold is null or threshold >= 0),
+  updated_by uuid references users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+-- Staff may put an address on the suppression list by hand (support, an
+-- abuse report), audited in staff_audit; 'staff' says so. Any older check
+-- naming reason is dropped first, whatever it is called. One line body,
+-- for db:push's split.
+do $$ declare c record; begin for c in select conname from pg_constraint where conrelid = 'email_suppressions'::regclass and contype = 'c' and pg_get_constraintdef(oid) ilike '%reason%' loop execute format('alter table email_suppressions drop constraint %I', c.conname); end loop; end $$;
+
+alter table email_suppressions add constraint email_suppressions_reason_check
+  check (reason in ('bounce', 'complaint', 'suppressed', 'staff'));
+
+-- One row per staff sign in (lib/server/staff-session). The cookie carries
+-- only the signed session id; every request checks the row (live, not
+-- expired, not revoked) and the allowlist in the environment. A session
+-- lasts as long as the Privy token it came from (`expires_at`), and is
+-- renewed only by a newer token for the same account, never past
+-- `max_until`. `auth_at` is when the email code was last entered (Privy's
+-- latest_verified_at), for the 15 minute fresh proof. "Sign out
+-- everywhere" and a Berth sign out set `revoked_at`.
+create table if not exists staff_sessions (
+  id uuid primary key default gen_random_uuid(),
+  staff_user_id uuid not null references users(id) on delete cascade,
+  auth_at timestamptz,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  max_until timestamptz not null,
+  revoked_at timestamptz
+);
+
+create index if not exists staff_sessions_staff_idx on staff_sessions (staff_user_id) where revoked_at is null;
+
+-- When this account last opened Berth signed in: the profile sync bumps it
+-- at most once a UTC day (one conditional update). The staff Overview's
+-- "active" counts read it; null before this release.
+alter table users add column if not exists last_seen_at timestamptz;
+create index if not exists users_last_seen_idx on users (last_seen_at);
+
+-- A card hidden by staff (moderation), as distinct from the person's own
+-- "Hide my card": staff may show again only what staff hid, and the
+-- person's own switch cannot show a card staff hid.
+alter table profiles add column if not exists staff_hidden_at timestamptz;
+
+-- The staff Budgets page and Health count sent notices by day.
+create index if not exists email_sends_sent_idx on email_sends (created_at) where status = 'sent';
+
+-- The staff reveal limit counts a staff member's reveals in the last hour.
+create index if not exists staff_audit_action_idx on staff_audit (staff_user_id, action, at desc);
+
 
 -- Reserving a slot, in one transaction (lib/server/campaigns/eligibility):
 -- the campaign row is locked first, so two claims racing for the last slot

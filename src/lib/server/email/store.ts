@@ -204,3 +204,16 @@ export async function takeStalePending(limit: number): Promise<{ rows: PendingRo
   )) as PendingRow[];
   return { rows, gaveUp: gone.length };
 }
+
+/** One stale pending row by id, taken as takeStalePending takes them, or null when it is not stuck. */
+export async function takeOnePending(id: string): Promise<PendingRow | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  const rows = (await getSql().query(
+    `update email_sends set created_at = now(), attempts = attempts + 1
+      where id = $1 and status = 'pending' and created_at < now() - make_interval(mins => $2::int)
+        and notice is not null and user_id is not null and attempts < $3
+      returning id, user_id, type, ref, notice`,
+    [id, STALE_PENDING_MINUTES, MAX_ATTEMPTS],
+  )) as PendingRow[];
+  return rows[0] ?? null;
+}

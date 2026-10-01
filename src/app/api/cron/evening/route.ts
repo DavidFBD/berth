@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkCronAuth } from "@/lib/server/cron-auth";
+import { recordCronRun } from "@/lib/server/cron-runs";
 import { runEvening } from "@/lib/server/evening";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,10 @@ export async function GET(request: NextRequest) {
       { status: auth.status },
     );
   }
+  const startedAt = new Date();
   const summary = await runEvening();
   console.log("[cron/evening]", JSON.stringify(summary));
+  // The staff Health page reads it back (lib/server/cron-runs).
+  await recordCronRun("evening", startedAt, !summary.failed, summary);
   return NextResponse.json(summary, { status: summary.written === 0 && summary.failed ? 500 : 200 });
 }

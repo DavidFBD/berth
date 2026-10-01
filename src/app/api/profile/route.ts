@@ -6,13 +6,12 @@ import {
   bindReferral,
   ensureReferralCode,
   flushUnannounced,
+  touchLastSeen,
   setEmail,
 } from "@/lib/server/accounts";
 import { fetchPrivyEmail } from "@/lib/server/privy";
 import { AVAILABLE } from "@/lib/server/availability";
 import { attributeCampaign } from "@/lib/server/campaigns/store";
-import { staffAdminIds } from "@/lib/server/staff-auth";
-import { issueStaffPagePass, STAFF_PAGE_COOKIE, STAFF_PAGE_COOKIE_OPTIONS } from "@/lib/server/staff-page";
 import {
   readRewardsCaller,
   resolveRewardsUser,
@@ -90,14 +89,8 @@ export async function POST(request: NextRequest) {
   // waits here, on the owner's next sync, where it can actually be seen.
   rewards.push(...(await flushUnannounced(user.id)));
 
-  const response = rewardsResponse(user, {}, rewards);
-  // Staff get the staff pages' pass (lib/server/staff-page); nobody else gets anything.
-  if (staffAdminIds().has(user.id.toLowerCase())) {
-    try {
-      response.cookies.set(STAFF_PAGE_COOKIE, await issueStaffPagePass(user.id), STAFF_PAGE_COOKIE_OPTIONS);
-    } catch (error) {
-      console.warn("[staff] page pass not set", error instanceof Error ? error.message : error);
-    }
-  }
-  return response;
+  // Seen today (the staff Overview's active counts), once a UTC day.
+  await touchLastSeen(user.id);
+
+  return rewardsResponse(user, {}, rewards);
 }

@@ -9,12 +9,14 @@
  */
 const at = process.argv.indexOf("--url");
 const base = at > 0 ? process.argv[at + 1] : "http://localhost:3000";
-const paths = ["/staff/campaigns", "/staff/campaigns/anything"];
+const paths = ["/staff", "/staff/users", "/staff/campaigns", "/staff/campaigns/anything", "/api/staff/campaigns", "/api/staff/actions"];
 const cases = [
   { method: "GET", headers: {} },
   { method: "POST", headers: {} },
   { method: "HEAD", headers: {} },
   { method: "GET", headers: { RSC: "1" } },
+  { method: "GET", headers: { RSC: "1", cookie: "berth-staff=forged; __Host-berth-staff=forged" } },
+  { method: "POST", headers: { authorization: "Bearer junk" } },
 ];
 
 async function read(path, { method, headers }) {
@@ -29,7 +31,7 @@ for (const path of paths) {
     const missing = await read(`/no-such-page-${Date.now()}`, testCase);
     const staff = await read(path, testCase);
     const same = missing.status === staff.status && missing.head.join("\n") === staff.head.join("\n") && missing.body.equals(staff.body);
-    console.log(`${same ? "same" : "DIFFERENT"}  ${testCase.method}${testCase.headers.RSC ? " RSC" : ""} ${path} (${staff.status}, ${staff.body.length} B)`);
+    console.log(`${same ? "same" : "DIFFERENT"}  ${testCase.method}${testCase.headers.RSC ? " RSC" : ""}${testCase.headers.cookie ? " +cookie" : ""}${testCase.headers.authorization ? " +bearer" : ""} ${path} (${staff.status}, ${staff.body.length} B)`);
     if (!same) {
       failed = true;
       console.log("  unknown:", missing.status, missing.head);

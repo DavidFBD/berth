@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { NOWHERE_PATH } from "@/lib/server/staff-page";
+import { NOWHERE_PATH } from "@/lib/nowhere";
 
 /**
  * Next's own 404, as a route handler can answer it. `notFound()` in a

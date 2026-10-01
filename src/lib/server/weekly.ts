@@ -22,8 +22,8 @@ import { storedComparison } from "@/lib/server/portfolio-view";
  *
  * WHEN. The week is an ISO week, Monday to Sunday in UTC. Its summary goes
  * out on the Monday after, and a person it did not reach (the day's cap, a
- * provider error, the stage's deadline) is tried again on the Tuesday and
- * Wednesday mornings; after that the week is let go. One email per person
+ * provider error, the stage's deadline) is tried again on the Tuesday, Wednesday
+ * and Thursday mornings; after that the week is let go. One email per person
  * per week: email_sends type 'weekly', ref `<ISO week>:<user id>`
  * ("2026-W39:…"), claimed as every notice is (lib/server/email/store).
  *

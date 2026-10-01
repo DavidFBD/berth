@@ -3,7 +3,7 @@ import { render } from "@react-email/render";
 import { emailBaseUrl, emailFrom, emailMarkUrl, emailReplyTo, emailSendingOn } from "@/lib/server/email/config";
 import { composeNotice, NOTICE_KIND, type EmailContent, type Notice } from "@/lib/server/email/compose";
 import { resendTransport, type EmailTransport, type OutgoingEmail } from "@/lib/server/email/resend";
-import { claimSend, finishSend, isSuppressed, primaryEmail, readPrefs, sendsToday, takeStalePending } from "@/lib/server/email/store";
+import { claimSend, finishSend, isSuppressed, primaryEmail, readPrefs, sendsToday, takeOnePending, takeStalePending, type PendingRow } from "@/lib/server/email/store";
 import { NoticeEmail, noticeText } from "@/lib/server/email/template";
 import { issueUnsubscribeToken } from "@/lib/server/email/token";
 import { weeklyRefCurrent } from "@/lib/weekly-window";
@@ -244,7 +244,7 @@ export type RetrySummary = { retried: number; sent: number; gaveUp: number };
  * (one that died midway, or a security notice deferred by a rate limit) is
  * checked again against the person's switches and address and sent, at
  * most `limit` a pass. A row past its last attempt is given up, and so is
- * a weekly summary whose week is over (it goes out Monday to Wednesday
+ * a weekly summary whose week is over (it goes out Monday to Thursday
  * only, lib/weekly-window), so "your week of" never arrives late.
  */
 export async function retryPendingSends({ limit = 20, now = new Date() }: { limit?: number; now?: Date } = {}): Promise<RetrySummary> {
@@ -253,20 +253,44 @@ export async function retryPendingSends({ limit = 20, now = new Date() }: { limi
   let sent = 0;
   let gaveUp = aged;
   for (const row of rows) {
-    if (row.type === "weekly" && !weeklyRefCurrent(row.ref, now)) {
-      await finishSend(row.id, { ok: false, error: "week_past" });
-      gaveUp += 1;
-      continue;
-    }
-    const input: NoticeInput = { userId: row.user_id, ref: row.ref, notice: row.notice as unknown as Notice };
-    const checked = await recipient(input);
-    if (typeof checked === "string") {
-      await finishSend(row.id, { ok: false, error: checked });
-      continue;
-    }
-    if ((await sendClaimed(row.id, input, checked.to)) === "sent") sent += 1;
+    const outcome = await resendRow(row, now);
+    if (outcome === "sent") sent += 1;
+    if (outcome === "week_past") gaveUp += 1;
   }
   return { retried: rows.length, sent, gaveUp };
+}
+
+/** One taken pending row, checked again and sent (retryPendingSends, retryOneSend). */
+async function resendRow(row: PendingRow, now: Date): Promise<DeliverOutcome | "week_past"> {
+  if (row.type === "weekly" && !weeklyRefCurrent(row.ref, now)) {
+    await finishSend(row.id, { ok: false, error: "week_past" });
+    return "week_past";
+  }
+  // A budget alert is about its own day: the next day sends its own.
+  if (row.type === "budget_low" && !row.ref.includes(`:${now.toISOString().slice(0, 10)}:`)) {
+    await finishSend(row.id, { ok: false, error: "day_past" });
+    return "week_past";
+  }
+  const input: NoticeInput = { userId: row.user_id, ref: row.ref, notice: row.notice as unknown as Notice };
+  const checked = await recipient(input);
+  if (typeof checked === "string") {
+    await finishSend(row.id, { ok: false, error: checked });
+    return checked;
+  }
+  return sendClaimed(row.id, input, checked.to);
+}
+
+/**
+ * The staff Health page's "Send again" for one stuck send: a row pending
+ * more than ten minutes (STALE_PENDING_MINUTES) that still has its notice,
+ * taken in one statement as the passes take theirs, then sent the same
+ * way. Anything else (sent, failed, still fresh) is left alone.
+ */
+export async function retryOneSend(id: string, now = new Date()): Promise<DeliverOutcome | "week_past" | "not_stuck"> {
+  if (!sendingAllowed()) return "off";
+  const row = await takeOnePending(id);
+  if (!row) return "not_stuck";
+  return resendRow(row, now);
 }
 
 async function deliverQuietly(input: NoticeInput): Promise<void> {
@@ -301,6 +325,8 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
   { name: "wallet-added", notice: { type: "wallet_added", family: "evm", address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed" } },
   { name: "wallet-removed", notice: { type: "wallet_removed", family: "solana", address: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV" } },
   { name: "accounts-merged", notice: { type: "accounts_merged" } },
+  { name: "staff-reveals", notice: { type: "staff_reveals", count: 10, staff: "aaaaaaaa" } },
+  { name: "budget-low", notice: { type: "budget_low", service: "jev", remaining: "$0.80", daysLeft: 4, estimate: true } },
   { name: "assistant-connected", notice: { type: "assistant_connected", app: "Claude", scopes: ["berth.read", "berth.draft"] } },
   { name: "order-filled", notice: { type: "order_filled", side: "buy", name: "NVIDIA", price: "$198.20", received: "0.5046 NVIDIA" } },
   { name: "order-expired", notice: { type: "order_expired", side: "buy", name: "NVIDIA" } },

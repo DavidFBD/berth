@@ -10,6 +10,9 @@ const runCampaignStep = vi.fn();
 vi.mock("@/lib/server/campaigns/eligibility", () => ({ runCampaignStep: () => runCampaignStep() }));
 const runWeeklySummaries = vi.fn();
 vi.mock("@/lib/server/weekly", () => ({ runWeeklySummaries: () => runWeeklySummaries() }));
+vi.mock("@/lib/server/staff/budgets", () => ({ runBudgetAlerts: async () => ({ low: 0, sent: 0, already: 0, failed: 0 }) }));
+const recordCronRun = vi.fn();
+vi.mock("@/lib/server/cron-runs", () => ({ recordCronRun: (...args: unknown[]) => recordCronRun(...args) }));
 
 import { GET } from "./route";
 
@@ -62,8 +65,11 @@ describe("GET /api/cron/morning", () => {
       recurring: { ok: true, result: { aged: 1, made: 2, emailed: 0, notEmailed: 2 } },
       emails: { ok: true, result: { retried: 0, sent: 0, gaveUp: 0 } },
       weekly: { ok: true, result: { week: "2026-W39", sent: 1, empty: 0, notSent: 0, deferred: 0 } },
+      budgets: { ok: true, result: { low: 0, sent: 0, already: 0, failed: 0 } },
       failed: false,
     });
+    // The run is recorded for the staff Health page.
+    expect(recordCronRun).toHaveBeenCalledWith("morning", expect.any(Date), true, expect.objectContaining({ failed: false }));
     expect(runWeeklySummaries).toHaveBeenCalledOnce();
     expect(runHoldCheck).toHaveBeenCalledOnce();
     expect(runRecurringMorning).toHaveBeenCalledOnce();

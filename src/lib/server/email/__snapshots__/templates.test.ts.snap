@@ -35,6 +35,24 @@ Not you? Write to us at support@berthmarkets.com.
 Berth. Wall Street, in your wallet."
 `;
 
+exports[`notice templates > budget-low renders HTML and text without personal data 1`] = `
+"Subject: Running low: the Jev credit
+
+A paid service is running low
+
+The Jev credit has $0.80 left, by Berth's own estimate.
+At the last week's pace it runs out in about 4 days.
+
+Top it up on the provider's own dashboard, then enter the new balance on the Budgets page. This email comes at most once a day for each service.
+
+Open Budgets: https://www.berthmarkets.com/staff/budgets
+
+You get this because you are a staff admin of Berth.
+Not you? Write to us at support@berthmarkets.com.
+
+Berth. Wall Street, in your wallet."
+`;
+
 exports[`notice templates > campaign-paid renders HTML and text without personal data 1`] = `
 "Subject: $5 in USDC was added to your Berth account
 
@@ -129,6 +147,23 @@ Open it in Berth: https://www.berthmarkets.com/?open=SPY&side=buy&usd=20&run=sam
 
 You get this because you set a recurring buy and its reminders are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Berth. Wall Street, in your wallet."
+`;
+
+exports[`notice templates > staff-reveals renders HTML and text without personal data 1`] = `
+"Subject: Many reveals in the staff area
+
+Many reveals in an hour
+
+The staff account starting aaaaaaaa revealed 10 email or wallet addresses in the last hour.
+
+If that was not expected, use Sign out everywhere for that account and take it off the staff list. Each reveal and its reason is in the audit log.
+
+Open the audit log: https://www.berthmarkets.com/staff/audit
+
+You get this because you are a staff admin of Berth.
+Not you? Write to us at support@berthmarkets.com.
 
 Berth. Wall Street, in your wallet."
 `;

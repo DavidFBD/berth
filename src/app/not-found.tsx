@@ -4,6 +4,7 @@ import { BerthMark } from "@/components/berth-mark";
 import { buttonVariants } from "@/components/ui/button";
 import { COPY } from "@/lib/copy";
 import { cn } from "@/lib/utils";
+import { StaffSessionProbe } from "@/components/staff/fresh";
 
 export const metadata: Metadata = {
   title: `${COPY.notFound.title} · Berth`,
@@ -27,6 +28,10 @@ export default function NotFound() {
           {words.backHome}
         </Link>
       </section>
+      {/* On a /staff address only, a signed in browser asks once whether
+          it may come in (components/staff/fresh); for anyone else nothing
+          changes. Every 404 is this same page, the staff area's included. */}
+      <StaffSessionProbe />
     </main>
   );
 }

@@ -22,6 +22,8 @@ let answer: Awaited<ReturnType<EmailTransport>>;
 const MONDAY = new Date("2026-09-28T06:05:00Z");
 const TUESDAY = new Date("2026-09-29T06:05:00Z");
 const THURSDAY = new Date("2026-10-01T06:05:00Z");
+/** The first morning after the week's last try (Monday to Thursday). */
+const FRIDAY = new Date("2026-10-02T06:05:00Z");
 
 beforeAll(async () => {
   const db = await makeTestDb();
@@ -125,10 +127,11 @@ async function seedHistory(userId: string): Promise<void> {
 }
 
 describe("the week", () => {
-  it("summarises the ISO week before, on Monday to Wednesday only", () => {
+  it("summarises the ISO week before, on Monday to Thursday only", () => {
     expect(weeklyWindow(MONDAY)).toMatchObject({ monday: "2026-09-21", sunday: "2026-09-27", key: "2026-W39" });
     expect(weeklyWindow(new Date("2026-09-30T06:05:00Z"))?.key).toBe("2026-W39");
-    expect(weeklyWindow(THURSDAY)).toBeNull();
+    expect(weeklyWindow(THURSDAY)?.key).toBe("2026-W39");
+    expect(weeklyWindow(FRIDAY)).toBeNull();
     expect(weeklyWindow(new Date("2026-10-04T06:05:00Z"))).toBeNull();
     expect(isoWeekKey("2026-12-28")).toBe("2026-W53");
     expect(isoWeekKey("2027-01-04")).toBe("2027-W01");
@@ -362,9 +365,9 @@ describe("runWeeklySummaries", () => {
     const rows = (await sql.query(`select type, ref, status from email_sends`)) as { type: string; ref: string; status: string }[];
     expect(rows).toEqual([{ type: "weekly", ref: `2026-W39:${on}`, status: "sent" }]);
 
-    // Tuesday's run finds it sent; Thursday's sends none.
+    // Tuesday's run finds it sent; Friday's sends none.
     expect(await runWeeklySummaries({ now: TUESDAY })).toMatchObject({ sent: 0, notSent: 0 });
-    expect(await runWeeklySummaries({ now: THURSDAY })).toEqual({ week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 });
+    expect(await runWeeklySummaries({ now: FRIDAY })).toEqual({ week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 });
     expect(sent).toHaveLength(1);
   });
 
@@ -491,7 +494,7 @@ describe("runWeeklySummaries", () => {
         [id, ref, JSON.stringify(notice)],
       );
     await pending();
-    expect(await retryPendingSends({ now: THURSDAY })).toEqual({ retried: 1, sent: 0, gaveUp: 1 });
+    expect(await retryPendingSends({ now: FRIDAY })).toEqual({ retried: 1, sent: 0, gaveUp: 1 });
     expect(sent).toHaveLength(0);
     expect(await sql.query(`select status, error from email_sends where ref = $1`, [ref])).toEqual([{ status: "failed", error: "week_past" }]);
     await pending();

@@ -237,6 +237,19 @@ export async function personWallets(accountIds: readonly string[], buy?: Pick<Qu
  * their accounts older than the attribution window before the claim, or
  * any order of theirs from before it.
  */
+/**
+ * Whether staff marked any account of this person not eligible for
+ * campaigns (users.campaign_ineligible_at, the staff area's audited
+ * action): no claim of theirs reserves a place, is approved or is paid.
+ */
+export async function staffIneligible(accountIds: readonly string[]): Promise<boolean> {
+  const rows = (await getSql().query(
+    `select 1 from users where id = any($1::uuid[]) and campaign_ineligible_at is not null limit 1`,
+    [accountIds],
+  )) as unknown[];
+  return rows.length > 0;
+}
+
 export async function existingCustomer(accountIds: readonly string[], claimCreated: Date): Promise<boolean> {
   const rows = (await getSql().query(
     `select exists (select 1 from users where id = any($1::uuid[]) and created_at < $2::timestamptz - make_interval(secs => $3::int / 1000))
@@ -253,7 +266,7 @@ export function claimDeadline(campaign: Pick<CampaignRow, "ends_at" | "hold_days
 
 export type ReserveOutcome = "holding" | "stale" | "inactive" | "outside" | "one_per_person" | "wallet_used" | "waitlisted" | "full";
 
-export type AdvanceOutcome = ClaimState | ReserveOutcome | "no_person" | "existing_customer";
+export type AdvanceOutcome = ClaimState | ReserveOutcome | "no_person" | "existing_customer" | "staff_ineligible";
 
 async function userRow(id: string): Promise<UserRow | undefined> {
   const rows = (await getSql().query(
@@ -315,6 +328,10 @@ export async function advanceClaim(
     await ruleReject(claim.id, "existing_customer", now);
     return "existing_customer";
   }
+  if (await staffIneligible(accounts)) {
+    await ruleReject(claim.id, "staff_ineligible", now);
+    return "staff_ineligible";
+  }
   const from = new Date(Math.max(campaign.starts_at.getTime(), claim.created_at.getTime()));
   const buy = await firstQualifyingBuy(accounts, { min_buy_usd: campaign.min_buy_usd, from, to: campaign.ends_at }, deps);
   if (!buy) return "buying";
@@ -331,12 +348,13 @@ export async function advanceClaim(
  * approval: the person now (after any merge since), against every other
  * claim of the campaign. Null when it still stands, else why not.
  */
-export async function personStillEligible(claim: ClaimRow): Promise<"one_per_person" | "wallet_used" | "existing_customer" | "no_person" | null> {
+export async function personStillEligible(claim: ClaimRow): Promise<"one_per_person" | "wallet_used" | "existing_customer" | "staff_ineligible" | "no_person" | null> {
   const sql = getSql();
   const person = await claimPerson(claim);
   if (!person) return "no_person";
   const accounts = await personAccounts(person.id);
   if (await existingCustomer(accounts, claim.created_at)) return "existing_customer";
+  if (await staffIneligible(accounts)) return "staff_ineligible";
   const sibling = (await sql.query(
     `select 1 from campaign_claims o join users u on u.id = o.user_id
       where o.campaign_id = $1 and o.id <> $2 and coalesce(u.retired_into, u.id) = $3

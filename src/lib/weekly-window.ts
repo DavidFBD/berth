@@ -6,8 +6,13 @@ import { addDays, type IsoDay } from "@/lib/marks";
  * without importing the summary itself.
  */
 
-/** How many mornings a week's summary is tried: Monday, Tuesday, Wednesday. */
-export const WEEKLY_SEND_DAYS = 3;
+/**
+ * How many mornings a week's summary is tried: Monday to Thursday. Three
+ * would do on a calm week; the fourth is for a Wednesday whose morning run
+ * had no time left for it (lib/server/morning), so the week still reaches
+ * whoever it had not.
+ */
+export const WEEKLY_SEND_DAYS = 4;
 
 export type WeeklyWindow = {
   /** The summarised week's Monday and Sunday. */
@@ -30,7 +35,7 @@ export function isoWeekKey(monday: IsoDay): string {
 
 /**
  * The week a morning run at `now` would summarise, or null on a morning
- * that sends none (Thursday to Sunday).
+ * that sends none (Friday to Sunday).
  */
 export function weeklyWindow(now: Date): WeeklyWindow | null {
   const sinceMonday = (now.getUTCDay() + 6) % 7;
@@ -56,7 +61,7 @@ export function weekOfRef(ref: string): string | null {
   return match ? match[1] : null;
 }
 
-/** Whether a weekly summary with this ref may still go out at `now`: only on its own Monday to Wednesday. */
+/** Whether a weekly summary with this ref may still go out at `now`: only on its own Monday to Thursday. */
 export function weeklyRefCurrent(ref: string, now: Date): boolean {
   const week = weekOfRef(ref);
   return week !== null && week === weeklyWindow(now)?.key;

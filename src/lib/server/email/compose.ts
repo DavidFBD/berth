@@ -46,6 +46,24 @@ export type Notice =
       /** The draft link's path and query on Berth ("/?open=…&run=…"), never another host. */
       path: string;
     }
+  | {
+      /** To staff admins only (lib/server/staff/budgets). Names a service and a sum, never a person. */
+      type: "budget_low";
+      service: "openai" | "jev" | "x" | "resend";
+      /** Formatted: "$1.20", "300 emails". */
+      remaining: string;
+      /** Whole days at the last week's pace, or null when nothing is being used. */
+      daysLeft: number | null;
+      /** Whether the remaining figure is Berth's own estimate. */
+      estimate: boolean;
+    }
+  | {
+      /** To the other staff admins (lib/server/staff/reveal-limit): one staff member's reveals in the last hour. */
+      type: "staff_reveals";
+      count: number;
+      /** The staff account id's first eight characters, never a name or an address. */
+      staff: string;
+    }
   | WeeklyNotice;
 
 /**
@@ -102,6 +120,8 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   payout_source_changed: "security",
   recurring_due: "recurring",
   weekly: "weekly",
+  budget_low: "security",
+  staff_reveals: "security",
 };
 
 export type EmailContent = {
@@ -237,6 +257,35 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
         after: [words.after],
         button: { label: words.button, href: `${baseUrl}${path}` },
         why,
+      };
+    }
+    case "budget_low": {
+      const words = email.budgetLow;
+      const service = words.service[notice.service];
+      const body = words.body(service, notice.remaining, notice.estimate);
+      return {
+        kind,
+        subject: words.subject(service),
+        preview: body,
+        heading: words.heading,
+        paragraphs: notice.daysLeft === null ? [body] : [body, words.runway(notice.daysLeft)],
+        after: [words.after],
+        button: { label: words.button, href: `${baseUrl}/staff/budgets` },
+        why: words.why,
+      };
+    }
+    case "staff_reveals": {
+      const words = email.staffReveals;
+      const body = words.body(plain(notice.staff, 8), notice.count);
+      return {
+        kind,
+        subject: words.subject,
+        preview: body,
+        heading: words.heading,
+        paragraphs: [body],
+        after: [words.after],
+        button: { label: words.button, href: `${baseUrl}/staff/audit` },
+        why: email.budgetLow.why,
       };
     }
     case "weekly":

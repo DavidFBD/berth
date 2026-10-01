@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { nextNotFound } from "@/lib/server/not-found-response";
 import { requireFreshStaff, requireStaff, staffAudit } from "@/lib/server/staff-auth";
+import { sameOrigin } from "@/lib/server/staff-gate";
 import { revealClaim, staffQueue, type StaffQueue } from "@/lib/server/campaigns/queue";
 import {
   addPayoutSource,
@@ -34,11 +35,14 @@ const FRESH_ACTIONS = new Set(["activate", "approve", "reject", "paid", "add_sou
  * never a 500. Nothing here sends money.
  */
 export async function POST(request: NextRequest) {
+  // Like every staff write (staffRoute): from a staff page on this very origin, or nothing.
+  // SameSite=Strict already stops other sites; this also stops a sibling subdomain.
+  if (!sameOrigin(request)) return nextNotFound(request);
   const body = (await request.clone().json().catch(() => ({}))) as Record<string, unknown>;
   const action = typeof body.action === "string" ? body.action : "";
   const gate = FRESH_ACTIONS.has(action) ? await requireFreshStaff(request, "admin") : await requireStaff(request, "admin");
   if (!gate.ok) {
-    if ("stale" in gate) return NextResponse.json({ error: "fresh_session" }, { status: 403, headers: { "cache-control": "no-store" } });
+    if ("stale" in gate) return NextResponse.json({ error: "stale" }, { status: 401, headers: { "cache-control": "no-store" } });
     return nextNotFound(request);
   }
   const staff = gate.staff.userId;
@@ -129,3 +133,4 @@ export const PUT = missing;
 export const PATCH = missing;
 export const DELETE = missing;
 export const OPTIONS = missing;
+export const HEAD = missing;

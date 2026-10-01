@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { unstable_cache } from "next/cache";
+import { estimateTokens, jevCostMicros, meterSpend } from "@/lib/server/spend-meter";
 
 /**
  * The one door to TypeSafe's Jev, a model that answers typed questions and
@@ -22,7 +23,9 @@ import { unstable_cache } from "next/cache";
  * too little). There is no balance endpoint: an empty credit shows only as
  * `[jev] answered 4xx` and the gatherings' "unanswered" lines. The real guard is
  * `cachedVerdict`: a post's verdict is asked for once and kept for weeks, so a
- * refresh pays only for what is new since the last one.
+ * refresh pays only for what is new since the last one. Every answered call
+ * is metered by its size (lib/server/spend-meter), so the staff Budgets page
+ * can say what the credit has spent since it was last read off TypeSafe's dashboard.
  */
 
 const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
@@ -120,6 +123,7 @@ export async function askJev<Q extends Record<string, JevQuestion | undefined>>(
   if (!jevConfigured() || cachedVerdictsOnly()) return undefined;
   const key = process.env.JEV_API_KEY as string;
 
+  const body = JSON.stringify({ model: MODEL, state, questions });
   return slot(async () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
@@ -129,7 +133,7 @@ export async function askJev<Q extends Record<string, JevQuestion | undefined>>(
             authorization: `Bearer ${key}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ model: MODEL, state, questions }),
+          body,
           cache: "no-store",
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
@@ -142,6 +146,10 @@ export async function askJev<Q extends Record<string, JevQuestion | undefined>>(
           console.warn(`[jev] answered ${response.status}`, said.slice(0, 200));
           return undefined;
         }
+        // Berth's own meter (service_spend): Jev reports no usage, so the
+        // request's size stands in for its input tokens. Answered calls only.
+        const tokens = estimateTokens(body);
+        meterSpend("jev", { units: tokens, costMicros: jevCostMicros(tokens) });
         const payload = (await response.json()) as { answers?: AnswersFor<Q> };
         return payload.answers;
       } catch (error) {

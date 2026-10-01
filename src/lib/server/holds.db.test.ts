@@ -240,6 +240,15 @@ describe("runHoldCheck", () => {
     expect(await flushUnannounced(owner.id)).toEqual([]);
   });
 
+  it("judges nothing past its deadline, and leaves the buy for the next run", async () => {
+    const owner = await account(31);
+    const intentTx = await order({ owner: owner.wallet_address! });
+    await runHoldCheck({ now: NOW, readBalances: chain(10n * ONE), deadline: Date.now() - 1 });
+    expect(await orderRow(intentTx)).toMatchObject({ hold_outcome: null });
+    await runHoldCheck({ now: NOW, readBalances: chain(10n * ONE) });
+    expect(await orderRow(intentTx)).toMatchObject({ hold_outcome: "paid" });
+  });
+
   it("pays the account that placed the order", async () => {
     const placer = await account(18);
     const walletOwner = await account(19);

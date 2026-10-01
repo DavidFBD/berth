@@ -23,6 +23,16 @@ function getJwks() {
 export async function verifyPrivyAuth(
   authorization: string | null,
 ): Promise<string | null> {
+  return (await verifyPrivyToken(authorization))?.did ?? null;
+}
+
+/**
+ * verifyPrivyAuth with the token's own end (epoch ms), for the staff
+ * session, which lasts no longer than the token it came from.
+ */
+export async function verifyPrivyToken(
+  authorization: string | null,
+): Promise<{ did: string; expiresAt: number } | null> {
   if (!authorization?.startsWith("Bearer ")) return null;
   const token = authorization.slice("Bearer ".length);
   try {
@@ -36,7 +46,8 @@ export async function verifyPrivyAuth(
     ) {
       throw new Error("Privy token has no DID subject");
     }
-    return payload.sub;
+    const expiresAt = typeof payload.exp === "number" ? payload.exp * 1000 : Date.now() + 60 * 60_000;
+    return { did: payload.sub, expiresAt };
   } catch (error) {
     // Every rejection becomes a 401 upstream, and a silent 401 hides the
     // whole rewards UI — this line is what makes that diagnosable from
@@ -124,8 +135,25 @@ async function fetchPrivyUser(
  * be recent: a lingering session on a shared browser is not the person.
  */
 export async function fetchPrivyEmailVerifiedAt(did: string): Promise<number | null> {
-  const accounts = await fetchPrivyUser(did);
-  return accounts ? latestEmailProof(accounts) : null;
+  const proofs = await fetchPrivyEmailProofs(did);
+  if (!proofs) return null;
+  let latest: number | null = null;
+  for (const proof of proofs) if (proof.at !== null && (latest === null || proof.at > latest)) latest = proof.at;
+  return latest;
+}
+
+/**
+ * When a code sent to this one address was last entered (epoch ms), or
+ * null: not one of the user's Privy email accounts, never proved, or Privy
+ * could not be asked. The staff area's fresh proof (staff sessions, and
+ * through them requireFreshStaff): a code to the account's own email, not
+ * to some other address the Privy user also holds.
+ */
+export async function emailProofAt(did: string, email: string | null | undefined): Promise<number | null> {
+  const wanted = email?.trim().toLowerCase();
+  if (!wanted) return null;
+  const proofs = await fetchPrivyEmailProofs(did);
+  return proofs?.find((proof) => proof.address === wanted)?.at ?? null;
 }
 
 /**

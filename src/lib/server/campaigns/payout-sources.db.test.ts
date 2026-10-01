@@ -175,17 +175,22 @@ describe("payout sources", () => {
     const admin = await staff();
     const id = await campaign("sources-route");
     vi.stubEnv("STAFF_ADMIN_IDS", admin.id);
-    const did = ((await sql.query(`select privy_did from users where id = $1`, [admin.id])) as { privy_did: string }[])[0].privy_did;
+    vi.stubEnv("STAFF_SESSION_SECRET", "p".repeat(48));
+    const { createStaffSession } = await import("@/lib/server/staff-sessions");
+    const { mintStaffCookie, staffCookieName, staffSessionKey } = await import("@/lib/server/staff-session");
+    // A live staff session whose email code is an hour old: staff, but not fresh.
+    const session = await createStaffSession(admin.id, Date.now() - 3_600_000, Date.now() + 3_600_000);
+    const cookie = `${staffCookieName()}=${await mintStaffCookie({ sessionId: session.id, expiresAt: session.expiresAt }, staffSessionKey()!)}`;
     const { POST } = await import("@/app/api/staff/campaigns/route");
     const response = await POST(
       new NextRequest("http://localhost/api/staff/campaigns", {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${did}` },
+        headers: { "content-type": "application/json", cookie, host: "localhost", origin: "http://localhost" },
         body: JSON.stringify({ action: "add_source", campaignId: id, address: HOUSE, reason: "x" }),
       }),
     );
-    // Staff, but a token with no issue time is never fresh: turned away, nothing written.
-    expect(response.status).toBe(403);
+    // Staff, but not fresh: turned away, nothing written.
+    expect(response.status).toBe(401);
     expect((await sql.query(`select 1 from campaign_payout_sources where campaign_id = $1`, [id])) as unknown[]).toHaveLength(0);
     vi.unstubAllEnvs();
   });
