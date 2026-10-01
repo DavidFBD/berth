@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/server/db";
 import { liveAccount, normalizeWallet, type UserRow } from "@/lib/server/accounts";
-import { NOT_NO_XP } from "@/lib/server/no-xp";
+import { COUNTS_FOR_CAMPAIGNS } from "@/lib/server/no-xp";
 import { hubWalletFor } from "@/lib/server/portfolio";
 import { parseCaip10 } from "@/lib/identity/caip";
 import { STOCK_LISTINGS } from "@/lib/listings";
@@ -115,7 +115,7 @@ export const QUALIFYING_BUY_SQL = `select o.id, o.intent_tx, o.fill_tx, o.usd_va
    and o.usd_value is not null and o.usd_value >= $3
    and o.quantity is not null and o.quantity > 0
    and o.delivered_to ~ '^0x[0-9a-f]{40}$'
-   and ${NOT_NO_XP("o")}
+   and ${COUNTS_FOR_CAMPAIGNS("o")}
    and ${EFFECTIVE_AT} >= $4::timestamptz
    and ${EFFECTIVE_AT} <= $5::timestamptz
  order by ${EFFECTIVE_AT} asc, o.id asc

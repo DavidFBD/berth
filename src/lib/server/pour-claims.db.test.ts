@@ -73,11 +73,11 @@ describe("claims the evening settles", () => {
     const verdicts: Record<string, "filled" | "notFilled" | "unknown"> = { "0xfilled": "filled", "0xcancelled": "notFilled", "0xwaiting": "unknown" };
     const pay = vi.fn(async () => true);
     const summary = await settlePourClaims({ verdictOf: async (tx) => verdicts[tx], pay });
-    expect(summary).toEqual({ checked: 3, paid: 1, dropped: 1, recorded: 0 });
+    expect(summary).toEqual({ checked: 3, paid: 1, dropped: 1, recorded: 0, refused: 0 });
     expect(pay).toHaveBeenCalledTimes(1);
     expect(pay.mock.calls[0]).toEqual([expect.objectContaining({ intent_tx: "0xfilled", fill_tx: "0xfilltx", direction: "buy" })]);
     const again = await settlePourClaims({ verdictOf: async (tx) => verdicts[tx], pay });
-    expect(again).toEqual({ checked: 1, paid: 0, dropped: 0, recorded: 0 });
+    expect(again).toEqual({ checked: 1, paid: 0, dropped: 0, recorded: 0, refused: 0 });
     expect(pay).toHaveBeenCalledTimes(1);
   });
 });
@@ -151,7 +151,7 @@ describe("a buy recorded where Berth is not available", () => {
     });
     const mine = new Set(["0xawayclaim", "0xhomeclaim"]);
     const summary = await settlePourClaims({ limit: 50, verdictOf: async (tx) => (mine.has(tx) ? "filled" : "unknown"), pay });
-    expect(summary).toMatchObject({ paid: 1, recorded: 1 });
+    expect(summary).toMatchObject({ paid: 1, recorded: 1, refused: 0 });
     expect(pay).toHaveBeenCalledWith(expect.objectContaining({ intent_tx: "0xawayclaim", no_xp: true }));
     expect(await sql.query(`select intent_tx, outcome from pour_claims where user_id = $1 order by intent_tx`, [userId])).toEqual([
       { intent_tx: "0xawayclaim", outcome: "recorded_no_xp" },

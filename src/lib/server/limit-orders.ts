@@ -2,7 +2,8 @@ import { ChainKeys, getChainKeyFromRelayChainId, getIntentRelayChainId, type Int
 import { HOME_CHAIN } from "@/lib/account";
 import { formatUnits } from "viem";
 import { getSql } from "@/lib/server/db";
-import { getSodax, receiptSucceeded } from "@/lib/server/pour-verify";
+import { getSodax, ownsIntent, readReceipt } from "@/lib/server/pour-verify";
+import type { OwnedWallet } from "@/lib/server/pour-ownership";
 import { recordOrderMarks, saveOrder } from "@/lib/server/orders";
 import { forgoHold, isNoXp, markNoXp } from "@/lib/server/no-xp";
 import { placeRunForLimitOrder } from "@/lib/server/recurring";
@@ -160,7 +161,24 @@ export async function fetchIntentRecord(intentTx: string, timeoutMs = 6_000): Pr
   }
 }
 
-export type PlaceRejection = "not confirmed" | "not a limit order" | "not yours" | "not a listing" | "switched off";
+/** Whether an intent is the account's, by the proof every path to the ledger shares; "unknown" when a read failed. */
+export type OwnsIntent = (intentTx: string, intent: Intent, direction: LimitSide) => Promise<boolean | "unknown">;
+
+/** The shared proof (lib/server/pour-ownership) for one account's wallets. */
+export function limitOwnership(wallets: readonly OwnedWallet[]): OwnsIntent {
+  return async (intentTx, intent, direction) => {
+    const owned = await ownsIntent({ intent, direction: direction === "buy" ? "in" : "out", wallets, txHash: intentTx });
+    if (owned.ok) return true;
+    if (owned.unknown) return "unknown";
+    // A limit buy delivered to the account by a payer not proven its: kept,
+    // and its fill recorded, but it never pays (lib/server/no-xp).
+    if (!owned.deliveredToAccount) return false;
+    await markNoXp(intentTx, "unproven_source");
+    return true;
+  };
+}
+
+export type PlaceRejection = "not confirmed" | "not a limit order" | "not yours" | "not a listing" | "switched off" | "not yet known";
 
 /**
  * The pure judgement of a placed intent: that it is a buy or sell of a
@@ -220,6 +238,7 @@ export function keptPrice(typed: number | undefined, implied: number): number {
 export async function placeLimitOrder({
   userId,
   owners,
+  owns,
   intentTx,
   direction,
   typedPrice,
@@ -230,13 +249,17 @@ export async function placeLimitOrder({
   homeHub?: string | null;
   userId: string;
   owners: ReadonlySet<string>;
+  /** The ownership proof every ledger path shares (limitOwnership, lib/server/pour-ownership). */
+  owns: OwnsIntent;
   intentTx: string;
   direction: LimitSide;
   typedPrice?: number;
   intentHash?: string;
   srcChain?: string;
 }): Promise<{ ok: true; order: LimitOrderView } | { ok: false; reason: PlaceRejection }> {
-  if (!(await receiptSucceeded(intentTx))) return { ok: false, reason: "not confirmed" };
+  const receipt = await readReceipt(intentTx);
+  if (receipt.state === "unknown") return { ok: false, reason: "not yet known" };
+  if (receipt.state === "failed") return { ok: false, reason: "not confirmed" };
   const sodax = getSodax();
   let intent: Intent;
   try {
@@ -246,7 +269,7 @@ export async function placeLimitOrder({
   } catch {
     return { ok: false, reason: "not confirmed" };
   }
-  const recorded = await saveVerifiedIntent({ userId, owners, intentTx, intent, direction, typedPrice, intentHash, homeHub });
+  const recorded = await saveVerifiedIntent({ userId, owners, owns, intentTx, intent, direction, typedPrice, intentHash, homeHub });
   // The chain the page says it signed on must be the chain the intent came from.
   if (recorded.ok && srcChain && recorded.order.srcChain && srcChain !== recorded.order.srcChain) {
     console.warn("[limit-orders] claimed source chain differs from the intent's", intentTx, srcChain, recorded.order.srcChain);
@@ -273,6 +296,7 @@ export function sourceChainOf(relayChainId: bigint): string | undefined {
 export async function saveVerifiedIntent({
   userId,
   owners,
+  owns,
   intentTx,
   intent,
   direction,
@@ -286,6 +310,7 @@ export async function saveVerifiedIntent({
   homeHub?: string | null;
   userId: string;
   owners: ReadonlySet<string>;
+  owns: OwnsIntent;
   intentTx: string;
   intent: Intent;
   direction: LimitSide;
@@ -296,6 +321,14 @@ export async function saveVerifiedIntent({
   const sodax = getSodax();
   const verdict = judgeLimitIntent({ intent, direction, owners, nowSeconds: Math.floor(now.getTime() / 1000), minWaitSeconds, homeHub });
   if (!verdict.ok) return verdict;
+  // The v1 rules above first, then the proof every path to the ledger
+  // shares: a limit order becomes an order row when it fills, so it must be
+  // the account's by the same test as a market order.
+  // A read that did not answer defers: the page asks again, the sweep
+  // tries on its next pass. Never "not yours" on a read that failed.
+  const owned = await owns(intentTx, intent, direction);
+  if (owned === "unknown") return { ok: false, reason: "not yet known" };
+  if (!owned) return { ok: false, reason: "not yours" };
   const { listing } = verdict;
   const other = direction === "buy" ? intent.inputToken : intent.outputToken;
   const pay = sodax.config.getXTokenFromHubAsset(other);
@@ -622,12 +655,15 @@ export async function sweepMissing(
   userId: string,
   owners: ReadonlySet<string>,
   {
+    owns,
     now = new Date(),
     force = false,
     fetchIntents = fetchUserIntents,
     homeHub,
     noXpBuys = false,
   }: {
+    /** The ownership proof (limitOwnership). */
+    owns: OwnsIntent;
     now?: Date;
     force?: boolean;
     fetchIntents?: (address: string) => Promise<IntentResponse[]>;
@@ -639,7 +675,7 @@ export async function sweepMissing(
      * cancellable, never paid.
      */
     noXpBuys?: boolean;
-  } = {},
+  },
 ): Promise<number> {
   const last = lastSweep.get(userId) ?? 0;
   // A page holding an unsaved order may ask for one sooner, but never more
@@ -671,6 +707,7 @@ export async function sweepMissing(
     const saved = await saveVerifiedIntent({
       userId,
       owners,
+      owns,
       intentTx,
       intent,
       direction,

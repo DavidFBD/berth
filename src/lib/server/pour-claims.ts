@@ -1,11 +1,12 @@
 import { EvmSolverService, IntentsAbi, type Intent, type IntentResponse } from "@sodax/sdk";
-import { forgoHold, isNoXp } from "@/lib/server/no-xp";
+import { forgoHold, isNoXp, markNoXp, pourPaid } from "@/lib/server/no-xp";
 import { parseEventLogs, type Log } from "viem";
 import { awardXp } from "@/lib/server/accounts";
 import { getSql } from "@/lib/server/db";
 import { fetchIntentRecord } from "@/lib/server/limit-orders";
 import { recordOrder } from "@/lib/server/orders";
-import { getSodax } from "@/lib/server/pour-verify";
+import { accountOwnedWallets, type OwnershipVerdict } from "@/lib/server/pour-ownership";
+import { getSodax, ownsIntent } from "@/lib/server/pour-verify";
 import { limitStateFrom, type IntentRecord } from "@/lib/limit-orders";
 import type { RewardList } from "@/lib/profile-types";
 
@@ -128,13 +129,35 @@ async function orderExists(intentTx: string): Promise<boolean> {
 /** How a settled claim ended: paid, dropped unfilled, or recorded for a buy that pays nothing (lib/server/no-xp). */
 export type ClaimOutcome = "paid" | "dropped" | "recorded_no_xp";
 
-/** A claim the client's own later call settled: closed, so the evening pass never looks at it again. */
-export async function closePourClaim(intentTx: string, now = new Date(), outcome: Exclude<ClaimOutcome, "dropped"> = "paid"): Promise<void> {
-  await getSql().query(`update pour_claims set settled_at = $2, outcome = $3 where intent_tx = $1 and settled_at is null`, [
-    intentTx.toLowerCase(),
+/**
+ * A claim the client's own later call settled: closed, so the evening pass
+ * never looks at it again. With `userId`, that account's claim is the one
+ * closed, and any other account's unproven claim on the intent is dropped:
+ * the intent has proved whose it is.
+ */
+export async function closePourClaim(
+  intentTx: string,
+  now = new Date(),
+  outcome: Exclude<ClaimOutcome, "dropped"> = "paid",
+  userId?: string,
+): Promise<void> {
+  const tx = intentTx.toLowerCase();
+  if (!userId) {
+    await getSql().query(`update pour_claims set settled_at = $2, outcome = $3 where intent_tx = $1 and settled_at is null`, [tx, now.toISOString(), outcome]);
+    return;
+  }
+  await dropOtherClaims(tx, userId);
+  await getSql().query(`update pour_claims set settled_at = $2, outcome = $3 where intent_tx = $1 and user_id = $4 and settled_at is null`, [
+    tx,
     now.toISOString(),
     outcome,
+    userId,
   ]);
+}
+
+/** Every other account's open claim on an intent that has proved whose it is. */
+async function dropOtherClaims(intentTx: string, userId: string): Promise<void> {
+  await getSql().query(`delete from pour_claims where intent_tx = $1 and user_id <> $2 and settled_at is null`, [intentTx, userId]);
 }
 
 /**
@@ -150,18 +173,49 @@ export async function savePourClaim(
   direction: "buy" | "sell",
   fillTx: string | null,
   listingSymbol: string | null = null,
+  {
+    /**
+     * false: kept while the ownership proof could not be read (a failed
+     * read), so the evening pass proves it. Unproven claims of several
+     * accounts stand side by side until one proves; a proven claim makes
+     * the others give way, so a stranger's report made while the chain did
+     * not answer never stands in the owner's way.
+     */
+    proven = true,
+  }: { proven?: boolean } = {},
 ): Promise<void> {
-  await getSql().query(
-    `insert into pour_claims (intent_tx, user_id, direction, fill_tx, listing_symbol) values ($1, $2, $3, $4, $5)
-     on conflict (intent_tx) do update set fill_tx = coalesce(pour_claims.fill_tx, excluded.fill_tx),
-       listing_symbol = coalesce(pour_claims.listing_symbol, excluded.listing_symbol)
-     where pour_claims.user_id = excluded.user_id`,
-    [intentTx.toLowerCase(), userId, direction, fillTx, listingSymbol],
-  );
+  const tx = intentTx.toLowerCase();
+  const sql = getSql();
+  // A proven claim: the unproven claims other accounts made on this intent give way.
+  if (proven) await sql.query(`delete from pour_claims where intent_tx = $1 and user_id <> $2 and settled_at is null and not proven`, [tx, userId]);
+  try {
+    await sql.query(
+      `insert into pour_claims (intent_tx, user_id, direction, fill_tx, listing_symbol, proven)
+       select $1, $2, $3, $4, $5, $6
+        where not exists (
+          -- Another account's proven or settled claim stands: never a second.
+          select 1 from pour_claims o where o.intent_tx = $1 and o.user_id <> $2
+             and (o.proven or o.outcome in ('paid', 'recorded_no_xp'))
+        )
+       on conflict (intent_tx, user_id) do update set
+         fill_tx = coalesce(pour_claims.fill_tx, excluded.fill_tx),
+         listing_symbol = coalesce(pour_claims.listing_symbol, excluded.listing_symbol),
+         proven = pour_claims.proven or excluded.proven`,
+      [tx, userId, direction, fillTx, listingSymbol, proven],
+    );
+  } catch (error) {
+    // Two proven claims racing: the one-proven index lets the first stand.
+    if ((error as { code?: unknown })?.code !== "23505") throw error;
+  }
 }
 
-/** `recorded`: filled claims for a no XP buy, written into the ledger and paid nothing. */
-export type ClaimSummary = { checked: number; paid: number; dropped: number; recorded: number };
+/**
+ * `recorded`: filled claims for a no XP buy, written into the ledger and
+ * paid nothing. `refused`: claims whose intent is not proven the account's
+ * (lib/server/pour-ownership), removed unpaid and unrecorded so the real
+ * owner can still report the intent.
+ */
+export type ClaimSummary = { checked: number; paid: number; dropped: number; recorded: number; refused: number };
 
 export type SettledClaim = {
   user_id: string;
@@ -169,6 +223,8 @@ export type SettledClaim = {
   direction: "buy" | "sell";
   referred_by: string | null;
   fill_tx: string | null;
+  /** The account's users.wallet_address, for the ownership proof. Absent reads as none. */
+  wallet_address?: string | null;
   /** A no XP buy (lib/server/no-xp): record the order, pay nothing. Absent reads as false. */
   no_xp?: boolean;
 };
@@ -191,9 +247,62 @@ export async function payRecordedClaim(claim: SettledClaim): Promise<"paid" | "r
 
 export { forgoHold };
 
+/** What settling one filled claim reads and writes, injectable for tests. */
+export type ClaimPayDeps = {
+  readIntent: (intentTx: string) => Promise<Intent | null>;
+  prove: (claim: SettledClaim, intent: Intent) => Promise<OwnershipVerdict>;
+  record: (claim: SettledClaim, intent: Intent) => Promise<void>;
+};
+
+export function defaultClaimPayDeps(): ClaimPayDeps {
+  const sodax = getSodax();
+  return {
+    readIntent: async (intentTx) => {
+      const intent = await sodax.swaps.getIntent(intentTx as `0x${string}`).catch(() => null);
+      return intent?.ok ? intent.value : null;
+    },
+    prove: async (claim, intent) =>
+      ownsIntent({
+        sodax,
+        intent,
+        direction: claim.direction === "sell" ? "out" : "in",
+        wallets: await accountOwnedWallets(claim.user_id, claim.wallet_address ?? null),
+        txHash: claim.intent_tx,
+      }),
+    record: async (claim, intent) => {
+      await recordOrder({ sodax, userId: claim.user_id, intentTx: claim.intent_tx, direction: claim.direction, intent, claimedFillTx: claim.fill_tx });
+    },
+  };
+}
+
+/**
+ * Settling one filled claim: the order row first (a claim is only settled
+ * once `orders` holds it, so a failed intent read leaves the claim for the
+ * next night), proven the account's as every path to the ledger is. A read
+ * that did not answer leaves it open too; only a proven "not the
+ * account's" removes it ("not_owned").
+ */
+export async function payClaim(
+  claim: SettledClaim,
+  deps: ClaimPayDeps = defaultClaimPayDeps(),
+): Promise<boolean | "paid" | "recorded_no_xp" | "not_owned"> {
+  const intent = await deps.readIntent(claim.intent_tx);
+  if (!intent) return false;
+  const owned = await deps.prove(claim, intent);
+  if (!owned.ok && owned.unknown) return false;
+  if (!owned.ok && !owned.deliveredToAccount) return "not_owned";
+  // Delivered to the account but paid by someone not proven its: recorded,
+  // never paid (lib/server/no-xp), which payRecordedClaim reads below. A
+  // buy already paid is a replay and is never marked after the fact.
+  if (!owned.ok && !(await pourPaid(claim.intent_tx))) await markNoXp(claim.intent_tx, "unproven_source");
+  await deps.record(claim, intent);
+  if (!(await orderExists(claim.intent_tx))) return false;
+  return payRecordedClaim(claim);
+}
+
 /**
  * The evening's pass over open claims, oldest first: a filled one is
- * recorded as an order and paid (parked for the next profile sync), or
+ * proven the account's again, then recorded as an order and paid (parked for the next profile sync), or
  * for a no XP buy recorded and paid nothing (lib/server/no-xp), a
  * closed one is dropped unpaid, anything still undecided waits for the
  * next night. A claim older than 30 days that never filled is dropped.
@@ -202,16 +311,7 @@ export async function settlePourClaims({
   limit = 15,
   now = new Date(),
   verdictOf = async (intentTx: string) => verdictFromRecord(await fetchIntentRecord(intentTx), now),
-  pay = async (claim: SettledClaim) => {
-    // The order row first: a claim is only settled once `orders` holds
-    // it, so a failed intent read leaves the claim for the next night.
-    const sodax = getSodax();
-    const intent = await sodax.swaps.getIntent(claim.intent_tx as `0x${string}`).catch(() => null);
-    if (!intent?.ok) return false;
-    await recordOrder({ sodax, userId: claim.user_id, intentTx: claim.intent_tx, direction: claim.direction, intent: intent.value, claimedFillTx: claim.fill_tx });
-    if (!(await orderExists(claim.intent_tx))) return false;
-    return payRecordedClaim(claim);
-  },
+  pay = (claim: SettledClaim) => payClaim(claim),
   budgetMs = CLAIMS_BUDGET_MS,
   clock = Date.now,
 }: {
@@ -223,7 +323,7 @@ export async function settlePourClaims({
    * "recorded_no_xp" for a no XP buy. true reads as "paid"; false leaves the
    * claim open.
    */
-  pay?: (claim: SettledClaim) => Promise<boolean | "paid" | "recorded_no_xp">;
+  pay?: (claim: SettledClaim) => Promise<boolean | "paid" | "recorded_no_xp" | "not_owned">;
   /** Starts no claim after this long, inside the evening stage's own budget. */
   budgetMs?: number;
   clock?: () => number;
@@ -231,24 +331,32 @@ export async function settlePourClaims({
   const sql = getSql();
   const started = clock();
   const claims = (await sql.query(
-    `select c.intent_tx, c.user_id, c.direction, c.fill_tx, c.created_at, u.referred_by,
+    `select c.intent_tx, c.user_id, c.direction, c.fill_tx, c.created_at, u.referred_by, u.wallet_address,
             exists (select 1 from no_xp_intents n where n.intent_tx = c.intent_tx) as no_xp
        from pour_claims c join users u on u.id = c.user_id
       where c.settled_at is null
       order by c.last_checked_at asc nulls first, c.created_at asc limit $1`,
     [limit],
   )) as (SettledClaim & { created_at: string | Date })[];
-  const summary: ClaimSummary = { checked: claims.length, paid: 0, dropped: 0, recorded: 0 };
+  const summary: ClaimSummary = { checked: claims.length, paid: 0, dropped: 0, recorded: 0, refused: 0 };
   for (const claim of claims) {
     if (clock() - started > budgetMs) break;
     const verdict = await verdictOf(claim.intent_tx);
     const stale = now.getTime() - new Date(claim.created_at).getTime() > 30 * 86_400_000;
     // Undecided or unpaid claims go to the back of the line, so one that
     // stays stuck can never starve the ones behind it.
-    const later = () => sql.query(`update pour_claims set last_checked_at = $2 where intent_tx = $1`, [claim.intent_tx, now.toISOString()]);
+    const later = () =>
+      sql.query(`update pour_claims set last_checked_at = $2 where intent_tx = $1 and user_id = $3`, [claim.intent_tx, now.toISOString(), claim.user_id]);
     let outcome: ClaimOutcome;
     if (verdict === "filled") {
       const settled = await pay(claim);
+      if (settled === "not_owned") {
+        // Never this account's: nothing recorded, nothing paid, and no claim
+        // kept that would stand in the real owner's way (one claim per intent).
+        await sql.query(`delete from pour_claims where intent_tx = $1 and user_id = $2 and settled_at is null`, [claim.intent_tx, claim.user_id]);
+        summary.refused += 1;
+        continue;
+      }
       if (!settled) {
         await later();
         continue;
@@ -263,7 +371,14 @@ export async function settlePourClaims({
       await later();
       continue;
     }
-    await sql.query(`update pour_claims set settled_at = $2, outcome = $3 where intent_tx = $1`, [claim.intent_tx, now.toISOString(), outcome]);
+    // The claim that proved settles; any other account's on the intent goes.
+    if (outcome !== "dropped") await dropOtherClaims(claim.intent_tx, claim.user_id);
+    await sql.query(`update pour_claims set settled_at = $2, outcome = $3 where intent_tx = $1 and user_id = $4`, [
+      claim.intent_tx,
+      now.toISOString(),
+      outcome,
+      claim.user_id,
+    ]);
   }
   return summary;
 }

@@ -166,7 +166,7 @@ describe("recovering orders", () => {
     });
     expect(report.rejected).toEqual([{ intentTx: tx(0x106), reason: "fill not on chain" }]);
     expect(report.written).toBe(0);
-    expect(used.verify).toHaveBeenCalledWith(expect.objectContaining({ txHash: tx(0x101), direction: "out", accountWallet: EOA }));
+    expect(used.verify).toHaveBeenCalledWith(expect.objectContaining({ txHash: tx(0x101), direction: "out", wallets: [{ family: "evm", address: EOA, linkedAt: null, unlinkedAt: null }] }));
     const rows = (await sql.query(`select count(*)::int as n from orders`)) as { n: number }[];
     expect(rows[0].n).toBe(1);
   });
@@ -194,6 +194,46 @@ describe("recovering orders", () => {
     expect(again).toMatchObject({ recovered: 0, written: 0 });
     const count = (await sql.query(`select count(*)::int as n from orders`)) as { n: number }[];
     expect(count[0].n).toBe(2);
+  });
+
+  it("a buy delivered to the account by a payer not proven its is recovered, marked to pay nothing", async () => {
+    const owner = ((await sql.query(`insert into users (wallet_address) values ($1) returning id`, [
+      "0x5555555555555555555555555555555555555555",
+    ])) as { id: string }[])[0].id;
+    const gift = item({ txHash: tx(0x301), input: USDC_HUB, output: NVDA.address });
+    const report = await recoverAccountOrders(
+      { id: owner, wallet_address: "0x5555555555555555555555555555555555555555" },
+      {
+        write: true,
+        deps: depsFor([gift], {
+          fetchIntents: vi.fn(async () => [gift]),
+          verify: vi.fn(async () => ({ ok: true as const, intent: asIntent(gift), sodax: {} as Sodax, unprovenSource: true as const })),
+        }),
+      },
+    );
+    expect(report.written).toBe(1);
+    expect(await sql.query(`select reason from no_xp_intents where intent_tx = $1`, [tx(0x301)])).toEqual([{ reason: "unproven_source" }]);
+    expect(await sql.query(`select user_id from orders where intent_tx = $1`, [tx(0x301)])).toEqual([{ user_id: owner }]);
+  });
+
+  it("a recovered unproven-source buy whose XP was already paid is never marked (m1)", async () => {
+    const owner = ((await sql.query(`insert into users (wallet_address) values ($1) returning id`, [
+      "0x5656565656565656565656565656565656565656",
+    ])) as { id: string }[])[0].id;
+    const paid = item({ txHash: tx(0x302), input: USDC_HUB, output: NVDA.address });
+    await sql.query(`insert into xp_events (user_id, kind, amount, ref) values ($1, 'pour_in', 100, $2)`, [owner, tx(0x302)]);
+    const report = await recoverAccountOrders(
+      { id: owner, wallet_address: "0x5656565656565656565656565656565656565656" },
+      {
+        write: true,
+        deps: depsFor([paid], {
+          fetchIntents: vi.fn(async () => [paid]),
+          verify: vi.fn(async () => ({ ok: true as const, intent: asIntent(paid), sodax: {} as Sodax, unprovenSource: true as const })),
+        }),
+      },
+    );
+    expect(report.written).toBe(1);
+    expect(await sql.query(`select 1 from no_xp_intents where intent_tx = $1`, [tx(0x302)])).toEqual([]);
   });
 
   it("never takes an order the pour route would refuse as not the account's", async () => {

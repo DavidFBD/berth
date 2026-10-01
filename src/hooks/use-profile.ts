@@ -1,6 +1,7 @@
 "use client";
 
 import { isUnavailableResponse, noteUnavailable, unavailableReasonOf } from "@/lib/unavailable-refusal";
+import { reportWithRetry } from "@/lib/pour-retry";
 import { useCallback, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
@@ -294,13 +295,18 @@ export function useProfile() {
 function useProfileMutation<TVars>(
   path: string,
   toBody: (vars: TVars) => Record<string, unknown>,
+  {
+    /** Ask again with a backoff while the server answers 503 (it could not read the chain yet; lib/pour-retry). */
+    retryUnread = false,
+  }: { retryUnread?: boolean } = {},
 ) {
   const queryClient = useQueryClient();
-  const { key, call } = useRewardsCall();
+  const { key, call, callStatus } = useRewardsCall();
   return useMutation({
     mutationFn: async (vars: TVars) => {
       if (!key) return null;
-      return call<ProfileResponse>(path, toBody(vars));
+      if (!retryUnread) return call<ProfileResponse>(path, toBody(vars));
+      return (await reportWithRetry(() => callStatus<ProfileResponse>(path, toBody(vars)))).data;
     },
     onSuccess: (data) => {
       if (!data) return;
@@ -356,7 +362,8 @@ export function useAwardTheme() {
 }
 
 /**
- * Rewards a filled pour. Fire-and-forget from the drawers' success paths:
+ * Rewards a filled pour. Fire-and-forget from the drawers' success paths
+ * (asked again with a backoff while the server answers 503, lib/pour-retry):
  * XP is garnish, so any failure stays out of the pour's own UX (the server
  * dedups by tx hash, so a retry on next sync would be safe too).
  */
@@ -368,6 +375,9 @@ export function useAwardPour() {
       intentTxHash: vars.intentTxHash,
       fillTxHash: vars.fillTxHash,
     }),
+    // A pour is reported once, from the drawer: when the server could not
+    // read the chain yet it asks again, further apart each time.
+    { retryUnread: true },
   );
 }
 

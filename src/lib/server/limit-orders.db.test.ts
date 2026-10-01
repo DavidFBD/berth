@@ -171,6 +171,10 @@ describe("the switch", () => {
   });
 });
 
+// The shared ownership proof is lib/server/pour-ownership's (tested there);
+// here every intent passes it, so the sweep's own rules are what is tested.
+const owns = async () => true;
+
 describe("the sweep", () => {
   it("records a waiting intent of the account's that Berth has no row for, once, and ignores the rest", async () => {
     const { sweepMissing } = await import("./limit-orders");
@@ -189,7 +193,7 @@ describe("the sweep", () => {
     ];
     const owners = new Set(["0xhub"]);
     const fetchIntents = async () => intents;
-    const first = await sweepMissing(userId, owners, { force: true, fetchIntents });
+    const first = await sweepMissing(userId, owners, { force: true, fetchIntents, owns });
     expect(first).toBe(1);
     const rows = (await sql.query(`select intent_tx, direction, listing_symbol, src_chain from limit_orders where intent_tx like '0xswept'`)) as {
       intent_tx: string;
@@ -200,11 +204,11 @@ describe("the sweep", () => {
     expect(rows).toEqual([{ intent_tx: "0xswept", direction: "buy", listing_symbol: "NVDA", src_chain: expect.any(String) }]);
     // Forced, but inside two minutes: not swept again, even with a new intent.
     intents.push(item("0xlater"));
-    expect(await sweepMissing(userId, owners, { force: true, fetchIntents })).toBe(0);
+    expect(await sweepMissing(userId, owners, { force: true, fetchIntents, owns })).toBe(0);
     // Two minutes on, a forced sweep runs; an unforced one still waits for five.
     const later = new Date(Date.now() + 2 * 60_000 + 1_000);
-    expect(await sweepMissing(userId, owners, { now: later, fetchIntents })).toBe(0);
-    expect(await sweepMissing(userId, owners, { now: later, force: true, fetchIntents })).toBe(1);
+    expect(await sweepMissing(userId, owners, { now: later, fetchIntents, owns })).toBe(0);
+    expect(await sweepMissing(userId, owners, { now: later, force: true, fetchIntents, owns })).toBe(1);
     // Neither was found for a caller where Berth is not available: no mark.
     const { isNoXp } = await import("./no-xp");
     expect(await isNoXp("0xswept")).toBe(false);
@@ -218,9 +222,36 @@ describe("the sweep", () => {
       ({ ...response(), txHash, intent: { ...response().intent, inputToken: usdc, creator: "0xhub2", srcAddress: "0xhub2", ...over } }) as IntentResponse;
     const intents = [item("0xawaysweep"), item("0xnotmine", { creator: "0xother", srcAddress: "0xother" })];
     const other = (await sql.query(`insert into users (wallet_address) values ('0xsweeper') returning id`)) as { id: string }[];
-    expect(await sweepMissing(other[0].id, new Set(["0xhub2"]), { force: true, fetchIntents: async () => intents, noXpBuys: true })).toBe(1);
+    expect(await sweepMissing(other[0].id, new Set(["0xhub2"]), { force: true, fetchIntents: async () => intents, noXpBuys: true, owns })).toBe(1);
     expect(await isNoXp("0xawaysweep")).toBe(true);
     expect(await isNoXp("0xnotmine")).toBe(false);
+  });
+});
+
+describe("the shared ownership proof", () => {
+  it("is asked for every intent the sweep would record, and a refusal records nothing", async () => {
+    const { sweepMissing } = await import("./limit-orders");
+    const usdc = "0x29219dd400f2bf60e5a23d13be72b486d4038894";
+    const intents = [{ ...response(), txHash: "0xunproven", intent: { ...response().intent, inputToken: usdc, creator: "0xhub3", srcAddress: "0xhub3" } } as IntentResponse];
+    const other = (await sql.query(`insert into users (wallet_address) values ('0xprover') returning id`)) as { id: string }[];
+    const refuse = vi.fn(async () => false);
+    expect(await sweepMissing(other[0].id, new Set(["0xhub3"]), { force: true, fetchIntents: async () => intents, owns: refuse })).toBe(0);
+    expect(refuse).toHaveBeenCalledWith("0xunproven", expect.objectContaining({ creator: "0xhub3" }), "buy");
+    expect(((await sql.query(`select 1 from limit_orders where intent_tx = '0xunproven'`)) as unknown[]).length).toBe(0);
+  });
+});
+
+describe("a proof whose read failed", () => {
+  it("defers: the sweep records nothing and saves nothing, and the next sweep, with the read answering, records it", async () => {
+    const { sweepMissing } = await import("./limit-orders");
+    const usdc = "0x29219dd400f2bf60e5a23d13be72b486d4038894";
+    const intents = [{ ...response(), txHash: "0xdeferred", intent: { ...response().intent, inputToken: usdc, creator: "0xhub4", srcAddress: "0xhub4" } } as IntentResponse];
+    const other = (await sql.query(`insert into users (wallet_address) values ('0xdeferrer') returning id`)) as { id: string }[];
+    const fetchIntents = async () => intents;
+    expect(await sweepMissing(other[0].id, new Set(["0xhub4"]), { force: true, fetchIntents, owns: async () => "unknown" as const })).toBe(0);
+    expect(((await sql.query(`select 1 from limit_orders where intent_tx = '0xdeferred'`)) as unknown[]).length).toBe(0);
+    const later = new Date(Date.now() + 10 * 60_000);
+    expect(await sweepMissing(other[0].id, new Set(["0xhub4"]), { now: later, fetchIntents, owns: async () => true })).toBe(1);
   });
 });
 

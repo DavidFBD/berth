@@ -1151,6 +1151,10 @@ export type Copy = {
   walletMergeStatement: (short: string) => string;
   /** A buy paid from a wallet that is not on the account yet. */
   ctaAddWalletFirst: string;
+  /** A buy paid from a Solana or Bitcoin wallet not on the account yet: why it is added first. */
+  buyLinkForXp: string;
+  /** A buy paid from a network no wallet can be linked in (Sui, Stellar, NEAR, Injective, ICON, Stacks). */
+  buyNoXpNetwork: string;
   /** A sell from a hub wallet another address of the account owns. */
   ctaSellSwitchWallet: (short: string) => string;
   /** The holding sits in the account's email wallet, which only an email sign in signs for. */
@@ -3371,6 +3375,8 @@ export const COPY: Copy = {
   walletRemoveStatement: (short) => `Remove ${short} from your Berth account. Signing is free and moves nothing.`,
   walletMergeStatement: (short) => `Make the Berth account of ${short} one with your email's account. Signing is free and moves nothing.`,
   ctaAddWalletFirst: "Add this wallet to your account first",
+  buyLinkForXp: "Add this wallet to your account first, so the buy counts as yours and earns XP.",
+  buyNoXpNetwork: "Buys paid from this network are recorded but earn no XP.",
   ctaSellSwitchWallet: (short) => `Switch to ${short} to sell from it`,
   ctaSellSignInEmail: "Sign in with your email to sell these",
   sellFromLabel: "Sell from",

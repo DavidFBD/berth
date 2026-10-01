@@ -1,10 +1,12 @@
-import { EvmSolverService, type Intent, type IntentResponse } from "@sodax/sdk";
+import { ChainKeys, EvmSolverService, type Intent, type IntentResponse } from "@sodax/sdk";
 import { HOME_CHAIN } from "@/lib/account";
 import { decodeFeeReceiver, type OrderRecord } from "@/lib/orders";
 import { listListings } from "@/lib/listings";
 import { PARTNER_FEE } from "@/lib/sodax-config";
 import { getSql } from "@/lib/server/db";
-import { linkedWallets } from "@/lib/server/identities";
+import { markNoXp } from "@/lib/server/no-xp";
+import type { WalletFamily } from "@/lib/identity/caip";
+import { accountOwnedWallets } from "@/lib/server/pour-ownership";
 import { buildOrder, recordOrderMarks } from "@/lib/server/orders";
 import { placeRunForOrder } from "@/lib/server/recurring";
 import { fillsIntent, verdictFromRecord } from "@/lib/server/pour-claims";
@@ -18,7 +20,8 @@ import { getSodax, verifyPourTx, type VerifiedPour } from "@/lib/server/pour-ver
  * answered "not your pour" and no row was written; the account's ledger
  * then cannot explain what it holds. This finds those orders in SODAX's
  * backend (the intents of every EVM address on the account and of each
- * one's hub wallet), keeps only Berth's (a listing on the traded side and
+ * one's hub wallet, and of the hub wallet each Solana or Bitcoin address
+ * on it derives), keeps only Berth's (a listing on the traded side and
  * the partner fee paid to Berth, the same test the pour route applies),
  * proves each the way the pour route does (verifyPourTx for the intent and
  * its owner, fillsIntent for a whole fill on chain) and builds the row with
@@ -38,7 +41,7 @@ export type RecoveredOrder = OrderRecord & { userId: string; xpPaid: boolean };
 
 export type AccountRecovery = {
   userId: string;
-  /** EVM addresses on the account and their hub wallets, deduplicated. */
+  /** EVM addresses on the account and every wallet's hub wallet, deduplicated. */
   addresses: number;
   /** Intents the backend knows for those addresses. */
   intents: number;
@@ -91,8 +94,8 @@ export function berthFilledIntents(
 export type RecoveryDeps = {
   /** Every intent the backend knows for one address. */
   fetchIntents: (address: string) => Promise<IntentResponse[]>;
-  /** The address's hub wallet on the home chain, lowercased, or null. */
-  hubOf: (address: string) => Promise<string | null>;
+  /** The address's hub wallet, lowercased, or null: on the home chain for EVM, on its own chain otherwise. */
+  hubOf: (address: string, family: WalletFamily) => Promise<string | null>;
   /** The pour route's own check of the intent and its owner. */
   verify: typeof verifyPourTx;
   /** Whether `fillTx` fills `intent` whole on chain, and when. */
@@ -101,6 +104,13 @@ export type RecoveryDeps = {
   build: (args: { intentTx: string; direction: "buy" | "sell"; intent: Intent; claimedFillTx: string }) => Promise<OrderRecord | undefined>;
   /** Benchmark prices at the order's minute, as the pour route records them. */
   marks: (orderId: string, placedAt: Date) => Promise<number>;
+};
+
+/** The chain a wallet's hub wallet is derived on, as the backend files its intents. */
+const HUB_CHAIN_OF: Record<WalletFamily, Parameters<ReturnType<typeof getSodax>["hubProvider"]["getUserHubWalletAddress"]>[1]> = {
+  evm: HOME_CHAIN,
+  solana: ChainKeys.SOLANA_MAINNET,
+  bitcoin: ChainKeys.BITCOIN_MAINNET,
 };
 
 const PAGE = 50;
@@ -125,9 +135,9 @@ export function defaultRecoveryDeps(): RecoveryDeps {
   const sodax = getSodax();
   return {
     fetchIntents: fetchAllUserIntents,
-    hubOf: (address) =>
+    hubOf: (address, family) =>
       sodax.hubProvider
-        .getUserHubWalletAddress(address, HOME_CHAIN)
+        .getUserHubWalletAddress(address, HUB_CHAIN_OF[family])
         .then((wallet) => wallet.toLowerCase())
         .catch(() => null),
     verify: verifyPourTx,
@@ -218,11 +228,19 @@ export async function recoverAccountOrders(
     rejected: [],
     written: 0,
   };
-  const wallets = (await linkedWallets(account.id, account.wallet_address))
-    .filter((wallet) => wallet.family === "evm")
-    .map((wallet) => ({ address: wallet.address.toLowerCase(), linkedAt: Date.parse(wallet.linkedAt) }));
-  const hubs = await Promise.all(wallets.map((wallet) => deps.hubOf(wallet.address)));
-  const addresses = [...new Set([...wallets.map((wallet) => wallet.address), ...hubs.filter((hub): hub is string => !!hub)])];
+  // Every wallet on the account, in every family: an EVM address and its
+  // home chain hub wallet (where a sell is made), a Solana or Bitcoin
+  // address through the hub wallet it derives on its own chain, which is
+  // the creator SODAX's backend files its intents under.
+  const wallets = await accountOwnedWallets(account.id, account.wallet_address);
+  const distinct = [...new Map(wallets.map((wallet) => [`${wallet.family}:${wallet.address}`, wallet])).values()];
+  const hubs = await Promise.all(distinct.map((wallet) => deps.hubOf(wallet.address, wallet.family)));
+  const addresses = [
+    ...new Set([
+      ...distinct.filter((wallet) => wallet.family === "evm").map((wallet) => wallet.address),
+      ...hubs.filter((hub): hub is string => !!hub),
+    ]),
+  ];
   report.addresses = addresses.length;
 
   const seen = new Map<string, IntentResponse>();
@@ -258,8 +276,7 @@ export async function recoverAccountOrders(
     const verified = await deps.verify({
       txHash: candidate.intentTx,
       direction: candidate.direction === "buy" ? "in" : "out",
-      accountWallet: account.wallet_address,
-      linkedWallets: wallets,
+      wallets,
     });
     if (!verified.ok) {
       report.rejected.push({ intentTx: candidate.intentTx, reason: verified.reason });
@@ -287,6 +304,10 @@ export async function recoverAccountOrders(
     taken.add(candidate.intentTx);
     report.recovered.push({ ...order, userId: account.id, xpPaid: xpPaid.has(candidate.intentTx) });
     if (write) {
+      // Delivered to the account, paid by someone not proven its: the row
+      // is written, and the intent never pays (lib/server/no-xp).
+      // One whose XP was already paid is history, never marked after the fact.
+      if (verified.unprovenSource && !xpPaid.has(candidate.intentTx)) await markNoXp(candidate.intentTx, "unproven_source");
       const id = await insertRecoveredOrder(account.id, order);
       if (id) {
         report.written += 1;

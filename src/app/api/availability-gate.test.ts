@@ -43,11 +43,12 @@ const claims = {
   savePourClaim: vi.fn(async () => undefined),
 };
 vi.mock("@/lib/server/pour-claims", () => claims);
+vi.mock("@/lib/server/pour-ownership", () => ({ accountOwnedWallets: vi.fn(async () => []) }));
 // The no XP marks (lib/server/no-xp) and the paid pours, in memory.
 const marked = new Set<string>();
 const paidPours = new Set<string>();
 const noXp = {
-  markNoXp: vi.fn(async (tx: string) => void marked.add(tx)),
+  markNoXp: vi.fn(async (...args: [tx: string, reason?: string]) => void marked.add(args[0])),
   isNoXp: vi.fn(async (tx: string) => marked.has(tx)),
   pourPaid: vi.fn(async (tx: string) => paidPours.has(tx)),
   forgoHold: vi.fn(async () => undefined),
@@ -65,6 +66,7 @@ const placeLimitOrder = vi.fn(async () => ({ ok: true, order: { id: "o1" } }));
 vi.mock("@/lib/server/limit-orders", () => ({
   hasWaitingOrders: vi.fn(async () => false),
   limitOrdersOn: vi.fn(() => true),
+  limitOwnership: vi.fn(() => async () => true),
   listLimitOrders: vi.fn(async () => []),
   markCancelAsked: vi.fn(async () => true),
   placeLimitOrder: (...args: unknown[]) => placeLimitOrder(...(args as [])),
@@ -125,6 +127,82 @@ beforeEach(() => {
   paidPours.clear();
 });
 
+describe("a read that did not answer", () => {
+  const buy = () => pour.POST(post("/api/xp/pour", { direction: "in", intentTxHash: TX }));
+
+  it("the intent read, its owner not: 503 to ask again, an unproven claim kept, nothing marked, refused or paid", async () => {
+    verifyPourTx.mockResolvedValue({ ok: false, reason: "not yet known", why: "reads failed", intent: { id: "i" }, sodax: {} });
+    const response = await buy();
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("10");
+    expect(await response.json()).toEqual({ error: "not yet known", retry: true });
+    expect(claims.savePourClaim).toHaveBeenCalledWith("u1", TX, "buy", null, "NVDA", { proven: false });
+    expect(noXp.markNoXp).not.toHaveBeenCalled();
+    expect(recordOrder).not.toHaveBeenCalled();
+    expect(claims.awardFilledPour).not.toHaveBeenCalled();
+  });
+
+  it("the receipt holds an IntentCreated the SDK could not read: 503, and an unproven claim on the hash and side alone (n1)", async () => {
+    verifyPourTx.mockResolvedValue({ ok: false, reason: "not yet known", intentCreated: true });
+    expect((await buy()).status).toBe(503);
+    expect(claims.savePourClaim).toHaveBeenCalledWith("u1", TX, "buy", null, null, { proven: false });
+    expect(recordOrder).not.toHaveBeenCalled();
+    expect(noXp.markNoXp).not.toHaveBeenCalled();
+  });
+
+  it("not even the intent read: 503, and no claim for a hash nobody has read", async () => {
+    verifyPourTx.mockResolvedValue({ ok: false, reason: "not yet known" });
+    expect((await buy()).status).toBe(503);
+    expect(claims.savePourClaim).not.toHaveBeenCalled();
+    expect(recordOrder).not.toHaveBeenCalled();
+  });
+});
+
+describe("a buy whose payer is not proven the account's", () => {
+  const buy = () => pour.POST(post("/api/xp/pour", { direction: "in", intentTxHash: TX }));
+
+  it("delivered to the account's own hub wallet: recorded, marked unproven_source, no XP, no hold, no referral pair", async () => {
+    verifyPourTx.mockResolvedValue({ ok: true, intent: { id: "i" }, sodax: {}, unprovenSource: true });
+    const response = await buy();
+    expect(response.status).toBe(200);
+    expect(recordOrder).toHaveBeenCalledOnce();
+    expect(noXp.markNoXp).toHaveBeenCalledWith(TX, "unproven_source");
+    expect(noXp.forgoHold).toHaveBeenCalledWith(TX);
+    expect(claims.closePourClaim).toHaveBeenCalledWith(TX, expect.any(Date), "recorded_no_xp", "u1");
+    // awardFilledPour is where the pour XP and the referral pair are paid.
+    expect(claims.awardFilledPour).not.toHaveBeenCalled();
+    expect((await response.json()).rewards).toEqual([]);
+  });
+
+  it("marked too when the fill is not known yet, so the evening pass records it unpaid", async () => {
+    verifyPourTx.mockResolvedValue({ ok: true, intent: { id: "i" }, sodax: {}, unprovenSource: true });
+    claims.fillVerdict.mockResolvedValueOnce("unknown");
+    expect((await buy()).status).toBe(200);
+    expect(noXp.markNoXp).toHaveBeenCalledWith(TX, "unproven_source");
+    expect(claims.savePourClaim).toHaveBeenCalledOnce();
+    expect(claims.awardFilledPour).not.toHaveBeenCalled();
+  });
+
+  it("a buy already paid, reported again, is a replay: never marked after the fact, its hold untouched (m1)", async () => {
+    verifyPourTx.mockResolvedValue({ ok: true, intent: { id: "i" }, sodax: {}, unprovenSource: true });
+    paidPours.add(TX);
+    expect((await buy()).status).toBe(200);
+    expect(noXp.markNoXp).not.toHaveBeenCalled();
+    expect(noXp.forgoHold).not.toHaveBeenCalled();
+  });
+
+  it("neither the payer nor the delivery proven: 422, and nothing written", async () => {
+    verifyPourTx.mockResolvedValue({ ok: false, reason: "not your pour", why: "family not linkable" });
+    const response = await buy();
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "not your pour" });
+    expect(recordOrder).not.toHaveBeenCalled();
+    expect(claims.savePourClaim).not.toHaveBeenCalled();
+    expect(noXp.markNoXp).not.toHaveBeenCalled();
+    expect(claims.awardFilledPour).not.toHaveBeenCalled();
+  });
+});
+
 describe("recording a pour", () => {
   const verified = () => verifyPourTx.mockResolvedValue({ ok: true, intent: { id: "i" }, sodax: {} });
   const buy = () => pour.POST(post("/api/xp/pour", { direction: "in", intentTxHash: TX }));
@@ -140,7 +218,7 @@ describe("recording a pour", () => {
     expect(recordOrder).toHaveBeenCalledOnce();
     expect(noXp.markNoXp).toHaveBeenCalledWith(TX);
     expect(noXp.forgoHold).toHaveBeenCalledWith(TX);
-    expect(claims.closePourClaim).toHaveBeenCalledWith(TX, expect.any(Date), "recorded_no_xp");
+    expect(claims.closePourClaim).toHaveBeenCalledWith(TX, expect.any(Date), "recorded_no_xp", "u1");
     expect(claims.awardFilledPour).not.toHaveBeenCalled();
     expect((await response.json()).rewards).toEqual([]);
     expect(log).toHaveBeenCalledWith("[availability] buy recorded from an excluded place");
@@ -171,7 +249,7 @@ describe("recording a pour", () => {
     expect(replay.status).toBe(200);
     expect(claims.awardFilledPour).not.toHaveBeenCalled();
     expect(noXp.forgoHold).toHaveBeenCalledWith(TX);
-    expect(claims.closePourClaim).toHaveBeenLastCalledWith(TX, expect.any(Date), "recorded_no_xp");
+    expect(claims.closePourClaim).toHaveBeenLastCalledWith(TX, expect.any(Date), "recorded_no_xp", "u1");
     // And once more, filled from the start abroad, then replayed at home.
     marked.clear();
     availability = AWAY;

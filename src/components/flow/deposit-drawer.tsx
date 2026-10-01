@@ -5,7 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowsClockwise, ArrowsDownUp, CaretDown, CaretRight, GasPump } from "@phosphor-icons/react";
-import { ChainKeys, isEvmChainKeyType, type SpokeChainKey, type XToken } from "@sodax/sdk";
+import { ChainKeys, getChainType, isEvmChainKeyType, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import { useXBalances } from "@sodax/dapp-kit";
 import {
   getXChainType,
@@ -60,7 +60,10 @@ import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useHubAccount } from "@/hooks/use-hub-account";
-import { useAddConnectedWallet } from "@/hooks/use-account-wallets";
+import { useAddConnectedWallet, useAddWallets } from "@/hooks/use-account-wallets";
+import { useAccountWallets } from "@/hooks/use-profile";
+import { payerLink } from "@/lib/payer-link";
+import { addressKey } from "@/lib/add-wallet-list";
 import {
   useEmbeddedHoldings,
   type EmbeddedHoldingsResult,
@@ -176,6 +179,21 @@ export function DepositDrawer({
   // wallets otherwise. Email mode switches chains silently.
   const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureReady } =
     useVaultWallet(srcChainKey);
+  // A buy paid from Solana or Bitcoin earns XP only from a wallet on the
+  // account, so one not on it is added first; a network no wallet can be
+  // linked in is said plainly (lib/payer-link).
+  const payingNonEvm = isBuy && !isEvmChainKeyType(srcChainKey);
+  const accountList = useAccountWallets(payingNonEvm);
+  const addWallets = useAddWallets();
+  const payer = payingNonEvm
+    ? payerLink({ chainType: getChainType(srcChainKey), address, linked: accountList.data?.wallets })
+    : ({ state: "evm" } as const);
+  const payerRow =
+    payer.state === "unlinked" && address
+      ? addWallets.rows.find(
+          (row) => row.network === getChainType(srcChainKey) && !!row.address && addressKey(row.network, row.address) === addressKey(row.network, address),
+        )
+      : undefined;
 
   // Balance-first: land the person on what they already hold so the drawer
   // opens showing a balance and an amount field, not a chain picker. The
@@ -441,7 +459,7 @@ export function DepositDrawer({
     account: accountState,
     // An EVM payer is the session's signer; one not on the account yet is
     // added first, or the order would not count as the account's.
-    payerLinked: !isBuy || !isEvmChainKeyType(srcChainKey) || account.signerLinked,
+    payerLinked: !isBuy || (isEvmChainKeyType(srcChainKey) ? account.signerLinked : payer.state !== "unlinked"),
   });
   const cta: Cta = (() => {
     switch (gate.kind) {
@@ -454,6 +472,16 @@ export function DepositDrawer({
       case "accountPending":
         return { label: copy.ctaOpeningAccount, disabled: true, busy: true };
       case "walletNotLinked":
+        if (payer.state === "unlinked") {
+          // A Solana or Bitcoin payer: Sign-In With Solana or BIP-322 in its own extension.
+          const busy = !!payerRow && addWallets.busyAddress === payerRow.address;
+          return {
+            label: copy.ctaAddWalletFirst,
+            disabled: !payerRow || busy,
+            busy,
+            onClick: payerRow ? () => void addWallets.add(payerRow) : undefined,
+          };
+        }
         return {
           label: copy.ctaAddWalletFirst,
           disabled: !addWallet.canSign || addWallet.busy,
@@ -702,6 +730,13 @@ export function DepositDrawer({
                   )}
                   <CaretDown className="size-4 text-muted-foreground" />
                 </button>
+
+                {/* Whether this buy can earn XP, said before it is made (lib/payer-link). */}
+                {(payer.state === "unlinked" || payer.state === "unlinkable") && (
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {payer.state === "unlinked" ? copy.buyLinkForXp : copy.buyNoXpNetwork}
+                  </p>
+                )}
 
                 {/* Funds without gas: the embedded wallet holds this token
                     but zero native balance on its chain, so the order would

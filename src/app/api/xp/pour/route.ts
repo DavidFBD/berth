@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { RewardList } from "@/lib/profile-types";
 import { flushUnannounced } from "@/lib/server/accounts";
-import { linkedWallets } from "@/lib/server/identities";
 import { awardFilledPour, closePourClaim, fillVerdict, savePourClaim } from "@/lib/server/pour-claims";
 import { forgoHold, isNoXp, markNoXp, pourPaid } from "@/lib/server/no-xp";
 import { orderListingSymbol, recordOrder } from "@/lib/server/orders";
+import { accountOwnedWallets } from "@/lib/server/pour-ownership";
 import { verifyPourTx } from "@/lib/server/pour-verify";
 import {
   readRewardsCaller,
@@ -20,6 +20,13 @@ import {
  * intent not yet known to have filled is kept as a claim the evening pass
  * settles; one that closed unfilled earns nothing.
  */
+/**
+ * The reads here are each bounded (getIntent 15s, every ownership read 5s,
+ * the fill's backend look about 14s, the order's own reads), so the route
+ * answers well inside this.
+ */
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);
   if (!read.ok) return read.response;
@@ -47,26 +54,47 @@ export async function POST(request: NextRequest) {
   const { user } = resolved;
 
   // The hash must be a real intent on the canonical contract, must touch a
-  // tea vault on the claimed side, and (when its source speaks EVM) must
-  // have been poured by this account's own wallet. See pour-verify.ts.
+  // listing on the claimed side, and must be this account's own, from
+  // whichever family it was paid (lib/server/pour-ownership). One that is
+  // not proven records nothing and claims nothing here, so its real owner
+  // can still report it.
   const verified = await verifyPourTx({
     txHash,
     direction: kind === "pour_out" ? "out" : "in",
-    accountWallet: user.wallet_address,
-    linkedWallets: (await linkedWallets(user.id, user.wallet_address))
-      .filter((wallet) => wallet.family === "evm")
-      .map((wallet) => ({ address: wallet.address, linkedAt: Date.parse(wallet.linkedAt) })),
+    wallets: await accountOwnedWallets(user.id, user.wallet_address),
   });
-  if (!verified.ok) {
-    return NextResponse.json({ error: verified.reason }, { status: 422 });
-  }
-
   const claimedFill =
     typeof read.caller.body.fillTxHash === "string" &&
     /^0x[0-9a-f]{64}$/i.test(read.caller.body.fillTxHash)
       ? read.caller.body.fillTxHash
       : null;
   const direction = kind === "pour_out" ? "sell" : "buy";
+
+  if (!verified.ok && verified.reason === "not yet known") {
+    // A read did not answer (an RPC error, a timeout): nothing is refused,
+    // marked or paid on it. When the intent itself was read, a claim is kept
+    // so the evening pass proves it later, and the client asks again with a
+    // backoff (lib/pour-retry).
+    if (verified.intent && verified.sodax) {
+      await savePourClaim(
+        user.id,
+        txHash,
+        direction,
+        claimedFill,
+        orderListingSymbol(verified.sodax, verified.intent, direction),
+        { proven: false },
+      );
+    } else if (verified.intentCreated) {
+      // The receipt shows a real intent the SDK could not read: kept on its
+      // hash and side alone, so the evening pass finishes it even when every
+      // retry from the page also finds the chain silent.
+      await savePourClaim(user.id, txHash, direction, claimedFill, null, { proven: false });
+    }
+    return NextResponse.json({ error: verified.reason, retry: true }, { status: 503, headers: { "retry-after": "10" } });
+  }
+  if (!verified.ok) {
+    return NextResponse.json({ error: verified.reason }, { status: 422 });
+  }
 
   // XP only for an order that filled (lib/server/pour-claims): a created
   // then cancelled or expired intent earns nothing. When the fill cannot
@@ -80,7 +108,15 @@ export async function POST(request: NextRequest) {
   // Marked only once the intent is proven real and this account's (above).
   // A buy already paid is a replay, never marked after the fact.
   let noXp = false;
-  if (kind === "pour_in") {
+  if (verified.unprovenSource && !(await pourPaid(txHash))) {
+    // A buy delivered to this account's own hub wallet whose payer cannot
+    // be proven the account's (a Sui or Stellar source, say): the stock is
+    // the account's, so the ledger records it, but it pays nothing, then or
+    // ever, and no hold or referral pair rides on it (lib/server/no-xp). A
+    // buy already paid is a replay and is never marked after the fact.
+    await markNoXp(txHash, "unproven_source");
+    noXp = true;
+  } else if (kind === "pour_in") {
     if (away && !(await pourPaid(txHash))) {
       await markNoXp(txHash);
       noXp = true;
@@ -105,7 +141,7 @@ export async function POST(request: NextRequest) {
       claimedFillTx: claimedFill,
     });
     await forgoHold(txHash);
-    await closePourClaim(txHash, new Date(), "recorded_no_xp");
+    await closePourClaim(txHash, new Date(), "recorded_no_xp", user.id);
   } else {
     // Awaited, not fired and forgotten: a serverless function may be frozen
     // the moment it answers. recordOrder never throws, so the award is safe.
@@ -122,7 +158,7 @@ export async function POST(request: NextRequest) {
     // farm. Every award is index-deduped, so replays and later pours no-op.
     const paid = await awardFilledPour(user, kind, txHash);
     // An earlier call may have left a claim for this intent: it is paid now.
-    await closePourClaim(txHash);
+    await closePourClaim(txHash, new Date(), "paid", user.id);
     rewards.push(...paid.rewards);
     xp = paid.xp;
   }

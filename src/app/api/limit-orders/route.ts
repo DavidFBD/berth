@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { hubWalletFor } from "@/lib/server/portfolio";
 import { accountEvmAddresses } from "@/lib/server/identities";
+import { accountOwnedWallets } from "@/lib/server/pour-ownership";
 import {
   hasWaitingOrders,
   limitOrdersOn,
+  limitOwnership,
   listLimitOrders,
   markCancelAsked,
   placeLimitOrder,
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
       // the page holds an order it could not save.
       if (enabled) {
         await sweepMissing(user.id, await ownersOf(), {
+          owns: limitOwnership(await accountOwnedWallets(user.id, user.wallet_address)),
           force: body.sweep === true,
           homeHub: await homeHubOf(),
           // A limit buy found while Berth is not available here pays nothing (lib/server/no-xp).
@@ -109,6 +112,7 @@ export async function POST(request: NextRequest) {
     const placed = await placeLimitOrder({
       userId: user.id,
       owners,
+      owns: limitOwnership(await accountOwnedWallets(user.id, user.wallet_address)),
       intentTx,
       direction,
       typedPrice: Number.isFinite(typed) ? typed : undefined,
@@ -116,7 +120,11 @@ export async function POST(request: NextRequest) {
       srcChain: typeof body.srcChain === "string" ? body.srcChain : undefined,
       homeHub: direction === "sell" ? await homeHubOf() : undefined,
     });
-    if (!placed.ok) return NextResponse.json({ error: placed.reason }, { status: 422 });
+    if (!placed.ok) {
+      // A read that did not answer: ask again, the order is not refused.
+      if (placed.reason === "not yet known") return NextResponse.json({ error: placed.reason, retry: true }, { status: 503, headers: { "retry-after": "10" } });
+      return NextResponse.json({ error: placed.reason }, { status: 422 });
+    }
     return NextResponse.json({ ok: true, order: placed.order });
   }
 

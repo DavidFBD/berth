@@ -215,6 +215,31 @@ create index if not exists pour_claims_open_idx on pour_claims (created_at) wher
 -- it takes the least recently looked at first, so a stuck one rotates.
 alter table pour_claims add column if not exists last_checked_at timestamptz;
 
+-- false: kept while the ownership proof could not be read (an RPC error, a
+-- timeout; lib/server/pour-ownership). The evening pass proves it, and a
+-- proven claim from another account takes it over, so a report made while
+-- the chain did not answer never stands in the owner's way.
+alter table pour_claims add column if not exists proven boolean not null default true;
+
+-- Several accounts may hold an unproven claim on one intent at once, so a
+-- stranger's report made while the chain did not answer never stands in
+-- the owner's: one row per (intent, account), at most one proven claim and
+-- at most one claim per intent settled as recorded. The evening pass proves each; the
+-- one that proves settles and the others are dropped (lib/server/pour-claims).
+-- (Statements inside the block lead with their semicolons, as in
+-- merge_accounts, so scripts/db-push.mjs keeps the block whole.)
+do $$ begin
+  if exists (
+    select 1 from pg_constraint
+     where conrelid = 'pour_claims'::regclass and conname = 'pour_claims_pkey' and array_length(conkey, 1) = 1
+  ) then
+    alter table pour_claims drop constraint pour_claims_pkey
+    ; alter table pour_claims add constraint pour_claims_pkey primary key (intent_tx, user_id)
+  ; end if
+; end $$;
+create unique index if not exists pour_claims_one_proven on pour_claims (intent_tx) where proven;
+create unique index if not exists pour_claims_one_settled on pour_claims (intent_tx) where outcome in ('paid', 'recorded_no_xp');
+
 -- Buys that pay nothing, keyed by intent (lib/server/no-xp): a buy reported
 -- from where Berth is not available (lib/availability). The ledger stays
 -- true (the order row, its marks, the recurring run it answers), but no XP
@@ -225,6 +250,15 @@ create table if not exists no_xp_intents (
   intent_tx text primary key,
   created_at timestamptz not null default now()
 );
+
+-- Why it pays nothing: 'unavailable', reported from where Berth is not
+-- available; or 'unproven_source', a buy delivered to the account's own hub
+-- wallet whose payer cannot be proven the account's (a Sui or Stellar
+-- source, which no identity can be linked in; lib/server/pour-ownership).
+alter table no_xp_intents add column if not exists reason text not null default 'unavailable';
+alter table no_xp_intents drop constraint if exists no_xp_intents_reason_check;
+alter table no_xp_intents add constraint no_xp_intents_reason_check
+  check (reason in ('unavailable', 'unproven_source'));
 
 -- A claim settled for such a buy says so: recorded, nothing paid.
 alter table pour_claims drop constraint if exists pour_claims_outcome_check;
@@ -832,6 +866,9 @@ declare
   ; update limit_orders set user_id = s where user_id = a
   ; get diagnostics n = row_count
   ; v_moved := v_moved || jsonb_build_object('limitOrders', n)
+  -- A claim both accounts hold on one intent stays once, the survivor's.
+  ; delete from pour_claims c where c.user_id = a
+      and exists (select 1 from pour_claims o where o.user_id = s and o.intent_tx = c.intent_tx)
   ; update pour_claims set user_id = s where user_id = a
   ; get diagnostics n = row_count
   ; v_moved := v_moved || jsonb_build_object('pourClaims', n)
