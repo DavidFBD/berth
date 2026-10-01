@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, IBM_Plex_Mono, Inter, Inter_Tight } from "next/font/google";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "@/components/providers";
 import { Toaster } from "@/components/ui/sonner";
@@ -8,29 +8,49 @@ import "./globals.css";
 /* Plain and calm, one column on a phone, two on a desktop. Berth's type
    system: Inter Tight for headings and display, Inter for body and UI, IBM
    Plex Mono for numbers, tickers and addresses. Archivo is the wordmark's
-   face and is loaded for that one word, at the one weight it uses. */
-const displayFont = Inter_Tight({
+   face and is loaded for that one word, at the one weight it uses.
+
+   Self-hosted (next/font/local) from the official @fontsource packages
+   (latin subset, matching what Google served) instead of next/font/google:
+   Vercel builds were intermittently failing on the build-time fetch to
+   Google Fonts. Weights, variable names, display and the computed fallback
+   stay the same so layout doesn't shift. Files and OFL license text live
+   under src/app/fonts/. */
+const displayFont = localFont({
   variable: "--font-inter-tight",
-  weight: ["400", "500"],
-  subsets: ["latin"],
+  display: "swap",
+  src: [
+    { path: "./fonts/inter-tight/inter-tight-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/inter-tight/inter-tight-latin-500-normal.woff2", weight: "500", style: "normal" },
+  ],
 });
 
-const bodyFont = Inter({
+const bodyFont = localFont({
   variable: "--font-inter",
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
+  display: "swap",
+  src: [
+    { path: "./fonts/inter/inter-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/inter/inter-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/inter/inter-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
 });
 
-const wordmarkFont = Archivo({
+const wordmarkFont = localFont({
   variable: "--font-archivo",
-  weight: ["600"],
-  subsets: ["latin"],
+  display: "swap",
+  src: [
+    { path: "./fonts/archivo/archivo-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
 });
 
-const moneyFont = IBM_Plex_Mono({
+const moneyFont = localFont({
   variable: "--font-plex-mono",
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
+  display: "swap",
+  src: [
+    { path: "./fonts/ibm-plex-mono/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-mono/ibm-plex-mono-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
 });
 
 const TITLE = "Berth · Wall Street, in your wallet.";
