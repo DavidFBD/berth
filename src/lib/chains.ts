@@ -2,6 +2,7 @@ import {
   ChainKeys,
   getSupportedSolverTokens,
   isBitcoinChainKeyType,
+  isEvmChainKeyType,
   spokeChainConfig,
   type SpokeChainKey,
   type XToken,
@@ -83,8 +84,15 @@ export function getNativeGasToken(chainKey: SpokeChainKey): XToken | undefined {
  * makes the whole chain read as zero balances. Re-checksum for balance
  * reads only — quote/deposit payloads keep the registry's original casing,
  * since the SDK and solver match tokens by exact string.
+ *
+ * EVM-only: every other chain family has its own address shape (a Sui coin
+ * type like `0x2::sui::SUI` also starts with `0x`, a Stacks token pairs a
+ * `SP…` principal with a contract and asset name, …) and none of it is a
+ * viem address, so `isAddress`/`getAddress` must never see it. Route on the
+ * token's own chain, not on how its address happens to look.
  */
 export function toBalanceReadToken(token: XToken): XToken {
+  if (!isEvmChainKeyType(token.chainKey)) return token;
   if (!token.address.startsWith("0x") || isAddress(token.address))
     return token;
   return { ...token, address: getAddress(token.address.toLowerCase()) };
