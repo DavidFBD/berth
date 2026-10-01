@@ -1180,7 +1180,7 @@ export type OgCopy = {
   inviteFrom: { title: (handle: string) => string; eyebrow: (handle: string) => string; alt: (handle: string) => string };
   profile: OgCard;
   /**
-   * The profile card when its owner turned on "Show my face and rank on
+   * The profile card when its owner turned on "Show my avatar, username and rank on
    * links to my profile": the username, from the database, as the title,
    * and the rank name in the line. Never a number.
    */
@@ -2177,13 +2177,13 @@ export const COPY: Copy = {
       ? "Unlocks the Assistant, Berth's own AI."
       : unlock.kind === "invite"
         ? "Unlocks your own invite link."
-        : `Unlocks the ${unlock.face} face.`,
+        : `Unlocks the ${unlock.face} avatar.`,
   unlockDone: (unlock) =>
     unlock.kind === "chat"
       ? "The Assistant, Berth's own AI, is open to you."
       : unlock.kind === "invite"
         ? "Your own invite link is open to you."
-        : `The ${unlock.face} face is yours to wear.`,
+        : `The ${unlock.face} avatar is yours to wear.`,
   levelUpTitle: (rankName) => `You reached ${rankName}`,
   levelUpLine: (level, total, reason) =>
     `Level ${level} · +${total.toLocaleString()} XP${reason ? ` ${reason}` : ""}`,
@@ -2192,7 +2192,7 @@ export const COPY: Copy = {
       ? "The Assistant is open. It is at the top of the screen."
       : unlock.kind === "invite"
         ? "Your own invite link is ready in your account."
-        : `The ${unlock.face} face is now in your avatar picker.`,
+        : `The ${unlock.face} avatar is now in your avatar picker.`,
   avatarLockedLabel: (face, rankName) => `${face}, unlocks at ${rankName}`,
   avatarUnlocksAt: (rankName) => `Unlocks at ${rankName}`,
   pickFace: (amount) => `Pick an avatar · +${amount} XP`,
@@ -2856,8 +2856,8 @@ export const COPY: Copy = {
         id: "profiles",
         heading: "Your profile and friends",
         body: [
-          "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your face, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets, your money or what you own.",
-          "The preview of a link to your profile or of your invite link, its picture, title and description, names no one unless you turn on Show my face, name and rank on links I share. Then a profile link's preview shows your username, your face (or your rank mark if you have not picked a face) and your rank name, and an invite link's preview shows your username and your face or rank mark, to anyone who opens or previews the link, or guesses your username. Never your email, your wallets, your money or what you own. It is off unless you turn it on, and it shows no one while your profile is hidden. When you turn it off or hide your profile, Berth stops serving your preview within ten minutes. Apps where a link was already shared may keep their own copy of its preview for longer, and we cannot remove it from them.",
+          "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your avatar, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets, your money or what you own.",
+          "The preview of a link to your profile or of your invite link, its picture, title and description, names no one unless you turn on Show my avatar, username and rank on links I share. Then a profile link's preview shows your username, your avatar (or your rank mark if you have not picked one) and your rank name, and an invite link's preview shows your username and your avatar or rank mark, to anyone who opens or previews the link, or guesses your username. Never your email, your wallets, your money or what you own. It is off unless you turn it on, and it shows no one while your profile is hidden. When you turn it off or hide your profile, Berth stops serving your preview within ten minutes. Apps where a link was already shared may keep their own copy of its preview for longer, and we cannot remove it from them.",
           "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. Nobody else can see your friends or who you block. The record of changes is kept for a year.",
         ],
       },
@@ -3212,7 +3212,7 @@ export const COPY: Copy = {
   social: {
     sectionTitle: "Your profile",
     sectionWhy:
-      "Only people who know your username can open your profile. It shows your face, rank, XP and Salutes, never money or what you own.",
+      "Only people who know your username can open your profile. It shows your avatar, rank, XP and Salutes, never money or what you own.",
     addEmail: "Add an email to get a profile",
     addEmailSub: "A profile needs a verified email.",
     pickTitle: "Pick a username",
@@ -3240,8 +3240,8 @@ export const COPY: Copy = {
     cancel: "Cancel",
     hide: "Hide my profile",
     hideSub: "While hidden, your username finds no one.",
-    linkFace: "Show my face, name and rank on links I share",
-    linkFaceSub: "Links to your profile and your invite link then show your username, your face or rank mark, and your rank name to anyone who opens or previews them, or guesses your username. Off, they show no one.",
+    linkFace: "Show my avatar, username and rank on links I share",
+    linkFaceSub: "Links to your profile and your invite link then show your username, your avatar or rank mark, and your rank name to anyone who opens or previews them, or guesses your username. Off, they show no one.",
     hiddenNote: "Hidden. Only you can see this.",
     friends: "Friends",
     friendsNone: "No friends yet.",
@@ -3331,7 +3331,7 @@ export const COPY: Copy = {
       /** The link's own title beside the picture, where the platform shows one. */
       title: (handle) => `${handle} invited you to Berth`,
       eyebrow: (handle) => `${handle} invited you`,
-      alt: (handle) => `Berth. ${handle} invited you. A seat has been kept for you. A row of harbour creatures, ${handle}'s face lit beside one empty place.`,
+      alt: (handle) => `Berth. ${handle} invited you. A seat has been kept for you. A row of harbour creatures, ${handle}'s avatar lit beside one empty place.`,
     },
     profile: {
       eyebrow: "A profile on Berth",
@@ -3344,7 +3344,7 @@ export const COPY: Copy = {
       title: (handle) => `${handle} on Berth`,
       eyebrow: "A profile on Berth",
       line: (rank) => `${rank} on Berth. Sign in to add them as a friend.`,
-      alt: (handle, rank) => `Berth. ${handle}, ${rank} on Berth. A row of harbour creatures, ${handle}'s face lit in the middle.`,
+      alt: (handle, rank) => `Berth. ${handle}, ${rank} on Berth. A row of harbour creatures, ${handle}'s avatar lit in the middle.`,
     },
     friendLink: {
       eyebrow: "A friend link",

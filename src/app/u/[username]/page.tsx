@@ -14,7 +14,7 @@ type Params = { params: Promise<{ username: string }> };
 
 /**
  * Never the name in the address: signed out, Berth does not say whether it
- * exists. Only an owner who turned on "Show my face and rank on links to
+ * exists. Only an owner who turned on "Show my avatar, username and rank on links to
  * my profile" gets a card of their own, named as stored (lib/server/og-people);
  * every other name, real or not, gets the one anonymous card.
  */

@@ -12,7 +12,7 @@ import { isFaceName, ogImage, ogPersonalImage, OG_CONTENT_TYPE, type OgPerson, t
  *
  * A profile card names its owner only when every one of these holds: the
  * username exists, its profile is on for others (SHOWN_SQL: not hidden,
- * email still verified), the owner turned on "Show my face and rank on
+ * email still verified), the owner turned on "Show my avatar, username and rank on
  * links to my profile" (profiles.link_face, off by default), and the
  * account was not merged away. An invite card names the inviter when the
  * code is a minted one (`users.referral_code`, the lookup every invite

@@ -142,7 +142,7 @@ export async function setVisible(viewer: SocialViewer, visible: boolean, now = n
 }
 
 /**
- * "Show my face, name and rank on links I share": one switch, off by
+ * "Show my avatar, username and rank on links I share": one switch, off by
  * default. It changes only the link previews of /u/<username> and of the
  * owner's invite link (lib/server/og-people); the profile itself is
  * governed by the hide switch.
