@@ -691,6 +691,8 @@ export type Copy = {
   rankLine: (level: number, xp: string) => string;
   /** "+150 XP": a payout, or one still coming. */
   xpPlus: (amount: number) => string;
+  /** What one batch of XP was for, several reasons read as one line. */
+  xpReasons: (reasons: string[]) => string;
   /* the ladder: ten rungs under the rank, and one caption line */
   /** The rung row, for a screen reader. */
   ladderLabel: string;
@@ -2708,6 +2710,8 @@ export const COPY: Copy = {
   walletConnectedLabel: "Connected",
   rankLine: (level, xp) => `Level ${level} · ${xp} XP`,
   xpPlus: (amount) => `+${amount.toLocaleString()} XP`,
+  xpReasons: (reasons) =>
+    reasons.length <= 1 ? (reasons[0] ?? "") : `${reasons.slice(0, -1).join(", ")} and ${reasons[reasons.length - 1]}`,
   ladderLabel: "The ten ranks",
   ladderRungAria: (name, level, state) =>
     state === "current"

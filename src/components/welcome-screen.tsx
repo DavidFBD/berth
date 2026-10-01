@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Wallet } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { isUserRejectedError } from "@sodax/dapp-kit";
 import {
   useConnectedChains,

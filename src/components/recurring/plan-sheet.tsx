@@ -5,7 +5,7 @@ import { RECURRING_PATH } from "@/hooks/use-recurring";
 import type { Availability } from "@/lib/availability";
 import { NotHereDrawer, useAvailability } from "@/components/availability/availability";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";

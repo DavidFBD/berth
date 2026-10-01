@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { formatUnits } from "viem";
 import { CaretRight, Hourglass } from "@phosphor-icons/react";
 import type { SpokeChainKey } from "@sodax/sdk";

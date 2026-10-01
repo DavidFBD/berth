@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AssistantId } from "@/lib/assistant-party";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
 import { AnimatePresence, motion } from "motion/react";
 import { useAddFunds } from "@privy-io/react-auth";

@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   CaretDown,
   EnvelopeSimple,

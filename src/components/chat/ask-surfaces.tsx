@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, ChatCircleText } from "@phosphor-icons/react";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -138,8 +138,29 @@ export function AskDock({ onOpen, hidden, busy = false }: { onOpen: () => void; 
   const keyboard = useKeyboardUp();
   const dialog = useDialogOpen();
   const gone = hidden || keyboard || dialog;
+  const ref = useRef<HTMLDivElement>(null);
+  // Toasts sit above the dock while it shows (components/toast-stack reads
+  // this). Measured, not guessed: the dock's height moves with the safe
+  // area and the font size, and it is 0 from 1024px, where it is hidden.
+  useEffect(() => {
+    const root = document.documentElement;
+    const element = ref.current;
+    if (gone || !element) {
+      root.style.removeProperty("--ask-dock-clearance");
+      return;
+    }
+    const publish = () => root.style.setProperty("--ask-dock-clearance", `${element.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--ask-dock-clearance");
+    };
+  }, [gone]);
   return (
     <div
+      ref={ref}
       aria-hidden={gone}
       inert={gone}
       className={cn(

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { notFound, useSearchParams } from "next/navigation";
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChatButton } from "@/components/chat/chat-button";
 import { ChatSheetFrame } from "@/components/chat/chat-sheet";

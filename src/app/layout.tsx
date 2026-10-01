@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "@/components/providers";
-import { Toaster } from "@/components/ui/sonner";
+import { ToastStack } from "@/components/toast-stack";
 import "./globals.css";
 
 /* Plain and calm, one column on a phone, two on a desktop. Berth's type
@@ -106,7 +106,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans bg-background text-foreground">
         <Providers>
           {children}
-          <Toaster />
+          <ToastStack />
         </Providers>
         <Analytics />
       </body>

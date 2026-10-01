@@ -2,7 +2,7 @@
 
 import { NotHereDrawer, useAvailability } from "@/components/availability/availability";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowsClockwise, ArrowsDownUp, CaretDown, CaretRight, GasPump } from "@phosphor-icons/react";
 import { ChainKeys, getChainType, isEvmChainKeyType, type SpokeChainKey, type XToken } from "@sodax/sdk";

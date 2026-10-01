@@ -1,6 +1,6 @@
 "use client";
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useCopy } from "@/components/settings-provider";
 import { RecurringSectionView } from "@/components/recurring/recurring-section-view";
 import { openPlanSheet } from "@/components/recurring/plan-sheet-events";

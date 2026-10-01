@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useChainGroups, useConnectedChains, useXAccount, useXSignMessage, type ChainGroup } from "@sodax/wallet-sdk-react";
 import { toHex } from "viem";
 import { useCopy } from "@/components/settings-provider";

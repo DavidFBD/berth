@@ -1,22 +1,25 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { Sparkle } from "@phosphor-icons/react";
-import { toast } from "sonner";
-import type { Reward, RewardList } from "@/lib/profile-types";
-import { levelUpRank, rankForXp, REWARD_REASONS, type RankInfo } from "@/lib/xp";
+import type { RewardList } from "@/lib/profile-types";
+import { REWARD_REASONS, type RankInfo } from "@/lib/xp";
 import { SPRING_POP } from "@/lib/motion";
 import { unlocksBetween } from "@/lib/unlocks";
+import { toast } from "@/lib/toast";
 import { RankGlyph } from "@/components/rank-glyph";
 import { useCopy } from "@/components/settings-provider";
 
 /**
  * The achievement announcer. Every XP payout gets a small ceremony instead
- * of a plain toast: a spring-popped pill per reward (each naming what it was
- * FOR — field feedback 2026-08-07: an unexplained balance reads as a bug;
- * the reasons live beside the ladder in lib/xp), and a bordered card when a
- * rank boundary is crossed. Ceremonies queue while Privy's overlay owns the
- * screen and flush once it's gone, so nothing celebrates behind a blur.
+ * of a plain line: a spring-popped pill naming what it was FOR (field
+ * feedback 2026-08-07: an unexplained balance reads as a bug; the reasons
+ * live beside the ladder in lib/xp), and a bordered card when a rank
+ * boundary is crossed. Both render through the one toast stack
+ * (lib/toast, components/toast-stack): XP that arrives with its action's
+ * message joins that message instead of drawing over it. Ceremonies wait
+ * while Privy's overlay owns the screen and go on once it's gone, so
+ * nothing celebrates behind a blur.
  */
 
 type Announcement = { rewards: RewardList; newXp: number };
@@ -29,11 +32,10 @@ let heldSince = 0;
 const MAX_HOLD_MS = 20_000;
 
 /**
- * `newXp` is the response's fresh total; the crossing derives right here as
- * `newXp - sum(rewards)` → `newXp`. No caller assembles before/after pairs
- * (the old optional-args shape silently dropped the level-up card whenever
- * a caller had no cached "before" — which was every profile sync, the exact
- * moment the flushed friend_poured +250 arrives).
+ * `newXp` is the response's fresh total; the crossing derives in lib/toast
+ * as `newXp - sum(rewards)` to `newXp`. No caller assembles before/after
+ * pairs (the old optional-args shape silently dropped the level-up card
+ * whenever a caller had no cached "before").
  */
 export function announceRewards(
   rewards: RewardList | undefined,
@@ -51,9 +53,9 @@ export function announceRewards(
 /**
  * Whether Privy's modal currently owns the screen. Selector-based and
  * deliberately loose: if Privy renames its containers the check simply
- * returns false and ceremonies fire immediately — the old behaviour, not a
- * swallowed reward. (The always-mounted embedded-wallet iframe is NOT
- * matched; only dialog-shaped things are.)
+ * returns false and ceremonies fire immediately, not a swallowed reward.
+ * (The always-mounted embedded-wallet iframe is NOT matched; only
+ * dialog-shaped things are.)
  */
 function stageBlocked(): boolean {
   if (typeof document === "undefined") return false;
@@ -73,38 +75,22 @@ function flush() {
   }
   while (queue.length) {
     const next = queue.shift();
-    if (next) present(next);
+    if (next) toast.rewards(next.rewards, next.newXp);
   }
 }
 
-function present({ rewards, newXp }: Announcement) {
-  const total = rewards.reduce((sum, reward) => sum + reward.amount, 0);
-  // The rewards in one response are exactly the delta between the totals,
-  // so the "before" needs no cache and no caller cooperation.
-  const reached = levelUpRank(newXp - total, newXp);
-  const fromLevel = rankForXp(newXp - total).level;
+const totalOf = (rewards: RewardList) => rewards.reduce((sum, reward) => sum + reward.amount, 0);
 
-  if (reached) {
-    // A single reward folds its reason into the card; a batch gets the card
-    // for the rank and a pill per reward for the attribution.
-    const reason = rewards.length === 1 ? REWARD_REASONS[rewards[0].kind] : null;
-    toast.custom(
-      () => <LevelUpCard rank={reached} fromLevel={fromLevel} total={total} reason={reason} />,
-      { duration: 5000 },
-    );
-    if (rewards.length === 1) return;
-  }
-  rewards.forEach((reward, index) => {
-    toast.custom(() => <XpPill reward={reward} />, {
-      duration: 3200 + index * 400,
-    });
-  });
+/** "for a buy", or "for a buy and for adding an email" when one batch paid twice. */
+function useReasons(rewards: RewardList): string {
+  const copy = useCopy();
+  return copy.xpReasons(rewards.map((reward) => REWARD_REASONS[reward.kind]));
 }
-
 
 /** "+100 XP for placing your first order", popped in with a spring and a late sparkle. */
-function XpPill({ reward }: { reward: Reward }) {
+export function XpPill({ rewards }: { rewards: RewardList }) {
   const copy = useCopy();
+  const reasons = useReasons(rewards);
   return (
     <motion.div
       initial={{ scale: 0.85, y: 10, opacity: 0 }}
@@ -113,6 +99,7 @@ function XpPill({ reward }: { reward: Reward }) {
       className="flex w-fit items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 shadow-lg"
     >
       <motion.span
+        aria-hidden
         initial={{ rotate: -90, scale: 0.4, opacity: 0 }}
         animate={{ rotate: 0, scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 380, damping: 18, delay: 0.08 }}
@@ -121,12 +108,32 @@ function XpPill({ reward }: { reward: Reward }) {
         <Sparkle className="size-5 text-primary" />
       </motion.span>
       <span className="money text-sm font-semibold text-foreground">
-        {copy.xpPlus(reward.amount)}
+        {copy.xpPlus(totalOf(rewards))}
       </span>
-      <span className="text-xs text-muted-foreground">
-        {REWARD_REASONS[reward.kind]}
-      </span>
+      <span className="text-xs text-muted-foreground">{reasons}</span>
     </motion.div>
+  );
+}
+
+/**
+ * The same XP said inside the message it came with ("Bought." then
+ * "+100 XP for a buy"): the pill's sparkle and figure, at the message's
+ * scale, so one action is one toast.
+ */
+export function XpLine({ rewards }: { rewards: RewardList }) {
+  const copy = useCopy();
+  const reasons = useReasons(rewards);
+  return (
+    <motion.span
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={SPRING_POP}
+      className="mt-1 flex items-center gap-1.5"
+    >
+      <Sparkle aria-hidden className="size-4 shrink-0 text-primary" />
+      <span className="money text-[13px] font-semibold text-foreground">{copy.xpPlus(totalOf(rewards))}</span>
+      <span className="text-xs text-muted-foreground">{reasons}</span>
+    </motion.span>
   );
 }
 
@@ -153,6 +160,8 @@ export function LevelUpCard({
   // Every opening passed, lowest rung first: a jump from First Line past
   // Slip must still say that Ask opened, not only the latest opening.
   const unlocks = unlocksBetween(fromLevel, rank.level);
+  // The wisps loop; with reduced motion asked for they are left out.
+  const still = useReducedMotion();
   return (
     <motion.div
       initial={{ scale: 0.88, y: 14, opacity: 0 }}
@@ -160,7 +169,7 @@ export function LevelUpCard({
       transition={{ type: "spring", stiffness: 360, damping: 20 }}
       className="relative flex w-fit items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-lg"
     >
-      <div aria-hidden className="absolute -top-2 left-5 flex gap-1.5">
+      {!still && <div aria-hidden className="absolute -top-2 left-5 flex gap-1.5">
         {[0, 1, 2].map((wisp) => (
           <motion.span
             key={wisp}
@@ -176,7 +185,7 @@ export function LevelUpCard({
             }}
           />
         ))}
-      </div>
+      </div>}
       <motion.span
         aria-hidden
         initial={{ rotate: -90, scale: 0.4, opacity: 0 }}

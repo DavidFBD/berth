@@ -54,7 +54,7 @@ export function Providers({ children }: { children: ReactNode }) {
                   <WalletDiagnostics />
                 )}
                 {children}
-                {/* The Toaster is mounted by the root layout, after Providers. */}
+                {/* The toast stack is mounted by the root layout, after Providers. */}
               </MotionConfig>
             </IconContext.Provider>
             </SettingsProvider>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { BerthMark } from "@/components/berth-mark";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";

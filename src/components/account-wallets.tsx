@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useWalletModal, type ChainGroup } from "@sodax/wallet-sdk-react";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
