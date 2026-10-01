@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { socialCard } from "@/lib/og/metadata";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { ArrowSquareOut, DownloadSimple } from "@phosphor-icons/react/ssr";
@@ -13,6 +14,11 @@ export const metadata: Metadata = {
   title: `${COPY.assistantsHelp.title} · Berth`,
   description: COPY.assistantsHelp.intro[0],
   alternates: { canonical: "/assistants" },
+  ...socialCard({
+    title: `${COPY.assistantsHelp.title} · Berth`,
+    description: COPY.og.assistants.line,
+    path: "/assistants",
+  }),
 };
 
 /**

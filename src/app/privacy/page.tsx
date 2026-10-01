@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { socialCard } from "@/lib/og/metadata";
 import { LegalPage } from "@/components/legal-page";
 import { COPY } from "@/lib/copy";
 
@@ -6,6 +7,11 @@ export const metadata: Metadata = {
   title: `${COPY.privacyPolicy.title} · Berth`,
   description: COPY.privacyPolicy.intro[0],
   alternates: { canonical: "/privacy" },
+  ...socialCard({
+    title: `${COPY.privacyPolicy.title} · Berth`,
+    description: COPY.og.privacy.line,
+    path: "/privacy",
+  }),
 };
 
 /**

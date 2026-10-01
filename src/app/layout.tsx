@@ -64,26 +64,18 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   applicationName: "Berth",
   manifest: "/site.webmanifest",
+  // The picture is app/opengraph-image.tsx and app/twitter-image.tsx
+  // (lib/og/card), the default for every page that has none of its own.
   openGraph: {
     title: TITLE,
     description: DESCRIPTION,
-    url: "https://www.berthmarkets.com",
     siteName: "Berth",
     type: "website",
-    images: [
-      {
-        url: "/og.png",
-        width: 1200,
-        height: 630,
-        alt: "Berth. Wall Street, in your wallet.",
-      },
-    ],
   },
   twitter: {
     card: "summary_large_image",
     title: TITLE,
     description: DESCRIPTION,
-    images: ["/og.png"],
   },
 };
 

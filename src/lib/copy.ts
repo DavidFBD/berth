@@ -1158,6 +1158,25 @@ export type Copy = {
   sellFromLabel: string;
   sellFromHomeTag: string;
   social: SocialCopy;
+  og: OgCopy;
+};
+
+/**
+ * One link preview card (lib/og/card): a plain topic line above the
+ * headline, the headline, one sentence under it, and the alt text that
+ * describes the picture. Never a price, a return or anyone's money.
+ */
+export type OgCard = { eyebrow: string | null; title: string; line: string; alt: string };
+
+export type OgCopy = {
+  domain: string;
+  home: OgCard;
+  invite: OgCard;
+  profile: OgCard;
+  friendLink: OgCard;
+  assistants: OgCard;
+  privacy: OgCard;
+  terms: OgCard;
 };
 
 /**
@@ -3275,5 +3294,50 @@ export const COPY: Copy = {
     boardEmpty: "Add friends and they appear here.",
     boardNoHandle: "Pick a username in your account to have friends.",
     boardSignedOut: "Sign in to see your friends board.",
+  },
+  og: {
+    domain: "berthmarkets.com",
+    home: {
+      eyebrow: null,
+      title: "Wall Street, in your wallet.",
+      line: "Real US stocks, bought from your crypto wallet.",
+      alt: "Berth. Wall Street, in your wallet. A row of harbour creatures along the foot of the card, the seal in front.",
+    },
+    invite: {
+      eyebrow: "A friend invited you",
+      title: "A seat has been kept for you.",
+      line: "Your first trade earns you both XP.",
+      alt: "Berth. A seat has been kept for you. A row of harbour creatures with one empty place in the middle.",
+    },
+    profile: {
+      eyebrow: "A profile on Berth",
+      title: "A Berth profile, shared with you.",
+      line: "Sign in to see whose it is and add them as a friend.",
+      alt: "Berth. A Berth profile, shared with you. A row of harbour creatures in silhouette.",
+    },
+    friendLink: {
+      eyebrow: "A friend link",
+      title: "Someone would like to be your friend.",
+      line: "Sign in to Berth to see who it is.",
+      alt: "Berth. Someone would like to be your friend. A row of harbour creatures in silhouette.",
+    },
+    assistants: {
+      eyebrow: "Claude, ChatGPT and Grok",
+      title: "Bring Berth into your AI.",
+      line: "Your AI reads and drafts. You sign.",
+      alt: "Berth. Bring Berth into your AI. A row of harbour creatures, the cormorant in front.",
+    },
+    privacy: {
+      eyebrow: "Privacy policy",
+      title: "We never hold your keys or your money.",
+      line: "What Berth collects, why, who sees it, and what you can ask of us.",
+      alt: "Berth. Privacy policy. A row of harbour creatures in silhouette.",
+    },
+    terms: {
+      eyebrow: "Terms of use",
+      title: "The terms of using Berth.",
+      line: "Berth never holds your keys or your money, and gives no investment advice.",
+      alt: "Berth. Terms of use. A row of harbour creatures in silhouette.",
+    },
   },
 };

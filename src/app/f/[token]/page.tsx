@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { ogImageRef, socialCard } from "@/lib/og/metadata";
+import { COPY } from "@/lib/copy";
 import { ProfilePage } from "@/components/social/profile-page";
 
 /**
@@ -10,6 +12,12 @@ import { ProfilePage } from "@/components/social/profile-page";
 export const metadata: Metadata = {
   title: "Berth",
   robots: { index: false, follow: false },
+  // Never the name in the address: signed out, Berth does not say whether it exists.
+  ...socialCard({
+    title: COPY.og.friendLink.title,
+    description: COPY.og.friendLink.line,
+    image: ogImageRef("/f", COPY.og.friendLink.alt),
+  }),
 };
 
 type Params = { params: Promise<{ token: string }> };
