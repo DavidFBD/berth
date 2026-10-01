@@ -8,7 +8,7 @@ export function GET(request: Request): Response {
   const origin = publicOrigin(request.headers, request.url);
   const body = `# Berth
 
-> Self custodial software for money that already lives onchain. Buy tokenised US stocks and ETFs (Robinhood Stock Tokens on Sonic) with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature. Idle dollars can wait in a Treasury bill fund.
+> Wall Street, in your wallet. Self custodial software for buying US stocks and funds with the crypto you hold: stablecoins, ETH, SOL or Bitcoin, from more than 20 networks, in one signature. Each is a token that tracks a share, issued by a third party (Robinhood Stock Tokens on Sonic), not the share itself. Orders fill any day, weekends included. Idle dollars can wait in a Treasury bill fund at the T-bill rate. Not available in the United States or where local law or sanctions forbid it.
 
 ## Assistants (MCP)
 

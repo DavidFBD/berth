@@ -4,15 +4,15 @@ You are designing the complete brand asset set for **Berth**, home domain **bert
 
 ## What Berth is
 
-A self custodial brokerage for people whose savings already live onchain and who cannot open a US brokerage account. They hold stablecoins or Bitcoin on any of twenty networks. Berth turns that money into US stocks and ETFs in one signature, in their own custody, and tells them exactly what they own before they buy. Idle cash waits in a Treasury ETF token. The product is an order ticket, not a bridge.
+Self custodial software, not a broker, for people whose savings already live onchain and who cannot open a US brokerage account. They hold stablecoins, ETH, SOL or Bitcoin on more than 20 networks. Berth turns that money into US stocks and ETFs in one signature, kept in their own wallet, and tells them exactly what they own before they buy: each is a token that tracks a share, issued by a third party. Idle cash waits in a Treasury bill fund. The product is an order ticket, not a bridge.
 
 One-line positioning, verbatim, use it on the OG image and the pitch cover:
 
-> A brokerage for the money that already lives onchain.
+> Wall Street, in your wallet.
 
 Longer line, for the description slots:
 
-> Buy US stocks and ETFs with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature, in your own custody. Cash waits in Treasuries. You are told exactly what you own before you buy.
+> Buy US stocks with the crypto you hold. Keep them in your own wallet. Pay with stablecoins, ETH, SOL or Bitcoin on more than 20 networks, in one signature. You are told exactly what you own before you buy.
 
 Audience: adults in Lagos, Manila, Buenos Aires and Warsaw who are careful with money and fluent with phones. Not crypto traders. Not degens. They are choosing a place to keep savings.
 
@@ -20,11 +20,7 @@ Audience: adults in Lagos, Manila, Buenos Aires and Warsaw who are careful with 
 
 **Berth.** A berth is the secure place a vessel ties up in harbour. Your berth in the market. Five letters, calm, nautical, pronounceable in every target market. It is a homophone of "birth"; treat that as neutral and never play on it.
 
-Tagline candidates you may use in secondary assets, in this order of preference:
-
-1. A place to tie up.
-2. Your berth in the market.
-3. Where savings come ashore.
+The lead line is the one above, "Wall Street, in your wallet." (docs/product/features.md, Tagline). Older tagline candidates such as "A place to tie up." are retired; do not use them.
 
 ## Tone, in six words
 
@@ -127,7 +123,7 @@ Produce every item. Match sizes exactly. Export SVG where the row says SVG, PNG 
 | File | Format | Notes |
 | --- | --- | --- |
 | deck-cover.png | PNG 1920 by 1080 | the positioning line, lockup, berthmarkets.com |
-| deck-closing.png | PNG 1920 by 1080 | lockup centred, "A place to tie up." beneath, domain below that |
+| deck-closing.png | PNG 1920 by 1080 | lockup centred, "Wall Street, in your wallet." beneath, domain below that |
 | video-poster.png | PNG 1920 by 1080 | still for the demo video, same family as deck-cover |
 | video-end-card.png | PNG 1920 by 1080 | lockup, domain, and a line reading "Built on the SODAX System" small in Plex Mono at the bottom |
 

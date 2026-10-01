@@ -1,7 +1,7 @@
 {
   "name": "Berth",
   "short_name": "Berth",
-  "description": "Stocks for the money that already lives onchain.",
+  "description": "Wall Street, in your wallet.",
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#F4F5F2",

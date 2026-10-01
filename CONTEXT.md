@@ -9,10 +9,12 @@ a round that changes behaviour.
 
 ## The product
 
-- **Berth** — a self custodial brokerage for people whose savings already
-  live onchain: buy Robinhood Stock Tokens on Sonic with stablecoins or
-  Bitcoin from any supported network, in one signature, sell the same way,
-  park idle dollars in the SGOV Treasury ETF token. Home: berthmarkets.com.
+- **Berth** — self custodial software, not a broker: buy US stocks with the
+  crypto you hold (stablecoins, ETH, SOL or Bitcoin, on more than 20
+  networks) as Robinhood Stock Tokens on Sonic, tokens that track a share,
+  in one signature; sell the same way; park idle dollars in the SGOV
+  Treasury ETF token. Lead line "Wall Street, in your wallet."
+  (docs/product/features.md). Home: berthmarkets.com.
 - **Listing** — one asset the house offers on the Sonic hub: a stock or fund
   (a Robinhood Stock Token, an ERC-20 on Sonic), cash (SGOV), or a vault
   (an earlier leveraged position, withdraw only). Registry `lib/listings`;

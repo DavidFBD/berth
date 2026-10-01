@@ -59,7 +59,7 @@ const PRICES = { NVDA: 181.2, AAPL: 227.5, TSLA: 402.1, GME: 24.3, SPY: 661.0 };
 const BASE = {
   list_listings: () =>
     [
-      "13 listings on Berth, tokenised US stocks and funds on Sonic, bought with stablecoins or Bitcoin.",
+      "13 listings on Berth: tokens that track US stocks and funds, issued by third parties and held on Sonic, bought with stablecoins, ETH, SOL or Bitcoin from more than 20 networks.",
       "NVIDIA (NVDA), stock: $181.20, +2.10% on the last trading day",
       "Apple (AAPL), stock: $227.50, -0.40% on the last trading day",
       "Tesla (TSLA), stock: $402.10, +3.05% on the last trading day",

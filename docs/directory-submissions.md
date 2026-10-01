@@ -4,6 +4,11 @@ Prepared 2026-09-28 for the MCP server at https://www.berthmarkets.com/mcp. Rese
 been submitted, no account created, no form filled. Code was read on branch `benchmark-message`
 (`_scratch-berth/privacy`), live endpoints were probed the same day.
 
+**Status 2026-10-01.** Since this was written, `/terms` and `/assistants` are live, Berth is closed to the United
+States and to sanctioned places (`TERMS_AVAILABILITY` in `src/lib/copy.ts`), support is support@berthmarkets.com,
+and the listing copy in section 4 follows `docs/product/features.md` (lead line, tokens that track a share, names
+by listing). The research in sections 1 to 3 is kept as it was found.
+
 Sources read:
 - https://claude.com/docs/connectors/building/submission (portal steps, requirements)
 - https://claude.com/docs/connectors/building/review-criteria (reviewer checklist)
@@ -221,9 +226,9 @@ no key exists on the server; the person signs in Berth or closes it.
 
 ## 4. Listing copy (Berth's voice)
 
-Operator: RD Norra-Winkels, Netherlands. Website: https://www.berthmarkets.com. Support: david@sodax.com.
-Privacy: https://www.berthmarkets.com/privacy. Terms: https://www.berthmarkets.com/terms (to build).
-Documentation: https://www.berthmarkets.com/assistants (to build; until then https://www.berthmarkets.com/llms.txt).
+Operator: RD Norra-Winkels, Netherlands. Website: https://www.berthmarkets.com. Support: support@berthmarkets.com.
+Privacy: https://www.berthmarkets.com/privacy. Terms: https://www.berthmarkets.com/terms.
+Documentation: https://www.berthmarkets.com/assistants (and https://www.berthmarkets.com/llms.txt).
 
 ### Claude connector form
 
@@ -231,29 +236,29 @@ Documentation: https://www.berthmarkets.com/assistants (to build; until then htt
 - **Name (max 100):** Berth
 - **Slug (permanent):** berth
 - **One-liner (max 200):**
-  Wall Street, in your wallet. Read your Berth account and the market for tokenised US stocks and funds, and draft a buy or sell that you check and sign in Berth yourself.
+  Wall Street, in your wallet. Read your Berth account and the market for US stocks and funds, and draft a buy or sell that you check and sign in Berth yourself.
 - **Categories (1 to 5):** Finance (add "Productivity" only if Finance is not offered; the category list is not published)
 - **Description (max 2,000):**
 
-  > Berth holds tokenised US stocks and funds, bought with the stablecoins or Bitcoin you already have. This connector lets Claude read your Berth account and the market beside it, in plain words.
+  > Berth is software for buying US stocks and funds with the crypto you hold, stablecoins, ETH, SOL or Bitcoin on more than 20 networks, and keeping them in your own wallet. Each is a token that tracks a share, issued by a third party. This connector lets Claude read your Berth account and the market beside it, in plain words.
   >
-  > Ask what you own and what it is worth now, how your money has done over a week, a month, three months or since your first buy, and how the same dollars would have done in the S&P 500 fund, the Nasdaq 100 fund, Gold, Bitcoin or Treasury bills. Ask for your past orders, what moved on the last trading day, and what companies and the press have been saying, with links to the posts and headlines.
+  > Ask what you own and what it is worth now, how your money has done over a week, a month, three months or since your first buy, and how the same dollars would have done in the S&P 500 ETF, the Nasdaq 100 ETF, Gold, Bitcoin or Treasury bills. Ask for your past orders, what moved on the last trading day, and what companies and the press have been saying, with links to the posts and headlines.
   >
   > Claude can also draft a buy or a sell. A draft is a link to Berth's own order screen with the listing and amount filled in. Nothing is placed, reserved or sent. You open the link, check the amount and what you pay with, and sign in Berth, or close it. Claude cannot sign, holds no keys and cannot move money.
   >
-  > Berth reports prices, history and what was said. It does not give advice, and past performance tells nothing certain about the future.
+  > Berth reports prices, history and what was said. It does not give advice, and past performance tells nothing certain about the future. Berth is not available in the United States or where local law or sanctions forbid it.
   >
   > You sign in with your Berth account and choose what Claude may do: read the account, draft orders, or both. You can disconnect at any time in Berth or in Claude. Berth keeps a short record of which tools were called, never what you asked or what it answered.
 
 - **Use cases:** see what I own and what it is worth; compare my performance with a benchmark; review my orders; see what moved and why people were talking about it; prepare an order to sign in Berth.
 - **Before connecting:** a Berth account (free, at berthmarkets.com, email or wallet sign in). Holdings are needed for the account tools; the market tools work with an empty account.
 - **Reads or writes:** Both. Eight tools only read. `draft_order` writes nothing lasting; it returns a link, and is marked as a write so you confirm each draft.
-- **Company:** RD Norra-Winkels (Berth), Netherlands, https://www.berthmarkets.com. Primary contact: David, david@sodax.com.
+- **Company:** RD Norra-Winkels (Berth), Netherlands, https://www.berthmarkets.com. Primary contact: David, support@berthmarkets.com.
 - **Authentication:** OAuth, client ID metadata document (DCR also accepted).
 - **Data handling:** our own API. Market data comes from licensed sources Berth pays for or is permitted to use (X, TypeSafe, price and news feeds). No health data. No sponsored content.
 - **Example prompts (three required, five offered):**
   1. What do I own on Berth, and what is it worth right now?
-  2. How has my money done since my first buy, compared with the S&P 500 fund?
+  2. How has my money done since my first buy, compared with the S&P 500 ETF?
   3. Which of Berth's listings moved most on the last trading day, and what was being said about them?
   4. Show me my last ten orders.
   5. Draft a buy of 50 dollars of NVIDIA for me to look at.
@@ -261,27 +266,27 @@ Documentation: https://www.berthmarkets.com/assistants (to build; until then htt
 ### ChatGPT plugin form (read only variant recommended)
 
 - **Plugin name:** Berth
-- **Short description:** Wall Street, in your wallet. Read your Berth account and the market for tokenised US stocks and funds, in plain words.
+- **Short description:** Wall Street, in your wallet. Read your Berth account and the market for US stocks and funds, in plain words.
 - **Long description:**
 
-  > Berth holds tokenised US stocks and funds, bought with the stablecoins or Bitcoin you already have. This plugin lets ChatGPT read your Berth account and the market beside it.
+  > Berth is software for buying US stocks and funds with the crypto you hold, stablecoins, ETH, SOL or Bitcoin on more than 20 networks, and keeping them in your own wallet. Each is a token that tracks a share, issued by a third party. This plugin lets ChatGPT read your Berth account and the market beside it.
   >
-  > Ask what you own and what it is worth, how your money has done over a week, a month, three months or since your first buy, and how the same dollars would have done in the S&P 500 fund, the Nasdaq 100 fund, Gold, Bitcoin or Treasury bills. Ask for your past orders, what moved on the last trading day, and what companies and the press have been saying, with links.
+  > Ask what you own and what it is worth, how your money has done over a week, a month, three months or since your first buy, and how the same dollars would have done in the S&P 500 ETF, the Nasdaq 100 ETF, Gold, Bitcoin or Treasury bills. Ask for your past orders, what moved on the last trading day, and what companies and the press have been saying, with links.
   >
-  > The plugin only reads. It cannot buy, sell, sign or move anything. Berth reports prices, history and what was said; it does not give advice.
+  > The plugin only reads. It cannot buy, sell, sign or move anything. Berth reports prices, history and what was said; it does not give advice. Berth is not available in the United States or where local law or sanctions forbid it.
   >
   > You sign in with your Berth account and can disconnect at any time. Berth keeps a short record of which tools were called, never what you asked or what it answered.
 
 - **Category:** Finance
 - **Website / Support / Privacy / Terms:** https://www.berthmarkets.com, https://www.berthmarkets.com/assistants, https://www.berthmarkets.com/privacy, https://www.berthmarkets.com/terms
 - **Developer identity:** RD Norra-Winkels (verified individual)
-- **Countries:** see section 3; not the United States until the eligibility question is settled.
+- **Countries:** everywhere Berth is offered: not the United States and its territories, and not the sanctioned places the terms name.
 - **Starter prompts:** the first four Claude prompts above.
 - **Positive test cases (5):**
   1. "What do I own on Berth?" calls `get_holdings`; a list of listings with quantity, price, value and share, and a total.
   2. "How has my money done over the last month compared with Gold?" calls `get_performance` (period month, benchmark gold); two percentages, value now, sampled daily values, or a plain sentence when history is too short.
   3. "What moved most yesterday?" calls `get_moves`; listings by size of change, large moves marked, related posts linked.
-  4. "Tell me about the S&P 500 fund on Berth." calls `get_listing`; price, recent closes, change, headlines and posts.
+  4. "Tell me about the S&P 500 ETF on Berth." calls `get_listing`; price, recent closes, change, headlines and posts.
   5. "Show my last five orders." calls `get_orders` (limit 5); dated lines, bought or sold, amounts in dollars.
 - **Negative test cases (3):**
   1. "Buy 100 dollars of Tesla for me now." No tool places orders; ChatGPT says it cannot buy and the person can do so in Berth. (Read only variant has no draft tool.)
@@ -317,7 +322,7 @@ Documentation: https://www.berthmarkets.com/assistants (to build; until then htt
      test email and code intended for app review). Check the exact place in the dashboard; `pnpm privy:config show`
      reads settings, writes are dashboard only.
    - Suggested contents: 40 to 60 dollars spread over three or four listings (for example NVIDIA, the S&P 500
-     fund, Apple, and some of the Treasury bill cash fund), bought on different days at least four weeks before
+     ETF, Apple, and some of the Treasury bill cash fund), bought on different days at least four weeks before
      submission so `get_performance` has twenty market days; at least one partial sell so `get_orders` shows both
      sides; a rank above the first. Keep a small Base USDC balance so a draft can be opened end to end.
    - Write the reviewer steps: connect, choose both scopes, run the five example prompts, open a draft link and

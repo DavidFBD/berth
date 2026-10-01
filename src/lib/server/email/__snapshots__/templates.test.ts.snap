@@ -12,7 +12,7 @@ Open Berth: https://www.berthmarkets.com/
 This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
 Not you? Write to us at support@berthmarkets.com.
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > assistant-connected renders HTML and text without personal data 1`] = `
@@ -23,7 +23,7 @@ An AI was connected
 Claude was connected to your Berth account. It can:
 
 * See what you own and your orders.
-* Suggest a buy or a sell, which you check and sign in Berth.
+* Draft a buy or a sell, which you check and sign in Berth.
 
 It cannot move your money or sign for you. You can disconnect it from your account at any time.
 
@@ -32,7 +32,7 @@ Open Berth: https://www.berthmarkets.com/
 This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
 Not you? Write to us at support@berthmarkets.com.
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > friend-request renders HTML and text without personal data 1`] = `
@@ -47,7 +47,7 @@ Open Berth: https://www.berthmarkets.com/
 You get this because friend emails are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > order-expired renders HTML and text without personal data 1`] = `
@@ -62,7 +62,7 @@ Open Berth: https://www.berthmarkets.com/
 You get this because order emails are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > order-filled renders HTML and text without personal data 1`] = `
@@ -80,7 +80,7 @@ Open Berth: https://www.berthmarkets.com/
 You get this because order emails are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > recurring-due renders HTML and text without personal data 1`] = `
@@ -97,7 +97,7 @@ Open it in Berth: https://www.berthmarkets.com/?open=SPY&side=buy&usd=20&run=sam
 You get this because you set a recurring buy and its reminders are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > wallet-added renders HTML and text without personal data 1`] = `
@@ -112,7 +112,7 @@ Open Berth: https://www.berthmarkets.com/
 This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
 Not you? Write to us at support@berthmarkets.com.
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > wallet-removed renders HTML and text without personal data 1`] = `
@@ -127,7 +127,7 @@ Open Berth: https://www.berthmarkets.com/
 This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
 Not you? Write to us at support@berthmarkets.com.
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > weekly-summary renders HTML and text without personal data 1`] = `
@@ -169,7 +169,7 @@ Open Berth: https://www.berthmarkets.com/
 You get this because the weekly summary is on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > weekly-summary-first-week renders HTML and text without personal data 1`] = `
@@ -196,5 +196,5 @@ Open Berth: https://www.berthmarkets.com/
 You get this because the weekly summary is on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
-Berth. A place to tie up."
+Berth. Wall Street, in your wallet."
 `;

@@ -22,9 +22,11 @@ export const maxDuration = 60;
 const SERVER_INFO = { name: "berth", version: "1.0.0" };
 
 const INSTRUCTIONS =
-  "Berth is self custodial software for buying tokenised US stocks and funds on Sonic with stablecoins or Bitcoin. " +
+  "Berth is self custodial software for buying US stocks and funds with the crypto a person holds (stablecoins, ETH, SOL or Bitcoin, from more than 20 networks). " +
+  "Each listing is a token that tracks a share, issued by a third party, not the share itself. " +
   "These tools read the person's Berth account and the market, and can draft an order as a link. " +
-  "You cannot place, sign or send an order: a draft only happens if the person opens the link and signs in Berth. " +
+  "You cannot place, sign or send an order: an order only happens if the person opens the link and signs in Berth. " +
+  "Buying and selling work any day, weekends included; do not talk about US market hours, and never call weekend prices live: they hold at the last close. " +
   "Say names rather than tickers to the person. Past performance says nothing certain about the future; do not give it as advice.";
 
 /** One handler per origin (production has one; a preview deployment another). */

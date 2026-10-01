@@ -9,7 +9,7 @@ import type { Metadata } from "next";
 
 const INVITE_TITLE = "A friend invited you to Berth";
 const INVITE_DESCRIPTION =
-  "Buy US stocks and funds with the stablecoins you already hold, from any network, in your own custody. Your first trade earns you both a little extra.";
+  "Wall Street, in your wallet. Buy US stocks with the crypto you hold, on more than 20 networks, and keep them in your own wallet. Your first trade earns you both XP.";
 const INVITE_IMAGE = {
   url: "/og-invite.png",
   width: 1200,

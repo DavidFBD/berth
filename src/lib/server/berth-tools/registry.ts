@@ -175,7 +175,7 @@ const listListings = defineTool({
       return `${named(listing)}, ${kind}: ${usd(prices[listing.symbol])}, ${pct(change)} on the last trading day`;
     });
     return ok(
-      [`${TOKEN_LISTINGS.length} listings on Berth, tokenised US stocks and funds on Sonic, bought with stablecoins or Bitcoin.`, ...lines].join("\n"),
+      [`${TOKEN_LISTINGS.length} listings on Berth: tokens that track US stocks and funds, issued by third parties and held on Sonic, bought with stablecoins, ETH, SOL or Bitcoin from more than 20 networks.`, ...lines].join("\n"),
     );
   },
 });

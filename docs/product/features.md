@@ -6,7 +6,7 @@ present a "coming" feature as available, and must keep the wording under
 "Say it this way" (these are product truths, not style choices).
 
 Voice: plain, calm, adult, never clever about money. Names, not tickers.
-Positioning line: Stocks for the money that already lives onchain.
+Positioning line: Wall Street, in your wallet. (Retired: "Stocks for the money that already lives onchain.")
 
 ## The value proposition (say this first)
 

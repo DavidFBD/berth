@@ -137,7 +137,7 @@ describe("notice templates", () => {
         type: "weekly",
         weekOf: "21 September",
         closeDay: "Friday 25 September",
-        account: { worth: "$100.00", change: null, benchmark: { name: "S&P 500 fund", change: "+0.50%" } },
+        account: { worth: "$100.00", change: null, benchmark: { name: "S&P 500 ETF", change: "+0.50%" } },
         holdings: [],
         orders: null,
         recurring: null,

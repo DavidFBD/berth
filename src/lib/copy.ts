@@ -999,6 +999,8 @@ export type Copy = {
   /* — the help page for assistants (app/assistants): public, the directories' documentation and support page — */
   /** The small link to /assistants under "Your assistant" in the account drawer. */
   assistantsLink: string;
+  /** The 404 page: what happened, and that nothing of yours moved. */
+  notFound: { title: string; body: string; backHome: string };
   assistantsHelp: AssistantsHelp;
 
   /* — the account's wallets (account drawer; docs/plans/account-linking.md, phase 2) — */
@@ -1809,7 +1811,7 @@ export const COPY: Copy = {
 
   buy: "Buy",
   buyTitle: (name) => `Buy ${name}`,
-  buySub: "Pay from any wallet, on any network. It lands in your account.",
+  buySub: "Pay with what you hold, from more than 20 networks. It lands in your account.",
   orderTitleFallback: "Place an order",
   whatPayingWith: "What are you paying with?",
   findingPayWith: "Finding what you can pay with",
@@ -1981,7 +1983,7 @@ export const COPY: Copy = {
   infoSub: "What an order does, what you own, and what it costs.",
   infoHowTitle: "One signature, any network",
   infoHowBody:
-    "You pay with what you hold, on the network where you hold it. A network of solvers fills the order and delivers the stock token to your account. Selling works the same way in reverse. Berth never holds your funds.",
+    "You pay with what you hold, on the network where you hold it, and sign once. Independent solvers fill the order through SODAX and deliver the stock token to your account. Selling works the same way in reverse. Orders fill any day, weekends included. Berth never holds your funds.",
   infoOwnTitle: "What you own",
   infoOwnBody:
     "A Robinhood Stock Token is a debt security issued by Robinhood Assets in Jersey that tracks the price of a share and its dividends. It is not the share itself: no voting rights, and the issuer's credit risk sits with you. Cash you park is a token tracking a fund of short US Treasury bills.",
@@ -1989,7 +1991,7 @@ export const COPY: Copy = {
     `Every buy and sell includes a ${feePct} fee, taken from the amount before the order is filled. There are no other charges from Berth.`,
   infoBuiltTitle: "How it was built",
   infoBuiltBody:
-    "On the SODAX System, which reaches twenty networks including native Bitcoin, and written with Claude in the open.",
+    "On the SODAX System, which reaches more than 20 networks, native Bitcoin among them, and written with Claude in the open.",
   infoBuildersCta: "See how it is built at SODAX Builders",
   infoDocsCta: "SODAX developer docs",
 
@@ -2130,7 +2132,7 @@ export const COPY: Copy = {
   nudgeCopiedTitle: "Message copied",
   nudgeCopiedSub: "Send it however you like.",
   nudgeMessage: (amount, link) =>
-    `I have a place for you at Berth. Buy US stocks with the stablecoins you already hold, from any network. Your first trade earns us both ${amount} XP: ${link}`,
+    `I have a place for you at Berth. Buy US stocks with the crypto you hold, and keep them in your own wallet. Your first trade earns us both ${amount} XP: ${link}`,
   ledgerTitle: "Activity",
   ledgerLoading: "Loading…",
   ledgerEmpty: "Nothing yet. Your first trade will show here.",
@@ -2187,7 +2189,7 @@ export const COPY: Copy = {
         : `Sign in to Berth to connect an app at ${party.host}.`,
   authorizeCanLead: "If you allow it, it can",
   authorizeScopeRead: "See what you own, your orders, and what the same money would have made in other holdings.",
-  authorizeScopeDraft: "Suggest a buy or a sell. Nothing happens until you approve it and sign, here in Berth.",
+  authorizeScopeDraft: "Draft a buy or a sell. Nothing happens until you check it and sign, here in Berth.",
   authorizeCannot: "It cannot move your money, sign for you, or see your keys. You can disconnect it at any time from your account.",
   authorizeReturnTo: (host) => `Afterwards you go back to ${host}.`,
   authorizeAccount: (who) => `Connecting the account of ${who}.`,
@@ -2212,7 +2214,7 @@ export const COPY: Copy = {
 
   assistantTitle: "Bring Berth into your AI",
   assistantBody:
-    "Let your AI read your account. It can see what you own, what the same money would have made in other holdings, and what moved today. It can suggest a buy or a sell, and nothing happens until you approve and sign it, here in Berth.",
+    "Let your AI read your account. It can see what you own, what the same money would have made in other holdings, and what moved today. It can draft a buy or a sell, and nothing happens until you check it and sign, here in Berth.",
   assistantClaude: "Claude",
   assistantChatGpt: "ChatGPT",
   assistantGrok: "Grok",
@@ -2262,9 +2264,9 @@ export const COPY: Copy = {
   assistantDisconnectFailed: "That did not go through. Please try again.",
   assistantLocalApp: "An app on this computer",
 
-  draftOpenedTitle: "Suggested by your AI",
+  draftOpenedTitle: "Drafted by your AI",
   draftOpenedBody: "Check the amount and what you pay with. Nothing is sent until you sign.",
-  draftUnknownListing: "That suggestion names something Berth does not offer.",
+  draftUnknownListing: "That draft names something Berth does not offer.",
   draftNothingToSell: (name) => `There is no ${name} in your account to sell.`,
   draftCouldNotCheck: (name) => `Berth could not check your ${name} just now. You can sell it from what you own when it shows.`,
 
@@ -2478,7 +2480,7 @@ export const COPY: Copy = {
       recurring: "You get this because you set a recurring buy and its reminders are on.",
     },
     unsubscribe: "Turn these off",
-    signoff: "Berth. A place to tie up.",
+    signoff: "Berth. Wall Street, in your wallet.",
     family: { evm: "An EVM", solana: "A Solana", bitcoin: "A Bitcoin" },
     walletAdded: {
       subject: "A wallet was added to your Berth account",
@@ -2503,7 +2505,7 @@ export const COPY: Copy = {
       body: (app) => `${app} was connected to your Berth account. It can:`,
       scopes: {
         read: "See what you own and your orders.",
-        draft: "Suggest a buy or a sell, which you check and sign in Berth.",
+        draft: "Draft a buy or a sell, which you check and sign in Berth.",
       },
       after: "It cannot move your money or sign for you. You can disconnect it from your account at any time.",
     },
@@ -2592,7 +2594,7 @@ export const COPY: Copy = {
       kinds: {
         orders: { label: "Orders", sub: "When a limit order fills or expires." },
         friends: { label: "Friends", sub: "When someone asks to be your friend." },
-        weekly: { label: "Weekly summary", sub: "On Mondays, your week beside the S&P 500 fund." },
+        weekly: { label: "Weekly summary", sub: "On Mondays, your week beside the S&P 500 ETF." },
         recurring: { label: "Recurring buys", sub: "When a plan's buy is ready to sign." },
       },
       addEmail: "Add an email to get notices",
@@ -2712,7 +2714,7 @@ export const COPY: Copy = {
           "Order notices: a limit order filled, or expired and the money came back. On unless you turn them off.",
           "Friend notices: someone asked to be your friend, at most one email a day. On unless you turn them off.",
           "Recurring buy reminders: on the day a plan you set comes due, one email for that plan, with a link that opens the buy for you to sign or let pass. On unless you turn them off.",
-          "The weekly summary: on Mondays, what your account was worth at the week's last close, its change beside the S&P 500 fund, what you hold and how each moved, what filled and which limit orders expired, your recurring buys (how many runs you signed or let pass, and the next plan's listing and day), and how many new friends and Salutes you had. Off unless you turn it on.",
+          "The weekly summary: on Mondays, what your account was worth at the week's last close, its change beside the S&P 500 ETF, what you hold and how each moved, what filled and which limit orders expired, your recurring buys (how many runs you signed or let pass, and the next plan's listing and day), and how many new friends and Salutes you had. Off unless you turn it on.",
         ],
         after: [
           "We do not track whether you open an email or click its links. Every notice other than a security notice has a link to turn that kind off, and you can change them all under Email in the app's settings. If mail to your address bounces or is reported as spam, we stop sending to it.",
@@ -2946,6 +2948,11 @@ export const COPY: Copy = {
     backHome: "Back to Berth",
   },
   assistantsLink: "How your AI works with Berth",
+  notFound: {
+    title: "This page isn't here",
+    body: "The link may be old or mistyped. What you own stays in your own wallet.",
+    backHome: "Back to Berth",
+  },
   assistantsHelp: {
     title: "Bring Berth into your AI",
     intro: [
@@ -2958,7 +2965,7 @@ export const COPY: Copy = {
     canHeading: "What your AI can do",
     can: [
       "See what you own, what it is worth now, and how it has done over a week, a month, three months or since your first buy.",
-      "Compare your money with the same dollars in the S&P 500 fund, the Nasdaq 100 fund, Gold, Bitcoin or Treasury bills.",
+      "Compare your money with the same dollars in the S&P 500 ETF, the Nasdaq 100 ETF, Gold, Bitcoin or Treasury bills.",
       "Read your past orders, what moved on the last trading day, and what companies and the press have been saying, with links.",
       "Read your own card and friends board. Never anyone else's.",
       "Draft a buy or a sell, if you allowed it. A draft is a link to Berth's order screen with the listing and amount filled in.",

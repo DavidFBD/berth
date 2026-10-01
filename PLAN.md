@@ -1,5 +1,8 @@
 # Leveraged Staked Yield — Implementation Plan
 
+> Historical: the plan for LSTeaTime, the leveraged staking app this repo was before it became Berth on
+> 2026-09-14. What Berth does today is in docs/product/features.md.
+
 Mobile-first Next.js app: deposit **any SODAX-supported asset from any SODAX-supported network** into a **SODAX leveraged-yield vault** (ERC-4626 on the Sonic hub).
 
 ## Stack

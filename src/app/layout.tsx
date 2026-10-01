@@ -33,10 +33,10 @@ const moneyFont = IBM_Plex_Mono({
   subsets: ["latin"],
 });
 
-const TITLE = "Berth · Wall Street, in your wallet";
+const TITLE = "Berth · Wall Street, in your wallet.";
 
 const DESCRIPTION =
-  "Wall Street, in your wallet. Buy US stocks and ETFs with the stablecoins or Bitcoin you already hold, from any of 20 networks, in one signature, in your own custody.";
+  "Wall Street, in your wallet. Real US stocks, bought from your crypto wallet. Pay with stablecoins, ETH, SOL or Bitcoin on more than 20 networks, sign once, and keep what you buy in your own wallet.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.berthmarkets.com"),

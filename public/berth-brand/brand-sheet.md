@@ -46,12 +46,12 @@ Inter Tight 400 for headings and display, tracked tight (-2% at section size, -3
 2. The mark on accent with accent-coloured text beside it. On accent the mark is ink or bg, and text beside it is ink or bg too.
 Also avoid: the mark in accent on bg, the mark rotated, the mark with a stroke outline, the wordmark in any other face.
 
-## Taglines, in order of preference
-1. A place to tie up.
-2. Your berth in the market.
-3. Where savings come ashore.
-
-Positioning line, verbatim: Stocks for the money that already lives onchain.
+## Lines
+Lead line, verbatim, comma and one full stop: Wall Street, in your wallet.
+Plain descriptor, paired with it: Real US stocks, bought from your crypto wallet.
+Value proposition: Buy US stocks with the crypto you hold. Keep them in your own wallet.
+The canon, with the lines rejected and why, is the Tagline section of docs/product/features.md.
+Retired: "A place to tie up.", "Stocks for the money that already lives onchain.".
 
 ## Punctuation
 Commas and periods. No dashes, no emoji, no play on "birth".
