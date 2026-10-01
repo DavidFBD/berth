@@ -11,7 +11,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { useCopy } from "@/components/settings-provider";
 import { NamePicker } from "@/components/social/name-picker";
 import { FindFriend, type FindResult } from "@/components/social/find-friend";
-import { useBlocked, useFriendLink, useFriendsList, useMySocial, useSetVisible, useSocialAction } from "@/hooks/use-social";
+import { useBlocked, useFriendLink, useFriendsList, useMySocial, useSetLinkFace, useSetVisible, useSocialAction } from "@/hooks/use-social";
 import type { BlockedName, FriendsList, MySocial, Person } from "@/lib/social-types";
 import { SPRING_SHELF } from "@/lib/motion";
 import { rankForXp } from "@/lib/xp";
@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
  * one row that points at adding one. With an email and no username, the
  * picker. With a username: the name (view, change), friend requests when
  * there are any, friends and the friend link folded, the friends board, the
- * hide switch, and blocked people folded. One (i), on the title.
+ * hide switch, the link picture switch, and blocked people folded. One (i), on the title.
  */
 
 export type SocialDemo = {
@@ -93,6 +93,7 @@ function Named({ social, demo }: { social: MySocial; demo?: SocialDemo }) {
   const friends = useFriendsList(!demo);
   const list = demo?.friends ?? friends.data;
   const visible = useSetVisible();
+  const linkFace = useSetLinkFace();
   const handle = social.handle!;
 
   return (
@@ -147,6 +148,22 @@ function Named({ social, demo }: { social: MySocial; demo?: SocialDemo }) {
           onChange={(hidden) => {
             if (demo) return;
             visible.mutate(!hidden, { onError: () => toast.error(copy.actionFailed) });
+          }}
+        />
+      </div>
+
+      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm text-foreground">{copy.linkFace}</span>
+          <span className="text-xs text-muted-foreground">{copy.linkFaceSub}</span>
+        </span>
+        <Toggle
+          label={copy.linkFace}
+          on={social.linkFace}
+          disabled={linkFace.isPending}
+          onChange={(on) => {
+            if (demo) return;
+            linkFace.mutate(on, { onError: () => toast.error(copy.actionFailed) });
           }}
         />
       </div>

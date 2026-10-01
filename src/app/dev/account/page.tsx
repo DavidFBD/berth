@@ -71,7 +71,7 @@ function WalletsGallery({ scene }: { scene: string }) {
       {scene === "prompt" && <UnlinkedWalletLine address={DEMO_UNLINKED} busy={false} onAdd={() => {}} onDismiss={() => {}} />}
       {scene === "drawer" && (
         <Panel>
-          <SocialSection demo={{ me: { hasEmail: true, handle: "harbourfan", visible: true, nextChangeAt: null, requests: 1 } }} />
+          <SocialSection demo={{ me: { hasEmail: true, handle: "harbourfan", visible: true, linkFace: false, nextChangeAt: null, requests: 1 } }} />
         </Panel>
       )}
       {scene === "signed-in-as" && (

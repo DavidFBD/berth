@@ -61,7 +61,7 @@ const PEOPLE = [
 ];
 
 const SECTION: SocialDemo = {
-  me: { hasEmail: true, handle: "mira_k", visible: true, nextChangeAt: null, requests: 1 },
+  me: { hasEmail: true, handle: "mira_k", visible: true, linkFace: false, nextChangeAt: null, requests: 1 },
   friends: { friends: PEOPLE.slice(0, 2), incoming: [PEOPLE[2]], outgoing: [{ handle: "tidewater", avatarId: "rope", xp: 90 }] },
   blocked: [],
   token: "abcdefghjkmn",
@@ -133,13 +133,13 @@ function Gallery() {
   if (state === "section-new")
     return (
       <Panel>
-        <SocialSection demo={{ me: { hasEmail: true, handle: null, visible: false, nextChangeAt: null, requests: 0 } }} />
+        <SocialSection demo={{ me: { hasEmail: true, handle: null, visible: false, linkFace: false, nextChangeAt: null, requests: 0 } }} />
       </Panel>
     );
   if (state === "section-noemail")
     return (
       <Panel>
-        <SocialSection demo={{ me: { hasEmail: false, handle: null, visible: false, nextChangeAt: null, requests: 0 } }} />
+        <SocialSection demo={{ me: { hasEmail: false, handle: null, visible: false, linkFace: false, nextChangeAt: null, requests: 0 } }} />
       </Panel>
     );
   return (

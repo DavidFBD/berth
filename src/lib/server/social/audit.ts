@@ -12,6 +12,8 @@ export type SocialAction =
   | "handle_changed"
   | "hide"
   | "unhide"
+  | "link_face_on"
+  | "link_face_off"
   | "salute"
   | "unsalute"
   | "friend_request"

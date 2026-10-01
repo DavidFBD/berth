@@ -118,6 +118,15 @@ export function useSetVisible() {
   });
 }
 
+export function useSetLinkFace() {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  return useMutation({
+    mutationFn: (on: boolean) => must(call<MySocial>("link-face", { on })),
+    onSuccess: (social) => queryClient.setQueryData(KEYS.me(key), social),
+  });
+}
+
 export function useFriendsList(enabled: boolean) {
   const { key, call } = useSocialCall();
   return useQuery({

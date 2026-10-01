@@ -3,7 +3,7 @@ import { isReportReason, listBlocked, report, setBlock } from "@/lib/server/soci
 import { friendsBoard } from "@/lib/server/social/board";
 import { NOT_FOUND, readCard, SIGN_IN } from "@/lib/server/social/cards";
 import { friendAction, friendLink, listFriends, readLinkCard } from "@/lib/server/social/friends";
-import { checkHandle, mySocial, setHandle, setVisible } from "@/lib/server/social/handles";
+import { checkHandle, mySocial, setHandle, setLinkFace, setVisible } from "@/lib/server/social/handles";
 import { takeSocialPlace, type SocialBucket } from "@/lib/server/social/limits";
 import { hasVerifiedEmail, type SocialViewer } from "@/lib/server/social/people";
 import { setSalute } from "@/lib/server/social/salutes";
@@ -80,6 +80,12 @@ export async function runSocialOp(
       if (typeof body.visible !== "boolean") return bad("visible");
       if (!(await take("settings"))) return slow;
       const social = await setVisible(viewer, body.visible);
+      return social ? ok(social) : bad("no username");
+    }
+    case "link-face": {
+      if (typeof body.on !== "boolean") return bad("on");
+      if (!(await take("settings"))) return slow;
+      const social = await setLinkFace(viewer, body.on);
       return social ? ok(social) : bad("no username");
     }
     case "salute": {

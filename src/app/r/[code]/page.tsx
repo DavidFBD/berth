@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { InviteLanding } from "@/components/invite-landing";
 import { normalizeInviteCode } from "@/lib/invite-code";
 import { inviteCardMetadata } from "@/lib/invite-card";
+import { cardPerson } from "@/lib/server/og-people";
 
 /**
  * Path-based invite carrier: `/r/CODE`. Born because `?ref=` query params
@@ -16,7 +17,10 @@ type Params = { params: Promise<{ code: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { code } = await params;
-  return normalizeInviteCode(code) ? inviteCardMetadata() : {};
+  const normalized = normalizeInviteCode(code);
+  if (!normalized) return {};
+  const person = await cardPerson("invite", normalized);
+  return inviteCardMetadata(person ? { code: normalized, person } : undefined);
 }
 
 export default async function InvitePage({ params }: Params) {

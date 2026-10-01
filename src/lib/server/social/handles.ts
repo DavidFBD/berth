@@ -141,6 +141,24 @@ export async function setVisible(viewer: SocialViewer, visible: boolean, now = n
   return mine ? mySocial(viewer, now) : null;
 }
 
+/**
+ * "Show my face, name and rank on links I share": one switch, off by
+ * default. It changes only the link previews of /u/<username> and of the
+ * owner's invite link (lib/server/og-people); the profile itself is
+ * governed by the hide switch.
+ */
+export async function setLinkFace(viewer: SocialViewer, on: boolean, now = new Date()): Promise<MySocial | null> {
+  const rows = (await getSql().query(
+    `update profiles set link_face = $2, updated_at = $3::timestamptz
+     where user_id = $1 and link_face is distinct from $2
+     returning link_face`,
+    [viewer.id, on, now.toISOString()],
+  )) as { link_face: boolean }[];
+  if (rows[0]) await socialAudit(viewer.id, on ? "link_face_on" : "link_face_off", viewer.id);
+  const mine = await ownHandle(viewer.id);
+  return mine ? mySocial(viewer, now) : null;
+}
+
 /** The drawer's view of the viewer's own social state. */
 export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<MySocial> {
   const mine = await ownHandle(viewer.id);
@@ -156,6 +174,7 @@ export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<
     hasEmail: hasVerifiedEmail(viewer),
     handle: mine?.handle ?? null,
     visible: mine?.visible ?? false,
+    linkFace: mine?.linkFace ?? false,
     nextChangeAt: mine ? nextChange(mine.changedAt, now) : null,
     requests,
   };

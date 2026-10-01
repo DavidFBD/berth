@@ -546,6 +546,12 @@ create table if not exists profiles (
   updated_at timestamptz not null default now()
 );
 
+-- "Show my face, name and rank on links I share": off unless the owner turns
+-- it on. Only then do the link previews of /u/<username> and of their invite
+-- link name them (lib/server/og-people); off, each is the anonymous card
+-- every unknown name or code gets.
+alter table profiles add column if not exists link_face boolean not null default false;
+
 -- One Salute per giver per card. Revoking sets revoked_at; saluting again
 -- clears it and keeps first_at, so toggling cannot mint a new salute point
 -- in a new month (ADR-0005).

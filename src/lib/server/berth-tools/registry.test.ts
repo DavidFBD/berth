@@ -105,7 +105,7 @@ vi.mock("@/lib/server/recurring", () => ({
 }));
 
 vi.mock("@/lib/server/social/handles", () => ({
-  mySocial: vi.fn(async () => ({ hasEmail: true, handle: "mira", visible: true, nextChangeAt: null, requests: 1 })),
+  mySocial: vi.fn(async () => ({ hasEmail: true, handle: "mira", visible: true, linkFace: false, nextChangeAt: null, requests: 1 })),
 }));
 vi.mock("@/lib/server/social/cards", () => ({
   readCardOf: vi.fn(async () => ({

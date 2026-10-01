@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import type { Metadata } from "next";
 import { COPY } from "@/lib/copy";
 import { OG_REVISION, OG_SIZE } from "@/lib/og/size";
+import type { OgPerson, PersonalKind } from "@/lib/og/card";
 
 /** A short fingerprint of the cards' words and drawing, for `?v=`. */
-const OG_VERSION = createHash("sha256")
+export const OG_VERSION = createHash("sha256")
   .update(JSON.stringify([OG_REVISION, COPY.og]))
   .digest("hex")
   .slice(0, 12);
@@ -56,4 +57,21 @@ export function socialCard({
     },
     twitter: { card: "summary_large_image", title, description, ...(image ? { images: [image.twitter] } : {}) },
   };
+}
+
+/**
+ * A card picture with a person in it (lib/server/og-people), by address.
+ * The address carries what the picture shows as `?v=` (the username, the
+ * face, the rank and the cards' own version), so a new face or a new rank
+ * is a new address and a platform that cached the old picture fetches the
+ * new one. `key` is the username as stored or the normalized invite code,
+ * never text taken as typed from a URL.
+ */
+export function personalImageRef(kind: PersonalKind, key: string, person: OgPerson, alt: string) {
+  const v = createHash("sha256")
+    .update(JSON.stringify([OG_VERSION, kind, person.handle, person.face, person.level, person.rank]))
+    .digest("hex")
+    .slice(0, 12);
+  const url = `/og/${kind === "profile" ? "u" : "r"}/${encodeURIComponent(key)}?v=${v}`;
+  return { og: { url, ...OG_SIZE, alt }, twitter: { url, ...OG_SIZE, alt } };
 }

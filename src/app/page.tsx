@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import { Home } from "@/components/home";
 import { AvailabilityProvider } from "@/components/availability/availability";
 import { requestAvailability } from "@/lib/server/availability";
-import { isInviteCode } from "@/lib/invite-code";
+import { normalizeInviteCode } from "@/lib/invite-code";
+import { cardPerson } from "@/lib/server/og-people";
 import { inviteCardMetadata } from "@/lib/invite-card";
 
 /**
@@ -19,8 +20,10 @@ export async function generateMetadata({
   searchParams: Promise<{ ref?: string | string[] }>;
 }): Promise<Metadata> {
   const { ref } = await searchParams;
-  if (!isInviteCode(ref)) return {};
-  return inviteCardMetadata();
+  const code = normalizeInviteCode(ref);
+  if (!code) return {};
+  const person = await cardPerson("invite", code);
+  return inviteCardMetadata(person ? { code, person } : undefined);
 }
 
 /**

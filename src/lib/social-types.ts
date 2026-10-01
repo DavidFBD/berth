@@ -43,6 +43,8 @@ export type MySocial = {
   hasEmail: boolean;
   handle: string | null;
   visible: boolean;
+  /** "Show my face, name and rank on links I share": off by default; covers the profile and the invite card. */
+  linkFace: boolean;
   /** When the username may change again; null when it may now. */
   nextChangeAt: string | null;
   /** Friend requests waiting for an answer. */

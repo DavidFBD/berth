@@ -15,11 +15,15 @@ import { OG_CONTENT_TYPE, OG_SIZE } from "@/lib/og/size";
  * or for an invite the one empty place, ringed in Berth blue. A page about
  * a person we cannot name (a profile, a friend link) lights nobody.
  *
- * Every card is built from COPY alone. Nothing here reads the database or
- * a URL: no username, no face of a real account, no price, no return, no
- * balance can reach a picture, because none is ever handed in. Signed out,
- * Berth never says whether a name exists (lib/server/social/cards), and a
- * crawler is signed out.
+ * Every card is built from COPY alone, with one exception. Nothing here
+ * reads the database or a URL: no price, no return, no balance can reach a
+ * picture, because none is ever handed in. Signed out, Berth never says
+ * whether a name exists (lib/server/social/cards), and a crawler is signed
+ * out. The exception is an OgPerson, which only lib/og/people hands in:
+ * a username, a face and a rank name read from the database for an owner
+ * who opted in (a profile) or who shared their own invite. The person's
+ * face is lit in the middle of the row (a profile) or beside the empty
+ * seat (an invite).
  *
  * Plain createElement rather than JSX so the module stays a .ts file the
  * unit tests import directly. Satori wants an explicit display on every
@@ -32,6 +36,14 @@ export type OgKind = "home" | "invite" | "profile" | "friendLink" | "assistants"
 
 /** The one subject in the middle of the row, if the page has one. */
 type Subject = { face: string } | { seat: true } | null;
+
+/**
+ * Someone a card may name, as lib/og/people read them from the database:
+ * the username as stored, the face by file name (null: no avatar picked,
+ * the rank's glyph stands in), and the rank. Never a number of any kind
+ * beyond what a username itself may hold.
+ */
+export type OgPerson = { handle: string; face: FaceName | null; level: number; rank: string };
 
 const SUBJECT: Record<OgKind, Subject> = {
   home: { face: "seal" },
@@ -58,6 +70,12 @@ const FACES = [
   "blue-lobster",
 ] as const;
 
+export type FaceName = (typeof FACES)[number];
+
+export function isFaceName(value: string): value is FaceName {
+  return (FACES as readonly string[]).includes(value);
+}
+
 /** Brand sheet, light. The card is always light, like the locked disc. */
 const C = {
   canvas: "#F7F6F4",
@@ -74,6 +92,7 @@ type Assets = {
   lockup: string;
   face: Record<string, string>;
   locked: Record<string, string>;
+  rank: string[];
 };
 
 let assets: Promise<Assets> | null = null;
@@ -96,6 +115,15 @@ function loadAssets(): Promise<Assets> {
       font("ibm-plex-mono", 400),
       readFile(join(process.cwd(), "public", "berth-brand", "mark", "berth-lockup-horizontal.svg")),
     ]);
+    const rank = await Promise.all(
+      Array.from({ length: 10 }, async (_, i) =>
+        svgUri(
+          (await readFile(join(process.cwd(), "public", "ranks", `rank-${String(i + 1).padStart(2, "0")}.svg`)))
+            .toString()
+            .replaceAll("currentColor", C.ink),
+        ),
+      ),
+    );
     const face: Record<string, string> = {};
     const locked: Record<string, string> = {};
     await Promise.all(
@@ -115,6 +143,7 @@ function loadAssets(): Promise<Assets> {
       lockup: svgUri(lockupSvg.toString().replaceAll("#151B1A", C.ink)),
       face,
       locked,
+      rank,
     };
   })();
   return assets;
@@ -137,6 +166,33 @@ function picture(src: string, size: number, style: CSSProperties = {}): ReactEle
 const DISC = 96;
 const LIT = 136;
 const GAP = 12;
+const LIFT = { marginTop: -(LIT - DISC) - 8 };
+
+const seat = () =>
+  box({
+    width: DISC,
+    height: DISC,
+    borderRadius: DISC / 2,
+    border: `3px solid ${C.accent}`,
+    background: C.accentSoft,
+  });
+
+/** A person's face, lit; without a picked avatar, their rank's glyph on a plain disc. */
+function personFace(a: Assets, person: OgPerson): ReactElement {
+  if (person.face) return picture(a.face[person.face], LIT, LIFT);
+  const glyph = a.rank[Math.min(Math.max(Math.round(person.level), 1), a.rank.length) - 1];
+  return box(
+    { width: LIT, height: LIT, borderRadius: LIT / 2, background: "#ECEAE6", justifyContent: "center", alignItems: "center", ...LIFT },
+    createElement("img", { src: glyph, width: 72, height: 72, alt: "", style: { width: 72, height: 72 } }),
+  );
+}
+
+function row(places: ReactElement[]): ReactElement {
+  return box(
+    { position: "absolute", left: 0, right: 0, bottom: -26, justifyContent: "center", alignItems: "flex-start" },
+    ...places.map((place, i) => box({ marginRight: i < places.length - 1 ? GAP : 0 }, place)),
+  );
+}
 
 /** The horizon: eleven places, the subject (if any) always in the middle so a centre crop keeps it. */
 function horizon(a: Assets, subject: Subject): ReactElement {
@@ -148,33 +204,112 @@ function horizon(a: Assets, subject: Subject): ReactElement {
     subject === null
       ? picture(a.locked[others[10] ?? "seal"], DISC)
       : "seat" in subject
-        ? box({
-            width: DISC,
-            height: DISC,
-            borderRadius: DISC / 2,
-            border: `3px solid ${C.accent}`,
-            background: C.accentSoft,
-          })
-        : picture(a.face[subject.face], LIT, { marginTop: -(LIT - DISC) - 8 });
-  const places = [...left.map((n) => picture(a.locked[n], DISC)), middle, ...right.map((n) => picture(a.locked[n], DISC))];
-  return box(
-    { position: "absolute", left: 0, right: 0, bottom: -26, justifyContent: "center", alignItems: "flex-start" },
-    ...places.map((place, i) => box({ marginRight: i < places.length - 1 ? GAP : 0 }, place)),
-  );
+        ? seat()
+        : picture(a.face[subject.face], LIT, LIFT);
+  return row([...left.map((n) => picture(a.locked[n], DISC)), middle, ...right.map((n) => picture(a.locked[n], DISC))]);
+}
+
+/**
+ * The horizon with a person in it. A profile: their face in the middle.
+ * An invite: the empty seat still in the middle, the inviter lit just
+ * before it, as if keeping it.
+ */
+function personHorizon(a: Assets, kind: PersonalKind, person: OgPerson): ReactElement {
+  const others = FACES.filter((name) => name !== person.face).slice(0, 10);
+  const locked = (names: readonly string[]) => names.map((n) => picture(a.locked[n], DISC));
+  if (kind === "profile") return row([...locked(others.slice(0, 5)), personFace(a, person), ...locked(others.slice(5, 10))]);
+  return row([...locked(others.slice(0, 4)), personFace(a, person), seat(), ...locked(others.slice(4, 9))]);
+}
+
+export type PersonalKind = "profile" | "invite";
+
+/** The words of a card with a person in it. Only the username and the rank name come from the person. */
+function personalCard(kind: PersonalKind, person: OgPerson): OgCard {
+  if (kind === "profile") {
+    const words = COPY.og.profileOwner;
+    return { eyebrow: words.eyebrow, title: person.handle, line: words.line(person.rank), alt: words.alt(person.handle, person.rank) };
+  }
+  return { ...COPY.og.invite, eyebrow: COPY.og.inviteFrom.eyebrow(person.handle), alt: COPY.og.inviteFrom.alt(person.handle) };
 }
 
 /** The card as an element tree, for ImageResponse and for the tests. */
 export async function ogElement(kind: OgKind): Promise<ReactElement> {
   const a = await loadAssets();
-  const card: OgCard = COPY.og[kind];
+  return frame(a, COPY.og[kind], horizon(a, SUBJECT[kind]));
+}
+
+/** A card with a person in it (lib/og/people decides who may be), as an element tree. */
+export async function ogPersonalElement(kind: PersonalKind, person: OgPerson): Promise<ReactElement> {
+  const a = await loadAssets();
+  // A profile's title is a username: one line, fitted.
+  return frame(a, personalCard(kind, person), personHorizon(a, kind, person), kind === "profile");
+}
+
+/** The PNG of a card with a person in it, 1200 x 630. */
+export async function ogPersonalImage(kind: PersonalKind, person: OgPerson, init: ResponseInit = {}): Promise<ImageResponse> {
+  const [element, a] = await Promise.all([ogPersonalElement(kind, person), loadAssets()]);
+  return new ImageResponse(element, { ...OG_SIZE, fonts: a.fonts, ...init });
+}
+
+export function ogPersonalAlt(kind: PersonalKind, person: OgPerson): string {
+  return personalCard(kind, person).alt;
+}
+
+const TITLE_SIZE = 76;
+const TITLE_MIN = 48;
+const TITLE_WIDTH = 1040;
+
+/** Inter Tight advance widths in em, roughly, by glyph class: wide errs wide so a fit never overflows. */
+function emWidth(text: string): number {
+  let em = 0;
+  for (const ch of text) {
+    if (/[mwMW]/.test(ch)) em += 0.86;
+    else if (/[ijl.,'!|]/.test(ch)) em += 0.28;
+    else if (/[frt]/.test(ch)) em += 0.4;
+    else if (/[A-Z]/.test(ch)) em += 0.7;
+    else if (ch === " ") em += 0.26;
+    else em += 0.6;
+  }
+  return em;
+}
+
+/**
+ * The title's size: the house size when the words fit the line, smaller
+ * for a long username (only a person's card has one line that must fit),
+ * never under TITLE_MIN; past that the line ends in an ellipsis.
+ */
+export function titleSize(text: string): number {
+  const fit = Math.floor(TITLE_WIDTH / (emWidth(text) + 0.05));
+  return Math.max(TITLE_MIN, Math.min(TITLE_SIZE, fit));
+}
+
+function frame(a: Assets, card: OgCard, foot: ReactElement, oneLine = false): ReactElement {
   const lines: ReactNode[] = [];
   if (card.eyebrow) lines.push(box({ fontSize: 24, fontWeight: 500, color: C.muted, marginBottom: 18 }, card.eyebrow));
-  lines.push(
-    box(
-      { fontFamily: "Inter Tight", fontSize: 76, letterSpacing: -2.28, lineHeight: 1.04, color: C.ink },
-      card.title,
-    ),
-  );
+  const title = { fontFamily: "Inter Tight", lineHeight: 1.04, color: C.ink } as const;
+  if (oneLine) {
+    const size = titleSize(card.title);
+    lines.push(
+      createElement(
+        "div",
+        {
+          style: {
+            ...title,
+            display: "block",
+            fontSize: size,
+            letterSpacing: -size * 0.03,
+            width: TITLE_WIDTH,
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
+          },
+        },
+        card.title,
+      ),
+    );
+  } else {
+    lines.push(box({ ...title, fontSize: TITLE_SIZE, letterSpacing: -2.28 }, card.title));
+  }
   lines.push(box({ fontSize: 29, lineHeight: 1.35, color: C.muted, marginTop: 22, maxWidth: 900 }, card.line));
   return box(
     {
@@ -192,7 +327,7 @@ export async function ogElement(kind: OgKind): Promise<ReactElement> {
       box({ fontFamily: "IBM Plex Mono", fontSize: 22, color: C.muted }, COPY.og.domain),
     ),
     box({ position: "absolute", left: 80, top: 168, width: 1040, flexDirection: "column" }, ...lines),
-    horizon(a, SUBJECT[kind]),
+    foot,
   );
 }
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ReactElement, ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { COPY } from "@/lib/copy";
-import { ogElement, type OgKind } from "@/lib/og/card";
+import { ogElement, ogPersonalElement, ogPersonalImage, titleSize, type OgKind } from "@/lib/og/card";
 import { ogImageRef } from "@/lib/og/metadata";
 import { inviteCardMetadata } from "@/lib/invite-card";
 import * as home from "@/app/opengraph-image";
@@ -92,7 +92,20 @@ describe("link preview cards", () => {
   });
 
   it("every card's words keep the copy rules: no dashes, no tickers", () => {
-    for (const card of Object.values(COPY.og)) {
+    const sample = "harbour_kit";
+    const personal = [
+      COPY.og.inviteFrom.title(sample),
+      COPY.og.inviteFrom.eyebrow(sample),
+      COPY.og.inviteFrom.alt(sample),
+      COPY.og.profileOwner.title(sample),
+      COPY.og.profileOwner.eyebrow,
+      COPY.og.profileOwner.line("Harbour Master"),
+      COPY.og.profileOwner.alt(sample, "Harbour Master"),
+    ].join(" ");
+    expect(personal).not.toMatch(/[‒-―]| - |\d|\$/);
+    for (const [key, card] of Object.entries(COPY.og)) {
+      if (key === "inviteFrom" || key === "profileOwner" || typeof card === "function") continue;
+      if (typeof card !== "string" && !("line" in card)) continue;
       const words = typeof card === "string" ? card : [card.eyebrow ?? "", card.title, card.line, card.alt].join(" ");
       expect(words).not.toMatch(/[‒-―]| - /);
       expect(words).not.toMatch(/\b(AAPL|NVDA|TSLA|USDC)\b/);
@@ -107,4 +120,32 @@ describe("link preview cards", () => {
     expect(JSON.stringify(invite.openGraph)).toContain("/r/opengraph-image?v=");
     expect(JSON.stringify(invite.twitter)).toContain("/r/twitter-image?v=");
   });
+
+  it("fits a long username on one line: smaller first, then an ellipsis, never past the edge", async () => {
+    expect(titleSize("harbour_kit")).toBe(76);
+    const wide = "w".repeat(20);
+    const size = titleSize(wide);
+    expect(size).toBeLessThan(76);
+    expect(size).toBeGreaterThanOrEqual(48);
+    const element = await ogPersonalElement("profile", { handle: wide, face: "otter", level: 1, rank: "First Line" });
+    const style = findStyle(element, wide);
+    expect(style).toMatchObject({ fontSize: size, width: 1040, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+    const bytes = new Uint8Array(await (await ogPersonalImage("profile", { handle: wide, face: null, level: 7, rank: "Pier" })).arrayBuffer());
+    expect([...bytes.slice(0, 8)]).toEqual(PNG_SIGNATURE);
+  }, 30_000);
 });
+
+/** The style of the box whose own text is `text`. */
+function findStyle(node: ReactNode, text: string): Record<string, unknown> | null {
+  if (node === null || node === undefined || typeof node !== "object") return null;
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findStyle(child, text);
+      if (found) return found;
+    }
+    return null;
+  }
+  const props = (node as ReactElement<{ children?: ReactNode; style?: Record<string, unknown> }>).props;
+  if (props?.children === text) return props.style ?? {};
+  return findStyle(props?.children, text);
+}
