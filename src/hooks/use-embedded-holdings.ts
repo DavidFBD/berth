@@ -65,6 +65,13 @@ export type EmbeddedHoldingsResult = {
   emailMode: boolean;
   /** True when any chain resolved an address to sweep: email or a connected wallet. */
   connected: boolean;
+  /**
+   * Chains an email session should read that have no address yet: its
+   * Solana wallet reaches the store through an async connect, after the
+   * EVM one. Unknown, not zero. Always empty for a wallet session, which
+   * reads only the families it connected.
+   */
+  unaddressedChains: SpokeChainKey[];
   /** True while balance sweeps or oracle prices are still in flight. */
   isLoading: boolean;
   /** What the embedded wallets hold, largest USD value first (unpriced last, in chain order). */
@@ -101,6 +108,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
     return resolveAccount(chainKey, session, store).address;
   };
   const connected = EMBEDDED_CHAINS.some((chainKey) => addressFor(chainKey));
+  const unaddressedChains = emailMode ? EMBEDDED_CHAINS.filter((chainKey) => !addressFor(chainKey)) : [];
 
   const swept = useQueries({
     queries: EMBEDDED_CHAINS.map((chainKey) => ({
@@ -184,6 +192,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
   return {
     emailMode,
     connected,
+    unaddressedChains,
     isLoading: swept.isLoading || prices.isLoading,
     holdings,
     erroredChains: swept.erroredChains,

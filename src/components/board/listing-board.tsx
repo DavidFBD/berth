@@ -53,6 +53,7 @@ export function ListingBoard({
   onFilterNews,
   newsFilterSymbol,
   held: heldOverride,
+  expandAll = false,
 }: {
   onBuy: (listing: TokenListing) => void;
   onSell?: (listing: TokenListing) => void;
@@ -61,6 +62,8 @@ export function ListingBoard({
   /** Which listing the news column is showing, if any. */
   newsFilterSymbol?: string;
   held?: ReadonlyMap<string, bigint>;
+  /** Every listing at once, with no "All" disclosure: the board as its own sheet. */
+  expandAll?: boolean;
 }) {
   const copy = useCopy();
   const moves = useMoves();
@@ -74,7 +77,10 @@ export function ListingBoard({
   // and a control that is invisible when focused is a trap.
   const [activeRow, setActiveRow] = useState<string | null>(null);
 
-  const [open, toggle, listId] = useDisclosure("board");
+  const [storedOpen, toggle, listId] = useDisclosure("board");
+  // Opened as a sheet of its own (the home's board drawer), every listing
+  // shows at once: the way there already said "every stock and fund".
+  const open = expandAll || storedOpen;
 
   const heldOf = (listing: TokenListing): bigint | undefined => {
     if (heldOverride) return heldOverride.get(listing.address);
@@ -310,7 +316,7 @@ export function ListingBoard({
           {open && rest.map(row)}
         </ul>
       )}
-      {rest.length > 0 && (
+      {rest.length > 0 && !expandAll && (
         <DisclosureRow
           open={open}
           onToggle={toggle}

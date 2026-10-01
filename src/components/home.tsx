@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
-import { AccountButton, useAssistantReachable } from "@/components/account-button";
+import { AccountButton, AddMoneyDrawer, useAssistantReachable, useEmailSession } from "@/components/account-button";
 import { BerthMark } from "@/components/berth-mark";
 import { InfoDrawer } from "@/components/info-drawer";
 import { useCopy } from "@/components/settings-provider";
@@ -29,6 +29,13 @@ import { VaultPositions } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
+import { AddMoneyStep, BuyMoreButton, FirstBuyStep, NextStepSkeleton } from "@/components/home-next-step";
+import { HomeMore, SectionDrawer } from "@/components/home-more";
+import { ADDRESS_WAIT_MS, hasMoneyAside, homeStage, parseHomeStage, NUDGES_SAID_BY_STEP, type HomeStage } from "@/lib/home-stage";
+import { MIN_ORDER_USD } from "@/lib/order-minimum";
+import { useLimitOrders } from "@/hooks/use-limit-orders";
+import { useAccountWallets } from "@/hooks/use-profile";
 import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-account-wallets";
 import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
@@ -70,6 +77,16 @@ const ChatHost = dynamic(() => import("@/components/chat/chat-sheet"), { ssr: fa
  * news and the assistant. Every order opens a drawer over it.
  */
 export function Home() {
+  // Everything that reads the account (the funds sweep included, which
+  // cannot run before the wallet services exist) lives past the gate.
+  return (
+    <AuthGate>
+      <SignedInHome />
+    </AuthGate>
+  );
+}
+
+function SignedInHome() {
   // The buy drawer pours into a listing: a stock or fund from the board, or
   // cash. Vault deposits are no longer offered, so no vault reaches it.
   const [buyListing, setBuyListing] = useState<Listing | null>(null);
@@ -147,28 +164,86 @@ export function Home() {
   );
   const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
-  // Once the account owns something, what it owns leads the panel, since
-  // that is what a returning person comes to see; before the first buy
-  // the funds lead, since pouring in is the first thing to do.
+  // Where the account stands decides the home's one next step
+  // (lib/home-stage): add money, buy the first stock, or, once it owns
+  // something, its total and holdings lead and Buy follows.
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
-  // The answer is remembered per account, so a returning holder's panel
+  const funds = useEmbeddedHoldings();
+  // The answer is remembered per account, so a returning holder's page
   // opens in its settled order instead of reordering when holdings land.
   // Keyed by the account's home, not by where this session's buys land
   // (the signer's own wallet), so every wallet of one account shares it.
   const accountKey = account.wallets.find((wallet) => wallet.isHome)?.spoke ?? account.spokeAddress;
-  const [rememberedOwns, rememberOwns] = useStoredChoice(
+  const [rememberedStage, rememberStage] = useStoredChoice(
+    accountKey ? `berth.home-stage.${accountKey.toLowerCase()}` : null,
+  );
+  // Before 2026-10-01 only "owns something" was remembered; read it once.
+  const [rememberedOwns] = useStoredChoice(
     accountKey ? `berth.owns-listings.${accountKey.toLowerCase()}` : null,
   );
-  const liveOwns = holdings.settled
-    ? holdings.held.some((holding) => holding.listing.kind === "stock")
-    : undefined;
-  const ownsListings = liveOwns ?? rememberedOwns === "1";
+  // Holdings count as read only once the linked wallets are known: until
+  // then an email session reads its own wallet alone, and stocks held on a
+  // linked wallet would read as none.
+  const linkedWallets = useAccountWallets();
+  // A missing wallet address may hold the step for a bounded wait, no longer.
+  const [waitedOut, setWaitedOut] = useState(false);
   useEffect(() => {
-    if (liveOwns === undefined) return;
-    const next = liveOwns ? "1" : "0";
-    if (rememberedOwns !== next) rememberOwns(next);
-  }, [liveOwns, rememberedOwns, rememberOwns]);
+    const timer = setTimeout(() => setWaitedOut(true), ADDRESS_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  // Unknown is unknown, never $0 (lib/home-stage). A proven stage is shown
+  // and remembered; a provisional one (only failed or missing networks
+  // stand between it and certainty) is shown when nothing is remembered,
+  // and never remembered itself.
+  const live = homeStage({
+    holdingsSettled: holdings.settled && !linkedWallets.isLoading,
+    ownsStock: holdings.held.some((holding) => holding.listing.kind === "stock"),
+    funds: {
+      connected: funds.connected,
+      unaddressedChains: funds.unaddressedChains.length,
+      isLoading: funds.isLoading,
+      erroredChains: funds.erroredChains.length,
+      holdings: funds.holdings,
+      totalUsd: funds.totalUsd,
+    },
+    waitedOut,
+  });
+  const proven = live.proven ? live.stage : undefined;
+  const remembered = parseHomeStage(rememberedStage) ?? (rememberedOwns === "1" ? "owns" : undefined);
+  const decided: HomeStage | undefined = proven ?? remembered ?? live.stage;
+  useEffect(() => {
+    if (proven !== undefined && rememberedStage !== proven) rememberStage(proven);
+  }, [proven, rememberedStage, rememberStage]);
+  const holdsCash = holdings.held.some((holding) => holding.listing.kind === "cash");
+  // Earlier vault positions (components/vaults), reported by the section
+  // itself: a vault holder's step says what the position is worth.
+  const [vaults, setVaults] = useState<{ present: boolean; usd: number | undefined }>({ present: false, usd: undefined });
+  // Cash parked or dollars waiting in a limit order: before a first stock,
+  // the total still shows, so that money is never hidden behind Add money.
+  const limitOrders = useLimitOrders({ poll: false });
+  const waitingOrders = limitOrders.waiting.length > 0;
+  const moneyAside = hasMoneyAside({ holdsCash, waitingOrders });
+  // Before a first stock, the step waits for the waiting-orders read too,
+  // so the total never lands above it after it has been placed.
+  const stage: HomeStage | undefined = decided !== "owns" && limitOrders.isLoading ? undefined : decided;
+
+  // What sits one tap away (components/home-more), and the add-money drawer.
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [newsOpen, setNewsOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false);
+  // Decided from the session, not from whether the embedded wallet exists
+  // yet: the drawer says the account is being opened until it does.
+  const emailSession = useEmailSession();
+  // An email account adds money in its own small drawer; a wallet account's
+  // money lives in its wallet, so it keeps the account drawer as before.
+  const openAddMoney = () => {
+    if (emailSession) setAddMoneyOpen(true);
+    else openAccount();
+  };
+  // A buy or sell opened from the board drawer brings the board back when it closes.
+  const [boardReturn, setBoardReturn] = useState(false);
 
   // Email login is the primary path; the external wallet drawer is the
   // fallback for signed-in users reaching for a non-EVM source chain.
@@ -182,12 +257,14 @@ export function Home() {
 
   const openBuy = (listing: Listing) => {
     setChatReturn(false);
+    setBoardReturn(false);
     setBuyPrefill(null);
     setBuyListing(listing);
     setBuyOpen(true);
   };
   const openSell = (listing: TokenListing) => {
     setChatReturn(false);
+    setBoardReturn(false);
     setSellPrefill(null);
     setSellListing(listing);
     setSellOpen(true);
@@ -227,29 +304,50 @@ export function Home() {
     setChatReturn(false);
     setChatOpen(true);
   };
+  const returnToBoard = () => {
+    if (!boardReturn) return;
+    setBoardReturn(false);
+    setBoardOpen(true);
+  };
   const onBuyOpenChange = (next: boolean) => {
     setBuyOpen(next);
-    if (!next) returnToChat();
+    if (!next) {
+      returnToChat();
+      returnToBoard();
+    }
   };
   const onSellOpenChange = (next: boolean) => {
     setSellOpen(next);
-    if (!next) returnToChat();
+    if (!next) {
+      returnToChat();
+      returnToBoard();
+    }
   };
 
-  const anyDrawerOpen = chatOpen || buyOpen || sellOpen || withdrawOpen || walletOpen || accountOpen;
+  const anyDrawerOpen =
+    chatOpen || buyOpen || sellOpen || withdrawOpen || walletOpen || accountOpen ||
+    boardOpen || newsOpen || aiOpen || addMoneyOpen;
 
-  const moneyRows = (
-    <Panel key="money" className="divide-y divide-border">
-      <FundsModule onTopUp={() => openAccount()} />
-      <CashShelf
-        onPark={() => openBuy(CASH_LISTING)}
-        onTakeOut={() => openSell(CASH_LISTING)}
-      />
+  // Funds, Cash and any earlier vault position, in every stage. Before
+  // there is money the Funds row draws only what it has to say (an asset
+  // under the minimum, a network it could not read, a gas shortfall), the
+  // Cash row only once cash is parked, and an empty panel not at all.
+  const empty = stage === "empty";
+  const money = (
+    <Panel key="money" className="divide-y divide-border [&:not(:has(>:not(.hidden)))]:hidden">
+      <FundsModule onTopUp={openAddMoney} quietWhenEmpty={empty} />
+      {(!empty || holdsCash) && (
+        <CashShelf
+          onPark={() => openBuy(CASH_LISTING)}
+          onTakeOut={() => openSell(CASH_LISTING)}
+        />
+      )}
       <VaultPositions
         onWithdraw={(vault) => {
           setWithdrawVault(vault);
           setWithdrawOpen(true);
         }}
+        onHeld={setVaults}
       />
     </Panel>
   );
@@ -258,6 +356,8 @@ export function Home() {
       <HoldingsList onSell={openSell} />
     </Panel>
   );
+  const openBoard = () => setBoardOpen(true);
+  const spendable = funds.totalUsd !== undefined && funds.totalUsd >= MIN_ORDER_USD ? funds.totalUsd : undefined;
 
   // Where Berth is not available, a sign in the server made no account
   // for (lib/server/availability) says so instead of an empty board.
@@ -265,18 +365,11 @@ export function Home() {
   const noAccountHere = useUnavailableRefused("/api/profile");
 
   return (
-    <AuthGate>
+    <>
       {noAccountHere ? (
         <NoAccountHere availability={availability} />
       ) : (
       <>
-      {/*
-        The ledger (2026-09-28): one column on a phone, two from 1024px.
-        The left track is the account, top to bottom: its figure beside a
-        benchmark, the nudge, what it owns, its money, then the board. The
-        right track is what to ask and what is being said. On a phone the
-        right track simply follows the left, and Ask docks at the foot.
-      */}
       <div className={cn(BOARD_PAGE, askAvailable !== false && DOCK_CLEARANCE)}>
         <HomeHeader onOpenChat={askAvailable === false ? () => openChat() : undefined}>
           <AccountButton
@@ -287,59 +380,112 @@ export function Home() {
           />
         </HomeHeader>
 
-        <div className={BOARD_GRID}>
-          <div className={BOARD_TRACK}>
-            {/* Only where Berth is not available: what still works, quietly. */}
-            <NotHereBanner />
-            <AccountTotal />
-            {/* Only on a recurring plan's day (lib/recurring): Berth reminds, the person signs. */}
-            <RecurringStrip onOpen={openDraftBuy} />
-            {/* Only while a limit order waits, and only behind its switch. */}
-            <WaitingOrders />
-            <UnlinkedWalletPrompt hidden={accountOpen} />
-            {/* At most one prompt strip at a time: the waiting-orders strip
-                and the unlinked-wallet prompt above both outrank this one
-                (lib/email-nudge). */}
-            <EmailNudgeLine
-              otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing}
-              onOpen={openAccountForEmail}
-            />
-            <NudgeLine
-              onAddFunds={() => openAccount()}
-              onParkCash={() => openBuy(CASH_LISTING)}
-              onOpenAccount={() => openAccount()}
-            />
-            {/* Once the account owns something, what it owns leads, since
-                that is what a returning person comes to see; before the
-                first buy the money leads, since adding funds comes first. */}
-            {ownsListings ? [owned, moneyRows] : [moneyRows, owned]}
-            <ListingBoard
-              onBuy={openBuy}
-              onSell={openSell}
-              onFilterNews={(listing) =>
-                setNewsFilter((current) =>
-                  current?.symbol === listing.symbol ? null : listing,
-                )
-              }
-              newsFilterSymbol={newsFilter?.symbol}
-            />
-          </div>
-
-          <div className={BOARD_TRACK}>
-            {/* On a phone the docked field is the way in. */}
-            {askAvailable !== false && (
+        <HomeTracks
+          stage={stage}
+          banner={<NotHereBanner />}
+          total={<AccountTotal />}
+          owned={owned}
+          buy={<BuyMoreButton onOpen={openBoard} />}
+          next={
+            stage === "empty" ? (
+              <AddMoneyStep
+                walletAccount={!emailSession}
+                onAddMoney={openAddMoney}
+                onBrowse={openBoard}
+                aside={vaults.present ? { kind: "vault", usd: vaults.usd } : holdsCash ? { kind: "cash" } : undefined}
+              />
+            ) : (
+              // Only a live "funded" may say the wallet holds money; one from
+              // memory holds the line's place until the balances are known.
+              <FirstBuyStep readyUsd={spendable} loading={live.stage !== "funded"} onBuy={openBuy} onBrowse={openBoard} />
+            )
+          }
+          strips={
+            <>
+              {/* Only on a recurring plan's day (lib/recurring): Berth reminds, the person signs. */}
+              <RecurringStrip onOpen={openDraftBuy} />
+              {/* Only while a limit order waits, and only behind its switch. */}
+              <WaitingOrders />
+              <UnlinkedWalletPrompt hidden={accountOpen} />
+              {/* At most one prompt strip at a time: the waiting-orders strip
+                  and the unlinked-wallet prompt above both outrank this one
+                  (lib/email-nudge). */}
+              <EmailNudgeLine
+                otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing}
+                onOpen={openAccountForEmail}
+              />
+              <NudgeLine
+                hide={stage ? NUDGES_SAID_BY_STEP[stage] : undefined}
+                onAddFunds={openAddMoney}
+                onParkCash={() => openBuy(CASH_LISTING)}
+                onOpenAccount={() => openAccount()}
+              />
+            </>
+          }
+          moneyAside={moneyAside}
+          money={money}
+          ask={
+            // On a phone the docked field is the way in.
+            askAvailable !== false && (
               <div className="hidden lg:block">
                 {askAvailable ? <AskCard onOpen={openChat} /> : <AskCardPlaceholder />}
               </div>
-            )}
-            <NewsFeed
-              filter={newsFilter}
-              onClearFilter={() => setNewsFilter(null)}
-              collapsible
+            )
+          }
+          more={
+            <HomeMore
+              onBoard={openBoard}
+              onNews={() => setNewsOpen(true)}
+              onAi={assistantReachable ? () => setAiOpen(true) : undefined}
             />
-            {assistantReachable && <AssistantCard onChoose={(assistant) => openAccount(assistant)} />}
-          </div>
-        </div>
+          }
+        />
+
+        <SectionDrawer open={boardOpen} onOpenChange={setBoardOpen} title={copy.boardTitle} description={copy.calmHome.moreBoardSub}>
+          <ListingBoard
+            expandAll
+            onBuy={(listing) => {
+              setBoardOpen(false);
+              openBuy(listing);
+              setBoardReturn(true);
+            }}
+            onSell={(listing) => {
+              setBoardOpen(false);
+              openSell(listing);
+              setBoardReturn(true);
+            }}
+            // A row can point the news at itself: the news drawer opens on it.
+            onFilterNews={(listing) => {
+              setNewsFilter(listing);
+              setBoardOpen(false);
+              setNewsOpen(true);
+            }}
+            newsFilterSymbol={newsFilter?.symbol}
+          />
+        </SectionDrawer>
+        <SectionDrawer
+          open={newsOpen}
+          onOpenChange={(next) => {
+            setNewsOpen(next);
+            // A filter set from a board row lasts as long as the drawer it opened.
+            if (!next) setNewsFilter(null);
+          }}
+          title={copy.newsTitle}
+          description={copy.calmHome.moreNewsSub}
+        >
+          <NewsFeed filter={newsFilter} onClearFilter={() => setNewsFilter(null)} />
+        </SectionDrawer>
+        {assistantReachable && (
+          <SectionDrawer open={aiOpen} onOpenChange={setAiOpen} title={copy.assistantTitle} description={copy.calmHome.moreAiSub}>
+            <AssistantCard
+              onChoose={(assistant) => {
+                setAiOpen(false);
+                openAccount(assistant);
+              }}
+            />
+          </SectionDrawer>
+        )}
+        <AddMoneyDrawer open={addMoneyOpen} onOpenChange={setAddMoneyOpen} />
 
         <DraftLinkOpener onBuy={openDraftBuy} onSell={openDraftSell} />
         <PlanSheetHost onSignIn={openWallet} onClosed={returnToChat} />
@@ -354,7 +500,7 @@ export function Home() {
             // Leaving for the account drawer is not a return to the chat.
             setChatReturn(false);
             setBuyOpen(false);
-            openAccount();
+            openAddMoney();
           }}
           onMakeRecurring={
             hasAccount
@@ -404,7 +550,79 @@ export function Home() {
       {askAvailable && <AskDock onOpen={() => openChat()} hidden={anyDrawerOpen} busy={chatBusy} />}
       </>
       )}
-    </AuthGate>
+    </>
+  );
+}
+
+/**
+ * The home's order (2026-10-01, the calm home), shared with the dev gallery
+ * so the two cannot drift. One next step per state, and at most one more
+ * thing under it before the quieter rows:
+ *
+ *   empty    the step (add money), any strip, funds and cash if they have
+ *            anything to say, an earlier vault position
+ *   funded   the step (buy your first stock or fund), any strip, funds and cash
+ *   owns     the total, what it owns, Buy, any strip, funds and cash
+ *
+ * Before a first stock, money set aside (cash, or dollars waiting in a
+ * limit order) puts the total above the step. While the stage is unknown
+ * the step's place is held and funds and cash still show.
+ *
+ * The second track (beside on a desktop, after on a phone) is Ask and what
+ * sits one tap away: the board, the news, your AI. While the stage is not
+ * known and none is remembered, the step's place is held.
+ */
+export function HomeTracks({
+  stage,
+  banner,
+  total,
+  owned,
+  buy,
+  next,
+  strips,
+  money,
+  moneyAside = false,
+  ask,
+  more,
+}: {
+  stage: HomeStage | undefined;
+  /** Cash parked or money waiting in an order: the total shows before a first stock too. */
+  moneyAside?: boolean;
+  banner: ReactNode;
+  total: ReactNode;
+  owned: ReactNode;
+  buy: ReactNode;
+  next: ReactNode;
+  strips: ReactNode;
+  money: ReactNode;
+  ask: ReactNode;
+  more: ReactNode;
+}) {
+  return (
+    <div className={BOARD_GRID}>
+      <div className={BOARD_TRACK}>
+        {/* Only where Berth is not available: what still works, quietly. */}
+        {banner}
+        {stage === "owns" ? (
+          <>
+            {total}
+            {owned}
+            {buy}
+          </>
+        ) : (
+          <>
+            {moneyAside && total}
+            {stage === undefined ? <NextStepSkeleton /> : next}
+          </>
+        )}
+        {strips}
+        {money}
+      </div>
+      <div className={BOARD_TRACK}>
+        {ask}
+        {more}
+      </div>
+    </div>
   );
 }
 

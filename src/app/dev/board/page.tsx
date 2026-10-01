@@ -53,7 +53,9 @@ import {
  *                                       without a cursor
  *   /dev/board?home=held                the signed-in board as Home lays it
  *                                       out, from fixtures (home-gallery.tsx);
- *                                       home=new for a first visit, &dock=0
+ *                                       home=empty for a new account with no
+ *                                       money, home=new funded but holding
+ *                                       nothing, &dock=0
  *                                       without the docked Ask
  *   /dev/board?open=NVDA&country=US     any of these as seen where Berth is
  *                                       not available (lib/availability): the
@@ -74,8 +76,17 @@ export default function BoardGalleryPage() {
 function Galleries() {
   const params = useSearchParams();
   const home = params.get("home");
-  if (home === "held" || home === "new" || home === "walletEmail") {
-    return <HomeGallery key={home} scene={home} dock={params.get("dock") !== "0"} streaming={params.get("streaming") === "1"} />;
+  if (home === "held" || home === "new" || home === "empty" || home === "cash" || home === "walletEmail") {
+    const drawer = params.get("drawer");
+    return (
+      <HomeGallery
+        key={home}
+        scene={home}
+        dock={params.get("dock") !== "0"}
+        streaming={params.get("streaming") === "1"}
+        drawer={drawer === "board" || drawer === "news" ? drawer : null}
+      />
+    );
   }
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:max-w-lg lg:max-w-5xl xl:max-w-7xl">

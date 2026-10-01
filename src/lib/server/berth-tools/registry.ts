@@ -374,7 +374,7 @@ const getPerformance = defineTool({
   name: "get_performance",
   title: "How the money has done",
   description:
-    "How the account's money has done over a period, beside the same dollars put into a benchmark on the same days: the S&P 500 fund, the Nasdaq 100 fund, Gold, Bitcoin or Treasury bills. The account's change is time weighted, so money added or taken out does not count as gain or loss. Refuses rather than guesses when the history cannot support a number.",
+    "How the account's money has done over a period, beside the same dollars put into a benchmark on the same days: the S&P 500 ETF, the Nasdaq 100 ETF, Gold, Bitcoin or Treasury bills. The account's change is time weighted, so money added or taken out does not count as gain or loss. Refuses rather than guesses when the history cannot support a number.",
   input: z.object({
     period: z
       .enum(["week", "month", "three_months", "since_first_buy"])

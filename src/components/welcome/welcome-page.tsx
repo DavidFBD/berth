@@ -18,7 +18,8 @@ import { PILL } from "@/components/ui/pill";
  * film before the close. Friends, ranks and the Monday habit are carried by
  * the hero film, so they have no section of their own. The highlighted
  * phrase stays ink on the pale wash, so the email button is the page's one
- * accent. Everything that signs someone in is passed in as `ctas`, so this
+ * accent, and the Colosseum entry sits under the way in, not above the
+ * headline. Everything that signs someone in is passed in as `ctas`, so this
  * file only lays the page out.
  */
 export function WelcomePage({
@@ -60,15 +61,6 @@ export function WelcomePage({
 
       <header className="grid gap-8 pt-7 pb-12 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-16 lg:pt-10 lg:pb-16">
         <div>
-          <a
-            href={page.colosseum.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[12px] font-medium text-muted-foreground transition-colors duration-150 ease-lift hover:text-foreground"
-          >
-            <Trophy weight="duotone" className="size-3.5 shrink-0" aria-hidden />
-            {page.colosseum.label}
-          </a>
           <p className="mb-4 text-[13px] font-medium text-muted-foreground lg:mb-[22px]">{page.eyebrow}</p>
           <h1 className="max-w-[50rem] font-display text-[40px] leading-[1.1] tracking-[-0.028em] text-foreground lg:text-[60px] lg:leading-[1.08] lg:tracking-[-0.03em]">
             {page.headlineLead}
@@ -95,6 +87,19 @@ export function WelcomePage({
               <p className="mt-3.5 text-[13px] text-muted-foreground">{copy.noSeedPhrases}</p>
             </>
           )}
+          {/* After the way in, not before the headline (2026-10-01): the
+              first read is the line, then the one button. */}
+          <div>
+          <a
+            href={page.colosseum.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[12px] font-medium text-muted-foreground transition-colors duration-150 ease-lift hover:text-foreground"
+          >
+            <Trophy weight="duotone" className="size-3.5 shrink-0" aria-hidden />
+            {page.colosseum.label}
+          </a>
+          </div>
         </div>
         <HeroPhone />
       </header>

@@ -3,7 +3,10 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useCopy, useMoney } from "@/components/settings-provider";
+import { CaretDown, ChartLineUp } from "@phosphor-icons/react";
 import { PortfolioSummary } from "@/components/board/portfolio-summary";
+import { useDisclosure } from "@/components/board/disclosure";
+import { cn } from "@/lib/utils";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
@@ -82,6 +85,7 @@ export function AccountTotal() {
 export function AccountTotalView({ figures }: { figures: AccountFigures }) {
   const copy = useCopy();
   const money = useMoney();
+  const [compareOpen, toggleCompare, compareId] = useDisclosure("compare");
   const { holdings, cash, funds } = figures;
   const waiting = figures.waiting ?? 0;
   // What the person owns plus what waits in orders: the parts below always add up to it.
@@ -121,7 +125,28 @@ export function AccountTotalView({ figures }: { figures: AccountFigures }) {
           </div>
         ))}
       </dl>
-      <PortfolioSummary holdsAnything={figures.holdsAnything} />
+      {/* The comparison is a weekly look, not the first read: one tap
+          under the figure opens it, and the choice is remembered. */}
+      {figures.holdsAnything && (
+        <>
+          <button
+            type="button"
+            aria-expanded={compareOpen}
+            aria-controls={compareId}
+            onClick={toggleCompare}
+            className="mt-3 -mb-1 flex min-h-9 items-center gap-1.5 rounded-full text-[13px] text-muted-foreground outline-none transition-colors duration-150 ease-lift hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <ChartLineUp weight="duotone" aria-hidden className="size-4" />
+            {compareOpen ? copy.calmHome.compareHide : copy.calmHome.compareShow}
+            <CaretDown
+              weight="duotone"
+              aria-hidden
+              className={cn("size-3.5 transition-transform duration-200 ease-lift", compareOpen && "rotate-180")}
+            />
+          </button>
+          <div id={compareId}>{compareOpen && <PortfolioSummary holdsAnything />}</div>
+        </>
+      )}
     </section>
   );
 }

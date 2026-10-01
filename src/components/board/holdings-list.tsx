@@ -205,7 +205,15 @@ export function HoldingsView({
         title={copy.holdingsTitle}
         hint={copy.holdingsHint}
         note={holdsAnything ? copy.holdingsSubline : undefined}
-        className="pb-0"
+        // What the figure counts sits behind the same (i): the account's
+        // total is right above, so the page need not say it twice.
+        more={
+          holdsAnything ? (
+            <p className="mt-1.5 text-muted-foreground">
+              {includesCash ? `${copy.holdingsCashIncluded} ${copy.holdingsWalletsNote}` : copy.holdingsWalletsNote}
+            </p>
+          ) : undefined
+        }
         action={
           holdsAnything ? (
             total === undefined ? (
@@ -216,13 +224,6 @@ export function HoldingsView({
           ) : undefined
         }
       />
-      {holdsAnything ? (
-        <p className="px-[18px] pt-0 pb-4 text-[13px] leading-5 text-muted-foreground lg:px-6 lg:pb-[18px]">
-          {includesCash ? `${copy.holdingsCashIncluded} ${copy.holdingsWalletsNote}` : copy.holdingsWalletsNote}
-        </p>
-      ) : (
-        <div className="pb-2.5" />
-      )}
       {loading ? (
         <div className="flex flex-col gap-2 border-t border-border px-[18px] lg:px-6 py-3">
           <Skeleton className="h-5 w-40" />

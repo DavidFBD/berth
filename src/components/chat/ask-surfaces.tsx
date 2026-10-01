@@ -36,8 +36,8 @@ export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
         <button type="button" onClick={() => onOpen()} aria-label={copy.chatOpenLabel} className={cn(FIELD, "mt-1 h-[46px] bg-card")}>
           <ChatCircleText weight="duotone" className="size-[18px] shrink-0" aria-hidden />
           <span className="min-w-0 flex-1 truncate">{copy.askPlaceholder}</span>
-          {/* The card's one accent: the way to send. */}
-          <span aria-hidden className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          {/* The way to send, in ink: the page keeps its one accent for the next step. */}
+          <span aria-hidden className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-foreground text-background">
             <ArrowUp weight="bold" className="size-4" />
           </span>
         </button>
@@ -156,7 +156,7 @@ export function AskDock({ onOpen, hidden, busy = false }: { onOpen: () => void; 
             <ChatCircleText weight="duotone" className="size-5 shrink-0" aria-hidden />
           )}
           <span className="min-w-0 flex-1 truncate">{copy.askPlaceholder}</span>
-          <span aria-hidden className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <span aria-hidden className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-foreground text-background">
             <ArrowUp weight="bold" className="size-4" />
           </span>
         </button>

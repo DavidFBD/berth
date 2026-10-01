@@ -36,9 +36,15 @@ type Actions = {
   onOpenAccount: () => void;
 };
 
-export function NudgeLine(actions: Actions) {
+/**
+ * `hide` leaves out a line the page already says louder: the home's next
+ * step says "add money" and "buy your first stock" itself, so the nudge
+ * does not say it twice (the line is not dismissed, only not drawn).
+ */
+export function NudgeLine({ hide, ...actions }: Actions & { hide?: readonly Nudge["kind"][] }) {
   const { nudge, dismiss } = useNudge();
-  return <NudgeLineView nudge={nudge} onDismiss={dismiss} {...actions} />;
+  const shown = nudge && hide?.includes(nudge.kind) ? null : nudge;
+  return <NudgeLineView nudge={shown} onDismiss={dismiss} {...actions} />;
 }
 
 /** The line itself, given a nudge; /dev/board renders it without an account. */

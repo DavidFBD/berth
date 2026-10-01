@@ -4,11 +4,11 @@ import { TOKEN_LISTINGS } from "@/lib/listings";
 import { MARKET_ID_BY_SYMBOL } from "@/lib/market-ids";
 
 describe("benchmarks", () => {
-  it("offers five, by name, the S&P 500 fund first", () => {
+  it("offers five, by name, the S&P 500 ETF first", () => {
     expect(BENCHMARKS.map((b) => b.symbol)).toEqual(["SPY", "QQQ", "PAXG", "BTC", "SGOV"]);
     expect(BENCHMARKS.map((b) => b.name)).toEqual([
-      "S&P 500 fund",
-      "Nasdaq 100 fund",
+      "S&P 500 ETF",
+      "Nasdaq 100 ETF",
       "Gold",
       "Bitcoin",
       "Treasury bills",

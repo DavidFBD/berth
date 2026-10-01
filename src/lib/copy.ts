@@ -63,6 +63,9 @@ export type Copy = {
   receiveSolanaTitle: string;
   receiveSolanaBody: string;
   receiveSolanaToast: string;
+  receiveBitcoinTitle: string;
+  receiveBitcoinBody: string;
+  receiveBitcoinToast: string;
   /** `what` is the row's own title: "Copy Solana address". */
   receiveShowQr: (what: string) => string;
   receiveCopyLabel: (what: string) => string;
@@ -141,6 +144,49 @@ export type Copy = {
   };
   /** Footer line under "powered by": the one honest sentence about risk. */
   footerNote: string;
+  /**
+   * The signed-in home's one next step per state (components/home-next-step):
+   * add money, buy the first stock, or buy more; and the short list of what
+   * sits behind a tap (components/home-more).
+   */
+  calmHome: {
+    addTitle: string;
+    addLine: string;
+    addAction: string;
+    /** A wallet account pays from the wallet it connected, so its next step is choosing. */
+    walletAddLine: string;
+    walletAddAction: string;
+    browse: string;
+    firstTitle: string;
+    firstReady: (amount: string) => string;
+    /** Nothing spendable, but cash is parked, in its row just below: take some out, or add money. */
+    firstFromCash: string;
+    /** The same for a wallet account, whose step chooses a stock rather than adding money. */
+    walletCashLine: string;
+    /** A wallet account's empty step: it pays from the wallet it connected. */
+    walletAddTitle: string;
+    /** An earlier vault position, in its row just below, worth `amount` when priced. */
+    vaultLine: (amount: string | undefined) => string;
+    /** The step's title while cash is parked but nothing is spendable. */
+    addTitleCash: string;
+    /** Money the oracle cannot price yet: the buy drawer reads it per token. */
+    firstReadyUnpriced: string;
+    /** The card and bank row inside the Add money drawer. */
+    cardRowTitle: string;
+    pickLabel: string;
+    firstChoose: string;
+    firstBuy: (name: string) => string;
+    seeAll: (count: number) => string;
+    buyAction: string;
+    compareShow: string;
+    compareHide: string;
+    addMoneyTitle: string;
+    addMoneySub: string;
+    moreLabel: string;
+    moreBoardSub: string;
+    moreNewsSub: string;
+    moreAiSub: string;
+  };
   /** The welcome page around the way in (components/welcome): hero with the habit film, three short sections, the Wall Street film, the close. */
   welcomePage: {
     navLabel: string;
@@ -1524,7 +1570,7 @@ export const COPY: Copy = {
   brand: "Berth",
   tagline: "A place to tie up.",
   welcomeLede:
-    "Buy NVIDIA, Apple, the S&P 500 fund or Gold with the stablecoins, ETH, SOL or Bitcoin you already hold, from more than 20 networks, in one signature.",
+    "Buy NVIDIA, Apple, the S&P 500 ETF or Gold with the stablecoins, ETH, SOL or Bitcoin you already hold, from more than 20 networks, in one signature.",
   signInEmail: "Continue with email",
   connectWallet: "Connect a wallet",
   noSeedPhrases: "An email is enough. No seed phrase, and the keys are yours to export.",
@@ -1545,13 +1591,16 @@ export const COPY: Copy = {
   accountSignedInAs: (email) => `Signed in as ${email}`,
   accountSignedInEmail: "Signed in via email",
   accountSignOut: "Sign out",
-  receiveEvmTitle: "EVM address",
+  receiveEvmTitle: "Base, Arbitrum and other EVM networks",
   receiveEvmBody:
     "One address for Ethereum, Base, Arbitrum, Polygon, BNB and every other EVM network.",
-  receiveEvmToast: "Works on every EVM network. Send funds there to top up.",
-  receiveSolanaTitle: "Solana address",
+  receiveEvmToast: "Works on every EVM network. Send crypto there to add money.",
+  receiveSolanaTitle: "Solana",
   receiveSolanaBody: "Only for Solana assets: SOL, JitoSOL, USDC on Solana.",
   receiveSolanaToast: "Only send Solana assets to this one.",
+  receiveBitcoinTitle: "Bitcoin",
+  receiveBitcoinBody: "Your linked Bitcoin wallet. Only send Bitcoin to it.",
+  receiveBitcoinToast: "Only send Bitcoin to this one.",
   receiveShowQr: (what) => `Show ${what} as a QR code`,
   receiveCopyLabel: (what) => `Copy ${what}`,
   receiveCopied: "Address copied",
@@ -1611,6 +1660,39 @@ export const COPY: Copy = {
   },
   footerNote:
     "Stock tokens track a share; they are not the share. Read what you own before you buy.",
+  calmHome: {
+    addTitle: "Add money to begin",
+    addLine: "Pay by card or bank, or send crypto you already hold. Then choose a stock.",
+    addAction: "Add money",
+    walletAddLine:
+      "Berth pays from the wallet you connected. If it holds nothing yet, send it stablecoins, ETH, SOL or Bitcoin first.",
+    walletAddAction: "Choose a stock",
+    browse: "See what you can buy",
+    firstTitle: "Buy your first stock or fund",
+    firstReady: (amount) => `${amount} is ready to spend. Choose one to start, or look through them all.`,
+    firstFromCash: "Your money is parked as cash, just below. Take some out there to spend it, or add money.",
+    walletCashLine:
+      "Your money is parked as cash, just below. Take some out there to spend it, or choose a stock and pay from your wallet.",
+    walletAddTitle: "Pay from your wallet",
+    vaultLine: (amount) =>
+      `Your earlier vault position${amount ? `, worth ${amount},` : ""} is just below and can be withdrawn. Then choose a stock or fund.`,
+    addTitleCash: "Add money to buy",
+    firstReadyUnpriced: "Your wallet holds crypto Berth can pay with. Choose one to start, or look through them all.",
+    cardRowTitle: "Card or bank",
+    pickLabel: "Some well known names",
+    firstChoose: "Choose one above",
+    firstBuy: (name) => `Buy ${name}`,
+    seeAll: (count) => `All ${count} stocks and funds`,
+    buyAction: "Buy",
+    compareShow: "How it compares",
+    compareHide: "Hide the comparison",
+    addMoneyTitle: "Add money",
+    addMoneySub: "Choose how to pay. What you add lands in your account, ready to buy with.",
+    moreLabel: "More on Berth",
+    moreBoardSub: "Every stock and fund, with today's moves.",
+    moreNewsSub: "Posts and headlines about the stocks on Berth, read by Jev.",
+    moreAiSub: "Let Claude, ChatGPT or Grok read your account.",
+  },
   welcomePage: {
     navLabel: "Berth",
     eyebrow: "Wall Street, in your wallet.",
@@ -1623,7 +1705,7 @@ export const COPY: Copy = {
     sections: {
       what: {
         title: "US stocks and funds, held in your own wallet.",
-        line: "NVIDIA, Apple, Tesla, the S&P 500 fund, Gold and more, priced live. Each is a token that tracks a share.",
+        line: "NVIDIA, Apple, Tesla, the S&P 500 ETF, Gold and more, priced live. Each is a token that tracks a share.",
       },
       pay: {
         title: "Pay with what you hold, on more than 20 networks.",
@@ -1664,7 +1746,7 @@ export const COPY: Copy = {
   accountTotalSub: "Funds, holdings and cash, in one figure.",
   accountSplitHoldings: "Stocks",
   portfolioSameDays: "Same dollars, same days",
-  holdingsSubline: "Since you bought, beside the S&P 500 fund.",
+  holdingsSubline: "Since you bought, beside the S&P 500 ETF.",
   holdingsCashIncluded: "Includes your parked cash.",
   holdingsWalletsNote: "Money waiting in your wallets is not counted.",
   holdingsAll: (count) => `All ${count} holdings`,
@@ -1697,7 +1779,7 @@ export const COPY: Copy = {
   fundsSignIn: "Sign in and your funds appear here.",
   fundsWhatsInside: "What is inside",
   fundsNeedsGas: "needs a network fee",
-  topUp: "Add funds",
+  topUp: "Add money",
   signIn: "Sign in",
   fundsInsideTitle: "Your funds",
   fundsInsideSub:
@@ -1717,12 +1799,12 @@ export const COPY: Copy = {
   holdingsHint: "Held in your account. Sell any of it with one signature.",
   holdingsEmpty: "Nothing yet. Your first buy lands here.",
   holdingSince: (date) => `Since ${date}`,
-  holdingBenchmark: "S&P 500 fund",
+  holdingBenchmark: "S&P 500 ETF",
   holdingsMarketDays: (days) => marketDays(days),
   moveInTheNews: (source) => `In the news: ${source}`,
   moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
-    "The line is your money each day at the close, and today at the live price, beside the same dollars put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 fund. It describes what happened, and says nothing about what to do.",
+    "The line is your money each day at the close, and today at the live price, beside the same dollars put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
   portfolioSince: (date, days) => `Since ${date}, ${marketDays(days)}.`,
   portfolioYou: "You",
   portfolioSameDollarsIn: {
@@ -1759,8 +1841,8 @@ export const COPY: Copy = {
   portfolioRangeLabel: "Time range",
 
   benchmarkNames: {
-    SPY: "S&P 500 fund",
-    QQQ: "Nasdaq 100 fund",
+    SPY: "S&P 500 ETF",
+    QQQ: "Nasdaq 100 ETF",
     PAXG: "Gold",
     BTC: "Bitcoin",
     SGOV: "Treasury bills",
@@ -1889,7 +1971,7 @@ export const COPY: Copy = {
     `Nothing found on the networks we could reach, and ${chains} did not answer. Still trying.`,
   pickerUnreachableNote: (chains, plural) =>
     `${chains} did not answer just now, so anything ${plural ? "on those networks" : "there"} is missing from this list. Still trying.`,
-  addFunds: "Add funds",
+  addFunds: "Add money",
   pickerHoldingsTitle: "What you hold",
   pickerHoldingsEmpty: "Nothing to pay with yet.",
   pickerBrowseAll: "Pay from another network",
@@ -1997,7 +2079,7 @@ export const COPY: Copy = {
 
   walletAccountDrawerTitle: "Your account",
   walletAccountDrawerSub: "Your rank, rewards and avatar, and the AI you bring Berth into.",
-  fundsAddedTitle: "Funds added",
+  fundsAddedTitle: "Money added",
   fundsAddedBody: "USDC is on its way to your account.",
   walletEmbeddedLabel: "Your account wallet",
   walletEmbeddedNote: " · from your email sign in",
@@ -2154,8 +2236,8 @@ export const COPY: Copy = {
   jevVerdictAnalysis: "Analysis",
   jevVerdictLabel: (verdict) => `Jev reads this as ${verdict.toLowerCase()}`,
 
-  nudgeAddFunds: "Your account is empty. Add funds by card, bank or crypto whenever you are ready.",
-  nudgeAddFundsAction: "Add funds",
+  nudgeAddFunds: "Your account is empty. Add money by card, bank or crypto whenever you are ready.",
+  nudgeAddFundsAction: "Add money",
   nudgeFirstBuy: "Your funds have arrived. Choose any name on the board when you are ready.",
   nudgeHeldNews: (name) => `There is news about ${name} today.`,
   nudgeHeldNewsAction: "Read it",

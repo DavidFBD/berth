@@ -4,15 +4,18 @@ import { NotHereBanner } from "@/components/availability/availability";
 import { useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { parseUnits } from "viem";
-import { HomeHeader, BOARD_GRID, BOARD_PAGE, BOARD_TRACK } from "@/components/home";
+import { HomeHeader, HomeTracks, BOARD_PAGE } from "@/components/home";
+import { AddMoneyStep, BuyMoreButton, FirstBuyStep } from "@/components/home-next-step";
+import { HomeMore, SectionDrawer } from "@/components/home-more";
+import { NUDGES_SAID_BY_STEP, type HomeStage } from "@/lib/home-stage";
 import { AccountTotalView } from "@/components/board/account-total";
 import { CashShelfView } from "@/components/board/cash-shelf";
 import { EmailNudgeLineView, HoldingsView, ListingBoard, NewsFeed, NudgeLineView } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { AskCard, AskDock, DOCK_CLEARANCE } from "@/components/chat/ask-surfaces";
-import { AssistantCard } from "@/components/assistant/assistant-card";
 import { RankChip } from "@/components/rewards-panel";
 import { Panel } from "@/components/ui/panel";
+import { useCopy } from "@/components/settings-provider";
 import type { EmbeddedHoldingsResult } from "@/hooks/use-embedded-holdings";
 import { useMounted } from "@/hooks/use-mounted";
 import { HOME_CHAIN } from "@/lib/account";
@@ -28,35 +31,55 @@ import { seededPortfolioClient } from "../account/portfolio-gallery";
  *
  *   /dev/board?home=held    three holdings, cash parked, funds waiting,
  *                           the comparison drawn from real closes
- *   /dev/board?home=new     a first visit: funds only, nothing held
+ *   /dev/board?home=empty   a new account with no money yet: nothing to
+ *                           spend, nothing held
+ *   /dev/board?home=new     funded, nothing held yet: funds only
+ *   /dev/board?home=cash    nothing to spend, nothing held, $20 parked as
+ *                           cash: the total above Add money, which offers
+ *                           to take cash out
  *   /dev/board?home=walletEmail
  *                           a wallet-only account (no verified email) after
  *                           its first buy: the email nudge strip in place of
  *                           the standing nudge line (lib/email-nudge)
  *
  * The prices, the board's lines and the news are live, from the same public
- * routes the app reads. Actions go nowhere. `&dock=0` hides the docked Ask;
+ * routes the app reads. Actions go nowhere, except that the board and the
+ * news open in their drawers (`&drawer=board`, `&drawer=news` to start
+ * there). `&dock=0` hides the docked Ask;
  * `&streaming=1` shows it as it is while an answer comes in.
  */
-export type HomeScene = "held" | "new" | "walletEmail";
+export type HomeScene = "held" | "new" | "empty" | "cash" | "walletEmail";
 
-function fundsFixture(held: boolean): EmbeddedHoldingsResult {
+function fundsFixture(held: boolean, empty = false): EmbeddedHoldingsResult {
   const usdc = getDepositTokens(HOME_CHAIN).find((token) => token.symbol === "USDC");
-  const holdings = usdc
+  const holdings = usdc && !empty
     ? [{ chainKey: HOME_CHAIN, token: usdc, balance: parseUnits(held ? "2.40" : "25", usdc.decimals), usdValue: held ? 2.4 : 25 }]
     : [];
   return {
     emailMode: true,
     connected: true,
+    unaddressedChains: [],
     isLoading: false,
     holdings,
     erroredChains: [],
     gasShortChains: [],
-    totalUsd: held ? 2.4 : 25,
+    // The hook says undefined, not 0, when nothing is priced.
+    totalUsd: empty ? undefined : held ? 2.4 : 25,
   };
 }
 
-export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeScene; dock: boolean; streaming?: boolean }) {
+export function HomeGallery({
+  scene,
+  dock,
+  streaming = false,
+  drawer: initialDrawer = null,
+}: {
+  scene: HomeScene;
+  dock: boolean;
+  streaming?: boolean;
+  drawer?: "board" | "news" | null;
+}) {
+  const [drawer, setDrawer] = useState<"board" | "news" | null>(initialDrawer);
   const walletEmail = scene === "walletEmail";
   const held = scene === "held" || walletEmail;
   const [{ client, rows }] = useState(() => seededPortfolioClient(held ? "three-months" : "empty", { xp: 900 }));
@@ -64,13 +87,17 @@ export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeSce
   const [nudge, setNudge] = useState<Nudge | null>(
     held
       ? { kind: "heldNews", symbol: "NVDA", name: "NVIDIA", postUrl: "https://x.com/nvidianewsroom" }
-      : { kind: "firstBuy" },
+      : scene === "empty" || scene === "cash"
+        ? { kind: "addFunds" }
+        : { kind: "firstBuy" },
   );
   const [newsFilter, setNewsFilter] = useState<TokenListing | null>(null);
-  const cash = held ? parseUnits("2", CASH_LISTING.decimals) : 0n;
-  const cashUsd = held ? 2.01 : undefined;
+  const cashScene = scene === "cash";
+  const cash = held ? parseUnits("2", CASH_LISTING.decimals) : cashScene ? parseUnits("20", CASH_LISTING.decimals) : 0n;
+  const cashUsd = held ? 2.01 : cashScene ? 20.1 : undefined;
   const holdingsUsd = rows.reduce((sum, row) => sum + (row.worth ?? 0), 0);
-  const funds = fundsFixture(held);
+  const funds = fundsFixture(held, scene === "empty" || cashScene);
+  const copy = useCopy();
   const heldMap = new Map(rows.map((row) => [row.listing.address, row.balance]));
   const noop = () => {};
 
@@ -86,12 +113,17 @@ export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeSce
       />
     </Panel>
   );
+  const stage: HomeStage = scene === "empty" || cashScene ? "empty" : held ? "owns" : "funded";
   const money = (
-    <Panel key="money" className="divide-y divide-border">
-      {mounted && <FundsModule onTopUp={noop} demo={{ embedded: funds, signedIn: true }} />}
-      <CashShelfView parked={cash} parkedUsd={cashUsd} loading={false} ratePct={3.93} onPark={noop} onTakeOut={noop} />
+    <Panel key="money" className="divide-y divide-border [&:not(:has(>:not(.hidden)))]:hidden">
+      {mounted && <FundsModule onTopUp={noop} demo={{ embedded: funds, signedIn: true }} quietWhenEmpty={stage === "empty"} />}
+      {(stage !== "empty" || cash > 0n) && (
+        <CashShelfView parked={cash} parkedUsd={cashUsd} loading={false} ratePct={3.93} onPark={noop} onTakeOut={noop} />
+      )}
     </Panel>
   );
+
+  const said = NUDGES_SAID_BY_STEP[stage];
 
   return (
     <QueryClientProvider client={client}>
@@ -101,42 +133,64 @@ export function HomeGallery({ scene, dock, streaming = false }: { scene: HomeSce
         <HomeHeader>
           <RankChip onClick={noop} presence />
         </HomeHeader>
-        <div className={BOARD_GRID}>
-          <div className={BOARD_TRACK}>
-            <NotHereBanner />
+        <HomeTracks
+          stage={stage}
+          banner={<NotHereBanner />}
+          total={
             <AccountTotalView
-              figures={{ holdings: holdingsUsd, cash: cashUsd ?? 0, funds: funds.totalUsd, holdsAnything: rows.length > 0 }}
+              figures={{ holdings: holdingsUsd, cash: cashUsd ?? 0, funds: funds.totalUsd ?? 0, holdsAnything: rows.length > 0 }}
             />
-            {walletEmail ? (
+          }
+          owned={owned}
+          buy={<BuyMoreButton onOpen={noop} />}
+          next={
+            stage === "empty" ? (
+              <AddMoneyStep walletAccount={false} onAddMoney={noop} onBrowse={noop} aside={cashScene ? { kind: "cash" } : undefined} />
+            ) : (
+              <FirstBuyStep readyUsd={funds.totalUsd} onBuy={noop} onBrowse={noop} />
+            )
+          }
+          strips={
+            walletEmail ? (
               <EmailNudgeLineView show onOpen={noop} onDismiss={noop} />
             ) : (
               <NudgeLineView
-                nudge={nudge}
+                nudge={nudge && said.includes(nudge.kind) ? null : nudge}
                 onDismiss={() => setNudge(null)}
                 onAddFunds={noop}
                 onParkCash={noop}
                 onOpenAccount={noop}
               />
-            )}
-            {held ? [owned, money] : [money, owned]}
-            <ListingBoard
-              onBuy={noop}
-              onSell={noop}
-              held={heldMap}
-              onFilterNews={(listing) => setNewsFilter((current) => (current?.symbol === listing.symbol ? null : listing))}
-              newsFilterSymbol={newsFilter?.symbol}
-            />
-          </div>
-          <div className={BOARD_TRACK}>
+            )
+          }
+          moneyAside={cash > 0n}
+          money={money}
+          ask={
             <div className="hidden lg:block">
               <AskCard onOpen={noop} />
             </div>
-            <NewsFeed filter={newsFilter} onClearFilter={() => setNewsFilter(null)} collapsible />
-            <AssistantCard onChoose={noop} />
-          </div>
-        </div>
+          }
+          more={<HomeMore onBoard={() => setDrawer("board")} onNews={() => setDrawer("news")} onAi={noop} />}
+        />
       </div>
-      {dock && <AskDock onOpen={noop} hidden={false} busy={streaming} />}
+      {/* The board and the news open as they do on the home: ?drawer=board or ?drawer=news. */}
+      <SectionDrawer open={drawer === "board"} onOpenChange={(open) => setDrawer(open ? "board" : null)} title={copy.boardTitle} description={copy.calmHome.moreBoardSub}>
+        <ListingBoard
+          onBuy={noop}
+          onSell={noop}
+          held={heldMap}
+          expandAll
+          onFilterNews={(listing) => {
+            setNewsFilter(listing);
+            setDrawer("news");
+          }}
+          newsFilterSymbol={newsFilter?.symbol}
+        />
+      </SectionDrawer>
+      <SectionDrawer open={drawer === "news"} onOpenChange={(open) => setDrawer(open ? "news" : null)} title={copy.newsTitle} description={copy.calmHome.moreNewsSub}>
+        <NewsFeed filter={newsFilter} onClearFilter={() => setNewsFilter(null)} />
+      </SectionDrawer>
+      {dock && <AskDock onOpen={noop} hidden={drawer !== null} busy={streaming} />}
     </QueryClientProvider>
   );
 }

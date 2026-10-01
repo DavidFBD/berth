@@ -37,6 +37,7 @@ import { RankChip, RewardsPanel } from "@/components/rewards-panel";
 import { ADD_EMAIL_ANCHOR } from "@/components/social/social-section";
 import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
+import { useAccountWallets } from "@/hooks/use-profile";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { shortenAddress } from "@/lib/format";
@@ -223,6 +224,73 @@ export function useAssistantReachable(): boolean {
   if (!PRIVY_ENABLED || !privy.ready) return false;
   if (!privy.authenticated || linking || privy.walletAccountSession) return true;
   return Boolean(privy.embedded?.address);
+}
+
+/**
+ * Whether this is an email account's session, decided from the session
+ * itself, never from whether its embedded wallet exists yet: on a first
+ * sign in that wallet is made a moment after login, and in between the
+ * person is still an email account. A wallet account pays from the wallet
+ * it connected, so the home offers it the board instead of Add money.
+ */
+export function useEmailSession(): boolean {
+  const privy = usePrivyEmbeddedWallet();
+  const linking = useLinkInProgress();
+  if (!PRIVY_ENABLED || !privy.ready || !privy.authenticated) return false;
+  return !linking && !privy.walletAccountSession;
+}
+
+/**
+ * "Add money", on its own: how to pay, and nothing else. The same rows the
+ * account drawer carries (Privy's funding flow for card and bank, and the
+ * account's own addresses to send crypto to), so a new account's first
+ * step is one tap and one choice rather than a search through the drawer.
+ */
+export function AddMoneyDrawer({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const privy = usePrivyEmbeddedWallet();
+  const mounted = useMounted();
+  const copy = useCopy();
+  const address = privy.embedded?.address;
+  // A Bitcoin wallet linked to the account can receive too; it is the
+  // person's own, so sending Bitcoin there is adding money they can pay with.
+  const linked = useAccountWallets();
+  const bitcoin = linked.data?.wallets.find((wallet) => wallet.family === "bitcoin")?.address;
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>{copy.calmHome.addMoneyTitle}</DrawerTitle>
+          <DrawerDescription>{copy.calmHome.addMoneySub}</DrawerDescription>
+        </DrawerHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          <Panel className="divide-y divide-border">
+            {address ? (
+              <>
+                <FundButton address={address} title={copy.calmHome.cardRowTitle} />
+                <ReceiveRow
+                  title={copy.receiveEvmTitle}
+                  description={copy.receiveEvmBody}
+                  address={address}
+                  copyToast={copy.receiveEvmToast}
+                />
+                {mounted && <SolanaReceive />}
+                {bitcoin && (
+                  <ReceiveRow
+                    title={copy.receiveBitcoinTitle}
+                    description={copy.receiveBitcoinBody}
+                    address={bitcoin}
+                    copyToast={copy.receiveBitcoinToast}
+                  />
+                )}
+              </>
+            ) : (
+              <p className="px-3 py-3 text-sm text-muted-foreground">{copy.ctaOpeningAccount}</p>
+            )}
+          </Panel>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
 }
 
 /** Where the board's "Your assistant" card lands inside the drawer. */
@@ -435,7 +503,7 @@ const FUND_DESTINATION_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
  * in the dashboard — card/Apple/Google Pay onramps (incl. Stripe), external
  * wallet transfer, cross-chain deposit — no code changes when toggles flip.
  */
-function FundButton({ address }: { address: string }) {
+function FundButton({ address, title }: { address: string; title?: string }) {
   const { addFunds } = useAddFunds();
   const copy = useCopy();
 
@@ -466,7 +534,7 @@ function FundButton({ address }: { address: string }) {
     >
       <PlusCircle className="size-5 text-primary" />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium text-foreground">{copy.topUp}</span>
+        <span className="text-sm font-medium text-foreground">{title ?? copy.topUp}</span>
         <span className="text-xs text-muted-foreground">{copy.topUpSub}</span>
       </div>
     </button>

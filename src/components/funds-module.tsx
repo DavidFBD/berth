@@ -35,9 +35,17 @@ import { useCopy, useMoney } from "@/components/settings-provider";
 export function FundsModule({
   onTopUp,
   demo,
+  quietWhenEmpty = false,
 }: {
   onTopUp: () => void;
   demo?: { embedded: EmbeddedHoldingsResult; signedIn: boolean };
+  /**
+   * Draw nothing when every network was read and nothing is there: the
+   * home's Add money step already says so. Anything it has to say (an
+   * asset, a network it could not read, a gas shortfall, a sweep still
+   * loading) still shows.
+   */
+  quietWhenEmpty?: boolean;
 }) {
   const privy = usePrivyEmbeddedWallet();
   const signedIn = demo ? demo.signedIn : privy.enabled && privy.authenticated;
@@ -50,9 +58,12 @@ export function FundsModule({
   const money = useMoney();
 
   const worth = connected && !isLoading && totalUsd !== undefined;
+  const nothingToSay = connected && !isLoading && holdings.length === 0 && erroredChains.length === 0;
   // Anything to investigate? Holdings, or networks we couldn't read.
   const canPeek =
     connected && !isLoading && (holdings.length > 0 || erroredChains.length > 0);
+
+  if (quietWhenEmpty && nothingToSay) return null;
 
   return (
     // On a phone the actions drop under the words, in line with them.

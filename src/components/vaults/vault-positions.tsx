@@ -24,21 +24,38 @@ import { cn } from "@/lib/utils";
  */
 export function VaultPositions({
   onWithdraw,
+  onHeld,
 }: {
   onWithdraw: (vault: LeverageYieldVault) => void;
+  /**
+   * What the earlier positions are worth together, whenever it changes:
+   * `present` once any is worth showing, `usd` undefined while unpriced.
+   * The home says so in its step, so a vault holder never reads that the
+   * account is empty.
+   */
+  onHeld?: (held: { present: boolean; usd: number | undefined }) => void;
 }) {
   const { sodax } = useSodaxContext();
   const copy = useCopy();
   const vaults = sodax.leverageYield.listVaults();
 
-  const [presence, setPresence] = useState<Record<string, boolean>>({});
-  const onPresence = useCallback((vaultAddress: string, has: boolean) => {
+  const [presence, setPresence] = useState<Record<string, { has: boolean; usd: number | undefined }>>({});
+  const onPresence = useCallback((vaultAddress: string, has: boolean, usd: number | undefined) => {
     setPresence((prev) =>
-      prev[vaultAddress] === has ? prev : { ...prev, [vaultAddress]: has },
+      prev[vaultAddress]?.has === has && prev[vaultAddress]?.usd === usd
+        ? prev
+        : { ...prev, [vaultAddress]: { has, usd } },
     );
   }, []);
 
-  const anyPresent = Object.values(presence).some(Boolean);
+  const present = Object.values(presence).filter((entry) => entry.has);
+  const anyPresent = present.length > 0;
+  const heldUsd = present.some((entry) => entry.usd === undefined)
+    ? undefined
+    : present.reduce((sum, entry) => sum + (entry.usd ?? 0), 0);
+  useEffect(() => {
+    onHeld?.({ present: anyPresent, usd: anyPresent ? heldUsd : undefined });
+  }, [onHeld, anyPresent, heldUsd]);
 
   return (
     // Rows stay mounted at all times, `hidden` or not, so their position
@@ -68,7 +85,7 @@ function VaultRow({
 }: {
   vault: LeverageYieldVault;
   onWithdraw: (vault: LeverageYieldVault) => void;
-  onPresence: (vaultAddress: string, hasPosition: boolean) => void;
+  onPresence: (vaultAddress: string, hasPosition: boolean, usd: number | undefined) => void;
 }) {
   const position = useUserVaultPosition(vault.vault);
   const prices = useUsdPrices();
@@ -86,8 +103,8 @@ function VaultRow({
   const worthShowing = position.hasPosition && !isDust(usdValue);
 
   useEffect(() => {
-    onPresence(vault.vault, worthShowing);
-  }, [vault.vault, worthShowing, onPresence]);
+    onPresence(vault.vault, worthShowing, usdValue);
+  }, [vault.vault, worthShowing, usdValue, onPresence]);
 
   if (!worthShowing) return null;
 
