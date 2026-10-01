@@ -24,6 +24,8 @@
     "chat:eval": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/chat-eval.mjs",
     "chat:usage": "node scripts/chat-usage.mjs",
     "identities:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/identities-backfill.mjs",
+    "staff:404-diff": "node scripts/staff-404-diff.mjs",
+    "campaign:queue": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/campaign-queue.mjs",
     "orders:recover": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/orders-recover.mjs",
     "referral-friends:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/referral-friends-backfill.mjs",
     "avatars:build": "node scripts/avatars/build.mjs"

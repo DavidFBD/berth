@@ -27,6 +27,10 @@ export type Notice =
     }
   | { type: "order_expired"; side: "buy" | "sell"; name: string }
   | { type: "friend_request"; username: string }
+  /** To every staff admin: a campaign's payout source was added or removed (lib/server/campaigns). */
+  | { type: "payout_source_changed"; change: "added" | "removed"; campaign: string; address: string; reason: string }
+  /** A campaign claim was paid, by hand (lib/server/campaigns). Amount formatted: "$5". */
+  | { type: "campaign_paid"; amount: string; chain: string }
   | {
       type: "recurring_due";
       /** "Monday" for a weekly plan, "monthly" for a monthly one. */
@@ -92,6 +96,10 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   order_filled: "orders",
   order_expired: "orders",
   friend_request: "friends",
+  // Money arriving in the account, like a filled order: under the orders switch.
+  campaign_paid: "orders",
+  // Who may send campaign money is a security matter for staff: no switch.
+  payout_source_changed: "security",
   recurring_due: "recurring",
   weekly: "weekly",
 };
@@ -183,6 +191,33 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
       const username = plain(notice.username, 32);
       const body = words.body(username);
       return { kind, subject: words.subject(username), preview: body, heading: words.heading, paragraphs: [body], button, why };
+    }
+    case "payout_source_changed": {
+      const words = email.payoutSource;
+      const body = words.body(notice.change, plain(notice.campaign), shortenAddress(notice.address));
+      return {
+        kind,
+        subject: words.subject(notice.change, plain(notice.campaign)),
+        preview: body,
+        heading: words.heading(notice.change),
+        paragraphs: [body],
+        facts: [{ label: words.reasonLabel, value: plain(notice.reason, 200) }],
+        button: { label: words.button, href: `${baseUrl}/staff/campaigns` },
+        why,
+      };
+    }
+    case "campaign_paid": {
+      const words = email.campaignPaid;
+      const body = words.body(notice.amount, notice.chain);
+      return {
+        kind,
+        subject: words.subject(notice.amount),
+        preview: body,
+        heading: words.heading,
+        paragraphs: [body, words.after],
+        button,
+        why,
+      };
     }
     case "recurring_due": {
       const words = email.recurringDue;

@@ -19,6 +19,8 @@ export type OrderRecord = {
   fillTx: string | null;
   direction: "buy" | "sell";
   walletAddress: string | null;
+  /** intent.srcAddress, any family: lowercased when hex, as given otherwise (base58 is case sensitive). */
+  srcAddress?: string | null;
   /**
    * intent.dstAddress, lowercased when hex: the wallet the output was delivered to.
    * On a buy this is exactly where the fill's Transfer landed, and the one
@@ -188,6 +190,7 @@ export function readOrder({
     fillTx: fillTx ? fillTx.toLowerCase() : null,
     direction,
     walletAddress: evm ? intent.srcAddress.toLowerCase() : null,
+    srcAddress: intent.srcAddress ? (/^0x[0-9a-fA-F]*$/.test(intent.srcAddress) ? intent.srcAddress.toLowerCase() : intent.srcAddress) : null,
     // Hex (the intent's encoding, and every EVM address) lowercases without
     // loss; anything else, a base58 payout address say, keeps its case.
     deliveredTo: intent.dstAddress

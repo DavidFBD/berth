@@ -96,6 +96,12 @@ create table if not exists orders (
 
 alter table orders add column if not exists usd_source text;
 
+-- The intent's source address as given, for every buy and sell
+-- (lib/orders readOrder): wallet_address keeps only an EVM payer, so a
+-- buy paid from Solana or Bitcoin named nobody. Campaigns read it for one
+-- per wallet and the shared payer signal (lib/server/campaigns).
+alter table orders add column if not exists src_address text;
+
 create index if not exists orders_user_idx on orders (user_id, placed_at);
 create index if not exists orders_wallet_idx on orders (wallet_address, placed_at);
 
@@ -1257,3 +1263,254 @@ create table if not exists x_read_budget (
 -- The first stock's card (lib/first-stock): "Got it" closes it for good on
 -- the account, on every device. The first close is kept; null is open.
 alter table users add column if not exists first_stock_closed_at timestamptz;
+
+-- Reward campaigns (lib/server/campaigns, docs/plans/campaigns.md). A
+-- campaign is a link (/c/<code>) and a promise: "Buy at least $10 of any
+-- stock or fund through this link, keep it for 7 days, and we add $5 in
+-- USDC." Berth never sends the money: David pays each approved claim by
+-- hand from the staff page, and records the transaction here. Created
+-- inactive; only the staff page activates one, after counsel review. XP
+-- and ranks stay the fun layer and are never the trigger.
+create table if not exists campaigns (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique check (code ~ '^[a-z0-9][a-z0-9-]{2,31}$'),
+  title text not null,
+  amount_usd numeric not null default 5 check (amount_usd > 0),
+  budget_usd numeric not null default 100 check (budget_usd > 0),
+  max_claims int not null default 20 check (max_claims > 0),
+  min_buy_usd numeric not null default 10 check (min_buy_usd > 0),
+  hold_days int not null default 7 check (hold_days between 1 and 90),
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  active boolean not null default false,
+  activated_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint campaigns_dates check (ends_at > starts_at),
+  constraint campaigns_budget_covers_one check (amount_usd <= budget_usd)
+);
+
+-- One row per account that arrived through a campaign link, written on the
+-- account's first sync (the same birth certificate rule as an invite
+-- code), so one account has at most one claim, ever. `state` walks
+-- attributed (arrived, no verified email yet) -> buying (waiting for the
+-- first qualifying buy) -> holding (the buy is in, a slot is reserved,
+-- eligible_at says when the hold is judged) -> qualified (still held) ->
+-- approved (by staff) -> paid (by David, by hand); or rejected (with a
+-- reason, by staff or by the rules) or expired (the campaign ended or was
+-- full first). holding, qualified, approved and paid hold a slot.
+create table if not exists campaign_claims (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references campaigns(id),
+  user_id uuid not null references users(id),
+  state text not null default 'attributed'
+    check (state in ('attributed', 'buying', 'holding', 'qualified', 'approved', 'paid', 'rejected', 'expired')),
+  -- The first qualifying buy, as the orders table recorded it.
+  order_id uuid references orders(id) on delete set null,
+  intent_tx text,
+  buy_usd numeric,
+  holding_since timestamptz,
+  eligible_at timestamptz,
+  -- The hold check: when it was judged, the last attempt that could not be
+  -- (a failed read), and what it saw (listing, wallet, needed, balance).
+  hold_checked_at timestamptz,
+  hold_attempted_at timestamptz,
+  -- The first run whose read of the hold window got no answer, cleared
+  -- once one does. Past three days the queue flags it for review; past
+  -- seven the claim is rejected (hold_unreadable) and its slot freed.
+  hold_unreadable_since timestamptz,
+  hold_evidence jsonb,
+  qualified_at timestamptz,
+  approved_at timestamptz,
+  approved_by uuid references users(id) on delete set null,
+  rejected_at timestamptz,
+  -- Null when the rules rejected it (not held, one per person, one per wallet).
+  rejected_by uuid references users(id) on delete set null,
+  reject_reason text,
+  expired_at timestamptz,
+  expire_reason text check (expire_reason in ('ended', 'full')),
+  -- When the claim first found every place taken (lib/server/campaigns):
+  -- it waits in this order for a place to free up until the deadline,
+  -- and only then expires as full.
+  waitlisted_at timestamptz,
+  -- Where the USDC goes, fixed at approval: the account's own home address, on Base.
+  payout_address text,
+  payout_chain text,
+  paid_at timestamptz,
+  paid_by uuid references users(id) on delete set null,
+  paid_tx text,
+  -- The payment's hash. While paid_verified is false the claim stays
+  -- approved (the hash is pending: not mined yet, or the RPC did not
+  -- answer) and the hash can be checked again or replaced; the claim is
+  -- paid only once a public RPC read shows USDC from an active payout
+  -- source of its campaign (campaign_payout_sources) or the optional global
+  -- STAFF_PAYOUT_ADDRESSES to payout_address on payout_chain.
+  -- One transaction may pay several claims (a batch), as long as each
+  -- recipient got the sum of its claims.
+  paid_verified boolean,
+  paid_check jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint campaign_claims_one_per_account unique (user_id)
+);
+
+create index if not exists campaign_claims_campaign_state_idx on campaign_claims (campaign_id, state);
+
+-- A batch payout pays several claims with one hash.
+create index if not exists campaign_claims_paid_tx_idx
+  on campaign_claims (lower(paid_tx)) where paid_tx is not null;
+
+-- Every wallet a claim stood on when its slot was reserved: the account's
+-- linked wallets (unlinked ones too), its home, the buy's payer and where
+-- the buy was delivered. A wallet takes part in a campaign once.
+create table if not exists campaign_claim_wallets (
+  campaign_id uuid not null references campaigns(id),
+  wallet text not null,
+  claim_id uuid not null references campaign_claims(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (campaign_id, wallet)
+);
+
+-- Every staff action (lib/server/staff-auth staffAudit): who, what, on what.
+-- `detail` never holds a secret.
+create table if not exists staff_audit (
+  id bigint generated always as identity primary key,
+  at timestamptz not null default now(),
+  staff_user_id uuid references users(id) on delete set null,
+  action text not null,
+  target text,
+  detail jsonb not null default '{}'::jsonb
+);
+
+create index if not exists staff_audit_at_idx on staff_audit (at desc);
+
+-- Reserving a slot, in one transaction (lib/server/campaigns/eligibility):
+-- the campaign row is locked first, so two claims racing for the last slot
+-- are taken one after the other and only one gets it. Then the rules that
+-- need every other claim in view: one per person (the claims of every
+-- account merged into this one count as this person's), one per wallet,
+-- and the budget and max_claims, counted over the claims holding a slot
+-- plus the waitlisted claims ahead of this one. A claim that finds no
+-- place waits (waitlisted_at) until the deadline (the end plus the hold's
+-- days), and a place that frees goes to the claim that has waited
+-- longest; only after the deadline is it expired as full. Answers 'holding', or why not: 'stale' (moved
+-- already), 'inactive', 'outside' (the buy is not inside the campaign's
+-- dates), 'one_per_person', 'wallet_used' (both keep the buy as evidence),
+-- 'waitlisted', 'full'. Its
+-- statements begin with their semicolon, so that db:push, which splits at
+-- a semicolon ending a line, keeps it whole.
+create or replace function campaign_reserve(p_claim uuid, p_person uuid, p_order uuid, p_intent text, p_buy_usd numeric, p_since timestamptz, p_wallets text[], p_now timestamptz) returns text language plpgsql as $$
+declare
+  c record
+  ; cl record
+  ; n int
+  ; ahead int
+; begin
+  select * into cl from campaign_claims where id = p_claim
+  ; if not found then return 'stale'
+  ; end if
+  ; select * into c from campaigns where id = cl.campaign_id for update
+  ; select * into cl from campaign_claims where id = p_claim for update
+  ; if cl.state not in ('attributed', 'buying') then return 'stale'
+  ; end if
+  ; if not c.active then return 'inactive'
+  ; end if
+  ; if p_since < c.starts_at or p_since > c.ends_at then return 'outside'
+  ; end if
+  ; if exists (
+      select 1 from campaign_claims o join users u on u.id = o.user_id
+       where o.campaign_id = c.id and o.id <> cl.id
+         and coalesce(u.retired_into, u.id) = p_person
+         and o.state in ('holding', 'qualified', 'approved', 'paid')
+    ) then
+    update campaign_claims set state = 'rejected', reject_reason = 'one_per_person', order_id = p_order, intent_tx = p_intent, buy_usd = p_buy_usd, rejected_at = p_now, updated_at = p_now where id = cl.id
+    ; return 'one_per_person'
+  ; end if
+  ; if exists (
+      select 1 from campaign_claim_wallets w
+       where w.campaign_id = c.id and w.wallet = any(p_wallets) and w.claim_id <> cl.id
+    ) then
+    update campaign_claims set state = 'rejected', reject_reason = 'wallet_used', order_id = p_order, intent_tx = p_intent, buy_usd = p_buy_usd, rejected_at = p_now, updated_at = p_now where id = cl.id
+    ; return 'wallet_used'
+  ; end if
+  ; select count(*) into n from campaign_claims
+     where campaign_id = c.id and state in ('holding', 'qualified', 'approved', 'paid')
+  ; select count(*) into ahead from campaign_claims
+     where campaign_id = c.id and id <> cl.id and state in ('attributed', 'buying')
+       and waitlisted_at is not null
+       and (cl.waitlisted_at is null or waitlisted_at < cl.waitlisted_at or (waitlisted_at = cl.waitlisted_at and id < cl.id))
+  ; if n + ahead >= c.max_claims or (n + ahead + 1) * c.amount_usd > c.budget_usd then
+    if p_now > c.ends_at + make_interval(days => c.hold_days) then
+      update campaign_claims set state = 'expired', expire_reason = 'full', expired_at = p_now, updated_at = p_now where id = cl.id
+      ; return 'full'
+    ; end if
+    ; update campaign_claims set waitlisted_at = coalesce(waitlisted_at, p_now), updated_at = p_now where id = cl.id
+    ; return 'waitlisted'
+  ; end if
+  ; insert into campaign_claim_wallets (campaign_id, wallet, claim_id)
+    select c.id, w, cl.id from unnest(p_wallets) as w where w is not null
+    on conflict do nothing
+  ; update campaign_claims
+       set state = 'holding', order_id = p_order, intent_tx = p_intent, buy_usd = p_buy_usd,
+           holding_since = p_since, eligible_at = p_since + make_interval(days => c.hold_days),
+           waitlisted_at = null, updated_at = p_now
+     where id = cl.id
+  ; return 'holding'
+; end $$;
+
+-- The wallets a campaign's payouts may come from (lib/server/campaigns
+-- actions markClaimPaid): Mark paid accepts a USDC transfer only from an
+-- active source of the claim's campaign, or from STAFF_PAYOUT_ADDRESSES,
+-- the optional global fallback. Managed on /staff/campaigns by admins with
+-- a fresh sign in and a reason, each change audited in the same statement.
+-- A removed source keeps its row (removed_at), and removing one never
+-- touches a claim already paid. `address` is lowercase; the page shows it
+-- checksummed.
+create table if not exists campaign_payout_sources (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references campaigns(id),
+  address text not null check (address ~ '^0x[0-9a-f]{40}$'),
+  added_by uuid references users(id) on delete set null,
+  added_at timestamptz not null default now(),
+  added_reason text not null,
+  removed_by uuid references users(id) on delete set null,
+  removed_at timestamptz,
+  removed_reason text
+);
+
+create unique index if not exists campaign_payout_sources_active
+  on campaign_payout_sources (campaign_id, address) where removed_at is null;
+
+-- Marking a claim paid, in one transaction (lib/server/campaigns actions
+-- markClaimPaid): the transaction hash is locked first, so two claims at
+-- one address cannot both be paid by one transfer meant for one; then the
+-- claim's row. The transfer to the claim's address (p_paid_raw, USDC raw
+-- units from the house's payout wallets, read by the caller) must cover
+-- this claim and every other claim the hash already stands for at that
+-- address. The write and its audit row commit together. Answers 'paid',
+-- 'short' or 'wrong_state'. Its statements begin with their semicolon, so
+-- that db:push, which splits at a semicolon ending a line, keeps it whole.
+create or replace function campaign_mark_paid(p_claim uuid, p_tx text, p_paid_raw numeric, p_staff uuid, p_check jsonb, p_action text, p_detail jsonb) returns text language plpgsql as $$
+declare
+  cl record
+  ; amount numeric
+  ; others numeric
+; begin
+  perform pg_advisory_xact_lock(hashtextextended('campaign_paid:' || p_tx, 0))
+  ; select * into cl from campaign_claims where id = p_claim for update
+  ; if not found or cl.state <> 'approved' or cl.payout_address is null then return 'wrong_state'
+  ; end if
+  ; select amount_usd into amount from campaigns where id = cl.campaign_id
+  ; select coalesce(sum(k.amount_usd), 0) into others
+      from campaign_claims o join campaigns k on k.id = o.campaign_id
+     where lower(o.paid_tx) = p_tx and o.payout_address = cl.payout_address and o.id <> cl.id
+       and o.state in ('approved', 'paid')
+  ; if (others + amount) * 1000000 > p_paid_raw then return 'short'
+  ; end if
+  ; update campaign_claims
+       set state = 'paid', paid_at = now(), paid_by = p_staff, paid_tx = p_tx, paid_verified = true,
+           paid_check = p_check, updated_at = now()
+     where id = p_claim
+  ; insert into staff_audit (staff_user_id, action, target, detail)
+    values (p_staff, p_action, p_claim::text, p_detail || jsonb_build_object('outcome', 'done'))
+  ; return 'paid'
+; end $$;

@@ -129,6 +129,23 @@ export async function fetchPrivyEmailVerifiedAt(did: string): Promise<number | n
 }
 
 /**
+ * Each of Privy's own email accounts on the user, with when a code sent to
+ * it was last entered (epoch ms, null when unknown); null on any API
+ * hiccup. For a check that the code went to one particular address
+ * (lib/server/staff-auth requireFreshStaff).
+ */
+export async function fetchPrivyEmailProofs(did: string): Promise<{ address: string; at: number | null }[] | null> {
+  const accounts = await fetchPrivyUser(did);
+  if (!accounts) return null;
+  return accounts
+    .filter((account) => account.type === "email" && typeof account.address === "string")
+    .map((account) => ({
+      address: account.address!.trim().toLowerCase(),
+      at: typeof account.latest_verified_at === "number" && Number.isFinite(account.latest_verified_at) ? account.latest_verified_at * 1000 : null,
+    }));
+}
+
+/**
  * The newest latest_verified_at of the user's email accounts, in epoch ms
  * (Privy gives seconds): when a code sent to the inbox was last entered.
  * Only Privy's own `email` account counts. A Google (or any other OAuth)

@@ -6,6 +6,8 @@ const runRecurringMorning = vi.fn();
 vi.mock("@/lib/server/holds", () => ({ runHoldCheck: () => runHoldCheck() }));
 vi.mock("@/lib/server/recurring", () => ({ runRecurringMorning: () => runRecurringMorning(), reminderNotice: vi.fn() }));
 vi.mock("@/lib/server/portfolio", () => ({ liveListingPrices: async () => ({}) }));
+const runCampaignStep = vi.fn();
+vi.mock("@/lib/server/campaigns/eligibility", () => ({ runCampaignStep: () => runCampaignStep() }));
 const runWeeklySummaries = vi.fn();
 vi.mock("@/lib/server/weekly", () => ({ runWeeklySummaries: () => runWeeklySummaries() }));
 
@@ -25,6 +27,8 @@ describe("GET /api/cron/morning", () => {
     runHoldCheck.mockResolvedValue({ checked: 3, paid: 1, forfeited: 1, retried: 1 });
     runRecurringMorning.mockReset();
     runRecurringMorning.mockResolvedValue({ aged: 1, made: 2, emailed: 0, notEmailed: 2 });
+    runCampaignStep.mockReset();
+    runCampaignStep.mockResolvedValue({ advanced: 2, reserved: 1, expired: 0, judged: 1, qualified: 1, notHeld: 0, retried: 0 });
     runWeeklySummaries.mockReset();
     runWeeklySummaries.mockResolvedValue({ week: "2026-W39", sent: 1, empty: 0, notSent: 0, deferred: 0 });
   });
@@ -54,6 +58,7 @@ describe("GET /api/cron/morning", () => {
     // The morning email pass rides along; with no key it does nothing.
     expect(await response.json()).toEqual({
       holds: { ok: true, result: { checked: 3, paid: 1, forfeited: 1, retried: 1 } },
+      campaigns: { ok: true, result: { advanced: 2, reserved: 1, expired: 0, judged: 1, qualified: 1, notHeld: 0, retried: 0 } },
       recurring: { ok: true, result: { aged: 1, made: 2, emailed: 0, notEmailed: 2 } },
       emails: { ok: true, result: { retried: 0, sent: 0, gaveUp: 0 } },
       weekly: { ok: true, result: { week: "2026-W39", sent: 1, empty: 0, notSent: 0, deferred: 0 } },
@@ -62,6 +67,17 @@ describe("GET /api/cron/morning", () => {
     expect(runWeeklySummaries).toHaveBeenCalledOnce();
     expect(runHoldCheck).toHaveBeenCalledOnce();
     expect(runRecurringMorning).toHaveBeenCalledOnce();
+    expect(runCampaignStep).toHaveBeenCalledOnce();
+  });
+
+  it("a failing campaign step is reported but does not fail the run", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    runCampaignStep.mockRejectedValue(new Error("db down"));
+    const response = await call(`Bearer ${SECRET}`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.campaigns).toEqual({ ok: false, error: "db down" });
+    expect(body.recurring.ok).toBe(true);
   });
 
   it("a failing stage is reported and the next still runs", async () => {

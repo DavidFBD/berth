@@ -8,6 +8,7 @@ import { SodaxWalletProvider } from "@sodax/wallet-sdk-react";
 import { IconContext } from "@phosphor-icons/react";
 import { MotionConfig } from "motion/react";
 import { AppPrivyProvider, PRIVY_ENABLED } from "@/components/privy-provider";
+import { SignOutSweep } from "@/components/sign-out-sweep";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
 import { SettingsProvider } from "@/components/settings-provider";
 import { WalletDiagnostics } from "@/components/dev/wallet-diagnostics";
@@ -46,6 +47,7 @@ export function Providers({ children }: { children: ReactNode }) {
               {/* Motion respects the OS reduce-motion preference app-wide. */}
               <MotionConfig reducedMotion="user">
                 {PRIVY_ENABLED && mounted && <PrivySolanaBridge />}
+                {PRIVY_ENABLED && mounted && <SignOutSweep />}
                 {/* Temporary: diagnosing why localhost shows an empty wallet
                     while prod shows the same embedded wallet's holdings. */}
                 {process.env.NODE_ENV !== "production" && mounted && (

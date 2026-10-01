@@ -4,6 +4,7 @@ import { runMorning } from "./morning";
 /** The morning run's stages with stand-ins: the weekly summary is its own stage and never fails the run. */
 
 const holds = async () => ({}) as never;
+const campaigns = async () => ({ advanced: 0, reserved: 0, expired: 0, judged: 0, qualified: 0, notHeld: 0, retried: 0 });
 const recurring = async () => ({ aged: 0, made: 0, emailed: 0, notEmailed: 0, deferred: 0 });
 const emails = async () => ({ retried: 0, sent: 0, gaveUp: 0 });
 const budgets = { holds: 1_000, recurring: 1_000, emails: 1_000, weekly: 50 };
@@ -14,6 +15,7 @@ describe("runMorning", () => {
     let budget = -1;
     await runMorning({
       holds,
+      campaigns,
       recurring,
       emails: async () => {
         order.push("emails:start");
@@ -56,6 +58,7 @@ describe("runMorning", () => {
   it("reports the weekly summary's own result", async () => {
     const summary = await runMorning({
       holds,
+      campaigns,
       recurring,
       emails,
       weekly: async () => ({ week: "2026-W39", sent: 2, empty: 0, notSent: 0, deferred: 0 }),
@@ -66,11 +69,13 @@ describe("runMorning", () => {
   });
 
   it("reports a weekly stage that throws or overruns without failing the run", async () => {
-    const thrown = await runMorning({ holds, recurring, emails, weekly: async () => Promise.reject(new Error("db down")), budgets });
+    const thrown = await runMorning({ holds,
+      campaigns, recurring, emails, weekly: async () => Promise.reject(new Error("db down")), budgets });
     expect(thrown.weekly).toEqual({ ok: false, error: "db down" });
     expect(thrown.emails.ok).toBe(true);
     expect(thrown.failed).toBe(false);
-    const slow = await runMorning({ holds, recurring, emails, weekly: () => new Promise(() => undefined), budgets });
+    const slow = await runMorning({ holds,
+      campaigns, recurring, emails, weekly: () => new Promise(() => undefined), budgets });
     expect(slow.weekly).toEqual({ ok: false, error: "over its 50ms budget" });
     expect(slow.failed).toBe(false);
   });

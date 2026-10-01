@@ -29,6 +29,7 @@ import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route
 import type { WalletsResponse } from "@/app/api/account/wallets/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
 import type { FirstStockResponse } from "@/lib/first-stock";
+import type { CampaignProgress, CampaignResponse } from "@/lib/campaigns";
 import type { EmailSettingsResponse, SwitchableKind } from "@/lib/email-kinds";
 import { CHAT_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
 import { announceRewards } from "@/components/xp-toast";
@@ -38,6 +39,7 @@ import {
   clearPendingReferral,
   pendingReferralCode,
 } from "@/lib/referral";
+import { clearPendingCampaign, pendingCampaignCode } from "@/lib/campaign-pocket";
 import {
   anchorWalletSession,
   keptSeparate,
@@ -272,9 +274,11 @@ export function useProfile() {
     staleTime: 5 * 60_000,
     // The pocketed invite code rides along; the server only binds it to an
     // account created this very request, then it's spent either way.
-    body: () => ({ referralCode: pendingReferralCode() }),
+    // A campaign code (/c/<code>, lib/campaign-pocket) rides the same way.
+    body: () => ({ referralCode: pendingReferralCode(), campaignCode: pendingCampaignCode() }),
     onData: (data) => {
       clearPendingReferral();
+      clearPendingCampaign();
       toastRewards(data.rewards, data.xp);
     },
     select: profileOf,
@@ -311,6 +315,8 @@ function useProfileMutation<TVars>(
       // A pour is also a new order row (lib/server/orders), and a new
       // flow in the portfolio's line.
       void queryClient.invalidateQueries({ queryKey: ["orders", key] });
+      // A buy can be a campaign's qualifying buy: the line moves to holding.
+      void queryClient.invalidateQueries({ queryKey: ["campaign", key] });
       void queryClient.invalidateQueries({ queryKey: ["portfolio-history", key] });
       // A buy can answer a recurring run on the server; the strip must not still say it is ready.
       void queryClient.invalidateQueries({ queryKey: RECURRING_QUERY_KEY });
@@ -554,6 +560,20 @@ export function useCloseFirstStock() {
         previous ? { ...previous, closed: true, show: false } : previous,
       ),
     onSuccess: (data) => queryClient.setQueryData(["first-stock", key], data),
+  });
+}
+
+/**
+ * The account's own campaign claim (app/api/campaign), for the home's quiet
+ * line. Null for anyone who did not arrive through a campaign; a route not
+ * deployed reads the same.
+ */
+export function useCampaignProgress(enabled: boolean) {
+  return useRewardsQuery<CampaignResponse, CampaignProgress | null>("campaign", "/api/campaign", {
+    enabled,
+    staleTime: 5 * 60_000,
+    notFound: { campaign: null },
+    select: (data) => data.campaign,
   });
 }
 

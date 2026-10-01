@@ -306,6 +306,11 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
   { name: "order-expired", notice: { type: "order_expired", side: "buy", name: "NVIDIA" } },
   { name: "friend-request", notice: { type: "friend_request", username: "harbourmaster" } },
   {
+    name: "payout-source-added",
+    notice: { type: "payout_source_changed", change: "added", campaign: "Autumn first buy", address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", reason: "The house wallet for October" },
+  },
+  { name: "campaign-paid", notice: { type: "campaign_paid", amount: "$5", chain: "Base" } },
+  {
     name: "recurring-due",
     notice: { type: "recurring_due", lead: "Monday", name: "S&P 500 ETF", usd: "$20.00", limitPrice: null, path: "/?open=SPY&side=buy&usd=20&run=sample" },
   },

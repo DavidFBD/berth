@@ -9,6 +9,10 @@ import {
   setEmail,
 } from "@/lib/server/accounts";
 import { fetchPrivyEmail } from "@/lib/server/privy";
+import { AVAILABLE } from "@/lib/server/availability";
+import { attributeCampaign } from "@/lib/server/campaigns/store";
+import { staffAdminIds } from "@/lib/server/staff-auth";
+import { issueStaffPagePass, STAFF_PAGE_COOKIE, STAFF_PAGE_COOKIE_OPTIONS } from "@/lib/server/staff-page";
 import {
   readRewardsCaller,
   resolveRewardsUser,
@@ -44,6 +48,18 @@ export async function POST(request: NextRequest) {
     if (referrerId) user = { ...user, referred_by: referrerId };
   }
 
+  // Campaign attribution (lib/server/campaigns): the same birth certificate
+  // rule, for an account that arrived through a /c/<code> link, and never
+  // where Berth is not available. Its own pocket, its own table: an invite
+  // and a campaign may both bind. A failure here never fails the sync.
+  if (typeof read.caller.body.campaignCode === "string" && (read.caller.availability ?? AVAILABLE).available) {
+    try {
+      await attributeCampaign(user.id, read.caller.body.campaignCode);
+    } catch (error) {
+      console.warn("[campaigns] attribution failed", error instanceof Error ? error.message : error);
+    }
+  }
+
   // Everyone gets a code of their own to hand out.
   user = await ensureReferralCode(user);
 
@@ -74,5 +90,14 @@ export async function POST(request: NextRequest) {
   // waits here, on the owner's next sync, where it can actually be seen.
   rewards.push(...(await flushUnannounced(user.id)));
 
-  return rewardsResponse(user, {}, rewards);
+  const response = rewardsResponse(user, {}, rewards);
+  // Staff get the staff pages' pass (lib/server/staff-page); nobody else gets anything.
+  if (staffAdminIds().has(user.id.toLowerCase())) {
+    try {
+      response.cookies.set(STAFF_PAGE_COOKIE, await issueStaffPagePass(user.id), STAFF_PAGE_COOKIE_OPTIONS);
+    } catch (error) {
+      console.warn("[staff] page pass not set", error instanceof Error ? error.message : error);
+    }
+  }
+  return response;
 }

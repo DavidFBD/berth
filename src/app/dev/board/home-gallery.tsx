@@ -28,6 +28,8 @@ import { FirstStockCard } from "@/components/first-look";
 import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
 import { STOCK_LISTINGS } from "@/lib/listings";
+import { CampaignLineView } from "@/components/board/campaign-line";
+import { campaignLine, type CampaignProgress } from "@/lib/campaigns";
 
 /**
  * The first look's fixture (lib/first-look): NVIDIA in today's news, Tesla
@@ -102,7 +104,10 @@ export function HomeGallery({
   drawer: initialDrawer = null,
   look,
   firstStock = false,
+  campaign,
 }: {
+  /** `&campaign=rules` (email, holding, qualified, paid, closed): the campaign line, from /dev/campaigns' fixtures. */
+  campaign?: CampaignProgress;
   /** Seeds the first look (`&look=fixture` or `&look=quiet`); absent asks the live route. */
   look?: "fixture" | "quiet";
   /** `&first=1` on a held scene: the first stock's card, on NVIDIA. */
@@ -194,7 +199,9 @@ export function HomeGallery({
             )
           }
           strips={
-            firstOpen && nvidia ? (
+            <>
+            {campaign && <CampaignLineView line={campaignLine(campaign)} />}
+            {firstOpen && nvidia ? (
               <FirstStockCard listing={nvidia} onAsk={noop} onReadNews={openNewsOn} onDismiss={() => setFirstOpen(false)} />
             ) : walletEmail ? (
               <EmailNudgeLineView show onOpen={noop} onDismiss={noop} />
@@ -206,7 +213,8 @@ export function HomeGallery({
                 onParkCash={noop}
                 onOpenAccount={noop}
               />
-            )
+            )}
+            </>
           }
           moneyAside={cash > 0n}
           money={money}

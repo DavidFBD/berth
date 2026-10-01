@@ -17,6 +17,7 @@ import {
   NudgeLine,
   WaitingOrders,
   useWaitingOrdersShowing,
+  CampaignLine,
 } from "@/components/board";
 import { AskCard, AskCardPlaceholder, AskDock, DOCK_CLEARANCE } from "@/components/chat/ask-surfaces";
 import { useAskAvailable } from "@/components/chat/chat-status";
@@ -470,6 +471,9 @@ function SignedInHome() {
                 onParkCash={() => openBuy(CASH_LISTING)}
                 onOpenAccount={() => openAccount()}
               />
+              {/* Only for an account that arrived through a campaign link (lib/campaigns). Last, and only once the
+                  step and the holdings are settled, so it never lands above anything and pushes it down. */}
+              {stage !== undefined && holdings.settled && <CampaignLine enabled={hasAccount} />}
             </>
           }
           moneyAside={moneyAside}

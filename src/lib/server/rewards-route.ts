@@ -125,7 +125,7 @@ export function refuseWhereUnavailable(caller: RewardsCaller): NextResponse | nu
  * session through, as before phase 3: the account it resolves to is the
  * survivor either way.
  */
-async function signedBeforeMerge(wallet: string, issuedAt: number): Promise<boolean> {
+export async function signedBeforeMerge(wallet: string, issuedAt: number): Promise<boolean> {
   const family = detectFamily(wallet);
   const value = family ? toCaip10(family, wallet) : null;
   if (!value) return false;

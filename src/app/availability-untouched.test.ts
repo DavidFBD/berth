@@ -45,7 +45,10 @@ vi.mock("@/lib/server/email/token", () => ({
   readUnsubscribeToken: vi.fn(async (token: string) => (token === "good" ? { userId: "u1", kind: "limit_filled" } : null)),
 }));
 
-describe("a request from the United States", () => {
+// Each case imports a whole route cold (the cron routes pull in the holds,
+// the campaign step and the SDK): under a loaded test run that takes longer
+// than vitest's default five seconds.
+describe("a request from the United States", { timeout: 30_000 }, () => {
   const US = { "x-vercel-ip-country": "US", "x-vercel-ip-country-region": "CA" };
 
   it("unsubscribes in one click, as from anywhere", async () => {

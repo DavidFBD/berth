@@ -35,6 +35,22 @@ Not you? Write to us at support@berthmarkets.com.
 Berth. Wall Street, in your wallet."
 `;
 
+exports[`notice templates > campaign-paid renders HTML and text without personal data 1`] = `
+"Subject: $5 in USDC was added to your Berth account
+
+Your offer was paid
+
+$5 in USDC was sent to your Berth account on Base, for keeping your first buy through the offer.
+It is yours to keep, spend or take out, like any other money in your wallet.
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because emails about your orders and payments are on.
+Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Berth. Wall Street, in your wallet."
+`;
+
 exports[`notice templates > friend-request renders HTML and text without personal data 1`] = `
 "Subject: harbourmaster asked to be your friend on Berth
 
@@ -59,7 +75,7 @@ Your limit order to buy NVIDIA reached its end date without filling. The money c
 
 Open Berth: https://www.berthmarkets.com/
 
-You get this because order emails are on.
+You get this because emails about your orders and payments are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
 Berth. Wall Street, in your wallet."
@@ -77,8 +93,25 @@ Received: 0.5046 NVIDIA
 
 Open Berth: https://www.berthmarkets.com/
 
-You get this because order emails are on.
+You get this because emails about your orders and payments are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Berth. Wall Street, in your wallet."
+`;
+
+exports[`notice templates > payout-source-added renders HTML and text without personal data 1`] = `
+"Subject: A payout wallet was added on Autumn first buy
+
+A payout wallet was added
+
+0x5aAe…eAed may now pay claims of Autumn first buy. Mark paid accepts USDC from it from now on.
+
+Reason given: The house wallet for October
+
+Open the campaigns: https://www.berthmarkets.com/staff/campaigns
+
+This is a security notice. Berth sends these to every account with an email, whatever your email settings say.
+Not you? Write to us at support@berthmarkets.com.
 
 Berth. Wall Street, in your wallet."
 `;

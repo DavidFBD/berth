@@ -122,8 +122,16 @@ a round that changes behaviour.
   (`recurring_runs`: due, opened, placed or skipped) with a draft attached,
   shows the strip and sends one reminder email. The person signs it or lets
   it pass (ADR-0007). Never automatic buying.
+- **Campaign** — a reward link, `/c/<code>` (`lib/campaigns`,
+  `lib/server/campaigns`, docs/plans/campaigns.md): a new account that
+  arrives through it, buys at least the minimum of a stock or fund and
+  keeps it the stated days earns a stated USDC amount. A **claim** walks
+  attributed, buying, holding, qualified, approved, paid (or rejected,
+  expired). Berth computes eligibility; staff approve on `/staff/campaigns`
+  (`lib/server/staff-auth`, STAFF_ADMIN_IDS); David pays by hand. Never
+  automatic money, never an XP trigger.
 - **Morning run** — the 06:00 UTC cron (`/api/cron/morning`,
-  `lib/server/morning`): the hold check, the recurring runs and their
+  `lib/server/morning`): the hold check, the campaign step, the recurring runs and their
   reminders, the email retry. The evening run is the other of Hobby's two.
 - **Appearance** — light, dark or system (`lib/appearance`), stamped by
   next-themes before hydration. The `useCopy()` seam returns the one voice.

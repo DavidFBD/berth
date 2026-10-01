@@ -1,4 +1,5 @@
 import { runHoldCheck, type HoldRunSummary } from "@/lib/server/holds";
+import { runCampaignStep, type CampaignStepSummary } from "@/lib/server/campaigns/eligibility";
 import { retryPendingSends, deliver, type RetrySummary } from "@/lib/server/email/send";
 import { emailBaseUrl } from "@/lib/server/email/config";
 import { limitOrdersOn } from "@/lib/server/limit-orders";
@@ -19,7 +20,12 @@ import { runWeeklySummaries, type WeeklyRunSummary } from "@/lib/server/weekly";
  * budget inside the function's sixty seconds, each run whatever the one
  * before it did:
  *
- * 1. Holds: the thirty day hold check (lib/server/holds).
+ * 1. Holds: the thirty day hold check (lib/server/holds), then the
+ *    campaign step inside the same stage's turn (lib/server/campaigns
+ *    eligibility): open claims advanced, and holding claims that are due
+ *    judged, holding to qualified. Never a payment: staff approve and
+ *    David pays by hand. Its own budget; a failure is logged and never
+ *    fails the run (it pays nobody, so tomorrow's step loses nothing).
  * 2. Recurring: runs past three days skipped, and today's runs made, with
  *    one reminder email each (lib/server/recurring). Berth reminds, the
  *    person signs; nothing is bought here.
@@ -34,7 +40,9 @@ import { runWeeklySummaries, type WeeklyRunSummary } from "@/lib/server/weekly";
  *    never counts as a failure of the run.
  */
 
-export const HOLDS_BUDGET_MS = 25_000;
+export const HOLDS_BUDGET_MS = 18_000;
+/** The campaign step's most, taken from the holds' turn: hold windows read on Sonic, four at a time, then the open claims while time is left. */
+export const CAMPAIGNS_BUDGET_MS = 8_000;
 export const RECURRING_BUDGET_MS = 20_000;
 export const EMAILS_BUDGET_MS = 10_000;
 /** The weekly stage's most; it gets less when the stages before it ran long (RUN_BUDGET_MS). */
@@ -54,6 +62,7 @@ export type Stage<T> = { ok: true; result: T } | { ok: false; error: string };
 
 export type MorningSummary = {
   holds: Stage<HoldRunSummary>;
+  campaigns: Stage<CampaignStepSummary>;
   recurring: Stage<RecurringMorningSummary>;
   emails: Stage<RetrySummary>;
   weekly: Stage<WeeklyRunSummary>;
@@ -99,6 +108,7 @@ export function lazyPrices(read: () => Promise<Record<string, number>> = liveLis
 export async function runMorning({
   now = new Date(),
   holds = () => runHoldCheck({ now }),
+  campaigns = () => runCampaignStep({ now, deadline: Date.now() + CAMPAIGNS_BUDGET_MS - 1_500 }),
   recurring = () =>
     runRecurringMorning({
       now: now.getTime(),
@@ -114,23 +124,26 @@ export async function runMorning({
 }: {
   now?: Date;
   holds?: () => Promise<HoldRunSummary>;
+  campaigns?: () => Promise<CampaignStepSummary>;
   recurring?: () => Promise<RecurringMorningSummary>;
   emails?: () => Promise<RetrySummary>;
   /** Given its budget, so it stops starting new summaries in time. */
   weekly?: (budgetMs: number) => Promise<WeeklyRunSummary>;
-  budgets?: { holds: number; recurring: number; emails: number; weekly: number; run?: number };
+  budgets?: { holds: number; campaigns?: number; recurring: number; emails: number; weekly: number; run?: number };
   clock?: () => number;
 } = {}): Promise<MorningSummary> {
   const started = clock();
   const holdStage = await stage(holds, budgets.holds);
+  const campaignStage = await stage(campaigns, budgets.campaigns ?? CAMPAIGNS_BUDGET_MS);
   const recurringStage = await stage(recurring, budgets.recurring);
   const emailStage = await stage(emails, budgets.emails);
   // After the retry, never beside it; with whatever time the run has left.
   const weeklyBudget = Math.max(0, Math.min(budgets.weekly, (budgets.run ?? RUN_BUDGET_MS) - (clock() - started)));
   const weeklyStage = await stage(() => weekly(weeklyBudget), weeklyBudget);
   if (!holdStage.ok) console.warn("[cron/morning] hold check failed:", holdStage.error);
+  if (!campaignStage.ok) console.warn("[cron/morning] campaign step failed:", campaignStage.error);
   if (!recurringStage.ok) console.warn("[cron/morning] recurring failed:", recurringStage.error);
   if (!emailStage.ok) console.warn("[cron/morning] email retry failed:", emailStage.error);
   if (!weeklyStage.ok) console.warn("[cron/morning] weekly summary failed:", weeklyStage.error);
-  return { holds: holdStage, recurring: recurringStage, emails: emailStage, weekly: weeklyStage, failed: !holdStage.ok || !recurringStage.ok };
+  return { holds: holdStage, campaigns: campaignStage, recurring: recurringStage, emails: emailStage, weekly: weeklyStage, failed: !holdStage.ok || !recurringStage.ok };
 }

@@ -15,6 +15,7 @@ import {
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { HomeGallery } from "./home-gallery";
+import { LINE_FIXTURES } from "../campaigns/fixtures";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,6 +88,7 @@ function Galleries() {
         drawer={drawer === "board" || drawer === "news" ? drawer : null}
         look={params.get("look") === "fixture" || params.get("look") === "quiet" ? (params.get("look") as "fixture" | "quiet") : undefined}
         firstStock={params.get("first") === "1"}
+        campaign={LINE_FIXTURES[params.get("campaign") ?? ""]}
       />
     );
   }
