@@ -144,7 +144,15 @@ export function ListingBoard({
         <button
           type="button"
           onClick={() => onBuy(listing)}
-          className="grid min-h-14 min-w-0 flex-1 grid-cols-[2.25rem_minmax(0,1fr)_3rem_auto_2.75rem] items-center gap-2.5 px-[18px] lg:px-6 lg:gap-3 py-2.5 text-left transition-[background-color,transform] duration-150 ease-lift hover:bg-muted/60 active:scale-[0.995] active:bg-muted lg:grid-cols-[2.25rem_minmax(0,1fr)_7rem_5.5rem_2.75rem]"
+          // The richer five-column layout (a 7rem line, a 5.5rem price)
+          // only ever fits past `@lg` of THIS row's own container: a board
+          // embedded at its full width clears that easily, but the very
+          // same row rendered inside a drawer (24rem on a desktop, capped
+          // narrower still on a phone) never does and stays on the compact
+          // template below. Below `@lg` the reserve column is held at the
+          // same 3.5rem width the wide template also uses, so Sell (which
+          // replaces the badge below) always lands in that same place.
+          className="grid min-h-14 min-w-0 flex-1 grid-cols-[2.25rem_minmax(0,1fr)_3rem_auto_3.5rem] items-center gap-2.5 px-[18px] @lg/row:px-6 @lg/row:gap-3 py-2.5 text-left transition-[background-color,transform] duration-150 ease-lift hover:bg-muted/60 active:scale-[0.995] active:bg-muted @lg/row:grid-cols-[2.25rem_minmax(0,1fr)_7rem_5.5rem_3.5rem]"
         >
           {/*
             The name takes what it needs and the line takes the rest.
@@ -219,7 +227,7 @@ export function ListingBoard({
           {/* Over the row's last track, beside the button rather than in
               it, so the name keeps the width a Buy would have taken. */}
           {hasPosition && onSell && (
-            <div className="absolute inset-y-0 right-[18px] flex items-center lg:right-6">
+            <div className="absolute inset-y-0 right-[18px] flex items-center @lg/row:right-6">
               <motion.div whileTap={{ scale: 0.96 }} transition={SPRING_POP}>
                 <Button variant="outline" size="sm" onClick={() => onSell(listing)}>
                   {copy.sell}
@@ -238,7 +246,7 @@ export function ListingBoard({
           cursor that is about to click it.
         */}
         {onFilterNews && (
-          <div className="absolute inset-y-0 right-[19.5rem] hidden items-center lg:flex">
+          <div className="absolute inset-y-0 right-[19.75rem] hidden items-center @lg/row:flex">
             <motion.button
               type="button"
               onClick={() => onFilterNews(listing)}
@@ -271,7 +279,12 @@ export function ListingBoard({
   };
 
   return (
-    <Panel surface="sheet">
+    // Named so a row can query THIS element's width rather than the
+    // viewport's: the board renders at its full column width on a wide
+    // screen but also, unchanged, inside a 24rem side sheet and a capped
+    // bottom sheet, both narrower than `lg` ever implies. A viewport
+    // breakpoint does not know which one it is in; a container query does.
+    <Panel surface="sheet" className="@container/row">
       <SectionHeading
         title={copy.boardTitle}
         hint={copy.boardHint}
