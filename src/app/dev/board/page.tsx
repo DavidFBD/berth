@@ -46,7 +46,9 @@ import {
  *                                       loading for `delay` ms (default
  *                                       6000), then holding 10 POL on
  *                                       Polygon. pay=empty settles with
- *                                       nothing, pay=stuck never settles
+ *                                       nothing, pay=stuck never settles,
+ *                                       pay=gas holds USDC on HyperEVM with
+ *                                       no HYPE (a greyed picker row)
  *   /dev/board?sell=QQQ&hub=0x…         the sell drawer open on QQQ, with
  *                                       what that hub wallet holds of it
  *   /dev/board?news=NVDA                the news column already filtered, so
@@ -254,8 +256,31 @@ function Gallery() {
 
 type DevHoldings = Pick<
   EmbeddedHoldingsResult,
-  "connected" | "holdings" | "gasShortChains" | "isLoading"
+  "connected" | "holdings" | "gasShortChains" | "isLoading" | "nativeBalances"
 >;
+
+/**
+ * ?pay=gas: a wallet holding USDC on HyperEVM with no HYPE beside it, and
+ * USDC and ETH on Base, so the picker shows a greyed HyperEVM row and its
+ * (?) next to rows that can pay (lib/gas-need).
+ */
+function gasFixture(): DevHoldings {
+  const hyperUsdc = getDepositTokens(ChainKeys.HYPEREVM_MAINNET).find((token) => token.symbol.startsWith("USDC"));
+  const baseUsdc = getDepositTokens(ChainKeys.BASE_MAINNET).find((token) => token.symbol === "USDC");
+  const baseEth = getDepositTokens(ChainKeys.BASE_MAINNET).find((token) => token.symbol === "ETH");
+  const holdings = [
+    hyperUsdc && { chainKey: ChainKeys.HYPEREVM_MAINNET, token: hyperUsdc, balance: 40n * 10n ** BigInt(hyperUsdc.decimals), usdValue: 40 },
+    baseUsdc && { chainKey: ChainKeys.BASE_MAINNET, token: baseUsdc, balance: 25n * 10n ** BigInt(baseUsdc.decimals), usdValue: 25 },
+    baseEth && { chainKey: ChainKeys.BASE_MAINNET, token: baseEth, balance: 10n ** 16n, usdValue: 38 },
+  ].filter((holding) => !!holding);
+  return {
+    connected: true,
+    holdings,
+    gasShortChains: [ChainKeys.HYPEREVM_MAINNET],
+    isLoading: false,
+    nativeBalances: { [ChainKeys.HYPEREVM_MAINNET]: 0n, [ChainKeys.BASE_MAINNET]: 10n ** 16n },
+  };
+}
 
 /** A stand-in wallet sweep for ?pay=slow|empty|stuck, so the drawer's waiting states can be seen. */
 function useDevHoldings(mode: string | null, delayMs: number): DevHoldings | undefined {
@@ -265,11 +290,12 @@ function useDevHoldings(mode: string | null, delayMs: number): DevHoldings | und
     const timer = setTimeout(() => setSettled(true), Number.isFinite(delayMs) ? delayMs : 6000);
     return () => clearTimeout(timer);
   }, [mode, delayMs]);
+  if (mode === "gas") return gasFixture();
   if (mode !== "slow" && mode !== "empty" && mode !== "stuck") return undefined;
   const pol = getDepositTokens(ChainKeys.POLYGON_MAINNET).find((token) => token.symbol === "POL");
   const holdings =
     settled && mode === "slow" && pol
       ? [{ chainKey: ChainKeys.POLYGON_MAINNET, token: pol, balance: 10n * 10n ** 18n, usdValue: undefined }]
       : [];
-  return { connected: true, holdings, gasShortChains: [], isLoading: !settled };
+  return { connected: true, holdings, gasShortChains: [], isLoading: !settled, nativeBalances: {} };
 }

@@ -499,6 +499,23 @@ export type Copy = {
   findingPayWith: string;
   gasShortWarning: (chainName: string, symbol: string) => string;
   gasShortCta: (symbol: string) => string;
+  /**
+   * Why a pay token is greyed in the picker, and the message that stops an
+   * order before the wallet opens: the chain's native token cannot pay the
+   * fee (lib/gas-need).
+   */
+  gasNeededToPay: (symbol: string, chainName: string) => string;
+  /** The same, for the native token itself: what is there would all go to the fee. */
+  gasNeededNative: (symbol: string, chainName: string) => string;
+  /** The (?) button's name beside a greyed pay token. */
+  gasHelpLabel: string;
+  /** The buy or sell button while the signing chain cannot pay its fee. */
+  ctaNeedsGas: (symbol: string) => string;
+  /**
+   * Under the button when the chain's own price is covered but not what
+   * some wallets attach on top (lib/gas-need floorWarns). The person may sign.
+   */
+  gasFloorWarning: (symbol: string) => string;
   /** `amount` arrives pre-formatted: "≈ €130 (142 USDC)" or "142 USDC". */
   walletHolds: (amount: string) => string;
   checkingBalance: string;
@@ -2524,6 +2541,14 @@ export const COPY: Copy = {
   gasShortWarning: (chainName, symbol) =>
     `Your ${chainName} wallet holds no ${symbol} for the network fee. This order pays its fee in ${symbol}, so it cannot start until some arrives.`,
   gasShortCta: (symbol) => `Send a little ${symbol} to your address`,
+  gasNeededToPay: (symbol, chainName) =>
+    `You need a little ${symbol} on ${chainName} to pay the network fee.`,
+  gasNeededNative: (symbol, chainName) =>
+    `Your ${symbol} on ${chainName} would all go to the network fee. Add a little more to pay with it.`,
+  gasHelpLabel: "Why this cannot pay",
+  ctaNeedsGas: (symbol) => `Not enough ${symbol} for the network fee`,
+  gasFloorWarning: (symbol) =>
+    `Some wallets ask for a higher network fee. If yours refuses, add a little ${symbol}.`,
   walletHolds: (amount) => `You have ${amount}`,
   checkingBalance: "Checking your balance…",
   maxLabel: "Max",

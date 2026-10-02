@@ -10,7 +10,8 @@ import {
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
-import { useLeverageYieldPreviewRedeem } from "@sodax/dapp-kit";
+import { useLeverageYieldPreviewRedeem, useXBalances } from "@sodax/dapp-kit";
+import { getXChainType, useXService } from "@sodax/wallet-sdk-react";
 import {
   Drawer,
   DrawerContent,
@@ -23,7 +24,9 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { EASE_LIFT } from "@/lib/motion";
-import { getChainName } from "@/lib/chains";
+import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
+import { floorWarns, orderGasShort } from "@/lib/gas-need";
+import { useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
 import { formatTokenAmount, formatUsd, parseAmount, shortenAddress } from "@/lib/format";
@@ -160,6 +163,41 @@ export function WithdrawDrawer({
   // wallets otherwise. Email mode switches chains silently.
   const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureReady } =
     useVaultWallet(srcChainKey);
+  // The sell is one transaction the person signs on `srcChainKey`, paid in
+  // that chain's native token: without enough of it the wallet refuses
+  // (lib/gas-need). Where the money lands needs nothing from them.
+  const signNative = getNativeGasToken(srcChainKey);
+  const signXService = useXService({ xChainType: getXChainType(srcChainKey) });
+  const signNativeQuery = useXBalances({
+    params: {
+      xService: signXService,
+      xChainId: srcChainKey,
+      xTokens: signNative ? [toBalanceReadToken(signNative)] : [],
+      address: open && signNative ? address : undefined,
+    },
+    queryOptions: { refetchInterval: 30_000, staleTime: 15_000 },
+  });
+  const signNativeBalance =
+    signNative && signNativeQuery.data
+      ? (signNativeQuery.data[toBalanceReadToken(signNative).address] ?? 0n)
+      : undefined;
+  const signGas = useGasGate([srcChainKey], open);
+  const signGasShort = orderGasShort({
+    chainKey: srcChainKey,
+    isNative: false,
+    nativeBalance: signNativeBalance,
+    amount: 0n,
+    need: signGas.needFor(srcChainKey, false),
+  });
+  const signGasFloorWarn = floorWarns({
+    chainKey: srcChainKey,
+    isNative: false,
+    nativeBalance: signNativeBalance,
+    amount: 0n,
+    need: signGas.needFor(srcChainKey, false),
+    approval: false,
+  });
+  const gasPreflight = useGasPreflight();
   // Funds are delivered to the user's wallet ON the destination chain (the
   // SDK would otherwise default to `srcAddress`, the wrong format across
   // chain families) — unless the user typed a custom cash-out address. The
@@ -383,6 +421,8 @@ export function WithdrawDrawer({
         }),
       walletProvider,
       walletMode: mode,
+      gasCheck: () =>
+        gasPreflight({ chainKey: srcChainKey, address, amount: 0n, approval: false }),
       fillToasts: {
         successTitle: isSell ? copy.soldTitle : copy.withdrawnTitle,
         successDescription: copy.deliveredBody(getChainName(dstChainKey)),
@@ -424,6 +464,7 @@ export function WithdrawDrawer({
     hasWalletProvider: !!walletProvider,
     signerLinked,
     canSignSource: chosenSource ? chosenSource.canSign : undefined,
+    gasShort: signGasShort,
   });
   const cta: Cta = (() => {
     switch (gate.kind) {
@@ -468,6 +509,8 @@ export function WithdrawDrawer({
           label: isSell ? copy.ctaNotThatMuchHeld : copy.ctaVaultNotThatMuch,
           disabled: true,
         };
+      case "needsGas":
+        return { label: copy.ctaNeedsGas(signNative?.symbol ?? ""), disabled: true };
       case "belowMinimum":
         return {
           label: copy.ctaAtLeast(smallestOrderLabel),
@@ -748,6 +791,11 @@ export function WithdrawDrawer({
                       ? copy.sellSignOnce(getChainName(srcChainKey))
                       : copy.vaultSignOnce(getChainName(srcChainKey))}
                   </p>
+                  {signGasShort && signNative && (
+                    <p className="text-xs text-warn">
+                      {copy.gasNeededToPay(signNative.symbol, getChainName(srcChainKey))}
+                    </p>
+                  )}
                   {totalShares !== undefined &&
                     totalShares > availableShares && (
                       <p className="text-xs text-muted-foreground">
@@ -929,6 +977,11 @@ export function WithdrawDrawer({
                   {cta.busy && <Spinner className="size-4" />}
                   {cta.label}
                 </Button>
+                {signGasFloorWarn && signNative && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                    {copy.gasFloorWarning(signNative.symbol)}
+                  </p>
+                )}
               </DrawerFooter>
             </>
           ) : null}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, type XToken } from "@sodax/sdk";
-import { toBalanceReadToken } from "./chains";
+import { getChainName, toBalanceReadToken } from "./chains";
 
 /**
  * One representative token per chain family the picker can show (see
@@ -103,5 +103,12 @@ describe("toBalanceReadToken", () => {
   it("passes a Bitcoin native sentinel through unchanged", () => {
     const t = token(ChainKeys.BITCOIN_MAINNET, "BTC");
     expect(toBalanceReadToken(t)).toEqual(t);
+  });
+});
+
+describe("getChainName", () => {
+  it("says HyperEVM, the name people know, not the SDK's Hyper", () => {
+    expect(getChainName(ChainKeys.HYPEREVM_MAINNET)).toBe("HyperEVM");
+    expect(getChainName(ChainKeys.BASE_MAINNET)).toBe("Base");
   });
 });

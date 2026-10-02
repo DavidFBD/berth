@@ -11,6 +11,7 @@ import {
   type XToken,
 } from "@sodax/sdk";
 import { getPinnedRpcUrl } from "@/lib/sodax-config";
+import { OBSERVED_DEPOSIT_GAS, walletFeeFloor } from "@/lib/gas-need";
 
 /**
  * How much of the NATIVE token to hold back from a "Max" pour so the
@@ -45,40 +46,8 @@ const DEPOSIT_GAS_LIMIT = 350_000n;
 /** Gas can climb between tapping Max and signing, so leave headroom. */
 const GAS_PRICE_SAFETY = 3n;
 
-/**
- * What a deposit actually burns, measured: 119,335 gas on Base in issue #23.
- * Used only with the wallet-fee floor below, where the point is a realistic
- * worst case rather than a generous one, and multiplying two worst cases
- * together would withhold more than the fee could ever be.
- */
-const OBSERVED_DEPOSIT_GAS = 150_000n;
-
-/**
- * The fee per gas a wallet may attach REGARDLESS of what the chain suggests.
- *
- * This is the hole issue #23 fell through. Buffering off the node's own
- * number is right in principle and useless on an L2: Base reports a 0.006
- * gwei base fee and suggests a 0.001 gwei tip, so the computed buffer came to
- * about two cents, and then the user's wallet signed at 2 gwei, a tip 2000x
- * the chain's suggestion, for a real fee of $0.69. Nothing derived from the
- * chain can predict that, because the wallet is not asking the chain.
- *
- * So the floor is per chain and set from what wallets are seen to charge, not
- * from what the chain charges. On any chain whose own gas price already
- * exceeds the floor (Ethereum, Polygon, BSC) the `max` below makes it a
- * no-op, which is why one default covers the chains with no entry: it binds
- * only where base fees are negligible and wallet tips dominate, which is
- * exactly the L2 case.
- *
- * When a new failure shows a wallet charging more than this on some chain,
- * add the chain here with the observed number and the issue.
- */
-const DEFAULT_WALLET_FEE_FLOOR = 2_000_000_000n; // 2 gwei
-
-const WALLET_FEE_FLOOR: Partial<Record<EvmChainKey, bigint>> = {
-  // Observed: 2 gwei priority on a 0.006 gwei base fee (issue #23).
-  [ChainKeys.BASE_MAINNET]: DEFAULT_WALLET_FEE_FLOOR,
-};
+// The wallet-fee floor and the measured deposit gas live in lib/gas-need,
+// shared with the gate that greys a pay token whose chain cannot pay its fee.
 
 /**
  * Solana fees are stable and tiny (5k lamports a signature), but a deposit may
@@ -103,10 +72,7 @@ const GAS_PRICE_STALE_MS = 30_000;
  * Exported for the test that pins issue #23's arithmetic.
  */
 export function evmFeeFloorBuffer(chainKey: SpokeChainKey): bigint {
-  const floor = isEvmChainKeyType(chainKey)
-    ? (WALLET_FEE_FLOOR[chainKey as EvmChainKey] ?? DEFAULT_WALLET_FEE_FLOOR)
-    : DEFAULT_WALLET_FEE_FLOOR;
-  return floor * OBSERVED_DEPOSIT_GAS;
+  return walletFeeFloor(chainKey) * OBSERVED_DEPOSIT_GAS;
 }
 
 /**
@@ -116,31 +82,36 @@ export function evmFeeFloorBuffer(chainKey: SpokeChainKey): bigint {
  * Cached briefly and shared by query key, so repeated Max taps don't re-hit
  * the RPC.
  */
+export async function readEvmFeePerGas(chainKey: EvmChainKey): Promise<bigint> {
+  const client = createPublicClient({
+    chain: getEvmViemChain(chainKey),
+    // Pinned endpoint where we have one; viem's default otherwise.
+    transport: http(getPinnedRpcUrl(chainKey)),
+  });
+  try {
+    const fees = await client.estimateFeesPerGas();
+    if (fees.maxFeePerGas !== undefined) return fees.maxFeePerGas;
+  } catch {
+    // Pre-1559 chains and RPCs without eth_feeHistory: fall through.
+  }
+  return client.getGasPrice();
+}
+
+/** One query per chain, shared by key with the picker's gate (hooks/use-gas-gate). */
+export function feePerGasQueryOptions(chainKey: EvmChainKey | undefined, enabled: boolean) {
+  return {
+    queryKey: ["feePerGas", chainKey] as const,
+    queryFn: () => readEvmFeePerGas(chainKey!),
+    enabled: enabled && !!chainKey,
+    staleTime: GAS_PRICE_STALE_MS,
+    refetchInterval: GAS_PRICE_STALE_MS,
+  };
+}
+
 function useEvmFeePerGas(chainKey: SpokeChainKey | undefined, enabled: boolean) {
   const evmChainKey =
     chainKey && isEvmChainKeyType(chainKey) ? chainKey : undefined;
-
-  return useQuery({
-    queryKey: ["feePerGas", evmChainKey],
-    queryFn: async (): Promise<bigint> => {
-      const chain = getEvmViemChain(evmChainKey!);
-      const client = createPublicClient({
-        chain,
-        // Pinned endpoint where we have one; viem's default otherwise.
-        transport: http(getPinnedRpcUrl(evmChainKey!)),
-      });
-      try {
-        const fees = await client.estimateFeesPerGas();
-        if (fees.maxFeePerGas !== undefined) return fees.maxFeePerGas;
-      } catch {
-        // Pre-1559 chains and RPCs without eth_feeHistory: fall through.
-      }
-      return client.getGasPrice();
-    },
-    enabled: enabled && !!evmChainKey,
-    staleTime: GAS_PRICE_STALE_MS,
-    refetchInterval: GAS_PRICE_STALE_MS,
-  });
+  return useQuery(feePerGasQueryOptions(evmChainKey, enabled));
 }
 
 export type NativeGasBuffer = {

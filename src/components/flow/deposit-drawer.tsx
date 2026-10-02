@@ -78,6 +78,8 @@ import {
 } from "@/lib/pay-token-pick";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
+import { isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { byGasStatus, floorWarns, orderGasShort } from "@/lib/gas-need";
 import {
   ActionError,
   ActionStepper,
@@ -140,7 +142,8 @@ export function DepositDrawer({
   devHoldings?: Pick<
     EmbeddedHoldingsResult,
     "connected" | "holdings" | "gasShortChains" | "isLoading"
-  >;
+  > &
+    Partial<Pick<EmbeddedHoldingsResult, "nativeBalances">>;
   /** Dev galleries only: show "Set a price" as if the switch were on. */
   devLimit?: boolean;
 }) {
@@ -206,10 +209,18 @@ export function DepositDrawer({
   const sweep = useEmbeddedHoldings();
   const {
     connected,
-    holdings,
+    holdings: sweptHoldings,
     gasShortChains,
     isLoading: holdingsLoading,
   } = devHoldings ?? sweep;
+  const nativeBalances = devHoldings ? (devHoldings.nativeBalances ?? {}) : sweep.nativeBalances;
+  // The first pick prefers what can pay its own fee (lib/gas-need), the
+  // order the picker shows; a wallet where nothing can still lands on its
+  // largest holding, and the drawer says what is missing.
+  const sweepGas = useGasGate(sweptHoldings.map((holding) => holding.chainKey), open && !token);
+  const holdings = byGasStatus(sweptHoldings, (holding) =>
+    sweepGas.statusFor(holding.chainKey, holding.token, nativeBalances[holding.chainKey]),
+  );
   const privy = usePrivyEmbeddedWallet();
   // Signed in but the embedded wallet not yet in hand: no address to sweep
   // yet, which is waiting, not having nothing.
@@ -238,11 +249,18 @@ export function DepositDrawer({
   const prices = useUsdPrices();
 
   const xService = useXService({ xChainType: getXChainType(srcChainKey) });
+  // The pay token and, beside it, the chain's native token, which pays the fee.
+  const nativeToken = getNativeGasToken(srcChainKey);
+  const payingNative = !!token && isGasToken(srcChainKey, token);
   const balancesQuery = useXBalances({
     params: {
       xService,
       xChainId: srcChainKey,
-      xTokens: token ? [toBalanceReadToken(token)] : [],
+      xTokens: token
+        ? payingNative || !nativeToken
+          ? [toBalanceReadToken(token)]
+          : [toBalanceReadToken(token), toBalanceReadToken(nativeToken)]
+        : [],
       address: token ? address : undefined,
     },
   });
@@ -254,6 +272,17 @@ export function DepositDrawer({
       ? (balancesQuery.data[toBalanceReadToken(token).address] ?? 0n)
       : undefined
     : undefined;
+
+  const nativeBalance =
+    token && nativeToken && balancesQuery.data
+      ? (balancesQuery.data[toBalanceReadToken(nativeToken).address] ?? 0n)
+      : undefined;
+  // Can this chain pay the order's fee at its own price (lib/gas-need)?
+  // No approval counted here: the order machine adds one only when the
+  // allowance it reads needs it. Unknown never blocks.
+  const gas = useGasGate([srcChainKey], open && !!token);
+  const gasNeed = gas.needFor(srcChainKey, false);
+  const gasPreflight = useGasPreflight();
 
   // Money is how people think about an order, so the amount field takes the
   // user's display currency whenever the oracle prices the token, with a
@@ -307,6 +336,29 @@ export function DepositDrawer({
   );
   const worthUsd =
     token && buildAmount ? prices.usdValue(token, buildAmount) : undefined;
+  // The chosen token's chain cannot pay: with no amount yet, whether any
+  // order could; with one, whether this one leaves enough for the fee.
+  const selectedGasShort =
+    !!token &&
+    orderGasShort({
+      chainKey: srcChainKey,
+      isNative: payingNative,
+      nativeBalance,
+      amount: payingNative ? (buildAmount ?? 1n) : 0n,
+      need: gasNeed,
+    });
+  // Enough at the chain's price, not at what some wallets attach: say so
+  // calmly and let the person sign.
+  const gasFloorWarn =
+    !!token &&
+    floorWarns({
+      chainKey: srcChainKey,
+      isNative: payingNative,
+      nativeBalance,
+      amount: payingNative ? (buildAmount ?? 0n) : 0n,
+      need: gasNeed,
+      approval: false,
+    });
   const balanceWorthUsd =
     token && balance !== undefined && balance > 0n
       ? prices.usdValue(token, balance)
@@ -427,6 +479,8 @@ export function DepositDrawer({
         limit.price && {
           limit: { deadline: limit.deadline, limitPrice: limitPriceText(limit.price) },
         }),
+      gasCheck: (approval) =>
+        gasPreflight({ chainKey: srcChainKey, address, token, amount: buildAmount, approval }),
       fillToasts: {
         successTitle: copy.buyFilledTitle,
         successDescription: copy.buyFilledBody,
@@ -460,6 +514,7 @@ export function DepositDrawer({
     // An EVM payer is the session's signer; one not on the account yet is
     // added first, or the order would not count as the account's.
     payerLinked: !isBuy || (isEvmChainKeyType(srcChainKey) ? account.signerLinked : payer.state !== "unlinked"),
+    gasShort: selectedGasShort,
   });
   const cta: Cta = (() => {
     switch (gate.kind) {
@@ -511,6 +566,8 @@ export function DepositDrawer({
         return { label: copy.checkingBalance, disabled: true, busy: true };
       case "insufficient":
         return { label: copy.ctaTooMuch, disabled: true };
+      case "needsGas":
+        return { label: copy.ctaNeedsGas(nativeToken?.symbol ?? token?.symbol ?? ""), disabled: true };
       case "belowMinimum":
         return {
           label: copy.ctaAtLeast(smallestOrderLabel),
@@ -743,7 +800,7 @@ export function DepositDrawer({
                     die at the network fee. Say so before the quote does. */}
                 {connected &&
                   token &&
-                  gasShortChains.includes(srcChainKey) &&
+                  (gasShortChains.includes(srcChainKey) || selectedGasShort) &&
                   (() => {
                     const native = getNativeGasToken(srcChainKey);
                     const symbol = native?.symbol ?? "the native token";
@@ -752,10 +809,9 @@ export function DepositDrawer({
                         <GasPump className="mt-0.5 size-5 shrink-0 text-warn" />
                         <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
                           <p className="text-foreground">
-                            {copy.gasShortWarning(
-                              getChainName(srcChainKey),
-                              symbol,
-                            )}
+                            {gasShortChains.includes(srcChainKey)
+                              ? copy.gasShortWarning(getChainName(srcChainKey), symbol)
+                              : copy.gasNeededToPay(symbol, getChainName(srcChainKey))}
                           </p>
                           {onTopUp && (
                             <button
@@ -933,6 +989,11 @@ export function DepositDrawer({
                   {cta.busy && <Spinner className="size-4" />}
                   {cta.label}
                 </Button>
+                {gasFloorWarn && nativeToken && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                    {copy.gasFloorWarning(nativeToken.symbol)}
+                  </p>
+                )}
               </DrawerFooter>
             </>
           ) : null}
@@ -945,6 +1006,7 @@ export function DepositDrawer({
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         onTopUp={onTopUp}
+        devHoldings={devHoldings}
         onSelect={(chainKey, selected) => {
           setSrcChainKey(chainKey);
           setToken(selected);

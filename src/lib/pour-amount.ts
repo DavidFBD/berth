@@ -228,6 +228,11 @@ export type PourGate =
   | { kind: "enterAmount" }
   | { kind: "balanceLoading" }
   | { kind: "insufficient" }
+  /**
+   * The signing chain's native balance cannot pay this order's network fee
+   * (lib/gas-need): the wallet would only refuse it.
+   */
+  | { kind: "needsGas" }
   | { kind: "belowMinimum" }
   | { kind: "wrongChain" }
   | { kind: "noRoute" }
@@ -268,6 +273,8 @@ export function depositGate(state: {
   account?: AccountReadiness;
   /** False when the paying wallet is connected but not on the account. Defaults to true. */
   payerLinked?: boolean;
+  /** True when the source chain cannot pay this order's fee (lib/gas-need orderGasShort). */
+  gasShort?: boolean;
 }): PourGate {
   // Before anything else: a buy with nowhere to land is not a pour yet, and
   // the fix (sign in) is a different door from every other reason below.
@@ -281,6 +288,8 @@ export function depositGate(state: {
   if (!state.buildAmount) return { kind: "enterAmount" };
   if (state.balance === undefined) return { kind: "balanceLoading" };
   if (state.buildAmount > state.balance) return { kind: "insufficient" };
+  // Right after the balance: the fee is part of what the wallet must hold.
+  if (state.gasShort) return { kind: "needsGas" };
   // After the balance (you can't be asked for a dollar you don't hold) and
   // before the network: a too-small pour is fixed in the field, not the wallet.
   if (state.belowMinimum) return { kind: "belowMinimum" };
@@ -321,6 +330,8 @@ export function withdrawGate(state: {
   canSignSource?: boolean;
   /** False when the signing wallet is connected but not on the account. Defaults to true. */
   signerLinked?: boolean;
+  /** True when the signing chain cannot pay the sell's fee (lib/gas-need orderGasShort). */
+  gasShort?: boolean;
 }): PourGate {
   if (!state.address) return { kind: "connectSource" };
   if (state.signerLinked === false) return { kind: "walletNotLinked" };
@@ -333,6 +344,7 @@ export function withdrawGate(state: {
   }
   if (!state.buildAmount) return { kind: "enterAmount" };
   if (state.buildAmount > state.availableShares) return { kind: "insufficient" };
+  if (state.gasShort) return { kind: "needsGas" };
   if (state.belowMinimum) return { kind: "belowMinimum" };
   if (state.isWrongChain) return { kind: "wrongChain" };
   if (state.noRoute) return { kind: "noRoute" };

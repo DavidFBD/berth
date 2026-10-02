@@ -83,6 +83,12 @@ export type EmbeddedHoldingsResult = {
    * at the network fee, so the tea is visible but stuck until gas arrives.
    */
   gasShortChains: SpokeChainKey[];
+  /**
+   * Each swept chain's native balance, dust included (the fee does not care
+   * what a balance is worth). A chain missing here is unknown: still
+   * loading, errored, or no address. Read by the picker's gas gate.
+   */
+  nativeBalances: Partial<Record<SpokeChainKey, bigint>>;
   /** Sum of the priced holdings; undefined when nothing has a price. */
   totalUsd: number | undefined;
 };
@@ -126,6 +132,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
       const holdings: Array<Omit<EmbeddedHolding, "usdValue">> = [];
       const erroredChains: SpokeChainKey[] = [];
       const gasShortChains: SpokeChainKey[] = [];
+      const nativeBalances: Partial<Record<SpokeChainKey, bigint>> = {};
       EMBEDDED_CHAINS.forEach((chainKey, index) => {
         const data = results[index]?.data;
         if (!data) {
@@ -135,6 +142,9 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
           return;
         }
         const nativeToken = getNativeGasToken(chainKey);
+        if (nativeToken) {
+          nativeBalances[chainKey] = data[toBalanceReadToken(nativeToken).address] ?? 0n;
+        }
         let holdsNonNative = false;
         for (const token of getDepositTokens(chainKey)) {
           // Balances are keyed by the read token's (re-checksummed) address;
@@ -161,6 +171,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
         holdings,
         erroredChains,
         gasShortChains,
+        nativeBalances,
       };
     },
   });
@@ -197,6 +208,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
     holdings,
     erroredChains: swept.erroredChains,
     gasShortChains: swept.gasShortChains,
+    nativeBalances: swept.nativeBalances,
     totalUsd,
   };
 }

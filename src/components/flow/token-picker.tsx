@@ -25,6 +25,7 @@ import {
   getChainLogo,
   getChainName,
   getDepositTokens,
+  getNativeGasToken,
   toBalanceReadToken,
 } from "@/lib/chains";
 import { formatTokenAmount } from "@/lib/format";
@@ -32,8 +33,12 @@ import { useCopy, useMoney } from "@/components/settings-provider";
 import {
   EMBEDDED_CHAINS,
   useEmbeddedHoldings,
+  type EmbeddedHoldingsResult,
 } from "@/hooks/use-embedded-holdings";
 import { useAccount } from "@/hooks/use-account";
+import { isGasToken, useGasGate } from "@/hooks/use-gas-gate";
+import { byGasStatus, type GasStatus } from "@/lib/gas-need";
+import { PayTokenRow } from "./pay-token-row";
 
 /**
  * Lettered circle standing in for a logo that is missing or failed to load.
@@ -167,6 +172,7 @@ export function TokenPicker({
   onSelect,
   mode = "source",
   onTopUp,
+  devHoldings,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -175,6 +181,9 @@ export function TokenPicker({
   mode?: "source" | "destination";
   /** Lets the email-mode empty state route to the funding flow. */
   onTopUp?: () => void;
+  /** Dev galleries only: stands in for the wallet sweep (see DepositDrawer). */
+  devHoldings?: Pick<EmbeddedHoldingsResult, "connected" | "holdings" | "isLoading"> &
+    Partial<Pick<EmbeddedHoldingsResult, "nativeBalances">>;
 }) {
   const [chainKey, setChainKey] = useState<SpokeChainKey | null>(null);
   const [search, setSearch] = useState("");
@@ -185,13 +194,17 @@ export function TokenPicker({
 
   const copy = useCopy();
   const money = useMoney();
+  const sweep = useEmbeddedHoldings();
   const {
     emailMode,
+    erroredChains,
+  } = sweep;
+  const {
     connected,
     isLoading: holdingsLoading,
-    holdings,
-    erroredChains,
-  } = useEmbeddedHoldings();
+    holdings: sweptHoldings,
+  } = devHoldings ?? sweep;
+  const nativeBalances = devHoldings ? (devHoldings.nativeBalances ?? {}) : sweep.nativeBalances;
 
   // Reset on close so every open starts fresh at the first screen.
   const handleOpenChange = (next: boolean) => {
@@ -230,6 +243,35 @@ export function TokenPicker({
   const balancesLoading =
     chainKey !== null && !!address && balancesQuery.isLoading;
 
+  // Paying in, a token whose chain cannot pay its own fee is shown last and
+  // greyed (lib/gas-need): the order would only die in the wallet. Where
+  // the money lands needs no fee from the person, so destinations never grey.
+  const gasGate = useGasGate(
+    chainKey ? [chainKey] : sweptHoldings.map((holding) => holding.chainKey),
+    open && mode === "source",
+  );
+  const gasOf = (key: SpokeChainKey, token: XToken, nativeBalance: bigint | undefined): GasStatus =>
+    mode === "source" ? gasGate.statusFor(key, token, nativeBalance) : "ok";
+  const gasTipFor = (key: SpokeChainKey, token: XToken): string => {
+    const native = getNativeGasToken(key);
+    const symbol = native?.symbol ?? token.symbol;
+    return isGasToken(key, token)
+      ? copy.gasNeededNative(symbol, getChainName(key))
+      : copy.gasNeededToPay(symbol, getChainName(key));
+  };
+  const holdings = byGasStatus(
+    sweptHoldings.map((holding) => ({
+      ...holding,
+      gas: gasOf(holding.chainKey, holding.token, nativeBalances[holding.chainKey]),
+    })),
+    (row) => row.gas,
+  );
+  const browseNative = chainKey ? getNativeGasToken(chainKey) : undefined;
+  const browseNativeBalance =
+    balances && browseNative
+      ? (balances[toBalanceReadToken(browseNative).address] ?? 0n)
+      : undefined;
+
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = tokens.filter(
@@ -255,6 +297,12 @@ export function TokenPicker({
         return aHas ? -1 : 1;
       });
   }, [tokens, search, balances]);
+  const browseRows = chainKey
+    ? byGasStatus(
+        rows.map((row) => ({ ...row, gas: gasOf(chainKey, row.token, browseNativeBalance) })),
+        (row) => row.gas,
+      )
+    : [];
 
   // First screen when paying in: what the swept wallets hold, for email
   // accounts and connected wallets alike, so nobody picks a network before
@@ -348,36 +396,31 @@ export function TokenPicker({
                     )}
                   </div>
                 ) : (
-                  holdings.map(({ chainKey: key, token, balance, usdValue }) => (
-                    <button
+                  holdings.map(({ chainKey: key, token, balance, usdValue, gas }) => (
+                    <PayTokenRow
                       key={`${key}:${token.address}`}
-                      type="button"
-                      onClick={() => {
+                      logo={<TokenLogo symbol={token.symbol} chainKey={key} />}
+                      title={token.symbol}
+                      subtitle={`on ${getChainName(key)}`}
+                      gasTip={gas === "short" ? gasTipFor(key, token) : undefined}
+                      gasHelpLabel={copy.gasHelpLabel}
+                      onSelect={() => {
                         onSelect(key, token);
                         handleOpenChange(false);
                       }}
-                      className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
-                    >
-                      <TokenLogo symbol={token.symbol} chainKey={key} />
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-sm font-medium text-foreground">
-                          {token.symbol}
-                        </span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          on {getChainName(key)}
-                        </span>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-sm text-foreground tabular-nums">
-                          {formatTokenAmount(balance, token.decimals)}
-                        </span>
-                        {usdValue !== undefined && (
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {money.format(usdValue)}
+                      trailing={
+                        <div className="flex flex-col items-end">
+                          <span className="text-sm text-foreground tabular-nums">
+                            {formatTokenAmount(balance, token.decimals)}
                           </span>
-                        )}
-                      </div>
-                    </button>
+                          {usdValue !== undefined && (
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {money.format(usdValue)}
+                            </span>
+                          )}
+                        </div>
+                      }
+                    />
                   ))
                 )}
                 {holdings.length > 0 && erroredChains.length > 0 && (
@@ -437,35 +480,30 @@ export function TokenPicker({
                     {copy.pickerNoMatches(search)}
                   </p>
                 )}
-                {rows.map(({ token, balance }) => (
-                  <button
+                {browseRows.map(({ token, balance, gas }) => (
+                  <PayTokenRow
                     key={token.address}
-                    type="button"
-                    onClick={() => {
+                    logo={<TokenLogo symbol={token.symbol} />}
+                    title={token.symbol}
+                    subtitle={token.name}
+                    gasTip={gas === "short" ? gasTipFor(chainKey, token) : undefined}
+                    gasHelpLabel={copy.gasHelpLabel}
+                    onSelect={() => {
                       onSelect(chainKey, token);
                       handleOpenChange(false);
                     }}
-                    className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
-                  >
-                    <TokenLogo symbol={token.symbol} />
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm font-medium text-foreground">
-                        {token.symbol}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {token.name}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      {balancesLoading ? (
-                        <Skeleton className="h-4 w-14" />
-                      ) : balance !== undefined ? (
-                        <span className="text-sm text-muted-foreground tabular-nums">
-                          {formatTokenAmount(balance, token.decimals)}
-                        </span>
-                      ) : null}
-                    </div>
-                  </button>
+                    trailing={
+                      <div className="text-right">
+                        {balancesLoading ? (
+                          <Skeleton className="h-4 w-14" />
+                        ) : balance !== undefined ? (
+                          <span className="text-sm text-muted-foreground tabular-nums">
+                            {formatTokenAmount(balance, token.decimals)}
+                          </span>
+                        ) : null}
+                      </div>
+                    }
+                  />
                 ))}
               </div>
             </>

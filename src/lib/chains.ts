@@ -39,8 +39,17 @@ export const DEPOSIT_SOURCE_CHAINS: readonly SpokeChainKey[] = [
   ChainKeys.REDBELLY_MAINNET,
 ];
 
+/**
+ * Names people know where the SDK's own differs: it calls HyperEVM "Hyper",
+ * which reads as a typo in "a little HYPE on Hyper". Display only; nothing
+ * keys on a chain's display name.
+ */
+const CHAIN_NAME_OVERRIDES: Partial<Record<SpokeChainKey, string>> = {
+  [ChainKeys.HYPEREVM_MAINNET]: "HyperEVM",
+};
+
 export function getChainName(chainKey: SpokeChainKey): string {
-  return spokeChainConfig[chainKey]?.chain.name ?? chainKey;
+  return CHAIN_NAME_OVERRIDES[chainKey] ?? spokeChainConfig[chainKey]?.chain.name ?? chainKey;
 }
 
 export function getChainLogo(chainKey: SpokeChainKey): string | undefined {

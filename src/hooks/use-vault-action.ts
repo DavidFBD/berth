@@ -161,6 +161,13 @@ export interface RunDepositArgs {
   deliverTo?: string;
   /** Set for a limit buy; see LimitRun. */
   limit?: LimitRun;
+  /**
+   * The last gas check before the wallet opens (hooks/use-gas-gate
+   * useGasPreflight): resolves to the message to stop with when the signing
+   * chain cannot pay its fee, or null to go on. `approval` is whether an
+   * approve will be sent first.
+   */
+  gasCheck?: (approval: boolean) => Promise<string | null>;
 }
 
 export interface RunWithdrawArgs {
@@ -195,6 +202,13 @@ export interface RunWithdrawArgs {
   ensureReady?: () => Promise<PourReadiness>;
   /** Set for a limit sell; see LimitRun. */
   limit?: LimitRun;
+  /**
+   * The last gas check before the wallet opens (hooks/use-gas-gate
+   * useGasPreflight): resolves to the message to stop with when the signing
+   * chain cannot pay its fee, or null to go on. `approval` is whether an
+   * approve will be sent first.
+   */
+  gasCheck?: (approval: boolean) => Promise<string | null>;
 }
 
 export interface UseVaultActionResult {
@@ -367,7 +381,7 @@ export function useVaultAction(options?: {
   }, []);
 
   const fail = useCallback(
-    (message: string, raw?: unknown) => {
+    (message: string, raw?: unknown, options?: { report?: boolean }) => {
       // The friendly copy hides the SDK error entirely — keep the raw object
       // on the console so field failures are diagnosable. This console line is
       // also what the log buffer captures into the issue.
@@ -380,7 +394,7 @@ export function useVaultAction(options?: {
       // reachable inside a run, after pourRef is set — a missing context
       // would be a reporting bug, not an order, so don't guess an attribution.
       const pour = pourRef.current;
-      if (!pour) return;
+      if (!pour || options?.report === false) return;
       report({
         ...pour.context,
         friendlyMessage: message,
@@ -1105,6 +1119,22 @@ export function useVaultAction(options?: {
         }
         setApproveRequired(!allowance.value);
 
+        // Before any wallet opens: can the chain pay for what follows? The
+        // picker greys a token that cannot, but a balance can be spent or a
+        // fee rise between the pick and here.
+        if (args.gasCheck) {
+          const run = runRef.current;
+          const stop = await args.gasCheck(!allowance.value);
+          // A newer run owns the screen now; this one says nothing.
+          if (runRef.current !== run) return false;
+          if (stop) {
+            // Not a bug and nothing to report: the person is told what to
+            // add, before any wallet opens.
+            fail(stop, undefined, { report: false });
+            return false;
+          }
+        }
+
         // 3. Approve if needed (an on-chain tx on the spoke: assert chain).
         if (!allowance.value) {
           advance("approving");
@@ -1273,6 +1303,16 @@ export function useVaultAction(options?: {
 
         // No allowance/approve step: the payload carries hubWalletSwap and the
         // hub wallet is authorised via the single sendMessage signature below.
+        // Before it opens: can the signing chain pay the fee (see runDeposit)?
+        if (args.gasCheck) {
+          const run = runRef.current;
+          const stop = await args.gasCheck(false);
+          if (runRef.current !== run) return false;
+          if (stop) {
+            fail(stop, undefined, { report: false });
+            return false;
+          }
+        }
         advance("signing");
         if (!(await onRightChain())) return false;
         const slow = slowSource(args.srcChainKey);

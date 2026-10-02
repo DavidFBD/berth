@@ -1,0 +1,276 @@
+import {
+  ChainKeys,
+  isEvmChainKeyType,
+  type EvmChainKey,
+  type SpokeChainKey,
+} from "@sodax/sdk";
+
+/**
+ * Whether the person can pay a network's fee, before they are let near a
+ * signature. A real new user picked a pay token three times and each order
+ * died in her wallet: tokens on HyperEVM, no HYPE. So a token whose chain
+ * cannot pay its own fee is not offered as a way to pay (the picker greys
+ * it), and the order machine checks again right before the wallet opens.
+ *
+ * A refusal must never be wrong the other way: an order that would have
+ * gone through, refused, is a person who cannot buy or sell at all. So only
+ * the chain's OWN live price refuses (gasNeed). What some wallets attach on
+ * top of it (WALLET_FEE_FLOOR) only warns (floorWarns): measured on chain
+ * 2026-10-02, most signers reserve fifty times less than the floor, and a
+ * floor that greyed would block everyone holding "a little ETH" on an L2.
+ *
+ * Pure: the fee per gas and balances come in as arguments, so a table of
+ * inputs pins every branch (gas-need.test.ts). The hook that feeds it live
+ * numbers is hooks/use-gas-gate.
+ */
+
+/**
+ * The fee per gas some wallets attach REGARDLESS of what the chain suggests
+ * (issue #23: Base suggested a 0.001 gwei tip, a MetaMask-like wallet signed
+ * at 2 gwei; on Arbitrum some wallets attach 2 gwei, others 0.1). It holds
+ * back the Max button's buffer (hooks/use-native-gas-buffer) and raises the
+ * calm warning under the button; it never greys a token or refuses an order.
+ */
+export const DEFAULT_WALLET_FEE_FLOOR = 2_000_000_000n; // 2 gwei
+
+export const WALLET_FEE_FLOOR: Partial<Record<EvmChainKey, bigint>> = {
+  // Observed: 2 gwei priority on a 0.006 gwei base fee (issue #23).
+  [ChainKeys.BASE_MAINNET]: DEFAULT_WALLET_FEE_FLOOR,
+};
+
+export function walletFeeFloor(chainKey: SpokeChainKey): bigint {
+  return isEvmChainKeyType(chainKey)
+    ? (WALLET_FEE_FLOOR[chainKey as EvmChainKey] ?? DEFAULT_WALLET_FEE_FLOOR)
+    : DEFAULT_WALLET_FEE_FLOOR;
+}
+
+/**
+ * What a deposit burns, measured: 119,335 gas on Base in issue #23. The Max
+ * buffer's floor multiplies by this (a realistic burn at a worst-case price).
+ */
+export const OBSERVED_DEPOSIT_GAS = 150_000n;
+
+/**
+ * The gas a wallet RESERVES for a deposit: the largest limit seen on recent
+ * SODAX deposits to the Base asset manager (119k to 229k), rounded up. A
+ * wallet needs limit x maxFee in hand, not the gas burned.
+ */
+export const GATE_DEPOSIT_GAS = 230_000n;
+
+/** An ERC-20 approve, measured at 46k to 56k; rounded up. Only when the read allowance needs one. */
+export const GATE_APPROVE_GAS = 60_000n;
+
+/** Room on the chain's own price between the read and the signature: 1.5x. */
+const GATE_PRICE_SAFETY_NUM = 3n;
+const GATE_PRICE_SAFETY_DEN = 2n;
+
+/**
+ * Slack on the native token's own order, so Max (computed from one price
+ * read) is not refused by the gate a moment later on the next read: the
+ * amount plus 97% of the need must fit.
+ */
+const NATIVE_SLACK_PCT = 97n;
+
+/**
+ * What one Solana order costs the fee payer: a signature or two at 5,000
+ * lamports and a priority fee, and the payer must stay rent exempt (890,880
+ * lamports for a plain account) or the runtime refuses the transaction.
+ * The SDK's Solana deposit opens no token account, so no rent beyond that.
+ */
+export const SOLANA_GATE_LAMPORTS = 1_000_000n; // 0.001 SOL
+
+/** A Sui order's gas budget, which wallets reserve in full: up to 0.02 SUI. */
+export const SUI_GATE_MIST = 20_000_000n; // 0.02 SUI
+
+/**
+ * How a chain charges for an order the person signs there.
+ * - `evm`: native gas, priced live from the chain.
+ * - `fixed`: native gas, a known amount in native units (Solana, Sui).
+ * - `free`: never gated. Bitcoin pays its fee out of the BTC being sent.
+ *   Stellar, NEAR, Injective, ICON and Stacks charge fees far below any
+ *   balance worth holding (0.00001 XLM against a locked reserve, 0.001
+ *   ICX), and their wallets say so themselves; a guess here would refuse
+ *   more working orders than it saves.
+ *
+ * Sonic is `evm`: a Sonic order is the person's own transaction on Sonic and
+ * pays in S. Nothing in @sodax/sdk 2.0.0 sponsors a spoke or hub transaction
+ * (no paymaster, no relayer-paid send); the relayer pays only the delivery
+ * leg after the person's transaction lands.
+ */
+export type GasModel =
+  | { kind: "evm" }
+  | { kind: "fixed"; units: bigint }
+  | { kind: "free" };
+
+export function gasModel(chainKey: SpokeChainKey): GasModel {
+  if (isEvmChainKeyType(chainKey)) return { kind: "evm" };
+  if (chainKey === ChainKeys.SOLANA_MAINNET) return { kind: "fixed", units: SOLANA_GATE_LAMPORTS };
+  if (chainKey === ChainKeys.SUI_MAINNET) return { kind: "fixed", units: SUI_GATE_MIST };
+  return { kind: "free" };
+}
+
+function evmGas(approval: boolean): bigint {
+  return GATE_DEPOSIT_GAS + (approval ? GATE_APPROVE_GAS : 0n);
+}
+
+/**
+ * The native balance an order on `chainKey` must find to pay its fee at the
+ * chain's own price, in native units; `undefined` when it cannot be priced
+ * (the EVM fee per gas is still loading or its read failed). `approval`
+ * adds an ERC-20 approve, only when the read allowance needs one.
+ */
+export function gasNeed({
+  chainKey,
+  feePerGas,
+  approval,
+}: {
+  chainKey: SpokeChainKey;
+  feePerGas: bigint | undefined;
+  approval: boolean;
+}): bigint | undefined {
+  const model = gasModel(chainKey);
+  switch (model.kind) {
+    case "free":
+      return 0n;
+    case "fixed":
+      return model.units;
+    case "evm":
+      if (feePerGas === undefined) return undefined;
+      return (feePerGas * evmGas(approval) * GATE_PRICE_SAFETY_NUM) / GATE_PRICE_SAFETY_DEN;
+  }
+}
+
+/**
+ * What a wallet that attaches the floor (WALLET_FEE_FLOOR) would reserve
+ * for the same order. Warning only (floorWarns), never a refusal.
+ */
+export function floorNeed(chainKey: SpokeChainKey, approval: boolean): bigint | undefined {
+  return gasModel(chainKey).kind === "evm" ? walletFeeFloor(chainKey) * evmGas(approval) : undefined;
+}
+
+/**
+ * - `ok`: the chain can pay for this order.
+ * - `short`: it cannot; the token is shown but not offered.
+ * - `unknown`: a balance is still loading or its read failed. Shown and
+ *   offered as normal, and the pre-sign check has the last word.
+ */
+export type GasStatus = "ok" | "short" | "unknown";
+
+/**
+ * A native balance the gate can trust. Off EVM a 0 is not one: the SDK's
+ * Solana and Sui reads swallow errors (a 429) and answer 0, and the SOL
+ * read can fail while the USDC read beside it succeeds. So a 0 there is
+ * unknown, everywhere the gate reads it. On EVM a failed read throws, and
+ * a 0 is a 0.
+ */
+export function trustedNativeBalance(
+  chainKey: SpokeChainKey,
+  nativeBalance: bigint | undefined,
+): bigint | undefined {
+  if (nativeBalance === 0n && !isEvmChainKeyType(chainKey)) return undefined;
+  return nativeBalance;
+}
+
+/**
+ * Whether `token` on `chainKey` can pay for an order, given the chain's
+ * native balance. The native token pays its own fee, so it needs more than
+ * the fee (an order of nothing is no order); any other token needs the fee
+ * in native beside it. A zero EVM balance is short even before the fee is
+ * priced: any fee is more than nothing.
+ */
+export function payTokenGas({
+  chainKey,
+  isNative,
+  nativeBalance: raw,
+  need,
+}: {
+  chainKey: SpokeChainKey;
+  isNative: boolean;
+  nativeBalance: bigint | undefined;
+  need: bigint | undefined;
+}): GasStatus {
+  if (gasModel(chainKey).kind === "free") return "ok";
+  const nativeBalance = trustedNativeBalance(chainKey, raw);
+  if (nativeBalance === undefined) return "unknown";
+  if (need === undefined) return nativeBalance === 0n ? "short" : "unknown";
+  if (isNative) return nativeBalance > need ? "ok" : "short";
+  return nativeBalance >= need ? "ok" : "short";
+}
+
+/**
+ * Whether an order of `amount` leaves too little native for its fee at the
+ * chain's own price: the drawer's gate and the last check before the
+ * wallet opens. For the native token the amount comes out of the same
+ * balance, with a little slack (NATIVE_SLACK_PCT) so Max is never refused.
+ */
+export function orderGasShort({
+  chainKey,
+  isNative,
+  nativeBalance: raw,
+  amount,
+  need,
+}: {
+  chainKey: SpokeChainKey;
+  isNative: boolean;
+  nativeBalance: bigint | undefined;
+  amount: bigint;
+  need: bigint | undefined;
+}): boolean {
+  if (gasModel(chainKey).kind === "free") return false;
+  const nativeBalance = trustedNativeBalance(chainKey, raw);
+  if (nativeBalance === undefined) return false;
+  if (need === undefined) return nativeBalance === 0n;
+  if (!isNative) return nativeBalance < need;
+  return nativeBalance < amount + (need * NATIVE_SLACK_PCT) / 100n;
+}
+
+/**
+ * Whether the order clears the chain's own price but not what a wallet
+ * attaching the floor would reserve: the person may sign, and is told
+ * calmly that some wallets ask for more.
+ */
+export function floorWarns({
+  chainKey,
+  isNative,
+  nativeBalance,
+  amount,
+  need,
+  approval,
+}: {
+  chainKey: SpokeChainKey;
+  isNative: boolean;
+  nativeBalance: bigint | undefined;
+  amount: bigint;
+  need: bigint | undefined;
+  approval: boolean;
+}): boolean {
+  const floor = floorNeed(chainKey, approval);
+  if (floor === undefined || nativeBalance === undefined) return false;
+  if (orderGasShort({ chainKey, isNative, nativeBalance, amount, need })) return false;
+  if (need !== undefined && need >= floor) return false;
+  return nativeBalance < (isNative ? amount : 0n) + floor;
+}
+
+/** Sort key: what can pay first, what cannot last, order kept otherwise. */
+export function byGasStatus<T>(rows: readonly T[], statusOf: (row: T) => GasStatus): T[] {
+  return rows
+    .map((row, index) => ({ row, index, short: statusOf(row) === "short" }))
+    .sort((a, b) => (a.short === b.short ? a.index - b.index : a.short ? 1 : -1))
+    .map(({ row }) => row);
+}
+
+/** How long the pre-sign check waits on a read before it counts as unknown. */
+export const PREFLIGHT_TIMEOUT_MS = 5_000;
+
+/** A read, or `undefined` once it fails or outlasts `ms`. */
+export async function withinOrUnknown<T>(read: Promise<T>, ms = PREFLIGHT_TIMEOUT_MS): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), ms);
+  });
+  try {
+    return await Promise.race([read.catch(() => undefined), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}

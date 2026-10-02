@@ -368,3 +368,46 @@ describe("withdrawGate", () => {
     expect(withdrawGate({ ...ready, minOut: undefined }).kind).toBe("quotePending");
   });
 });
+
+describe("the gas gate in the order gates", () => {
+  const buy = {
+    hasToken: true,
+    address: "0xabc",
+    buildAmount: 100n,
+    balance: 200n,
+    belowMinimum: false,
+    isWrongChain: false,
+    noRoute: false,
+    quoted: 90n,
+    minOut: 89n,
+    hasWalletProvider: true,
+  };
+  const sell = {
+    address: "0xabc",
+    hasDestination: true,
+    recipient: "0xdef",
+    usingCustomRecipient: false,
+    buildAmount: 100n,
+    availableShares: 200n,
+    belowMinimum: false,
+    isWrongChain: false,
+    noRoute: false,
+    belowDust: false,
+    quoted: 90n,
+    minOut: 89n,
+    hasWalletProvider: true,
+  };
+
+  it("stops a buy whose chain cannot pay its fee, right after the balance", () => {
+    expect(depositGate({ ...buy, gasShort: true }).kind).toBe("needsGas");
+    // Asking for more than the wallet holds is still the first thing said.
+    expect(depositGate({ ...buy, gasShort: true, buildAmount: 300n }).kind).toBe("insufficient");
+    expect(depositGate({ ...buy, gasShort: false }).kind).toBe("ready");
+  });
+
+  it("stops a sell the same way", () => {
+    expect(withdrawGate({ ...sell, gasShort: true }).kind).toBe("needsGas");
+    expect(withdrawGate({ ...sell, gasShort: true, buildAmount: 300n }).kind).toBe("insufficient");
+    expect(withdrawGate(sell).kind).toBe("ready");
+  });
+});
