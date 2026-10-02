@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AssistantId } from "@/lib/assistant-party";
 import { toast } from "@/lib/toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
@@ -10,10 +10,8 @@ import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Copy,
-  GearSix,
   PlusCircle,
   QrCode,
-  SignOut,
   Wallet,
 } from "@phosphor-icons/react";
 import {
@@ -27,13 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectButton } from "@/components/wallet";
-import { SettingsDrawer } from "@/components/settings-drawer";
-import { EmailSection } from "@/components/email-section";
-import { AssistantSection } from "@/components/assistant/assistant-section";
-import { WalletsSection } from "@/components/account-wallets";
-import { SocialSection } from "@/components/social/social-section";
-import { RecurringSection } from "@/components/recurring/recurring-section";
-import { RankChip, RewardsPanel } from "@/components/rewards-panel";
+import { RankChip } from "@/components/rewards-panel";
 import { ADD_EMAIL_ANCHOR } from "@/components/social/social-section";
 import { useCopy } from "@/components/settings-provider";
 import { useMounted } from "@/hooks/use-mounted";
@@ -42,6 +34,9 @@ import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { shortenAddress } from "@/lib/format";
 import { SPRING_SHELF } from "@/lib/motion";
+import { AccountDrawerScreens } from "@/components/account-drawer";
+import type { DrawerView } from "@/components/account-drawer-nav";
+import { DRAWER_RETURN_KEY, DRAWER_RETURN_PARAM, NO_RETURN, initialScreen, readMark, resolveReturn, type ReturnState } from "@/lib/drawer-return";
 
 /**
  * Header account entry point. Email login (Privy) is the default; the
@@ -68,11 +63,12 @@ export function AccountButton({
   const mounted = useMounted();
   const copy = useCopy();
   const [accountOpenState, setAccountOpenState] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const accountOpen = openProp ?? accountOpenState;
   const setAccountOpen = onOpenChange ?? setAccountOpenState;
-  useScrollToAssistant(accountOpen && assistant !== null);
   useScrollToAddEmail(accountOpen && focusEmail);
+  // Back from a friend's profile opened in the drawer: open again, on that screen.
+  const pending = useDrawerReturn(() => setAccountOpen(true), accountOpen);
+  const start = initialScreen({ assistant: assistant !== null, focusEmail, pending });
 
   if (!PRIVY_ENABLED) return <ConnectButton />;
 
@@ -85,7 +81,7 @@ export function AccountButton({
   // session to add an email, and after: the email drawer below assumes an
   // embedded wallet this person does not have. See hooks/use-link-email.
   if (!privy.authenticated || linking || privy.walletAccountSession) {
-    return <ExternalAccountEntry open={accountOpen} onOpenChange={setAccountOpen} assistant={assistant} />;
+    return <ExternalAccountEntry open={accountOpen} onOpenChange={setAccountOpen} assistant={assistant} start={start} focusEmail={focusEmail} />;
   }
 
   const email = privy.user?.email?.address;
@@ -113,102 +109,140 @@ export function AccountButton({
             </DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
-            <RewardsPanel />
-            {/* Username, profile and friends (lib/server/social). */}
-            <Panel>
-              <SocialSection />
-            </Panel>
-            {/* Recurring buys (lib/recurring): reminders the person signs. */}
-            <Panel>
-              <RecurringSection onLeave={() => setAccountOpen(false)} />
-            </Panel>
-            {/*
-              One panel with ruled rows, not five cards stacked inside a
-              drawer that is already a card. Every row here is the same kind
-              of thing, somewhere to go or something to copy, and giving each
-              its own border made a drawer that read as a list of boxes.
-            */}
-            <WalletsSection />
-            <Panel className="divide-y divide-border">
-            {address ? (
-              <>
-                <ReceiveRow
-                  title={copy.receiveEvmTitle}
-                  description={copy.receiveEvmBody}
-                  address={address}
-                  copyToast={copy.receiveEvmToast}
-                />
-                {/* Privy's /solana hooks are not SSR-safe — client-only. */}
-                {mounted && <SolanaReceive />}
-              </>
-            ) : (
-              <p className="px-3 py-3 text-sm text-muted-foreground">
-                {copy.ctaOpeningAccount}
-              </p>
-            )}
-
-            {address && <FundButton address={address} />}
-
-            {/* An assistant that reads the account and drafts orders the
-                person signs here (app/mcp). */}
-            {address && (
-              <div id={ASSISTANT_ANCHOR} className="scroll-mt-4">
-                <AssistantSection initialOpen={assistant} />
-              </div>
-            )}
-
-            {/* No external-wallet CONNECT affordance here on purpose: email
-                users live entirely in Funds, and the expert path stays on
-                the welcome screen for people who skip Privy. Getting funds
-                OUT is a different question, and the row above is the
-                answer to it. */}
-
-            {/* The back room — appearance and currency. Drawers don't stack,
-                so the account drawer hands over: close this one, open that
-                one. */}
-            <button
-              type="button"
-              onClick={() => {
-                setAccountOpen(false);
-                setSettingsOpen(true);
-              }}
-              className="flex min-h-14 w-full items-center gap-3 px-3 py-3 text-left transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
-            >
-              <GearSix className="size-5 text-primary" />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="text-sm font-medium text-foreground">
-                  {copy.settingsTitle}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {copy.settingsSub}
-                </span>
-              </div>
-            </button>
-            </Panel>
-
-            <Button
-              variant="ghost"
-              className="justify-start gap-3 px-3 text-muted-foreground"
-              onClick={() => {
-                setAccountOpen(false);
-                void privy.logout();
-              }}
-            >
-              <SignOut className="size-5" />
-              {copy.accountSignOut}
-            </Button>
-          </div>
+          <EmailDrawerBody
+            address={address}
+            initialView={start.view}
+            returnScroll={start.scroll}
+            mounted={mounted}
+            assistant={assistant}
+            onLeave={() => setAccountOpen(false)}
+            onOpenSettings={() => {}}
+            onSignOut={() => {
+              setAccountOpen(false);
+              void privy.logout();
+            }}
+          />
         </DrawerContent>
       </Drawer>
-
-      <SettingsDrawer
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        evmAddress={mounted ? address : undefined}
-      />
     </>
   );
+}
+
+/**
+ * The email account drawer's body, apart from its header, so the dev
+ * gallery (/dev/account?drawer=) can show it from fixtures. Its screens
+ * live in components/account-drawer; what only an email account has (its
+ * own addresses to receive at, and the card or bank top up) is handed in.
+ */
+export function EmailDrawerBody({
+  address,
+  mounted,
+  assistant,
+  initialView,
+  returnScroll,
+  onLeave,
+  onOpenSettings,
+  onSignOut,
+}: {
+  address?: string;
+  mounted: boolean;
+  assistant: AssistantId | null;
+  initialView?: DrawerView;
+  /** Back from a page the drawer opened: where that screen's scroll stood. */
+  returnScroll?: number | null;
+  onLeave: () => void;
+  /** Kept for callers of the earlier shape; Settings is a screen of the drawer now. */
+  onOpenSettings: () => void;
+  onSignOut: () => void;
+}) {
+  const copy = useCopy();
+  return (
+    <AccountDrawerScreens
+      kind="email"
+      hasAddress={Boolean(address)}
+      initialView={initialView}
+      returnScroll={returnScroll}
+      assistant={assistant}
+      onLeave={onLeave}
+      onOpenSettings={onOpenSettings}
+      settingsAddress={mounted ? address : undefined}
+      onSignOut={onSignOut}
+      money={
+        <Panel className="divide-y divide-border">
+          {address ? (
+            <>
+              <FundButton address={address} />
+              <ReceiveRow
+                title={copy.receiveEvmTitle}
+                description={copy.receiveEvmBody}
+                address={address}
+                copyToast={copy.receiveEvmToast}
+              />
+              {/* Privy's /solana hooks are not SSR-safe, client only. */}
+              {mounted && <SolanaReceive />}
+            </>
+          ) : (
+            <p className="px-3 py-3 text-sm text-muted-foreground">{copy.ctaOpeningAccount}</p>
+          )}
+        </Panel>
+      }
+    />
+  );
+}
+
+/**
+ * The way back from a page the drawer opened (lib/drawer-return), read once
+ * on mount: with ?account=<screen> and a fresh mark for it in this tab, the
+ * drawer opens there, at that scroll. The parameter leaves the address and
+ * the mark is spent either way, and the screen is spent too once the drawer
+ * it opened closes, so every later open starts on the first screen.
+ */
+function useDrawerReturn(open: () => void, isOpen: boolean): ReturnState {
+  const [pending, setPending] = useState<ReturnState>(NO_RETURN);
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  });
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(DRAWER_RETURN_KEY);
+    } catch {
+      // Storage refused: nothing to return to.
+    }
+    const result = resolveReturn({
+      param: url.searchParams.get(DRAWER_RETURN_PARAM),
+      mark: readMark(raw, Date.now()),
+      signedIn: true,
+    });
+    if (result.spend || raw !== null) {
+      try {
+        sessionStorage.removeItem(DRAWER_RETURN_KEY);
+      } catch {
+        // Storage refused.
+      }
+    }
+    if (result.strip) {
+      url.searchParams.delete(DRAWER_RETURN_PARAM);
+      window.history.replaceState(null, "", url);
+    }
+    if (!result.open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the address and the tab's storage are only readable after mount
+    setPending(result.open);
+    openRef.current();
+  }, []);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (isOpen) {
+      wasOpen.current = true;
+      return;
+    }
+    if (!wasOpen.current) return;
+    wasOpen.current = false;
+    setPending(NO_RETURN);
+  }, [isOpen]);
+  return pending;
 }
 
 /**
@@ -293,23 +327,6 @@ export function AddMoneyDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
   );
 }
 
-/** Where the board's "Your assistant" card lands inside the drawer. */
-const ASSISTANT_ANCHOR = "account-assistant";
-
-/**
- * Once the drawer has slid up, bring "Your assistant" into view. The
- * drawer's content mounts on open, so the anchor is looked up after it.
- */
-function useScrollToAssistant(active: boolean) {
-  useEffect(() => {
-    if (!active) return;
-    const timer = setTimeout(() => {
-      document.getElementById(ASSISTANT_ANCHOR)?.scrollIntoView({ block: "start", behavior: "smooth" });
-    }, 360);
-    return () => clearTimeout(timer);
-  }, [active]);
-}
-
 /**
  * Opened from the email nudge: bring the add-email row (inside RewardsPanel)
  * into view, the same way "Your assistant" is scrolled to above.
@@ -340,10 +357,14 @@ function ExternalAccountEntry({
   open: serviceOpen,
   onOpenChange: setServiceOpen,
   assistant,
+  start,
+  focusEmail,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   assistant: AssistantId | null;
+  start: ReturnState;
+  focusEmail: boolean;
 }) {
   const copy = useCopy();
   return (
@@ -356,25 +377,15 @@ function ExternalAccountEntry({
             <DrawerTitle>{copy.walletAccountDrawerTitle}</DrawerTitle>
             <DrawerDescription>{copy.walletAccountDrawerSub}</DrawerDescription>
           </DrawerHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
-            <RewardsPanel />
-            <WalletsSection />
-            <Panel>
-              <SocialSection />
-            </Panel>
-            {/* Recurring buys (lib/recurring): reminders the person signs. */}
-            <Panel>
-              <RecurringSection onLeave={() => setServiceOpen(false)} />
-            </Panel>
-            <Panel>
-              <EmailSection heading="row" />
-            </Panel>
-            <Panel>
-              <div id={ASSISTANT_ANCHOR} className="scroll-mt-4">
-                <AssistantSection initialOpen={assistant} />
-              </div>
-            </Panel>
-          </div>
+          <AccountDrawerScreens
+            kind="wallet"
+            hasAddress
+            initialView={start.view}
+            returnScroll={start.scroll}
+            focusEmail={focusEmail}
+            assistant={assistant}
+            onLeave={() => setServiceOpen(false)}
+          />
         </DrawerContent>
       </Drawer>
     </div>

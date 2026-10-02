@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BerthMark } from "@/components/berth-mark";
+import { WayBack } from "@/components/social/way-back";
 import { AvatarWithRank } from "@/components/rank-glyph";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,10 +70,7 @@ export function FriendsBoardPage() {
   const board = useFriendsBoard(signedIn && Boolean(me.data?.handle));
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-4 pt-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
-      <Link href="/" className="flex items-center gap-2 self-start text-sm text-muted-foreground hover:text-foreground">
-        <BerthMark className="size-6" title="Berth" />
-        {copy.back}
-      </Link>
+      <WayBack />
       {signedIn && me.data?.hasEmail && (
         <Panel surface="sheet" className="px-4 py-4">
           <FindFriend />

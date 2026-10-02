@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { toast } from "@/lib/toast";
-import { BerthMark } from "@/components/berth-mark";
+import { WayBack } from "@/components/social/way-back";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
 import { NotFoundCard, ProfileCardView, SignInCard } from "@/components/social/profile-card";
@@ -37,10 +36,7 @@ export function ProfilePage({ target }: { target: { handle: string } | { token: 
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-4 pt-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
-      <Link href="/" className="flex items-center gap-2 self-start text-sm text-muted-foreground hover:text-foreground">
-        <BerthMark className="size-6" title="Berth" />
-        {copy.social.back}
-      </Link>
+      <WayBack />
       {!answer ? (
         <Skeleton className="h-96 w-full rounded-2xl" />
       ) : !answer.found ? (

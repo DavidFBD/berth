@@ -17,7 +17,6 @@ import { APPEARANCE_IDS, type AppearanceId } from "@/lib/appearance";
 import { CURRENCIES } from "@/lib/currencies";
 import { cn } from "@/lib/utils";
 import { useAwardTheme } from "@/hooks/use-profile";
-import { EmailSection } from "@/components/email-section";
 import { AdvancedSection } from "@/components/key-export-row";
 
 const APPEARANCE_ICONS: Record<AppearanceId, typeof Sun> = {
@@ -42,6 +41,30 @@ export function SettingsDrawer({
   evmAddress?: string;
 }) {
   const copy = useCopy();
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>{copy.settingsTitle}</DrawerTitle>
+            <DrawerDescription>{copy.settingsSub}</DrawerDescription>
+          </DrawerHeader>
+
+          <div className="flex flex-col gap-5 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)] group-data-[swipe-axis=y]/drawer-popup:max-h-[65svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
+            <SettingsBody evmAddress={evmAddress} />
+          </div>
+        </DrawerContent>
+    </Drawer>
+  );
+}
+
+/**
+ * The settings themselves, apart from their drawer: the account drawer
+ * shows them as one of its own screens (components/account-drawer), so
+ * Settings no longer swaps one drawer for another.
+ */
+export function SettingsBody({ evmAddress }: { evmAddress?: string }) {
+  const copy = useCopy();
   const { appearance, setAppearance } = useAppearance();
   const { currency, setCurrency } = useCurrency();
   const awardTheme = useAwardTheme();
@@ -53,14 +76,7 @@ export function SettingsDrawer({
   };
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>{copy.settingsTitle}</DrawerTitle>
-            <DrawerDescription>{copy.settingsSub}</DrawerDescription>
-          </DrawerHeader>
-
-          <div className="flex flex-col gap-5 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)] group-data-[swipe-axis=y]/drawer-popup:max-h-[65svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
+    <div className="flex flex-col gap-5">
             <section className="flex flex-col gap-2">
               <h3
                 id="appearance-label"
@@ -138,8 +154,6 @@ export function SettingsDrawer({
               </div>
             </section>
 
-            <EmailSection offerAdd={false} />
-
             <div className="flex gap-5 self-start text-[13px]">
               <a href="/privacy" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
                 {copy.privacyLink}
@@ -150,11 +164,9 @@ export function SettingsDrawer({
             </div>
 
             {/* Collapsed and closed by default, every time: the private key
-                export lives here, not in the account drawer, so it can't be
+                export sits behind it, folded every time, so it can't be
                 reached by accident. */}
             <AdvancedSection evmAddress={evmAddress} />
-          </div>
-        </DrawerContent>
-    </Drawer>
+    </div>
   );
 }

@@ -13,6 +13,8 @@ import { formatTokenAmount, shortenAddress } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PORTFOLIO_STATES, PortfolioGallery, type PortfolioState } from "./portfolio-gallery";
 import { RewardsGallery } from "./rewards-gallery";
+import { isDrawerView } from "@/components/account-drawer-nav";
+import { AccountButtonGallery, DRAWER_SCENES, DrawerGallery, type DrawerScene } from "./drawer-gallery";
 import { AssistantSection } from "@/components/assistant/assistant-section";
 import { ConsentCard } from "@/components/assistant/authorize-consent";
 import type { ConsentParty } from "@/lib/assistant-party";
@@ -122,6 +124,9 @@ function WalletsGallery({ scene }: { scene: string }) {
  *   /dev/account                      the signed-in Privy account
  *   /dev/account?address=0x…          any spoke address on the home chain
  *   /dev/account?hub=0x…              any hub wallet directly, no derivation
+ *   /dev/account?drawer=new           the whole account drawer, open, from
+ *                                     seeded data (new, mid, named,
+ *                                     established; see drawer-gallery.tsx)
  *   /dev/account?rewards=7            the rewards drawer at that rung, from
  *                                     seeded data (1, 3, 7 and 10 are set
  *                                     scenes; see rewards-gallery.tsx)
@@ -190,6 +195,15 @@ function Inspector() {
           ? [{ kind: "loopback", selfName: null }, "localhost:33418"]
           : [{ kind: "known", assistant: "claude", name: "Claude" }, "claude.ai"];
     return <ConsentCard key={kind} request="dev-gallery" party={party} redirectHost={host} scopes={["berth.read", "berth.draft"]} initialLeaving={params.get("leaving") === "1"} />;
+  }
+  const buttonScene = params.get("button");
+  if (buttonScene && (DRAWER_SCENES as readonly string[]).includes(buttonScene)) {
+    return <AccountButtonGallery key={buttonScene} scene={buttonScene as DrawerScene} />;
+  }
+  const drawerScene = params.get("drawer");
+  if (drawerScene && (DRAWER_SCENES as readonly string[]).includes(drawerScene)) {
+    const view = params.get("view") ?? params.get("account");
+    return <DrawerGallery key={`${drawerScene}-${view}`} scene={drawerScene as DrawerScene} view={isDrawerView(view) ? view : undefined} />;
   }
   const walletsScene = params.get("wallets");
   if (walletsScene) return <WalletsGallery scene={walletsScene} />;

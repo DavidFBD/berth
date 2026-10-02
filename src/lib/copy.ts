@@ -1181,6 +1181,8 @@ export type Copy = {
   sellFromLabel: string;
   sellFromHomeTag: string;
   social: SocialCopy;
+  /** The account drawer's first screen, its next step and its rows (components/account-drawer). */
+  drawer: DrawerCopy;
   og: OgCopy;
   /** The staff area, internal (STAFF_COPY). */
   staff: StaffCopy;
@@ -1349,6 +1351,38 @@ export type OgCopy = {
  * lines: a profile is one phone screen and the drawer section is a few rows.
  * Never "beat", "win", "top", "streak" or a money figure.
  */
+export type DrawerCopy = {
+  /** Where a second screen of the drawer goes back to. */
+  back: string;
+  noUsername: string;
+  changeAvatar: string;
+  nextStep: string;
+  avatarTitle: string;
+  avatarSub: string;
+  avatarXp: (amount: number) => string;
+  avatarSave: string;
+  avatarPickFirst: string;
+  avatarSaved: string;
+  avatarFailed: string;
+  avatarChangeTitle: string;
+  avatarChangeSub: string;
+  inviteTitle: string;
+  inviteSub: string;
+  inviteAction: string;
+  notNow: string;
+  rows: {
+    rewards: { title: string; sub: (rank: string, level: number) => string };
+    friends: { title: string; sub: (friends: number, requests: number) => string; subNoName: string };
+    recurring: { title: string; sub: (plans: number) => string };
+    money: { title: string; sub: string };
+    wallets: { title: string; sub: string };
+    notifications: { title: string; sub: string };
+    ai: { title: string; sub: string };
+  };
+  /** The profile page's way back when it was opened from the drawer. */
+  profileBack: string;
+};
+
 export type SocialCopy = {
   sectionTitle: string;
   /** The section's one (i). */
@@ -3853,6 +3887,42 @@ export const COPY: Copy = {
   ctaSellSignInEmail: "Sign in with your email to sell these",
   sellFromLabel: "Sell from",
   sellFromHomeTag: "Home",
+  drawer: {
+    back: "Your account",
+    noUsername: "No username yet",
+    changeAvatar: "Change your avatar",
+    nextStep: "Next step",
+    avatarTitle: "Choose your avatar",
+    avatarSub: "Tap a face to make it yours, then save it. It sits beside your name and rank.",
+    avatarXp: (amount) => `+${amount} XP for your first avatar`,
+    avatarSave: "Save this avatar",
+    avatarPickFirst: "Tap a face first",
+    avatarSaved: "Avatar saved",
+    avatarFailed: "That did not save. Try again in a moment.",
+    avatarChangeTitle: "Your avatar",
+    avatarChangeSub: "More faces open as you climb the ranks.",
+    inviteTitle: "Invite a friend",
+    inviteSub: "Send your friend link. Anyone with it can ask to be friends.",
+    inviteAction: "Share your friend link",
+    notNow: "Not now",
+    rows: {
+      rewards: { title: "Rank and rewards", sub: (rank, level) => `${rank}, level ${level}. Invites and activity` },
+      friends: {
+        title: "Friends",
+        sub: (friends, requests) =>
+          [friends === 0 ? "No friends yet" : friends === 1 ? "1 friend" : `${friends} friends`, requests > 0 ? (requests === 1 ? "1 request" : `${requests} requests`) : null]
+            .filter(Boolean)
+            .join(", "),
+        subNoName: "Your username, friends and who sees you",
+      },
+      recurring: { title: "Recurring buys", sub: (plans) => (plans === 0 ? "Buy on a schedule you choose" : plans === 1 ? "1 plan" : `${plans} plans`) },
+      money: { title: "Wallets and adding money", sub: "Add money, receive crypto, your wallets" },
+      wallets: { title: "Wallets", sub: "The wallets on this account" },
+      notifications: { title: "Notifications", sub: "Which emails Berth sends you" },
+      ai: { title: "Your AI", sub: "Bring Berth into Claude, ChatGPT or Grok" },
+    },
+    profileBack: "Back",
+  },
   social: {
     sectionTitle: "Your profile",
     sectionWhy:

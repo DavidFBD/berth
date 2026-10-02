@@ -11,6 +11,7 @@ import {
 } from "@sodax/wallet-sdk-react";
 import { Button } from "@/components/ui/button";
 import { ThinkingOrb } from "@/components/ui/thinking-orb";
+import { clearDrawerReturn } from "@/components/account-drawer-nav";
 import { BerthMark } from "@/components/berth-mark";
 import { PILL, WelcomePage } from "@/components/welcome/welcome-page";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,13 @@ export function AuthGate({
   const isIn =
     (PRIVY_ENABLED && privy.authenticated && !privy.walletAccountSession) ||
     connected.total > 0;
+
+  // Signed out, there is no drawer to come back to (lib/drawer-return):
+  // a copied ?account= address must not open one after sign in.
+  const out = !settling && !isIn;
+  useEffect(() => {
+    if (out) clearDrawerReturn();
+  }, [out]);
 
   // A comprehensively sanctioned place gets the public page and nothing
   // else, signed in or not (lib/server/availability refuseSanctioned): the

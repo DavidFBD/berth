@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { toast } from "@/lib/toast";
 import { AnimatePresence, motion } from "motion/react";
@@ -16,6 +16,8 @@ import type { BlockedName, FriendsList, MySocial, Person } from "@/lib/social-ty
 import { SPRING_SHELF } from "@/lib/motion";
 import { rankForXp } from "@/lib/xp";
 import { cn } from "@/lib/utils";
+import { FROM_DRAWER_PARAM, FROM_DRAWER_VALUE, focusAddEmail, useDrawerNav } from "@/components/account-drawer-nav";
+import { isPlainClick } from "@/lib/drawer-return";
 
 /**
  * "Your profile" in the account drawer: a few ruled rows. Without an email,
@@ -37,7 +39,7 @@ export type SocialDemo = {
 /** Where the rewards panel's add email row lives, so the no-email row can bring it into view. */
 export const ADD_EMAIL_ANCHOR = "add-email";
 
-export function SocialSection({ demo }: { demo?: SocialDemo } = {}) {
+export function SocialSection({ demo, initialFold }: { demo?: SocialDemo; initialFold?: "friends" } = {}) {
   const copy = useCopy().social;
   const me = useMySocial(!demo);
   const social = demo?.me ?? me.data;
@@ -51,22 +53,19 @@ export function SocialSection({ demo }: { demo?: SocialDemo } = {}) {
           <p>{copy.sectionWhy}</p>
         </InfoTip>
       </div>
-      {!social.hasEmail ? <NoEmailRow /> : !social.handle ? <FirstPick /> : <Named social={social} demo={demo} />}
+      {!social.hasEmail ? <NoEmailRow /> : !social.handle ? <FirstPick /> : <Named social={social} demo={demo} initialFold={initialFold} />}
     </div>
   );
 }
 
 function NoEmailRow() {
   const copy = useCopy().social;
+  const nav = useDrawerNav();
   return (
     <button
       type="button"
       className="flex min-h-14 w-full items-center gap-3 px-3 py-3 text-left transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
-      onClick={() => {
-        const target = document.getElementById(ADD_EMAIL_ANCHOR);
-        target?.scrollIntoView({ block: "center", behavior: "smooth" });
-        target?.querySelector("button")?.click();
-      }}
+      onClick={() => focusAddEmail(nav, ADD_EMAIL_ANCHOR)}
     >
       <EnvelopeSimple weight="duotone" className="size-5 shrink-0 text-muted-foreground" />
       <span className="flex min-w-0 flex-1 flex-col">
@@ -86,22 +85,24 @@ function FirstPick() {
   );
 }
 
-function Named({ social, demo }: { social: MySocial; demo?: SocialDemo }) {
+function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialDemo; initialFold?: "friends" }) {
   const copy = useCopy().social;
-  const [open, setOpen] = useState<"friends" | "blocked" | "change" | null>(demo?.open ?? null);
+  const [open, setOpen] = useState<"friends" | "blocked" | "change" | null>(demo?.open ?? initialFold ?? null);
   const toggle = (which: "friends" | "blocked" | "change") => setOpen((current) => (current === which ? null : which));
   const friends = useFriendsList(!demo);
   const list = demo?.friends ?? friends.data;
   const visible = useSetVisible();
   const linkFace = useSetLinkFace();
   const handle = social.handle!;
+  const own = useDrawerLink(`/u/${handle}`);
+  const board = useDrawerLink("/friends");
 
   return (
     <div className="flex flex-col divide-y divide-border">
       <div className="flex flex-col gap-2 px-3 py-2.5">
         <div className="flex min-h-9 items-center gap-3">
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{handle}</span>
-          <Button variant="ghost" size="sm" render={<Link href={`/u/${handle}`} />} nativeButton={false}>
+          <Button variant="ghost" size="sm" render={<Link href={own.href} onClick={own.onClick} />} nativeButton={false}>
             {copy.view}
           </Button>
           <Button variant="ghost" size="sm" aria-expanded={open === "change"} onClick={() => toggle("change")}>
@@ -125,7 +126,8 @@ function Named({ social, demo }: { social: MySocial; demo?: SocialDemo }) {
       </Fold>
 
       <Link
-        href="/friends"
+        href={board.href}
+        onClick={board.onClick}
         className="flex min-h-14 items-center gap-3 px-3 py-2.5 transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
       >
         <Trophy weight="duotone" className="size-5 shrink-0 text-muted-foreground" />
@@ -210,10 +212,14 @@ function Requests({ people, demo }: { people: Person[]; demo: boolean }) {
   );
 }
 
-function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; demo?: SocialDemo; handle: string }) {
+/**
+ * The friend link and a way to send it: the system share sheet where there
+ * is one, the clipboard where there is not (or it was dismissed).
+ */
+export function useShareFriendLink(handle: string, demoToken?: string) {
   const copy = useCopy().social;
-  const link = useFriendLink(!demo);
-  const token = demo?.token ?? link.data;
+  const link = useFriendLink(demoToken === undefined);
+  const token = demoToken ?? link.data;
   const share = async () => {
     if (!token) return;
     const url = `${window.location.origin}/f/${token}`;
@@ -230,6 +236,12 @@ function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; de
       () => toast.error(copy.actionFailed),
     );
   };
+  return { token, share, fresh: link.fresh };
+}
+
+function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; demo?: SocialDemo; handle: string }) {
+  const copy = useCopy().social;
+  const { token, share, fresh } = useShareFriendLink(handle, demo?.token);
   return (
     <div className="flex flex-col gap-2 pb-2.5">
       <div className="px-3 pt-0.5 pb-1.5">
@@ -264,10 +276,10 @@ function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; de
         <Button
           variant="ghost"
           size="sm"
-          disabled={!token || link.fresh.isPending}
+          disabled={!token || fresh.isPending}
           onClick={() => {
             if (demo) return;
-            link.fresh.mutate(undefined, {
+            fresh.mutate(undefined, {
               onSuccess: () => toast.success(copy.newLinkDone),
               onError: () => toast.error(copy.actionFailed),
             });
@@ -307,8 +319,25 @@ function BlockedFold({ demo }: { demo?: SocialDemo }) {
   );
 }
 
+/**
+ * A link from inside the account drawer to a page that offers a way back
+ * to it (lib/drawer-return): the page is asked with ?from=account, and a
+ * plain left click leaves the drawer's mark. Outside the drawer, the plain link.
+ */
+function useDrawerLink(path: string): { href: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void } {
+  const nav = useDrawerNav();
+  if (!nav) return { href: path };
+  return {
+    href: `${path}?${FROM_DRAWER_PARAM}=${FROM_DRAWER_VALUE}`,
+    onClick: (event) => {
+      if (isPlainClick(event)) nav.rememberReturn(path);
+    },
+  };
+}
+
 function PersonLink({ person }: { person: Person }) {
   const level = rankForXp(person.xp).level;
+  const link = useDrawerLink(`/u/${person.handle}`);
   // A hidden profile: the name they had, and nothing to open.
   if (person.hidden) {
     return (
@@ -319,7 +348,11 @@ function PersonLink({ person }: { person: Person }) {
     );
   }
   return (
-    <Link href={`/u/${person.handle}`} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1 hover:text-foreground">
+    <Link
+      href={link.href}
+      onClick={link.onClick}
+      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1 hover:text-foreground"
+    >
       <AvatarWithRank avatarId={person.avatarId} level={level} size={28} />
       <span className="truncate text-sm text-foreground">{person.handle}</span>
     </Link>

@@ -6,6 +6,7 @@ import { ADD_EMAIL_ANCHOR, Toggle } from "@/components/social/social-section";
 import { useEmailSettings, useSetEmailPref } from "@/hooks/use-profile";
 import type { EmailSettingsResponse, SwitchableKind } from "@/lib/email-kinds";
 import { cn } from "@/lib/utils";
+import { focusAddEmail, useDrawerNav } from "@/components/account-drawer-nav";
 
 /**
  * Email notices (lib/server/email): the address they go to, the verified
@@ -34,6 +35,7 @@ export function EmailSection({
   const copy = useCopy().email.settings;
   const query = useEmailSettings(!demo);
   const setPref = useSetEmailPref();
+  const nav = useDrawerNav();
   const settings = demo ?? query.data;
   if (!settings) return null;
 
@@ -54,11 +56,7 @@ export function EmailSection({
         <button
           type="button"
           className="flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
-          onClick={() => {
-            const target = document.getElementById(ADD_EMAIL_ANCHOR);
-            target?.scrollIntoView({ block: "center", behavior: "smooth" });
-            target?.querySelector("button")?.click();
-          }}
+          onClick={() => focusAddEmail(nav, ADD_EMAIL_ANCHOR)}
         >
           <EnvelopeSimple weight="duotone" className="size-5 shrink-0 text-muted-foreground" />
           <span className="flex min-w-0 flex-1 flex-col">

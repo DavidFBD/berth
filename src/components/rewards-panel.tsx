@@ -72,12 +72,6 @@ export function RewardsPanel({
   initialLedgerOpen?: boolean;
 } = {}) {
   const profile = useProfile();
-  const privy = usePrivyEmbeddedWallet();
-  // The account the email would attach to, by the one address rule. Its
-  // `mode` is also the gate: "external" is exactly the case with a wallet to
-  // sign with and no email session already in hand.
-  const account = useAccount(HOME_CHAIN);
-  const link = useLinkEmail(account.address);
   const setAvatar = useSetAvatar();
   const copy = useCopy();
   /**
@@ -228,6 +222,25 @@ export function RewardsPanel({
 
       <LedgerRow initialOpen={initialLedgerOpen} />
 
+      <AddEmailBlock hasEmail={hasEmail} />
+    </div>
+  );
+}
+
+/**
+ * A wallet account's way to add an email: asked for before the signature,
+ * then the code, then (when the email already has its own account) the
+ * merge. Renders nothing for an account that has an email or no wallet to
+ * sign with. Lives in the rewards panel and, on its own, on the first
+ * screen of a wallet account's drawer.
+ */
+export function AddEmailBlock({ hasEmail }: { hasEmail: boolean }) {
+  const privy = usePrivyEmbeddedWallet();
+  const account = useAccount(HOME_CHAIN);
+  const link = useLinkEmail(account.address);
+  const copy = useCopy();
+  return (
+    <>
       {/* The email is asked for BEFORE the signature, because being asked
           to sign for something you have not been told about yet is how the
           second attempt at this felt. The gate deliberately does NOT read
@@ -450,7 +463,7 @@ export function RewardsPanel({
           )}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -462,7 +475,7 @@ export function RewardsPanel({
  * tapped again. No accent here on purpose: the drawer's progress bar (and
  * the chosen face's ring) already spend it, and the brand allows one.
  */
-function Ladder({ xp }: { xp: number }) {
+export function Ladder({ xp }: { xp: number }) {
   const copy = useCopy();
   const rank = rankForXp(xp);
   const [picked, setPicked] = useState<number | null>(null);
@@ -549,7 +562,7 @@ function Ladder({ xp }: { xp: number }) {
  * perk, locked below INVITE_UNLOCK_LEVEL, full-size until the first friend
  * joins, then shrunk to make room for the earned/pending numbers.
  */
-function InviteCorner({ xp, code }: { xp: number; code: string | null }) {
+export function InviteCorner({ xp, code }: { xp: number; code: string | null }) {
   const panel = useReferralPanel(true);
   const copy = useCopy();
   const level = rankForXp(xp).level;
@@ -854,7 +867,7 @@ const LEDGER_DATE = new Intl.DateTimeFormat(undefined, {
  * The full ledger: every award, attributable after the fact. Folded by
  * default; the list only fetches while it's open.
  */
-function LedgerRow({ initialOpen = false }: { initialOpen?: boolean }) {
+export function LedgerRow({ initialOpen = false }: { initialOpen?: boolean }) {
   const [open, setOpen] = useState(initialOpen);
   const history = useXpHistory(open);
   const holds = useXpHolds(open);
