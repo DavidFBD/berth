@@ -1,31 +1,33 @@
 import { substanceToWeight } from "@/lib/news-judge";
 import { CASH_SYMBOL, eligibleKinds, type Nudge, type NudgeFacts, type NudgeKind } from "@/lib/nudge";
-import { cachedVerdict, fingerprint, type ChoiceQuestion, type NoulQuestion } from "@/lib/server/jev";
-import { NAME_BY_SYMBOL, gatherPosts } from "@/lib/server/x-column";
-import type { XPost } from "@/lib/x-feed";
+import { cachedVerdict, fingerprint, type ChoiceQuestion } from "@/lib/server/jev";
+import { NAMES, readCards } from "@/lib/server/news-read";
+import { forListing, type StoryCard } from "@/lib/news-stories";
 
 /**
  * Which one line to say, for one account, right now.
  *
- * Code first: `eligibleKinds` decides what is true of the account. Then one
- * Jev call picks among only those, with the news about held listings spelled
- * out as separate options, and a Noul asks whether any of that news is worth
- * interrupting someone for at all. A holder of NVIDIA is told about "Huang:
- * NVIDIA to sell twice as many chips next year" and not about a desk noting
- * the stock is up half a percent, which is the judgement the rules alone
- * cannot make.
+ * Code first: `eligibleKinds` decides what is true of the account, and
+ * which news about held listings is worth a line is code too, from the
+ * verdicts the news store already holds (lib/server/news-read): material
+ * news, or a new fact that more than one publisher or account carried. Jev
+ * read each story once at ingestion and is not asked about it again here;
+ * the "is any of this worth interrupting for" question this used to ask on
+ * every visit is gone. Then one Jev call picks among only the true lines,
+ * with the held news spelled out as separate options.
  *
  * With no Jev answer, or a low-confidence one, the eligible list's own order
  * decides, so the line is always a true thing and never a guess.
  */
 
-const VERSION = "nudge-1";
+const VERSION = "nudge-2";
 const NEWS_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Only posts Jev read as reporting a new fact or better qualify as news worth a line. */
 const NEWS_FLOOR = substanceToWeight(3);
 const MAX_NEWS_OPTIONS = 5;
 const CONFIDENCE_FLOOR = 0.35;
-const NEWS_WORTH_FLOOR = 0.5;
+/** A headline must be this surely about the listing to interrupt its owner (the column keeps one from 0.35). */
+const ABOUT_FLOOR = 0.7;
 
 /**
  * A ceiling on distinct uncached questions per instance per hour. The fact
@@ -58,7 +60,7 @@ const LINE_BRIEFS: Record<Exclude<NudgeKind, "heldNews">, string> = {
 function describe(facts: NudgeFacts): string[] {
   const names = facts.held
     .filter((symbol) => symbol !== CASH_SYMBOL)
-    .map((symbol) => NAME_BY_SYMBOL.get(symbol) ?? symbol);
+    .map((symbol) => NAMES.get(symbol) ?? symbol);
   return [
     names.length > 0 ? `They own: ${names.join(", ")}.` : "They own no stocks or funds yet.",
     facts.funds
@@ -71,65 +73,65 @@ function describe(facts: NudgeFacts): string[] {
   ];
 }
 
-function heldNewsFor(
-  facts: NudgeFacts,
-  posts: readonly XPost[],
-  substance: ReadonlyMap<string, number> | undefined,
-): XPost[] {
-  if (!substance) return [];
-  const now = Date.now();
-  return posts
-    .filter(
-      (post) =>
-        post.symbol !== CASH_SYMBOL &&
-        facts.held.includes(post.symbol) &&
-        now - post.publishedAt < NEWS_WINDOW_MS &&
-        (substance.get(post.id) ?? 0) >= NEWS_FLOOR,
-    )
-    .sort(
-      (a, b) =>
-        (substance.get(b.id) ?? 0) - (substance.get(a.id) ?? 0) ||
-        b.publishedAt - a.publishedAt,
-    )
-    .slice(0, MAX_NEWS_OPTIONS);
+/** Whether a stored story is worth a line to its owner: material, or a new fact carried by more than one. */
+export function worthALine(card: StoryCard): boolean {
+  if (card.substance === undefined || substanceToWeight(card.substance) < NEWS_FLOOR) return false;
+  if (card.kind === "article" && (card.about ?? 0) < ABOUT_FLOOR) return false;
+  if (card.verdict === "material") return true;
+  return card.verdict === "fact" && card.alsoReportedBy.length + card.alsoOnX.length > 0;
 }
 
-function toNudge(kind: NudgeKind, post?: XPost): Nudge | null {
+export function heldNewsFor(facts: NudgeFacts, cards: readonly StoryCard[], now = Date.now()): StoryCard[] {
+  const news: StoryCard[] = [];
+  for (const card of cards) {
+    if (now - card.publishedAt >= NEWS_WINDOW_MS) continue;
+    // Each held listing the story is about, with that listing's own reading.
+    for (const symbol of card.symbols) {
+      if (symbol === CASH_SYMBOL || !facts.held.includes(symbol)) continue;
+      const mine = forListing(card, symbol);
+      if (mine && worthALine(mine)) {
+        news.push(mine);
+        break;
+      }
+    }
+  }
+  return news.sort((a, b) => (b.substance ?? 0) - (a.substance ?? 0) || b.publishedAt - a.publishedAt).slice(0, MAX_NEWS_OPTIONS);
+}
+
+function toNudge(kind: NudgeKind, card?: StoryCard): Nudge | null {
   if (kind !== "heldNews") return { kind };
-  if (!post) return null;
-  return { kind, symbol: post.symbol, name: post.name, postUrl: post.url };
+  if (!card) return null;
+  return { kind, symbol: card.symbol, name: card.name, postUrl: card.url };
 }
 
 export async function pickNudge(facts: NudgeFacts): Promise<Nudge | null> {
-  const { posts, substance } = await gatherPosts();
-  const news = heldNewsFor(facts, posts, substance);
+  const { cards } = await readCards({ sinceMs: Date.now() - NEWS_WINDOW_MS }).catch(() => ({ cards: [] as StoryCard[] }));
+  const news = heldNewsFor(facts, cards);
   const kinds = eligibleKinds(facts, news.length > 0);
   if (kinds.length === 0) return null;
 
   const fallback = toNudge(kinds[0], news[0]);
-  if (kinds.length === 1 && kinds[0] !== "heldNews") return fallback;
+  if (kinds.length === 1) return fallback;
 
   const options: Record<string, string> = {};
-  const newsByOption = new Map<string, XPost>();
+  const newsByOption = new Map<string, StoryCard>();
   for (const kind of kinds) {
     if (kind !== "heldNews") {
       options[kind] = LINE_BRIEFS[kind];
       continue;
     }
-    news.forEach((post, index) => {
+    news.forEach((card, index) => {
       const key = `news${index}`;
-      newsByOption.set(key, post);
-      options[key] = `Tell them there is news today about ${post.name}, which they own: \`news.${key}\``;
+      newsByOption.set(key, card);
+      options[key] = `Tell them there is news today about ${card.name}, which they own: \`news.${key}\``;
     });
   }
 
   const state = {
     person: describe(facts),
-    news: Object.fromEntries(
-      [...newsByOption].map(([key, post]) => [key, `${post.name}: ${post.text}`]),
-    ),
+    news: Object.fromEntries([...newsByOption].map(([key, card]) => [key, `${card.name}: ${card.title}`])),
   };
-  const questions: { line: ChoiceQuestion; worth?: NoulQuestion } = {
+  const questions: { line: ChoiceQuestion } = {
     line: {
       type: "choice",
       instructions:
@@ -137,33 +139,17 @@ export async function pickNudge(facts: NudgeFacts): Promise<Nudge | null> {
       criteria: options,
     },
   };
-  if (newsByOption.size > 0) {
-    questions.worth = {
-      type: "noul",
-      instructions:
-        "Is any item in `news` important enough that someone who owns that company or fund would want to be told about it as soon as they open the app, rather than finding it later?",
-      criteria: {
-        true: "Material to an owner: earnings, guidance, a deal, a filing, regulation, a large move",
-        false: "Routine: a small move, commentary, or something that can wait",
-      },
-    };
-  }
 
   if (!withinBudget(fingerprint({ state, questions }))) return fallback;
   const answers = await cachedVerdict(VERSION, state, questions);
   if (!answers) return fallback;
 
-  const worth = answers.worth?.noul ?? 0;
   const ranked = Object.entries(answers.line.probabilities)
     .filter(([key]) => key in options)
-    .filter(([key]) => !newsByOption.has(key) || worth >= NEWS_WORTH_FLOOR)
     .sort((a, b) => b[1] - a[1]);
   const [chosen] = ranked[0] ?? [];
-  if (!chosen || answers.line.confidence < CONFIDENCE_FLOOR) {
-    // Unsure: the rules' own order, minus news Jev judged not worth saying.
-    const safe = kinds.find((kind) => kind !== "heldNews" || worth >= NEWS_WORTH_FLOOR);
-    return safe ? toNudge(safe, news[0]) : null;
-  }
-  const post = newsByOption.get(chosen);
-  return post ? toNudge("heldNews", post) : toNudge(chosen as NudgeKind);
+  // Unsure: the rules' own order.
+  if (!chosen || answers.line.confidence < CONFIDENCE_FLOOR) return fallback;
+  const card = newsByOption.get(chosen);
+  return card ? toNudge("heldNews", card) : toNudge(chosen as NudgeKind);
 }

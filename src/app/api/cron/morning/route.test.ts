@@ -12,6 +12,8 @@ const runWeeklySummaries = vi.fn();
 vi.mock("@/lib/server/weekly", () => ({ runWeeklySummaries: () => runWeeklySummaries() }));
 vi.mock("@/lib/server/staff/budgets", () => ({ runBudgetAlerts: async () => ({ low: 0, sent: 0, already: 0, failed: 0 }) }));
 const recordCronRun = vi.fn();
+// Never a real call to production from a test.
+vi.mock("@/lib/server/news-kick", () => ({ startNewsKick: async () => "started" }));
 vi.mock("@/lib/server/cron-runs", () => ({ recordCronRun: (...args: unknown[]) => recordCronRun(...args) }));
 
 import { GET } from "./route";

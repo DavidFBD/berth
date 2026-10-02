@@ -1,6 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { unstable_cache } from "next/cache";
+import { getSql } from "@/lib/server/db";
+import { dailyCap } from "@/lib/news-schedule";
+import { reserveNews, settleNews } from "@/lib/server/news-store";
 import { estimateTokens, jevCostMicros, meterSpend } from "@/lib/server/spend-meter";
 
 /**
@@ -22,7 +25,7 @@ import { estimateTokens, jevCostMicros, meterSpend } from "@/lib/server/spend-me
  * 2026-09-30; this line said three hundredths of a cent, a hundred times
  * too little). There is no balance endpoint: an empty credit shows only as
  * `[jev] answered 4xx` and the gatherings' "unanswered" lines. The real guard is
- * `cachedVerdict`: a post's verdict is asked for once and kept for weeks, so a
+ * `cachedVerdict`: a post's verdict is asked for once and kept in jev_answers, so a
  * refresh pays only for what is new since the last one. Every answered call
  * is metered by its size (lib/server/spend-meter), so the staff Budgets page
  * can say what the credit has spent since it was last read off TypeSafe's dashboard.
@@ -166,16 +169,37 @@ export function fingerprint(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24);
 }
 
-/** Two weeks. A verdict on a post does not change; the post ages out long before. */
+/** Two weeks, for the fallback cache only. */
 const VERDICT_SECONDS = 14 * 24 * 60 * 60;
 
+/** The stored answer for `key`, or undefined; throws when the store cannot be read. */
+async function storedAnswer(version: string, key: string): Promise<unknown> {
+  const rows = (await getSql().query(`select answer from jev_answers where fingerprint = $1 and version = $2`, [
+    key,
+    version,
+  ])) as { answer: unknown }[];
+  const answer = rows[0]?.answer;
+  return typeof answer === "string" ? JSON.parse(answer) : answer;
+}
+
+async function storeAnswer(version: string, key: string, answer: unknown): Promise<void> {
+  await getSql().query(
+    `insert into jev_answers (fingerprint, version, answer) values ($1, $2, $3::jsonb)
+     on conflict (fingerprint, version) do nothing`,
+    [key, version, JSON.stringify(answer)],
+  );
+}
+
 /**
- * `askJev`, remembered across requests and instances in Next's data cache.
+ * `askJev`, remembered for good in the database (jev_answers), keyed by the
+ * exact question and state, so an answer is paid for once and every reader
+ * after that reads it: restarts, deploys and cache evictions never pay
+ * again. It replaced a two week `unstable_cache` that any of those emptied.
  *
  * `version` belongs to the questions: change a rubric and bump it, or every
- * old verdict keeps answering the old question. A failed ask is NOT cached,
- * because `unstable_cache` would keep the undefined for two weeks; it throws
- * instead and the next refresh tries again.
+ * old verdict keeps answering the old question. A failed ask is never
+ * stored, so the next run tries again. If the database itself cannot be
+ * read, the old data cache stands in, so Jev is never asked on every read.
  */
 export async function cachedVerdict<Q extends Record<string, JevQuestion | undefined>>(
   version: string,
@@ -184,6 +208,35 @@ export async function cachedVerdict<Q extends Record<string, JevQuestion | undef
 ): Promise<AnswersFor<Q> | undefined> {
   if (!jevConfigured()) return undefined;
   const key = fingerprint({ state, questions });
+  let stored: unknown;
+  try {
+    stored = await storedAnswer(version, key);
+  } catch {
+    return fallbackVerdict(version, key, state, questions);
+  }
+  if (stored) return stored as AnswersFor<Q>;
+  if (cachedVerdictsOnly()) return undefined;
+  // Every ask comes out of the day's token cap (JEV_DAILY_TOKEN_CAP), reserved
+  // at its size before it is sent: past the cap, nothing is asked until tomorrow.
+  const tokens = estimateTokens(JSON.stringify({ model: MODEL, state, questions }));
+  const day = new Date().toISOString().slice(0, 10);
+  const reserved = await reserveNews("jev", day, tokens, dailyCap("jev")).catch(() => false);
+  if (!reserved) return undefined;
+  const answers = await askJev(state, questions);
+  await settleNews("jev", day, { reserved: tokens, used: answers ? tokens : 0, requests: answers ? 1 : 0 }).catch(() => undefined);
+  if (!answers) return undefined;
+  await storeAnswer(version, key, answers).catch((error) =>
+    console.warn("[jev] answer not stored", error instanceof Error ? error.message : error),
+  );
+  return answers;
+}
+
+async function fallbackVerdict<Q extends Record<string, JevQuestion | undefined>>(
+  version: string,
+  key: string,
+  state: unknown,
+  questions: Q,
+): Promise<AnswersFor<Q> | undefined> {
   try {
     return await unstable_cache(
       async () => {

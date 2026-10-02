@@ -1698,3 +1698,141 @@ create table if not exists wallet_session_revocations (
 );
 
 create index if not exists wallet_session_revocations_expires on wallet_session_revocations (expires_at);
+
+-- The news store (lib/server/news-store, lib/server/news-ingest): one row per
+-- distinct story, whichever sources carried it, so Jev judges a story once
+-- and every reader (the column, the moves, the first look, the nudge, the
+-- MCP tools) reads the same verdict. Source items fold into a story by
+-- canonical url, then normalised title, then close wording on a shared
+-- listing (lib/news-fold). Only the verbatim title, the publisher, the time
+-- and the link are ever shown: never a summary or an image from a third
+-- party. `symbols` mirrors story_listings for display; the index is there.
+create table if not exists stories (
+  id bigserial primary key,
+  fingerprint text not null unique,
+  kind text not null check (kind in ('article', 'post')),
+  title text not null,
+  url text not null,
+  publisher text not null,
+  lead_source_id bigint,
+  symbols text[] not null default '{}',
+  published_at timestamptz not null,
+  last_item_at timestamptz not null,
+  publisher_count int not null default 1,
+  hidden_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists stories_published on stories (published_at desc);
+
+-- story_sources: each source's own item. Idempotent on (source, source_id).
+-- `raw` carries what a card must show for an X post (author, avatar, counts)
+-- and nothing a card may not show. Marketaux rows exist only while its flag
+-- is on, and readers skip them until its display terms are settled.
+create table if not exists story_sources (
+  id bigserial primary key,
+  story_id bigint not null references stories(id) on delete cascade,
+  source text not null check (source in ('nasdaq', 'x', 'edgar', 'marketaux', 'finnhub')),
+  source_id text not null,
+  publisher text not null,
+  url text not null,
+  canonical_url text,
+  title text not null,
+  title_key text not null,
+  published_at timestamptz not null,
+  fetched_at timestamptz not null default now(),
+  raw jsonb,
+  unique (source, source_id)
+);
+
+create index if not exists story_sources_story on story_sources (story_id);
+-- Folding happens in memory over a run's fold index, which reads by time.
+create index if not exists story_sources_published on story_sources (published_at);
+
+create table if not exists story_listings (
+  story_id bigint not null references stories(id) on delete cascade,
+  symbol text not null,
+  tagged_by text not null check (tagged_by in ('feed', 'topic', 'jev')),
+  primary key (story_id, symbol)
+);
+
+create index if not exists story_listings_symbol on story_listings (symbol, story_id);
+
+-- story_verdicts: Jev's reading of one story about one listing, asked once
+-- per judge version and reused by every reader. `kept` is the column's own
+-- rule (lib/news-judge keepHeadline, readPostAnswers), stored so a reader
+-- never needs Jev.
+create table if not exists story_verdicts (
+  story_id bigint not null references stories(id) on delete cascade,
+  symbol text not null,
+  judge_version text not null,
+  about real,
+  substance real,
+  verdict text check (verdict in ('material', 'fact', 'analysis')),
+  kept boolean not null,
+  tokens int,
+  judged_at timestamptz not null default now(),
+  primary key (story_id, symbol, judge_version)
+);
+
+create index if not exists story_verdicts_judged on story_verdicts (judged_at desc);
+
+-- jev_answers: every Jev answer by the fingerprint of its exact question and
+-- state (lib/server/jev cachedVerdict). It replaced a two week data cache
+-- that an eviction or a deploy could empty, which then paid Jev again.
+create table if not exists jev_answers (
+  fingerprint text not null,
+  version text not null,
+  answer jsonb not null,
+  at timestamptz not null default now(),
+  primary key (fingerprint, version)
+);
+
+create index if not exists jev_answers_at on jev_answers (at);
+
+-- news_fetch_slots: the one on-demand ingest per New York slot of
+-- lib/x-schedule, claimed so two instances never both run it (as
+-- x_fetch_slots does for X), plus one refresh per slot from the button.
+create table if not exists news_fetch_slots (
+  source text not null,
+  slot text not null,
+  attempts int not null default 0,
+  claimed_at timestamptz,
+  ok boolean,
+  requests int,
+  primary key (source, slot)
+);
+
+-- news_budget: requests (or Jev tokens) per source per UTC day, reserved
+-- before they are sent, so each source's hard daily cap holds whatever the
+-- traffic (lib/news-schedule caps). A killed run leaves its reservation
+-- held, which errs toward spending less.
+create table if not exists news_budget (
+  source text not null,
+  day text not null,
+  used int not null default 0,
+  reserved int not null default 0,
+  requests int not null default 0,
+  primary key (source, day)
+);
+
+-- listing_events: dated facts about a listing, written by code, never by AI.
+-- Filings from SEC EDGAR now (public domain); earnings, dividends and splits
+-- only once a licensed source and the token's own mechanics are settled.
+-- `shown` is false for forms that are noise to a holder (Form 4, 144).
+create table if not exists listing_events (
+  id bigserial primary key,
+  symbol text not null,
+  kind text not null check (kind in ('earnings', 'filing', 'dividend', 'split')),
+  day date not null,
+  detail jsonb not null default '{}',
+  source text not null check (source in ('finnhub', 'edgar')),
+  source_ref text not null,
+  shown boolean not null default true,
+  first_seen_at timestamptz not null default now(),
+  updated_at timestamptz,
+  unique (symbol, kind, source_ref)
+);
+
+create index if not exists listing_events_day on listing_events (day, symbol);

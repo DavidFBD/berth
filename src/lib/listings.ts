@@ -429,3 +429,31 @@ const TOKEN_LISTING_ADDRESSES: ReadonlySet<string> = new Set(
 export function isTokenListingAddress(address: string): boolean {
   return TOKEN_LISTING_ADDRESSES.has(address.toLowerCase());
 }
+
+/**
+ * Each listed company's SEC Central Index Key, for its filings on EDGAR
+ * (lib/server/news-sources/edgar). Read from sec.gov/files/company_tickers.json
+ * on 2026-10-02 and checked against each company's name there. The funds are
+ * trusts whose filings say nothing to a holder of the token, so they have none.
+ */
+export const SEC_CIK_BY_SYMBOL: Readonly<Record<string, number>> = {
+  SPCX: 1181412,
+  NVDA: 1045810,
+  GME: 1326380,
+  MSTR: 1050446,
+  AAPL: 320193,
+  TSLA: 1318605,
+  MU: 723125,
+  SNDK: 2023554,
+  GOOGL: 1652044,
+  AMZN: 1018724,
+  MSFT: 789019,
+  META: 1326801,
+  CRCL: 1876042,
+  COIN: 1679788,
+  PLTR: 1321655,
+  TSM: 1046179,
+  AMD: 2488,
+  INTC: 50863,
+  BABA: 1577552,
+};

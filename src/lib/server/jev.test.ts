@@ -21,6 +21,10 @@ vi.mock("next/cache", () => ({
 }));
 
 const { cachedVerdict, withCachedVerdictsOnly, cachedVerdictsOnly } = await import("./jev");
+const { setSqlClient } = await import("@/lib/server/db");
+// Never the real database, whatever DATABASE_URL says: a store that cannot be
+// read, so cachedVerdict takes its data-cache fallback, which this file tests.
+setSqlClient({ query: async () => Promise.reject(new Error("no database in this test")) });
 
 const QUESTIONS = { about: { type: "noul" as const, instructions: "Is it about NVIDIA?" } };
 const fetchMock = vi.fn(async () => Response.json({ answers: { about: { type: "noul", noul: 0.9 } } }));

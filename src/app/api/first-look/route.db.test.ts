@@ -1,14 +1,29 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstLookResponse } from "@/lib/first-look";
+import { setSqlClient, type SqlClient } from "@/lib/server/db";
+import { makeTestDb } from "@/lib/server/pglite-test-db";
+import { TOKEN_LISTINGS } from "@/lib/listings";
 
 /**
- * /api/first-look end to end over the real headline judge, with the
- * network stubbed: it never calls Jev; a listing counts as looked at only
- * when Jev already read its headlines (a cold cache is no look, never a
- * quiet one); "in today's news" needs a headline about the company,
- * reporting something, not shaped like advice; a large move comes from the
- * marks with no post; and nothing at all without a key.
+ * /api/first-look end to end over the news store and the real headline
+ * judge, with the network stubbed: it never calls Jev; a listing counts as
+ * looked at only when ingestion already had Jev read its headlines (an
+ * empty store is no look, never a quiet one); "in today's news" needs a
+ * headline about the company, reporting something, not shaped like advice;
+ * a large move comes from the marks with no post; and nothing at all
+ * without a key.
  */
+
+let sql: SqlClient;
+let close: () => Promise<void>;
+beforeAll(async () => {
+  ({ sql, close } = await makeTestDb());
+  setSqlClient(sql);
+});
+afterAll(async () => {
+  setSqlClient(null);
+  await close();
+});
 
 // Noon in New York, so every fixture headline is from today there.
 vi.useFakeTimers({ toFake: ["Date"] });
@@ -46,7 +61,7 @@ function rss(items: { title: string; hoursAgo: number }[]): string {
   return `<?xml version="1.0"?><rss><channel>${items
     .map(
       (item, index) =>
-        `<item><title>${item.title}</title><link>https://www.nasdaq.com/articles/${index}</link><pubDate>${new Date(NOW - item.hoursAgo * HOUR).toUTCString()}</pubDate><dc:creator>Reuters</dc:creator></item>`,
+        `<item><title>${item.title}</title><link>https://www.nasdaq.com/articles/${index}-${encodeURIComponent(item.title)}</link><pubDate>${new Date(NOW - item.hoursAgo * HOUR).toUTCString()}</pubDate><dc:creator>Reuters</dc:creator></item>`,
     )
     .join("")}</channel></rss>`;
 }
@@ -78,9 +93,10 @@ const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit
 });
 
 const { GET } = await import("./route");
-const { loadListingNews } = await import("@/lib/server/listing-news");
+const { ingestNews } = await import("@/lib/server/news-ingest");
 
-beforeEach(() => {
+beforeEach(async () => {
+  for (const table of ["stories", "jev_answers", "news_budget"]) await sql.query(`delete from ${table}`);
   store.clear();
   jevCalls.mockClear();
   vi.stubGlobal("fetch", fetchMock);
@@ -99,9 +115,12 @@ async function look(query = ""): Promise<FirstLookResponse> {
   return (await (await GET(new Request(`http://localhost/api/first-look${query}`))).json()) as FirstLookResponse;
 }
 
-/** The news column's own reads, which are what pay Jev. */
+/** The news store's ingestion, which is what pays Jev. */
 async function columnReads(...symbols: string[]) {
-  for (const symbol of symbols) await loadListingNews(symbol);
+  await ingestNews({
+    phase: "slot",
+    deps: { listings: TOKEN_LISTINGS.filter((listing) => symbols.includes(listing.symbol)), fetcher: fetchMock as typeof fetch, edgarPhases: [] },
+  });
 }
 
 describe("GET /api/first-look", () => {
@@ -128,10 +147,20 @@ describe("GET /api/first-look", () => {
     expect(JSON.stringify(body)).not.toMatch(/Nvidia agrees|Conviction|Reuters|nasdaq\.com/);
   });
 
-  it("reads the first stock card's stock when asked, and leaves out a feed that failed", async () => {
+  it("reads the first stock card's stock when asked, and a feed that failed is no look", async () => {
     expect(Object.keys((await look("?also=AMZN")).looks)).toEqual(["SPY", "NVDA", "AAPL", "TSLA", "AMZN"]);
+    await columnReads("MSFT");
     const body = await look("?also=MSFT");
-    expect(body.looks.MSFT).toBeUndefined();
+    expect(body.looks.MSFT).toEqual({ looked: false, inNews: false });
+  });
+
+  it("leaves out every listing when the store cannot be read", async () => {
+    setSqlClient({ query: async () => Promise.reject(new Error("down")) });
+    try {
+      expect((await look()).looks).toEqual({});
+    } finally {
+      setSqlClient(sql);
+    }
   });
 
   it("does not log its cache misses as Jev leaving questions unanswered", async () => {

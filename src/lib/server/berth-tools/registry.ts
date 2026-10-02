@@ -11,6 +11,7 @@ import { loadListingNews } from "@/lib/server/listing-news";
 import { loadListingX } from "@/lib/server/listing-x";
 import { gatherPosts } from "@/lib/server/x-column";
 import { loadMoves } from "@/lib/server/moves";
+import { loadFilings } from "@/lib/server/news-read";
 import { SCOPE_DRAFT, SCOPE_READ } from "@/lib/server/oauth/config";
 import { loadOrderLog } from "@/lib/server/order-marks";
 import { limitOrdersOn } from "@/lib/server/limit-orders";
@@ -193,24 +194,23 @@ const getListing = defineTool({
   name: "get_listing",
   title: "Look at one listing",
   description:
-    "One listing in detail: its price, its recent daily closes and change, whether its last move was large for it and the post that reported it, recent headlines, and the most substantial recent posts on X about it (read and ranked by Jev, a model by TypeSafe).",
+    "One listing in detail: its price, its recent daily closes and change, whether its last move was large for it and the post that reported it, recent headlines, its latest SEC filings, and the most substantial recent posts on X about it (read and ranked by Jev, a model by TypeSafe).",
   input: z.object({ listing: LISTING_ARG }),
   annotations: { title: "Look at one listing", ...READ_ONLY, openWorldHint: true },
   scope: null,
   run: async ({ listing: query }, ctx) => {
     const listing = findTokenListing(query);
     if (!listing) return unknownListing(query);
-    // One X gathering and one performance read, shared by the moves and the column.
-    const feed = gatherPosts();
+    // One performance read, shared by the moves and the price lines.
     const performanceRead = loadPerformance();
-    feed.catch(() => undefined);
     performanceRead.catch(() => undefined);
-    const [prices, performance, moves, news, posts] = await Promise.all([
+    const [prices, performance, moves, news, posts, filings] = await Promise.all([
       liveListingPrices().catch(() => ({}) as Record<string, number>),
       performanceRead.catch(() => undefined),
-      loadMoves({ performance: performanceRead, feed }).catch(() => ({ moves: [] })),
+      loadMoves({ performance: performanceRead }).catch(() => ({ moves: [] })),
       loadListingNews(listing.symbol).catch(() => ({ items: [] })),
-      loadListingX(listing.symbol, feed).catch(() => ({ items: [], reserve: [] })),
+      loadListingX(listing.symbol, gatherPosts()).catch(() => ({ items: [], reserve: [] })),
+      loadFilings(listing.symbol).catch(() => []),
     ]);
     const entry = performance?.performance[listing.symbol];
     const out = [`${named(listing)}. ${listing.issuerName}.`, `Price now: ${usd(prices[listing.symbol])}.`];
@@ -234,6 +234,10 @@ const getListing = defineTool({
     if (news.items.length > 0) {
       out.push("", "Headlines:");
       for (const item of news.items.slice(0, 5)) out.push(`${said(ctx, "news", item.title)} (${said(ctx, "news", item.source)}, ${ago(item.publishedAt)}${readAs(item.verdict)}) ${said(ctx, "news", item.url)}`);
+    }
+    if (filings.length > 0) {
+      out.push("", "Filed with the SEC (public record, from EDGAR):");
+      for (const filing of filings.slice(0, 3)) out.push(`Form ${said(ctx, "news", filing.form ?? "")}, ${day(filing.day)}${filing.url ? ` ${said(ctx, "news", filing.url)}` : ""}`);
     }
     if (posts.items.length > 0) {
       out.push("", "On X:");

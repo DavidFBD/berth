@@ -280,8 +280,7 @@ export type Copy = {
   boardYours: string;
   boardMovers: string;
   boardAll: (count: number) => string;
-  newsMorePosts: string;
-  newsMoreHeadlines: string;
+  newsMoreStories: string;
   /** The Ask card's fake field and the phone's docked one. */
   askPlaceholder: string;
   askFine: string;
@@ -400,7 +399,6 @@ export type Copy = {
 
   /* — the newsfeed: what is being written about the listings — */
   newsTitle: string;
-  newsHint: string;
   /** Shown when every feed is quiet or unreachable. Never says "error". */
   newsEmpty: string;
   /** The chip above a filtered river: "NVIDIA only". */
@@ -411,11 +409,6 @@ export type Copy = {
   newsEmptyFor: (name: string) => string;
   /** Follows the listing's name: "NVIDIA The Motley Fool, 2 hours ago". */
   newsByline: (source: string, when: string) => string;
-  /** The two ways of reading the column. Both are nouns, not verbs. */
-  newsTabPosts: string;
-  newsTabHeadlines: string;
-  /** Names what the tabs switch, for a screen reader. */
-  newsTabsLabel: string;
   /** The column's refresh control, for a screen reader, and while it works. */
   newsRefresh: string;
   newsRefreshing: string;
@@ -423,11 +416,6 @@ export type Copy = {
   newsUpdated: (when: string) => string;
   /** After a refresh the throttle answered from the cache: nothing newer yet. */
   newsUpToDate: (when: string) => string;
-  /** The posts tab's own hint, which promises something different. */
-  postsHint: string;
-  /** Shown when the accounts we follow have been quiet. */
-  postsEmpty: string;
-  postsEmptyFor: (name: string) => string;
   /**
    * Between the author's name and the time: "NVIDIA @nvidia, 2 hours ago".
    * Its own string because on a narrow row it gives way first, comma and
@@ -459,12 +447,6 @@ export type Copy = {
    * not scraped. The counts are real, from this refresh; see x-column.
    */
   jevCuratedBy: string;
-  jevCuration: (seen: string, accounts: string, read: string, kept: string) => string;
-  /** What Jev is, first line of the (i). */
-  jevAbout: string;
-  /** The same (i) on the headlines tab, with what Jev read this time. */
-  jevAboutHeadlines: string;
-  jevHeadlineCuration: (read: string, kept: string) => string;
   /** The link out to its maker, inside the (i). */
   jevLinkLabel: string;
   /** Jev's reading of one post, on its card. Absent when Jev did not read it. */
@@ -473,6 +455,44 @@ export type Copy = {
   jevVerdictAnalysis: string;
   /** The chip's tooltip and accessible name: "Jev reads this as new fact". */
   jevVerdictLabel: (verdict: string) => string;
+
+  /* — the news column's sections (lib/news-stories) — */
+  /** The column's hint, now one list of stories from every source. */
+  newsStoriesHint: string;
+  /** The (i): what Jev does with a story. */
+  jevAboutStories: string;
+  /** Under it, the last 24 hours' real counts across every source. */
+  jevReadKept: (read: string, kept: string) => string;
+  /** The first section, for someone who owns something. */
+  newsForWhatYouOwn: string;
+  /** Dated lines about holdings: "Coming up" for dates ahead, "Recently filed" when there are only filings. */
+  newsComingUp: string;
+  newsRecentlyFiled: string;
+  /** Everything else, as the river always was. */
+  newsAcrossBerth: string;
+  /** When Jev read stories about every holding and none is news. */
+  quietDayTitle: string;
+  /** `names` are the holdings Jev read about and found nothing, in the order held. The window is 36 hours. */
+  quietDayBody: (names: readonly string[]) => string;
+  /** Beside it, the holdings Jev has read nothing about yet. */
+  quietDayNotRead: (names: readonly string[]) => string;
+  /** When Jev has read nothing about any holding yet: never "quiet", which nobody checked. */
+  quietDayUnjudged: string;
+  /** When the store could not be read. Never a quiet day. */
+  newsUnavailable: string;
+  /** Before the publishers a post's story also came from, each a link. */
+  alsoReportedByPrefix: string;
+  /** Under a story other publishers carried too; opens the list of them. */
+  alsoReportedBy: (count: number) => string;
+  /** Before the X accounts that posted the same story, each a link. */
+  alsoOnX: string;
+  /**
+   * A filing from SEC EDGAR, written by code. `report` is which kind
+   * (lib/news-schedule SHOWN_FORMS), `date` the reader's own long date.
+   */
+  eventFiling: (name: string, report: "report" | "quarterly" | "annual", date: string) => string;
+  /** The link beside a filing line. */
+  eventReadOnSec: string;
 
   /* — cash: idle dollars in the Treasury ETF token — */
   cashTitle: string;
@@ -2277,6 +2297,13 @@ function orList(items: readonly string[]): string {
   return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
 }
 
+/** Names joined for a sentence that says "nothing about": "NVIDIA, Apple or Tesla", "NVIDIA, Apple or 2 others". */
+function orNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length <= 3) return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+  return `${names[0]}, ${names[1]} or ${names.length - 2} others`;
+}
+
 export const COPY: Copy = {
   brand: "Berth",
   tagline: "A place to tie up.",
@@ -2416,7 +2443,7 @@ export const COPY: Copy = {
     addMoneySub: "Choose how to pay. What you add lands in your account, ready to buy with.",
     moreLabel: "More on Berth",
     moreBoardSub: "Every stock and fund, with today's moves.",
-    moreNewsSub: "Posts and headlines about the stocks on Berth, read by Jev.",
+    moreNewsSub: "Stories about the stocks on Berth, each read by Jev.",
     moreAiSub: "Let Claude, ChatGPT or Grok read your account.",
   },
   firstPath: {
@@ -2529,8 +2556,7 @@ export const COPY: Copy = {
   boardYours: "Yours",
   boardMovers: "Moving most today",
   boardAll: (count) => `All ${count} stocks and funds`,
-  newsMorePosts: "More posts",
-  newsMoreHeadlines: "More headlines",
+  newsMoreStories: "More stories",
   askPlaceholder: "Ask about your account",
   askFine: "Facts, not advice. You sign every order.",
   askSuggestions: ["What moved today?", "Am I ahead of Gold?", "Buy $5 of NVIDIA"],
@@ -2620,24 +2646,15 @@ export const COPY: Copy = {
   },
 
   newsTitle: "In the news",
-  newsHint:
-    "Headlines about the stocks and funds on the board. Tapping one opens the publisher's own page.",
   newsEmpty: "Nothing new about these right now.",
   newsFilteredTo: (name) => `${name} only`,
   newsShowAll: "Show all",
   newsEmptyFor: (name) => `Nothing new about ${name} right now.`,
   newsByline: (source, when) => `${source}, ${when}`,
-  newsTabPosts: "Posts",
-  newsTabHeadlines: "Headlines",
-  newsTabsLabel: "What to read",
   newsRefresh: "Refresh the news",
   newsRefreshing: "Refreshing the news",
   newsUpdated: (when) => `Updated ${when}`,
   newsUpToDate: (when) => `Up to date, updated ${when}`,
-  postsHint:
-    "What the companies and the market desks are posting on X. Tapping one opens the post. New posts come in a few times a day. You can also ask for them. The posts you have not seen yet are marked New.",
-  postsEmpty: "The accounts we follow have been quiet.",
-  postsEmptyFor: (name) => `Nothing about ${name} on X right now.`,
   postsHandle: (handle) => `@${handle},`,
   postNewToYou: "New",
   postNewToYouLabel: "You have not seen this post here before",
@@ -3011,17 +3028,36 @@ export const COPY: Copy = {
   ledgerHoldDue: (date) => `on ${date}`,
 
   jevCuratedBy: "Live curation by Jev",
-  jevCuration: (seen, accounts, read, kept) =>
-    `X returned ${seen} posts from ${accounts} accounts this week. Jev read ${read} and kept ${kept}.`,
-  jevAbout: "Jev is a model by TypeSafe. It reads each post before it is shown, and keeps the ones that report something.",
-  jevAboutHeadlines:
-    "Jev is a model by TypeSafe. It reads each headline before it is shown, and keeps the ones mainly about the listing that report something.",
-  jevHeadlineCuration: (read, kept) => `Jev read the newest ${read} headlines and kept ${kept}.`,
   jevLinkLabel: "About Jev, by TypeSafe",
   jevVerdictMaterial: "Material news",
   jevVerdictFact: "New fact",
   jevVerdictAnalysis: "Analysis",
   jevVerdictLabel: (verdict) => `Jev reads this as ${verdict.toLowerCase()}`,
+
+  newsStoriesHint:
+    "Stories about the stocks and funds on Berth, from the publishers, the companies' own accounts and the SEC. Each story shows once, from its first source, with who else reported it. Tapping a headline opens the publisher's own page.",
+  jevAboutStories:
+    "Jev is a model by TypeSafe. It reads each story once, and keeps the ones that are about the company or fund and report something.",
+  jevReadKept: (read, kept) => `Jev read ${read} stories in the last day and kept ${kept}.`,
+  newsForWhatYouOwn: "For what you own",
+  newsComingUp: "Coming up",
+  newsRecentlyFiled: "Recently filed",
+  newsAcrossBerth: "Across Berth",
+  quietDayTitle: "Quiet day for what you own.",
+  quietDayBody: (names) => `Jev found nothing it reads as news about ${orNames(names)} in the last day and a half.`,
+  quietDayNotRead: (names) => `It has not read anything about ${orNames(names)} yet.`,
+  quietDayUnjudged: "Jev has not read the latest stories about what you own yet.",
+  newsUnavailable: "The news cannot be read right now.",
+  alsoReportedByPrefix: "Also reported by",
+  alsoReportedBy: (count) => (count === 1 ? "Also reported by one other" : `Also reported by ${count} others`),
+  alsoOnX: "Also on X:",
+  eventFiling: (name, report, date) =>
+    report === "quarterly"
+      ? `${name} filed its quarterly report with the SEC on ${date}.`
+      : report === "annual"
+        ? `${name} filed its annual report with the SEC on ${date}.`
+        : `${name} filed a report with the SEC on ${date}.`,
+  eventReadOnSec: "Read it on sec.gov",
 
   nudgeAddFunds: "Your account is empty. Add money by card, bank or crypto whenever you are ready.",
   nudgeAddFundsAction: "Add money",

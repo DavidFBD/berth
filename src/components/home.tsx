@@ -592,7 +592,12 @@ function SignedInHome() {
           title={copy.newsTitle}
           description={copy.calmHome.moreNewsSub}
         >
-          <NewsFeed filter={newsFilter} onClearFilter={() => setNewsFilter(null)} />
+          <NewsFeed
+            filter={newsFilter}
+            onClearFilter={() => setNewsFilter(null)}
+            // The sections for what you own; the symbols stay in the browser (app/api/news).
+            held={holdings.settled ? stocksHeld.map((holding) => holding.listing.symbol) : undefined}
+          />
         </SectionDrawer>
         {assistantReachable && (
           <SectionDrawer open={aiOpen} onOpenChange={setAiOpen} title={copy.assistantTitle} description={copy.calmHome.moreAiSub}>

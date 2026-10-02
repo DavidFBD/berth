@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkCronAuth } from "@/lib/server/cron-auth";
 import { recordCronRun } from "@/lib/server/cron-runs";
+import { startNewsKick } from "@/lib/server/news-kick";
 import { runMorning } from "@/lib/server/morning";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +25,12 @@ export async function GET(request: NextRequest) {
     );
   }
   const startedAt = new Date();
+  // The news store runs beside this, in its own function (app/api/cron/news):
+  // started, not awaited, so this run keeps its whole budget.
+  const kick = startNewsKick(request, "morning");
   const summary = await runMorning();
-  console.log("[cron/morning]", JSON.stringify(summary));
+  const news = await kick;
+  console.log("[cron/morning]", JSON.stringify({ ...summary, news }));
   // The staff Health page reads it back (lib/server/cron-runs).
   await recordCronRun("morning", startedAt, !summary.failed, summary);
   return NextResponse.json(summary, { status: summary.failed ? 500 : 200 });

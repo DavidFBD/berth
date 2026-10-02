@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowClockwise,
   ArrowUpRight,
+  CaretDown,
   ChatCircle,
   Heart,
   Repeat,
@@ -17,20 +18,16 @@ import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
-import { useListingNews } from "@/hooks/use-listing-news";
-import { useListingX } from "@/hooks/use-listing-x";
+import { useNews } from "@/hooks/use-news";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useRotatingFeed } from "@/hooks/use-rotating-feed";
 import { useSeenPosts } from "@/hooks/use-seen-posts";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT } from "@/lib/motion";
 import { formatTimeAgo } from "@/lib/news";
-import { formatCount, newestFirst, type Verdict } from "@/lib/x-feed";
-import {
-  changeDirection,
-  formatPercentChange,
-  type ChangeDirection,
-} from "@/lib/performance";
+import { heldEvents, ownedState, type EventCard, type StoryCard } from "@/lib/news-stories";
+import { formatCount, type Verdict } from "@/lib/x-feed";
+import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 
 /** Text colour per direction, matching the board's. */
 const TONE: Record<ChangeDirection, string> = {
@@ -39,11 +36,8 @@ const TONE: Record<ChangeDirection, string> = {
   flat: "text-muted-foreground",
 };
 
-const LISTING_BY_SYMBOL = new Map(
-  TOKEN_LISTINGS.map((listing) => [listing.symbol, listing]),
-);
+const LISTING_BY_SYMBOL = new Map(TOKEN_LISTINGS.map((listing) => [listing.symbol, listing]));
 
-/** The river settles one card after another rather than all at once. */
 const LIST = {
   hidden: {},
   shown: { transition: { staggerChildren: 0.03 } },
@@ -52,23 +46,17 @@ const LIST = {
 const CARD = {
   hidden: { opacity: 0, y: 8 },
   shown: { opacity: 1, y: 0, transition: { duration: 0.22, ease: EASE_LIFT } },
-  // A rotated-out card fades where it stands while the rest close up under it.
   leave: { opacity: 0, transition: { duration: 0.2, ease: EASE_LIFT } },
 };
-/** A rotated-in card arrives slower than the first settle: it is news, not layout. */
 const ARRIVE = { duration: 0.5, ease: EASE_LIFT };
 
 /** Where Jev's name links: its maker, where the claim can be checked. */
 const JEV_URL = "https://typesafe.ai";
 
-/** Cards a collapsible column shows closed, and open. */
 const COLLAPSED_LIMIT = 2;
 const EXPANDED_LIMIT = 8;
 
-/**
- * The time now, again every half minute, so "Updated 3 minutes ago" and the
- * cards' own ages keep up with a column left open.
- */
+/** The time now, again every half minute, so the ages keep up with a column left open. */
 function useClock(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -78,33 +66,40 @@ function useClock(): number {
   return now;
 }
 
-/** Posts lead, because they are the livelier half and the reason to look. */
-type Tab = "posts" | "headlines";
+/** An ISO day in the reader's own long form: "Tuesday, September 29". */
+function longDate(day: string): string {
+  // English, as the sentence around it is.
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  });
+}
+
+const PAD = "px-[18px] lg:px-6";
 
 /**
- * What is being said about the listings, newest first, in two registers.
+ * What is being written about the listings, as one list of stories: each
+ * story once, from its most primary source, with who else reported it
+ * (lib/news-stories). For someone who owns something, three sections:
  *
- * **Posts** is X: the companies' own accounts and twenty-seven market desks,
- * whitelisted, because a cashtag search returns watchlist spam and
- * copypasta. It leads, since a wire story is usually two hours old by the
- * time Nasdaq carries it and a post is minutes old.
+ *   For what you own   at most five stories about holdings from the last
+ *                      36 hours, material first; or the quiet day's line,
+ *                      naming the holdings Jev found nothing about.
+ *   Coming up          dated lines about holdings, written by code: SEC
+ *                      filings now, "Recently filed" while that is all
+ *                      there is.
+ *   Across Berth       everything else, as the river always was.
  *
- * **Headlines** is the original river of publisher stories, unchanged.
+ * Someone who owns nothing sees only the river. `held` never leaves the
+ * browser: the route answers the same for everyone and the sections are
+ * chosen here.
  *
- * Neither ever shows the article or unfurls a link preview: the words belong
- * to whoever wrote them, and every card leaves the app, which the mark in
- * the corner says. A post additionally carries its author's name, handle and
- * avatar and links to the post itself, which is what X asks of anyone
- * displaying one outside an embed. Its text is never trimmed to fit for the
- * same reason, so the card clamps and the link finishes the sentence.
- *
- * `filter` narrows both tabs to one listing, which the board sets from a row
- * on a desktop. Each list is keyed on the tab and the filter together, so
- * either change plays as one swap rather than twelve independent ones.
- *
- * Silence is not failure. A quiet hour, a stale feed, an expired token and a
- * blocked request all end here as the same calm line, because none of them
- * is something a reader can act on.
+ * A headline shows its title, publisher and time and links out; never the
+ * article, a summary or an image. A post shows what X asks of a post
+ * outside an embed: name, handle, avatar, full text, a link. Neither ever
+ * sits beside a Buy button.
  */
 export function NewsFeed({
   filter,
@@ -112,139 +107,102 @@ export function NewsFeed({
   limit: limitProp,
   fill = false,
   collapsible = false,
+  held,
 }: {
   filter?: TokenListing | null;
   onClearFilter?: () => void;
-  /**
-   * Fewer cards at once, for the welcome screen, where the column is a
-   * window on the market beside the way in and not the page. The cards past
-   * the limit join the rotation rather than being dropped.
-   */
+  /** Fewer cards at once in the river; the rest join the rotation. */
   limit?: number;
-  /**
-   * Take the height the grid row gives it instead of setting it. With
-   * `contain: size` the column contributes nothing to the row's height, so
-   * the row is as tall as its neighbour (the board) and the column fills
-   * exactly that, clipping at its bottom edge. Only where the column sits
-   * beside something in the same row: from 1280px. Below that it stacks,
-   * and a contained column would collapse to nothing.
-   */
+  /** Take the height the grid row gives it (see the board's column, from 1280px). */
   fill?: boolean;
-  /**
-   * Two cards, then "More posts" (or headlines) opens eight. The board's
-   * column, where the news is one section among several.
-   */
+  /** Two cards, then "More stories" opens eight. */
   collapsible?: boolean;
+  /** The listings this person holds, cash aside; absent or empty for someone who owns nothing. */
+  held?: readonly string[];
 }) {
   const copy = useCopy();
-  const [tab, setTab] = useState<Tab>("posts");
   const [open, toggle, listId] = useDisclosure("news");
+  const sectionId = useId();
   const limit = collapsible ? (open ? EXPANDED_LIMIT : COLLAPSED_LIMIT) : limitProp;
-  const news = useListingNews(filter?.symbol);
-  const posts = useListingX(filter?.symbol);
+  const news = useNews(filter?.symbol);
   const performance = useListingPerformance();
   const now = useClock();
-  const refreshing = posts.isRefreshing || news.isRefreshing;
-  // What "Updated" said when refresh was pressed, per tab. If a press comes
-  // back with the same time, the throttle answered from the shared cache:
-  // there is nothing newer, and the line says so rather than looking stuck.
-  const [pressed, setPressed] = useState<{ at: number; posts?: number; news?: number } | null>(null);
+  const [pressed, setPressed] = useState<{ at: number; updatedAt?: number } | null>(null);
+  const refreshing = news.isRefreshing;
   const refresh = () => {
-    setPressed({ at: Date.now(), posts: posts.updatedAt, news: news.updatedAt });
-    void Promise.all([posts.refresh(), news.refresh()]);
+    setPressed({ at: Date.now(), updatedAt: news.data.updatedAt });
+    void news.refresh();
   };
-  // Posts turn slowly through everything Jev kept this refresh; headlines
-  // and the loading state stand still.
-  // The ranking chose these; they start newest first (lib/x-feed), and the
-  // rotation then brings each new card in at the top without re-sorting.
-  const shownPosts = newestFirst(limit ? posts.items.slice(0, limit) : posts.items);
-  const reservePosts = limit ? [...posts.items.slice(limit), ...posts.reserve] : posts.reserve;
-  const river = useRotatingFeed(shownPosts, reservePosts, tab === "posts");
-  // "New" on the cards this browser has not been shown before (lib/seen-posts).
-  const seen = useSeenPosts(
-    posts.items.concat(posts.reserve),
-    river.visible,
-    tab === "posts",
-    river.node,
+
+  const owner = !filter && held !== undefined && held.length > 0;
+  const owned = useMemo(
+    () => (owner ? ownedState({ cards: news.data.owned, held: held!, read: news.data.read, now }) : undefined),
+    // `now` moves every half minute; the state may move with it.
+    [owner, news.data.owned, news.data.read, held, now],
   );
-  const headlines = limit ? news.items.slice(0, limit) : news.items;
-  const updatedAt = tab === "posts" ? posts.updatedAt : news.updatedAt;
+  const shownOwned = owned?.kind === "stories" ? owned.stories : [];
+  const events = owner ? heldEvents(news.data.events, held!, new Date(now).toISOString().slice(0, 10)) : [];
+  const ownedIds = new Set(shownOwned.map((card) => card.storyId));
+  const riverAll = news.data.stories.filter((card) => !ownedIds.has(card.storyId));
+  const reserveAll = news.data.reserve.filter((card) => !ownedIds.has(card.storyId));
+  const shownRiver = limit ? riverAll.slice(0, limit) : riverAll;
+  const reserve = limit ? [...riverAll.slice(limit), ...reserveAll] : reserveAll;
+  const { visible: rotated, ref: riverRef, handlers: riverHandlers, node: riverNode } = useRotatingFeed(shownRiver, reserve, true);
+  const seen = useSeenPosts(riverAll.concat(reserveAll), rotated, true, riverNode);
+
+  const updatedAt = news.data.updatedAt;
   const upToDate =
-    pressed !== null &&
-    !refreshing &&
-    updatedAt !== undefined &&
-    updatedAt === (tab === "posts" ? pressed.posts : pressed.news) &&
-    now - pressed.at < 60_000;
+    pressed !== null && !refreshing && updatedAt !== undefined && updatedAt === pressed.updatedAt && now - pressed.at < 60_000;
   const verdictWord: Record<Verdict, string> = {
     material: copy.jevVerdictMaterial,
     fact: copy.jevVerdictFact,
     analysis: copy.jevVerdictAnalysis,
   };
   const count = (value: number) => value.toLocaleString("en-US");
+  const nameOf = (symbol: string) => LISTING_BY_SYMBOL.get(symbol)?.name ?? symbol;
+  const judged = news.data.judged;
 
-  const showing = tab === "posts" ? posts : news;
-  /** Jev read what this tab shows, so its credit line stands above it. */
-  const curated = tab === "posts" ? posts.curation !== undefined : news.judged !== undefined;
   const verdictChip = (verdict: Verdict) => (
     <span
       title={copy.jevVerdictLabel(verdictWord[verdict])}
-      aria-label={copy.jevVerdictLabel(verdictWord[verdict])}
       className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground"
     >
-      <JevMark className="size-2.5" />
-      {verdictWord[verdict]}
+      <JevMark className="size-2.5" aria-hidden />
+      <span aria-hidden="true">{verdictWord[verdict]}</span>
+      <span className="sr-only">{copy.jevVerdictLabel(verdictWord[verdict])}</span>
     </span>
   );
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "posts", label: copy.newsTabPosts },
-    { id: "headlines", label: copy.newsTabHeadlines },
-  ];
-
-  /** The listing tile's figures, shared by both kinds of card. */
   const movement = (symbol: string) => {
     const listing = LISTING_BY_SYMBOL.get(symbol);
     const moved = listing ? performance.performanceOf(listing) : undefined;
     return { moved, direction: changeDirection(moved?.changePct) };
   };
+  const card = (story: StoryCard) =>
+    story.kind === "post" && story.post ? (
+      <PostCard story={story} now={now} isNew={seen.isNew(story.id)} movement={movement(story.symbol)} verdictChip={verdictChip} />
+    ) : (
+      <ArticleCard story={story} now={now} isNew={seen.isNew(story.id)} movement={movement(story.symbol)} verdictChip={verdictChip} />
+    );
+  const subheading = (id: string, text: string) => (
+    <h3 id={id} className={`${PAD} pt-4 pb-2 text-xs font-medium text-muted-foreground`}>
+      {text}
+    </h3>
+  );
+  const failed = news.data.failed === true;
 
   return (
     <Panel
       surface="sheet"
-      className={
-        fill ? "xl:flex xl:h-full xl:flex-col xl:overflow-hidden xl:[contain:size]" : undefined
-      }
+      className={fill ? "xl:flex xl:h-full xl:flex-col xl:overflow-hidden xl:[contain:size]" : undefined}
     >
       <SectionHeading
         title={copy.newsTitle}
-        hint={tab === "posts" ? copy.postsHint : copy.newsHint}
+        hint={copy.newsStoriesHint}
         more={
-          tab === "headlines" && news.judged ? (
+          judged ? (
             <>
-              <p className="mt-1.5">{copy.jevAboutHeadlines}</p>
-              <p className="mt-1.5 text-muted-foreground">
-                {copy.jevHeadlineCuration(count(news.judged.read), count(news.judged.kept))}
-              </p>
-              <a
-                href={JEV_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1.5 inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-2 hover:underline"
-              >
-                {copy.jevLinkLabel}
-                <ArrowUpRight className="size-3" aria-hidden />
-              </a>
-            </>
-          ) : tab === "posts" && posts.curation ? (
-            <>
-              <p className="mt-1.5">{copy.jevAbout}</p>
-              <p className="mt-1.5 text-muted-foreground">
-                {copy.jevCuration(
-                  count(posts.curation.seen),
-                  count(posts.curation.accounts),
-                  count(posts.curation.read),
-                  count(posts.curation.kept),
-                )}
-              </p>
+              <p className="mt-1.5">{copy.jevAboutStories}</p>
+              <p className="mt-1.5 text-muted-foreground">{copy.jevReadKept(count(judged.read), count(judged.kept))}</p>
               <a
                 href={JEV_URL}
                 target="_blank"
@@ -258,57 +216,21 @@ export function NewsFeed({
           ) : undefined
         }
         action={
-          <div className="flex items-center gap-1.5">
-            {/* One refresh for the column, beside the tabs it refreshes. The
-                orb takes its place while the fetch is out, in the same box. */}
-            <button
-              type="button"
-              onClick={refresh}
-              disabled={refreshing}
-              data-news-refresh
-              aria-label={refreshing ? copy.newsRefreshing : copy.newsRefresh}
-              title={copy.newsRefresh}
-              className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-lift hover:bg-muted hover:text-foreground disabled:hover:bg-transparent"
-            >
-              {refreshing ? (
-                <ThinkingOrb state="searching" size={20} decorative />
-              ) : (
-                <ArrowClockwise weight="duotone" className="size-4" aria-hidden />
-              )}
-            </button>
-            <div
-              role="tablist"
-              aria-label={copy.newsTabsLabel}
-              className="flex shrink-0 gap-0.5 rounded-full border border-border bg-card p-0.5"
-            >
-              {tabs.map((entry) => {
-                const active = entry.id === tab;
-                return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setTab(entry.id)}
-                    className={`relative inline-flex h-[26px] items-center rounded-full px-3 text-xs font-medium transition-colors duration-150 ease-lift ${
-                      active
-                        ? "text-background"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {active && (
-                      <motion.span
-                        layoutId="news-tab"
-                        transition={{ duration: 0.22, ease: EASE_LIFT }}
-                        className="absolute inset-0 rounded-full bg-foreground"
-                      />
-                    )}
-                    <span className="relative">{entry.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={refreshing}
+            data-news-refresh
+            aria-label={refreshing ? copy.newsRefreshing : copy.newsRefresh}
+            title={copy.newsRefresh}
+            className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-lift hover:bg-muted hover:text-foreground disabled:hover:bg-transparent"
+          >
+            {refreshing ? (
+              <ThinkingOrb state="searching" size={20} decorative />
+            ) : (
+              <ArrowClockwise weight="duotone" className="size-4" aria-hidden />
+            )}
+          </button>
         }
       />
 
@@ -321,7 +243,7 @@ export function NewsFeed({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18, ease: EASE_LIFT }}
-              className="flex items-center gap-2 px-[18px] lg:px-6 pb-2.5"
+              className={`flex items-center gap-2 ${PAD} pb-2.5`}
             >
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
                 {copy.newsFilteredTo(filter.name)}
@@ -343,14 +265,18 @@ export function NewsFeed({
         </AnimatePresence>
       </div>
 
-      {(curated || updatedAt !== undefined) && (
-        <div className="flex min-h-5 items-center gap-1.5 px-[18px] lg:px-6 pb-3 text-[11px]">
-          {curated && (
+      {/* Announced once, when a refresh the reader asked for comes back; the
+          line itself ticks every half minute and is not live. */}
+      <span className="sr-only" aria-live="polite">
+        {pressed !== null && !refreshing && updatedAt !== undefined
+          ? (upToDate ? copy.newsUpToDate : copy.newsUpdated)(formatTimeAgo(updatedAt, now))
+          : ""}
+      </span>
+      {(judged || updatedAt !== undefined) && (
+        <div className={`flex min-h-5 items-center gap-1.5 ${PAD} pb-3 text-[11px]`}>
+          {judged && (
             <>
-              {/* A 20px slot either way: Jev's still mark, or an orb while
-                  the feed is fetched in the background. A refresh the reader
-                  asked for shows its orb on the button instead. */}
-              {tab === "posts" && posts.isFetching && !refreshing ? (
+              {news.isFetching && !refreshing ? (
                 <ThinkingOrb state="searching" size={20} decorative />
               ) : (
                 <span className="flex size-5 items-center justify-center" aria-hidden>
@@ -361,21 +287,18 @@ export function NewsFeed({
             </>
           )}
           {updatedAt !== undefined && (
-            <span className="ml-auto shrink-0 text-muted-foreground" aria-live="polite">
+            <span className="ml-auto shrink-0 text-muted-foreground">
               {(upToDate ? copy.newsUpToDate : copy.newsUpdated)(formatTimeAgo(updatedAt, now))}
             </span>
           )}
         </div>
       )}
 
-      {showing.isLoading ? (
+      {news.isLoading ? (
         <ul className="divide-y divide-border border-t border-border">
-          {/* As many as will show, up to three, so nothing jumps when they land. */}
           {Array.from({ length: Math.min(limit ?? 3, 3) }, (_, row) => row).map((row) => (
-            <li key={row} className="flex items-start gap-3 px-[18px] lg:px-6 py-3">
-              <Skeleton
-                className={`size-11 shrink-0 ${tab === "posts" ? "rounded-full" : "rounded-lg"}`}
-              />
+            <li key={row} className={`flex items-start gap-3 ${PAD} py-3`}>
+              <Skeleton className="size-11 shrink-0 rounded-lg" />
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <Skeleton className="h-4 w-11/12" />
                 <Skeleton className="h-3 w-1/2" />
@@ -383,246 +306,309 @@ export function NewsFeed({
             </li>
           ))}
         </ul>
-      ) : showing.items.length === 0 ? (
-        <p className="border-t border-border px-[18px] lg:px-6 py-4 text-sm text-muted-foreground">
-          {tab === "posts"
-            ? filter
-              ? copy.postsEmptyFor(filter.name)
-              : copy.postsEmpty
-            : filter
-              ? copy.newsEmptyFor(filter.name)
-              : copy.newsEmpty}
-        </p>
+      ) : failed ? (
+        // Said once, in place of every section: an outage is never a quiet day.
+        <p className={`border-t border-border ${PAD} py-4 text-sm text-muted-foreground`}>{copy.newsUnavailable}</p>
       ) : (
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.ul
-            key={`${tab}:${filter?.symbol ?? "all"}`}
-            variants={LIST}
-            initial="hidden"
-            animate="shown"
-            exit="gone"
-            id={listId}
-            className="divide-y divide-border border-t border-border"
-            ref={tab === "posts" ? river.ref : undefined}
-            {...(tab === "posts" ? river.handlers : {})}
-          >
-            {tab === "posts" ? (
-              // popLayout lets the leaving card step out of the flow at once,
-              // so the column never grows by one while it turns.
-              <AnimatePresence mode="popLayout" initial={false}>
-                {river.visible.map((post) => {
-                  const { moved, direction } = movement(post.symbol);
-                  return (
-                    <motion.li
-                      key={post.id}
-                      data-post-id={post.id}
-                      variants={CARD}
-                      exit="leave"
-                      layout="position"
-                      transition={{ layout: ARRIVE }}
-                    >
-                      <a
-                        href={post.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start gap-3 px-[18px] py-4 transition-[background-color] duration-150 ease-lift hover:bg-muted/60 lg:px-6"
-                      >
-                        {/* Name, handle and face travel with the post, and
-                            the whole card opens the original. That is what
-                            X asks of a post shown outside an embed. */}
-                        {/* A plain img on purpose: these are 73px files
-                            already served from X's own CDN, there are about
-                            two dozen distinct ones, and routing them through
-                            next/image would buy nothing but a per-image
-                            charge on every optimisation. */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={post.author.avatarUrl}
-                          alt=""
-                          width={44}
-                          height={44}
-                          loading="lazy"
-                          className="size-11 shrink-0 rounded-full bg-muted object-cover"
-                        />
-                        <div className="min-w-0 flex-1">
-                          {/* At 390px the row runs out. The handle gives
-                              way first, down to nothing, then the name; the
-                              time and the mark never do, because the time is
-                              the column's honesty about age. */}
-                          <p className="flex min-w-0 items-baseline text-xs">
-                            <span className="mr-1.5 min-w-0 shrink truncate font-medium text-foreground">
-                              {post.author.name}
-                            </span>
-                            {/* The handle carries its own trailing space
-                                and there is no gap before the time, so a
-                                handle squeezed to nothing leaves nothing
-                                behind. */}
-                            <span className="min-w-0 truncate text-muted-foreground [flex-shrink:100000]">
-                              {copy.postsHandle(post.author.username)}
-                              {"\u00a0"}
-                            </span>
-                            <span className="shrink-0 whitespace-nowrap text-muted-foreground">
-                              {formatTimeAgo(post.publishedAt, now)}
-                            </span>
-                            {/* Ink, not accent, and a word rather than a
-                                chip: the Jev verdict below is the card's
-                                one badge, and this only says the reader
-                                has not met the post yet. */}
-                            {seen.isNew(post.id) && (
-                              <span
-                                title={copy.postNewToYouLabel}
-                                className="ml-1.5 shrink-0 text-[10.5px] font-medium text-foreground"
-                              >
-                                {copy.postNewToYou}
-                              </span>
-                            )}
-                          </p>
-                          {/* Verbatim, and clamped rather than cut: editing
-                              a post to fit is not ours to do. */}
-                          <p className="mt-1 line-clamp-5 text-sm leading-normal whitespace-pre-line text-foreground">
-                            {post.text}
-                          </p>
-                          {/* The same story from other accounts, folded
-                              into this, its first report. Words, not links:
-                              the card is already one link. */}
-                          {post.alsoBy && post.alsoBy.length > 0 && (
-                            <p className="mt-1 text-[11px] text-muted-foreground">
-                              {copy.postsAlsoBy(post.alsoBy.map((other) => other.name))}
-                            </p>
-                          )}
-                          {/* Wraps rather than squeezes: at a narrow column
-                              the counts drop to their own line instead of
-                              crushing the listing's name to nothing. */}
-                          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
-                            <p className="flex items-center gap-1.5">
-                              <span className="text-foreground/70">
-                                {post.name}
-                              </span>
-                              {moved?.changePct !== undefined && direction && (
-                                <span className={`money ${TONE[direction]}`}>
-                                  {formatPercentChange(moved.changePct, 1)}
-                                </span>
-                              )}
-                              {post.verdict && verdictChip(post.verdict)}
-                            </p>
-                            {/* How far the post carried, in X's own order.
-                                Quiet on purpose: it is context for the post
-                                above it, not a scoreboard, so it sits in the
-                                muted tone and a count of zero is simply
-                                absent rather than written as "0". The figures
-                                are as fresh as the cache, up to an hour. */}
-                            <span
-                              className="flex shrink-0 items-center gap-2 text-muted-foreground"
-                              aria-label={copy.postsMetrics(
-                                formatCount(post.replies),
-                                formatCount(post.retweets),
-                                formatCount(post.likes),
-                              )}
-                            >
-                              {[
-                                { icon: ChatCircle, value: post.replies },
-                                { icon: Repeat, value: post.retweets },
-                                { icon: Heart, value: post.likes },
-                              ].map(({ icon: Glyph, value }, index) =>
-                                value > 0 ? (
-                                  <span
-                                    key={index}
-                                    aria-hidden="true"
-                                    className="flex items-center gap-1"
-                                  >
-                                    <Glyph className="size-3.5" />
-                                    <span className="money">
-                                      {formatCount(value)}
-                                    </span>
-                                  </span>
-                                ) : null,
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                        <XLogo
-                          aria-label={copy.postsSourceLabel}
-                          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                        />
-                      </a>
-                    </motion.li>
-                  );
-                })}
-              </AnimatePresence>
-            ) : (
-              headlines.map((item) => {
-                  const { moved, direction } = movement(item.symbol);
-                  return (
-                    <motion.li key={item.url} variants={CARD}>
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start gap-3 px-[18px] py-4 transition-[background-color] duration-150 ease-lift hover:bg-muted/60 lg:px-6"
-                      >
-                        {/* The ticker, in the face the app reserves for
-                            numbers, tinted by how the listing moved. It says
-                            at a glance which of twelve stories is about the
-                            thing you hold. */}
-                        <span
-                          aria-hidden="true"
-                          className="money flex size-11 shrink-0 flex-col items-center justify-center rounded-lg bg-muted text-[10.5px] leading-none font-semibold tracking-tight"
-                        >
-                          <span className="text-foreground/80">
-                            {item.symbol}
-                          </span>
-                          {moved?.changePct !== undefined && direction && (
-                            <span
-                              className={`mt-0.5 text-[8.5px] ${TONE[direction]}`}
-                            >
-                              {formatPercentChange(moved.changePct, 1)}
-                            </span>
-                          )}
-                        </span>
+        <>
+          {owner && owned && (
+            <section aria-labelledby={`${sectionId}-owned`} className="border-t border-border" data-news-section="owned">
+              {subheading(`${sectionId}-owned`, copy.newsForWhatYouOwn)}
+              {owned.kind === "stories" ? (
+                <ul className="divide-y divide-border border-t border-border">
+                  {owned.stories.map((story) => (
+                    <li key={story.id} data-post-id={story.id}>
+                      {card(story)}
+                    </li>
+                  ))}
+                </ul>
+              ) : owned.kind === "quiet" ? (
+                <div className={`${PAD} pb-4`}>
+                  <p className="text-sm font-medium text-foreground">{copy.quietDayTitle}</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {copy.quietDayBody(owned.symbols.map(nameOf))}
+                    {owned.unread.length > 0 && <> {copy.quietDayNotRead(owned.unread.map(nameOf))}</>}
+                  </p>
+                </div>
+              ) : (
+                <p className={`${PAD} pb-4 text-sm text-muted-foreground`}>{copy.quietDayUnjudged}</p>
+              )}
+            </section>
+          )}
 
-                        <div className="min-w-0 flex-1">
-                          {/* Two lines, then it stops: a river of headlines
-                              is for scanning, and the publisher's page has
-                              the rest. */}
-                          <p className="line-clamp-2 text-sm leading-snug font-medium text-foreground">
-                            {item.title}
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-                            <p className="min-w-0">
-                              <span className="text-foreground/70">
-                                {item.name}
-                              </span>
-                              {/* Punctuation, not copy: the separator belongs
-                                  to the layout, the words on either side to
-                                  lib/copy. */}
-                              <span aria-hidden="true"> · </span>
-                              {copy.newsByline(
-                                item.source,
-                                formatTimeAgo(item.publishedAt, now),
-                              )}
-                            </p>
-                            {item.verdict && verdictChip(item.verdict)}
-                          </div>
-                        </div>
-                        <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                      </a>
-                    </motion.li>
-                  );
-                })
+          {events.length > 0 && (
+            <section aria-labelledby={`${sectionId}-events`} className="border-t border-border" data-news-section="events">
+              {subheading(`${sectionId}-events`, events.some((event) => event.kind !== "filing") ? copy.newsComingUp : copy.newsRecentlyFiled)}
+              <ul className={`${PAD} flex flex-col gap-2 pb-4`}>
+                {events.map((event) => (
+                  <EventLine key={`${event.symbol}:${event.kind}:${event.day}`} event={event} />
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <section
+            aria-labelledby={owner ? `${sectionId}-river` : undefined}
+            aria-label={owner ? undefined : copy.newsTitle}
+            className={owner ? "border-t border-border" : undefined}
+          >
+            {owner && subheading(`${sectionId}-river`, copy.newsAcrossBerth)}
+            {riverAll.length === 0 ? (
+              <p className={`border-t border-border ${PAD} py-4 text-sm text-muted-foreground`}>
+                {filter ? copy.newsEmptyFor(filter.name) : copy.newsEmpty}
+              </p>
+            ) : (
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.ul
+                  key={filter?.symbol ?? "all"}
+                  variants={LIST}
+                  initial="hidden"
+                  animate="shown"
+                  exit="gone"
+                  id={listId}
+                  className="divide-y divide-border border-t border-border"
+                  ref={riverRef}
+                  {...riverHandlers}
+                >
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    {rotated.map((story) => (
+                      <motion.li
+                        key={story.id}
+                        data-post-id={story.id}
+                        variants={CARD}
+                        exit="leave"
+                        layout="position"
+                        transition={{ layout: ARRIVE }}
+                      >
+                        {card(story)}
+                      </motion.li>
+                    ))}
+                  </AnimatePresence>
+                </motion.ul>
+              </AnimatePresence>
             )}
-          </motion.ul>
-        </AnimatePresence>
+          </section>
+        </>
       )}
-      {collapsible &&
-        !showing.isLoading &&
-        (tab === "posts" ? posts.items.length + posts.reserve.length : news.items.length) > COLLAPSED_LIMIT && (
-          <DisclosureRow
-            open={open}
-            onToggle={toggle}
-            controls={listId}
-            label={tab === "posts" ? copy.newsMorePosts : copy.newsMoreHeadlines}
-          />
-        )}
+      {collapsible && !news.isLoading && riverAll.length + reserveAll.length > COLLAPSED_LIMIT && (
+        <DisclosureRow open={open} onToggle={toggle} controls={listId} label={copy.newsMoreStories} />
+      )}
     </Panel>
+  );
+}
+
+type CardProps = {
+  story: StoryCard;
+  now: number;
+  isNew: boolean;
+  movement: { moved: { changePct?: number } | undefined; direction: ChangeDirection | undefined };
+  verdictChip: (verdict: Verdict) => React.ReactNode;
+};
+
+/** A dated line, written by code from EDGAR's record, and a link to the filing itself. */
+function EventLine({ event }: { event: EventCard }) {
+  const copy = useCopy();
+  if (event.kind !== "filing" || !event.report) return null;
+  return (
+    <li className="text-sm text-foreground">
+      {copy.eventFiling(event.name, event.report, longDate(event.day))}
+      {event.url && (
+        <>
+          {" "}
+          <a
+            href={event.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            {copy.eventReadOnSec}
+            <ArrowUpRight className="size-3" aria-hidden />
+          </a>
+        </>
+      )}
+    </li>
+  );
+}
+
+/** An article: the verbatim title as the link, the publisher and time, and who else reported it. */
+function ArticleCard({ story, now, isNew, movement, verdictChip }: CardProps) {
+  const copy = useCopy();
+  const [others, setOthers] = useState(false);
+  const othersId = useId();
+  const { moved, direction } = movement;
+  return (
+    <div className={`flex items-start gap-3 ${PAD} py-4`}>
+      <span
+        aria-hidden="true"
+        className="money flex size-11 shrink-0 flex-col items-center justify-center rounded-lg bg-muted text-[10.5px] leading-none font-semibold tracking-tight"
+      >
+        <span className="text-foreground/80">{story.symbol}</span>
+        {moved?.changePct !== undefined && direction && (
+          <span className={`mt-0.5 text-[8.5px] ${TONE[direction]}`}>{formatPercentChange(moved.changePct, 1)}</span>
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <a
+          href={story.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-start gap-2 text-sm leading-snug font-medium text-foreground"
+        >
+          <span className="line-clamp-2 min-w-0 flex-1 underline-offset-2 group-hover:underline">{story.title}</span>
+          <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+        </a>
+        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+          <p className="min-w-0">
+            <span className="text-foreground/70">{story.name}</span>
+            <span aria-hidden="true"> · </span>
+            {copy.newsByline(story.publisher, formatTimeAgo(story.publishedAt, now))}
+          </p>
+          {story.verdict && verdictChip(story.verdict)}
+          {isNew && (
+            <span title={copy.postNewToYouLabel} className="shrink-0 text-[10.5px] font-medium text-foreground">
+              {copy.postNewToYou}
+            </span>
+          )}
+        </div>
+        {story.alsoReportedBy.length > 0 && (
+          <div className="mt-1.5 text-[11px] text-muted-foreground">
+            <button
+              type="button"
+              aria-expanded={others}
+              aria-controls={othersId}
+              onClick={() => setOthers((value) => !value)}
+              className="inline-flex items-center gap-0.5 hover:text-foreground"
+            >
+              {copy.alsoReportedBy(story.alsoReportedBy.length)}
+              <CaretDown className={`size-3 transition-transform duration-150 ${others ? "rotate-180" : ""}`} aria-hidden />
+            </button>
+            {others && (
+              <ul id={othersId} className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {story.alsoReportedBy.map((other) => (
+                  <li key={other.url}>
+                    <a
+                      href={other.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-foreground/80 underline underline-offset-2 hover:text-foreground"
+                    >
+                      {other.publisher}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {story.alsoOnX.length > 0 && (
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+            <span>{copy.alsoOnX}</span>
+            {story.alsoOnX.map((account, index) => (
+              <span key={account.url}>
+                <a
+                  href={account.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-foreground/80 underline underline-offset-2 hover:text-foreground"
+                >
+                  {account.name}
+                </a>
+                {index < story.alsoOnX.length - 1 ? "," : ""}
+              </span>
+            ))}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A post, as X asks a post outside an embed to be shown: name, handle, face, full text, the whole card a link. */
+function PostCard({ story, now, isNew, movement, verdictChip }: CardProps) {
+  const copy = useCopy();
+  const post = story.post!;
+  const { moved, direction } = movement;
+  return (
+    <>
+    <a
+      href={story.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex items-start gap-3 ${PAD} py-4 transition-[background-color] duration-150 ease-lift hover:bg-muted/60`}
+    >
+      {/* A plain img on purpose: small files already on X's own CDN. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={post.author.avatarUrl}
+        alt=""
+        width={44}
+        height={44}
+        loading="lazy"
+        className="size-11 shrink-0 rounded-full bg-muted object-cover"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="flex min-w-0 items-baseline text-xs">
+          <span className="mr-1.5 min-w-0 shrink truncate font-medium text-foreground">{post.author.name}</span>
+          <span className="min-w-0 truncate text-muted-foreground [flex-shrink:100000]">
+            {copy.postsHandle(post.author.username)}
+            {" "}
+          </span>
+          <span className="shrink-0 whitespace-nowrap text-muted-foreground">{formatTimeAgo(story.publishedAt, now)}</span>
+          {isNew && (
+            <span title={copy.postNewToYouLabel} className="ml-1.5 shrink-0 text-[10.5px] font-medium text-foreground">
+              {copy.postNewToYou}
+            </span>
+          )}
+        </p>
+        {/* Verbatim, and clamped rather than cut: editing a post to fit is not ours to do. */}
+        <p className="mt-1 line-clamp-5 text-sm leading-normal whitespace-pre-line text-foreground">{story.title}</p>
+        {story.alsoOnX.length > 0 && (
+          <p className="mt-1 text-[11px] text-muted-foreground">{copy.postsAlsoBy(story.alsoOnX.map((other) => other.name))}</p>
+        )}
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
+          <p className="flex items-center gap-1.5">
+            <span className="text-foreground/70">{story.name}</span>
+            {moved?.changePct !== undefined && direction && (
+              <span className={`money ${TONE[direction]}`}>{formatPercentChange(moved.changePct, 1)}</span>
+            )}
+            {story.verdict && verdictChip(story.verdict)}
+          </p>
+          <span
+            className="flex shrink-0 items-center gap-2 text-muted-foreground"
+            aria-label={copy.postsMetrics(formatCount(post.replies), formatCount(post.retweets), formatCount(post.likes))}
+          >
+            {[
+              { icon: ChatCircle, value: post.replies },
+              { icon: Repeat, value: post.retweets },
+              { icon: Heart, value: post.likes },
+            ].map(({ icon: Glyph, value }, index) =>
+              value > 0 ? (
+                <span key={index} aria-hidden="true" className="flex items-center gap-1">
+                  <Glyph className="size-3.5" />
+                  <span className="money">{formatCount(value)}</span>
+                </span>
+              ) : null,
+            )}
+          </span>
+        </div>
+      </div>
+      <XLogo aria-label={copy.postsSourceLabel} className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+    </a>
+    {/* Outside the card's own link, which nothing may sit inside: the
+        publishers that carried the same story, each its own link. */}
+    {story.alsoReportedBy.length > 0 && (
+      <p className={`-mt-2.5 flex flex-wrap items-center gap-x-1.5 ${PAD} pb-4 pl-[74px] text-[11px] text-muted-foreground lg:pl-[80px]`}>
+        <span>{copy.alsoReportedByPrefix}</span>
+        {story.alsoReportedBy.map((other, index) => (
+          <span key={other.url}>
+            <a href={other.url} target="_blank" rel="noopener noreferrer" className="text-foreground/80 underline underline-offset-2 hover:text-foreground">
+              {other.publisher}
+            </a>
+            {index < story.alsoReportedBy.length - 1 ? "," : ""}
+          </span>
+        ))}
+      </p>
+    )}
+    </>
   );
 }

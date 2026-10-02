@@ -93,7 +93,8 @@ export function parseFeedItems(xml: string): FeedItem[] {
       block.match(/<link\b[^>]*href=["']([^"']+)["']/i)?.[1];
     const stamp = tagText(block, "pubDate", "published", "updated", "dc:date");
     const publishedAt = stamp ? Date.parse(stamp) : Number.NaN;
-    if (!title || !url || !url.startsWith("http")) continue;
+    // A web address and nothing else: "httpx:" or any other scheme is not a link.
+    if (!title || !url || !/^https?:\/\//i.test(decodeEntities(url).trim())) continue;
     if (!Number.isFinite(publishedAt)) continue;
     items.push({
       title,

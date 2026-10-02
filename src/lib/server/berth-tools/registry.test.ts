@@ -25,6 +25,7 @@ vi.mock("@/lib/server/portfolio", () => ({
 vi.mock("@/lib/server/listing-performance", () => ({ loadPerformance: vi.fn(async () => ({ performance: {} })) }));
 vi.mock("@/lib/server/moves", () => ({ loadMoves: vi.fn(async () => ({ moves: [] })) }));
 vi.mock("@/lib/server/x-column", () => ({ gatherPosts: vi.fn(async () => ({ posts: [] })) }));
+vi.mock("@/lib/server/news-read", () => ({ loadFilings: vi.fn(async () => []) }));
 vi.mock("@/lib/server/listing-news", () => ({
   loadListingNews: vi.fn(async () => ({
     items: [{ title: "NVIDIA <b>beats</b> estimates", source: "Reuters", publishedAt: Date.now() - 3_600_000, url: "https://example.com/n" }],

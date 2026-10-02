@@ -2,8 +2,8 @@ import { LISTING_BRIEFS, substanceToWeight } from "@/lib/news-judge";
 import { candidatePosts, isNotableMove, moveWords, newsWindow } from "@/lib/moves";
 import { cachedVerdict, type ChoiceQuestion } from "@/lib/server/jev";
 import { loadPerformance } from "@/lib/server/listing-performance";
-import { gatherPosts, type GatheredPosts } from "@/lib/server/x-column";
-import type { XPost } from "@/lib/x-feed";
+import { readCards } from "@/lib/server/news-read";
+import { forListing, type StoryCard } from "@/lib/news-stories";
 
 /**
  * For each listing whose last move was large for it, the one judged post
@@ -17,8 +17,42 @@ import type { XPost } from "@/lib/x-feed";
  * day the market simply moved.
  *
  * Costs almost nothing: a handful of listings move enough on a given day,
- * and each question is cached for two weeks by its exact wording and posts.
+ * and each question is stored once by its exact wording and posts
+ * (jev_answers). The posts and their verdicts are read from the news store
+ * (lib/server/news-read), never judged again here.
  */
+
+type MovePost = { id: string; symbol: string; publishedAt: number; url: string; text: string; author: { name: string; username: string } };
+
+/** The store's post stories as move candidates, with their substance as a ranking weight. */
+export async function movePosts(): Promise<{ posts: MovePost[]; substance: Map<string, number> }> {
+  const { cards } = await readCards({ sinceMs: Date.now() - 5 * 24 * 60 * 60 * 1000 });
+  return postsFromCards(cards);
+}
+
+export function postsFromCards(cards: readonly StoryCard[]): { posts: MovePost[]; substance: Map<string, number> } {
+  const posts: MovePost[] = [];
+  const substance = new Map<string, number>();
+  for (const card of cards) {
+    if (card.kind !== "post" || !card.post) continue;
+    // A post kept for two listings is a candidate for each, with each one's reading.
+    for (const symbol of card.symbols) {
+      const mine = forListing(card, symbol);
+      if (!mine || mine.substance === undefined) continue;
+      const id = `${card.id}#${symbol}`;
+      posts.push({
+        id,
+        symbol,
+        publishedAt: card.publishedAt,
+        url: card.url,
+        text: card.title,
+        author: { name: card.post.author.name, username: card.post.author.username },
+      });
+      substance.set(id, substanceToWeight(mine.substance));
+    }
+  }
+  return { posts, substance };
+}
 
 const VERSION = "moves-1";
 /** Only posts Jev read as a new fact or better are offered. */
@@ -37,12 +71,12 @@ export type MoveNews = {
 
 export type MovesResponse = { moves: MoveNews[] };
 
-/** `inputs` reuses a performance read and an X gathering the caller already has (get_listing). */
+/** `inputs` reuses a performance read and a store read the caller already has (get_listing). */
 export async function loadMoves(
-  inputs: { performance?: ReturnType<typeof loadPerformance>; feed?: Promise<GatheredPosts> } = {},
+  inputs: { performance?: ReturnType<typeof loadPerformance>; feed?: ReturnType<typeof movePosts> } = {},
 ): Promise<MovesResponse> {
-  const [performance, feed] = await Promise.all([inputs.performance ?? loadPerformance(), inputs.feed ?? gatherPosts()]);
-  if (!feed.substance) return { moves: [] };
+  const [performance, feed] = await Promise.all([inputs.performance ?? loadPerformance(), inputs.feed ?? movePosts()]);
+  if (feed.posts.length === 0) return { moves: [] };
 
   const moves: MoveNews[] = [];
   await Promise.all(
@@ -52,10 +86,10 @@ export async function loadMoves(
       const asOf = dates[dates.length - 1];
       if (!asOf || !isNotableMove(series, entry.changePct)) return;
 
-      const posts = candidatePosts(feed.posts, feed.substance!, symbol, newsWindow(asOf), CANDIDATE_FLOOR);
+      const posts = candidatePosts(feed.posts, feed.substance, symbol, newsWindow(asOf), CANDIDATE_FLOOR);
       if (posts.length === 0) return;
 
-      const byKey = new Map<string, XPost>(posts.map((post, index) => [`post${index}`, post]));
+      const byKey = new Map<string, MovePost>(posts.map((post, index) => [`post${index}`, post]));
       const name = LISTING_BRIEFS[symbol] ?? symbol;
       const question: ChoiceQuestion = {
         type: "choice",

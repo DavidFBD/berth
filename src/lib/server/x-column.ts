@@ -216,9 +216,10 @@ function shortlist(candidates: readonly Candidate[], now: number): Candidate[] {
  */
 async function judge(
   candidates: readonly Candidate[],
-): Promise<{ posts: XPost[]; substance: Map<string, number>; read: number; kept: number }> {
+): Promise<{ posts: XPost[]; substance: Map<string, number>; dropped: XPost[]; read: number; kept: number }> {
   const questions = postQuestions();
   const substance = new Map<string, number>();
+  const dropped: XPost[] = [];
   let read = 0;
   let kept = 0;
   const judged = await Promise.all(
@@ -231,10 +232,16 @@ async function judge(
       if (!answers) return candidate.post.symbol ? candidate.post : undefined;
       read += 1;
       const verdict = readPostAnswers(answers, candidate.tier, candidate.owned);
-      if (!verdict.keep) return undefined;
+      if (!verdict.keep) {
+        dropped.push(candidate.post);
+        return undefined;
+      }
       const symbol = verdict.symbol ?? candidate.post.symbol;
       const name = symbol ? NAME_BY_SYMBOL.get(symbol) : undefined;
-      if (!symbol || !name) return undefined;
+      if (!symbol || !name) {
+        dropped.push(candidate.post);
+        return undefined;
+      }
       substance.set(candidate.post.id, verdict.weight);
       kept += 1;
       return { ...candidate.post, symbol, name };
@@ -243,6 +250,7 @@ async function judge(
   return {
     posts: judged.filter((post): post is XPost => post !== undefined),
     substance,
+    dropped,
     read,
     kept,
   };
@@ -270,6 +278,10 @@ export type GatheredPosts = {
   curation: Curation | undefined;
   /** When the newest of the fetches behind this was made, epoch ms. */
   updatedAt: number | undefined;
+  /** Posts Jev read and did not keep, for the news store's counts (lib/server/news-ingest). */
+  dropped?: XPost[];
+  /** Ids of the posts from a company's own account. */
+  companyIds?: Set<string>;
 };
 
 /**
@@ -331,6 +343,7 @@ export async function gatherPosts({
   // One copy of each story (lib/story-groups), after Jev's reading so the
   // pairs it is asked about are only ever posts it kept.
   const { posts, substance, folded } = await foldStories(judged.posts, judged.substance);
+  const companyIds = new Set(candidates.filter((candidate) => candidate.tier === "company").map((candidate) => candidate.post.id));
   // One line per fetch rather than per read: the reads are many and cost nothing.
   const missing = asked.length - read;
   // A cache-only read (the first look) asked nothing: its misses are not "unanswered".
@@ -343,5 +356,5 @@ export async function gatherPosts({
   // the keyword rules wearing Jev's name.
   const curation =
     read > 0 ? { seen: stored.length, accounts: authors.size, read, kept } : undefined;
-  return { posts, substance, failures, curation, updatedAt };
+  return { posts, substance, failures, curation, updatedAt, dropped: judged.dropped, companyIds };
 }
