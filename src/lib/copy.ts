@@ -2197,7 +2197,7 @@ export type StaffCopy = typeof STAFF_COPY;
  * supervisory authority named in the policy.
  */
 export const PRIVACY_OPERATOR = {
-  name: "RD Norra-Winkels",
+  name: "David",
   email: "support@berthmarkets.com",
   country: "the Netherlands",
 } as const;
