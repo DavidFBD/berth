@@ -220,20 +220,32 @@ export function useShareFriendLink(handle: string, demoToken?: string) {
   const copy = useCopy().social;
   const link = useFriendLink(demoToken === undefined);
   const token = demoToken ?? link.data;
-  const share = async () => {
-    if (!token) return;
+  /**
+   * How the link went out: through the share sheet, or copied (the
+   * fallback, also after a dismissed sheet); null when it did not. `quiet`
+   * leaves the "Link copied" toast to a caller that says it itself (the
+   * guided path's Done moment).
+   */
+  const share = async ({ quiet = false }: { quiet?: boolean } = {}): Promise<"shared" | "copied" | null> => {
+    if (!token) return null;
     const url = `${window.location.origin}/f/${token}`;
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({ url, text: copy.shareLinkText(handle) });
-        return;
+        return "shared";
       } catch {
         // Dismissed, or not allowed here: fall back to copying.
       }
     }
-    await navigator.clipboard.writeText(url).then(
-      () => toast.success(copy.linkCopied),
-      () => toast.error(copy.actionFailed),
+    return navigator.clipboard.writeText(url).then(
+      () => {
+        if (!quiet) toast.success(copy.linkCopied);
+        return "copied" as const;
+      },
+      () => {
+        toast.error(copy.actionFailed);
+        return null;
+      },
     );
   };
   return { token, share, fresh: link.fresh };

@@ -203,7 +203,7 @@ function Inspector() {
   const drawerScene = params.get("drawer");
   if (drawerScene && (DRAWER_SCENES as readonly string[]).includes(drawerScene)) {
     const view = params.get("view") ?? params.get("account");
-    return <DrawerGallery key={`${drawerScene}-${view}`} scene={drawerScene as DrawerScene} view={isDrawerView(view) ? view : undefined} />;
+    return <DrawerGallery key={`${drawerScene}-${view}`} scene={drawerScene as DrawerScene} view={isDrawerView(view) ? view : undefined} old={params.get("established") === "1"} />;
   }
   const walletsScene = params.get("wallets");
   if (walletsScene) return <WalletsGallery scene={walletsScene} />;

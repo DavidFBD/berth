@@ -213,6 +213,8 @@ export type Copy = {
     moreNewsSub: string;
     moreAiSub: string;
   };
+  /** The guided first path (lib/first-path, components/first-path): one step at a time, then "You're set up". */
+  firstPath: FirstPathCopy;
   /** The welcome page around the way in (components/welcome): hero with the habit film, three short sections, the Wall Street film, the close. */
   welcomePage: {
     navLabel: string;
@@ -1359,6 +1361,47 @@ export type OgCopy = {
  * lines: a profile is one phone screen and the drawer section is a few rows.
  * Never "beat", "win", "top", "streak" or a money figure.
  */
+export type FirstPathCopy = {
+  /** The calm progress line above a step's title. */
+  progress: (index: number, total: number) => string;
+  skip: string;
+  /** The toast after a skip, with its Undo. */
+  skipped: string;
+  undo: string;
+  titles: { avatar: string; username: string; money: string; walletMoney: string; firstBuy: string; invite: string };
+  /** The Done moment, said once as a step closes. */
+  done: { avatar: string; username: string; money: string; walletMoney: string; firstBuy: string; invite: string; inviteCopied: string };
+  doneNext: (title: string) => string;
+  doneLast: string;
+  avatarSub: string;
+  usernameSub: string;
+  /** A wallet account without an email: the username step adds one first. */
+  usernameNeedsEmail: string;
+  inviteSub: string;
+  inviteNeedsName: string;
+  inviteNeedsNameAction: string;
+  /** The first buy step when the money step was set aside and nothing spendable is known. */
+  firstUnfunded: string;
+  /** The drawer's first buy line when money is ready: the choice itself is on the home. */
+  firstFunded: string;
+  xpFirstBuy: (amount: number) => string;
+  /** In the account drawer, the steps that live on the home. */
+  goMoney: string;
+  goWalletMoney: string;
+  goFirstBuy: string;
+  setUpTitle: string;
+  setUpLine: string;
+  /** Where Berth cannot take an order: no money and no buy were asked for. */
+  setUpLineAway: string;
+  /** Some steps were set aside, so it is not everything. */
+  setUpLineSome: string;
+  setUpSkipped: string;
+  setUpClose: string;
+  /** An established account's one quiet drawer row (lib/first-path establishedPrompt). */
+  quietAvatar: string;
+  quietUsername: string;
+};
+
 export type DrawerCopy = {
   /** Where a second screen of the drawer goes back to. */
   back: string;
@@ -2375,6 +2418,51 @@ export const COPY: Copy = {
     moreBoardSub: "Every stock and fund, with today's moves.",
     moreNewsSub: "Posts and headlines about the stocks on Berth, read by Jev.",
     moreAiSub: "Let Claude, ChatGPT or Grok read your account.",
+  },
+  firstPath: {
+    progress: (index, total) => `Step ${index} of ${total}`,
+    skip: "Skip for now",
+    skipped: "Set aside for now",
+    undo: "Undo",
+    titles: {
+      avatar: "Choose your avatar",
+      username: "Pick a username",
+      money: "Add money",
+      walletMoney: "Pay from your wallet",
+      firstBuy: "Your first buy",
+      invite: "Invite a friend",
+    },
+    done: {
+      avatar: "Avatar chosen.",
+      username: "Username picked.",
+      money: "Money added.",
+      walletMoney: "Your wallet can pay.",
+      firstBuy: "Your first buy is in.",
+      invite: "Invite sent.",
+      inviteCopied: "Link copied.",
+    },
+    doneNext: (title) => `Next: ${title}.`,
+    doneLast: "That was the last step.",
+    avatarSub: "Tap a face to make it yours, then save it. It sits beside your name and rank.",
+    usernameSub: "Friends find you by your exact username. Your profile never shows money or what you own.",
+    usernameNeedsEmail: "A username needs an email on the account. Add one here first.",
+    inviteSub: "Send your friend link. Anyone with it can ask to be friends.",
+    inviteNeedsName: "Your friend link needs a username first.",
+    inviteNeedsNameAction: "Pick a username",
+    firstUnfunded: "Choose one to buy. The order asks how to pay, and you can add money there.",
+    firstFunded: "Your money is ready. Choose your first stock or fund on the home.",
+    xpFirstBuy: (amount) => `+${amount} XP when your first buy fills`,
+    goMoney: "Add money",
+    goWalletMoney: "Choose a stock",
+    goFirstBuy: "Choose your first buy",
+    setUpTitle: "You're set up",
+    setUpLine: "That is everything. From here your home shows what you own and what you can buy.",
+    setUpLineAway: "That is everything for now. Your profile and friends are ready.",
+    setUpLineSome: "Your account is ready.",
+    setUpSkipped: "You set these aside. Each is here if you want it now.",
+    setUpClose: "Done",
+    quietAvatar: "A face beside your name and rank",
+    quietUsername: "So friends can find you",
   },
   welcomePage: {
     navLabel: "Berth",

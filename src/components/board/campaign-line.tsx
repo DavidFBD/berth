@@ -13,13 +13,18 @@ import { campaignDay, campaignLine, campaignUsd, type CampaignLine as Line } fro
  * sentence, no button, no countdown: the money is stated exactly and
  * nothing more is promised.
  */
-export function CampaignLine({ enabled }: { enabled: boolean }) {
+export function CampaignLine({ enabled, bare = false }: { enabled: boolean; bare?: boolean }) {
   const progress = useCampaignProgress(enabled);
-  return <CampaignLineView line={campaignLine(progress.data)} />;
+  return <CampaignLineView line={campaignLine(progress.data)} bare={bare} />;
 }
 
 /** The line itself, given what to say; /dev/campaigns renders it from fixtures. */
-export function CampaignLineView({ line }: { line: Line | null }) {
+/**
+ * `bare`: inside the guided path's money or buy step (components/first-path),
+ * as a quiet line under its action rather than a strip of its own, so a
+ * campaign never reads as a second next step.
+ */
+export function CampaignLineView({ line, bare = false }: { line: Line | null; bare?: boolean }) {
   const copy = useCopy().campaign;
   if (!line) return null;
   let text: string;
@@ -49,10 +54,14 @@ export function CampaignLineView({ line }: { line: Line | null }) {
     <div
       role="status"
       data-testid="campaign-line"
-      className="flex items-center gap-3 rounded-lg border border-border bg-card py-2.5 pr-4 pl-[18px] lg:pl-5"
+      className={
+        bare
+          ? "flex items-center justify-center gap-2 pt-1 text-center"
+          : "flex items-center gap-3 rounded-lg border border-border bg-card py-2.5 pr-4 pl-[18px] lg:pl-5"
+      }
     >
       <Icon weight="duotone" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 text-sm text-foreground">{text}</span>
+      <span className={bare ? "min-w-0 text-xs text-muted-foreground" : "min-w-0 flex-1 text-sm text-foreground"}>{text}</span>
       {line.kind === "rules" && (
         <Link href="/terms#campaigns" className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline">
           {copy.termsLink}

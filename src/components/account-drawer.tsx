@@ -4,14 +4,15 @@ import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "
 import {
   CaretLeft,
   CaretRight,
+  At,
   Bell,
   GearSix,
   Repeat,
-  ShareNetwork,
   SignOut,
   Sparkle,
   Trophy,
   User,
+  UserCircle,
   UsersThree,
   Wallet,
 } from "@phosphor-icons/react";
@@ -23,8 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { AddEmailBlock, InviteCorner, Ladder, LedgerRow } from "@/components/rewards-panel";
-import { SocialSection, useShareFriendLink } from "@/components/social/social-section";
-import { NamePicker } from "@/components/social/name-picker";
+import { SocialSection } from "@/components/social/social-section";
 import { RecurringSection } from "@/components/recurring/recurring-section";
 import { WalletsSection } from "@/components/account-wallets";
 import { EmailSection } from "@/components/email-section";
@@ -38,8 +38,9 @@ import {
   type DrawerView,
   useDrawerNav,
 } from "@/components/account-drawer-nav";
-import { useAccountHeaders, useProfile, useXpHistory } from "@/hooks/use-profile";
-import { chooseNextStep, inviteDismissKey } from "@/lib/drawer-steps";
+import { useProfile } from "@/hooks/use-profile";
+import { DrawerPathStep, useFirstPath } from "@/components/first-path";
+import { establishedPrompt } from "@/lib/first-path";
 import { writeMark } from "@/lib/drawer-return";
 import { useFriendsList, useMySocial } from "@/hooks/use-social";
 import { useRecurring } from "@/hooks/use-recurring";
@@ -184,16 +185,44 @@ function MainScreen({
   const recurring = useRecurring();
   const nav = useRequiredNav();
 
+  const path = useFirstPath();
   const me = social.data;
   const xp = profile.data?.xp ?? 0;
   const rank = rankForXp(xp);
   const friendCount = friends.data?.friends.length ?? 0;
   const requests = me?.requests ?? friends.data?.incoming.length ?? 0;
+  // The guided path's username step adds the email itself (components/first-path).
+  const pathAsksEmail = path?.view.kind === "step" && path.view.step === "username";
+  const quiet = establishedPrompt({
+    avatarSet: Boolean(profile.data?.avatarId),
+    usernameSet: Boolean(me?.handle),
+    hasEmail: Boolean(me?.hasEmail),
+  });
 
   return (
     <>
       <Identity />
-      <NextStep kind={kind} emailAsked={emailAsked} />
+      {/* The one Next step is the guided path's (lib/first-path), the same step
+          the home shows; an established account, or one past the path, is
+          asked nothing here. Adding an email when it was asked for (the email
+          nudge, a row offering it) is that flow, not a prompt. */}
+      <DrawerPathStep />
+      {/* An established account, never on the path: one quiet row for a missing face or username, never an invite. */}
+      {path?.established && quiet && (
+        <Panel as="div">
+          <Row
+            icon={quiet === "avatar" ? UserCircle : At}
+            title={quiet === "avatar" ? words.avatarTitle : copy.firstPath.titles.username}
+            sub={quiet === "avatar" ? copy.firstPath.quietAvatar : copy.firstPath.quietUsername}
+            onClick={() => nav.show(quiet === "avatar" ? "avatar" : "friends")}
+          />
+        </Panel>
+      )}
+      {kind === "wallet" && emailAsked && profile.data && !profile.data.hasEmail && !pathAsksEmail && (
+        <Panel as="div" className="flex flex-col gap-2 p-3">
+          <AddEmailBlock hasEmail={false} />
+        </Panel>
+      )}
 
       <Panel as="div" className="divide-y divide-border">
         <Row icon={Trophy} title={words.rows.rewards.title} sub={words.rows.rewards.sub(rank.name, rank.level)} onClick={() => nav.show("rewards")} />
@@ -266,12 +295,16 @@ function Identity() {
         ) : (
           // No face yet: a plain place for one, clear in both themes, not
           // the first rung's bar (which read as a minus sign on the disc).
-          <span
-            aria-hidden
-            className="flex size-14 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/45 bg-muted text-muted-foreground"
+          // Still a way to the faces, path or no path (a skipped avatar, an
+          // established account).
+          <button
+            type="button"
+            aria-label={words.avatarTitle}
+            onClick={() => nav.show("avatar")}
+            className="flex size-14 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/45 bg-muted text-muted-foreground outline-none transition-transform duration-150 ease-lift active:scale-[0.96] focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <User weight="duotone" className="size-7" />
-          </span>
+          </button>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
           <span className={cn("truncate font-heading text-[17px] leading-snug tracking-[-0.02em]", handle ? "text-foreground" : "text-muted-foreground")}>
@@ -290,123 +323,6 @@ function Identity() {
           />
         </div>
       )}
-    </Panel>
-  );
-}
-
-/**
- * The one next step, or nothing (lib/drawer-steps): an avatar first, then
- * (a wallet account) an email, then a username, then a friend while the
- * account is young. Each one leaves as it is done.
- */
-function NextStep({ kind, emailAsked }: { kind: DrawerKind; emailAsked: boolean }) {
-  const copy = useCopy();
-  const words = copy.drawer;
-  const profile = useProfile();
-  const social = useMySocial();
-  const friends = useFriendsList(true);
-  const history = useXpHistory(true);
-  const { key } = useAccountHeaders({ prompt: false });
-  const dismissKey = key ? inviteDismissKey(key) : null;
-  const [dismissedNow, setDismissedNow] = useState(false);
-  // The drawer renders only once opened, in the browser, so storage is there to read.
-  const stored = (() => {
-    if (!dismissKey) return false;
-    try {
-      return localStorage.getItem(dismissKey) === "1";
-    } catch {
-      return false;
-    }
-  })();
-
-  if (!profile.data) return null;
-  const { avatarId, xp, hasEmail } = profile.data;
-  const level = rankForXp(xp).level;
-  const opened = history.data?.find((entry) => entry.kind === "account_created")?.at;
-  // eslint-disable-next-line react-hooks/purity -- a day count, read when the drawer renders
-  const ageDays = opened ? (Date.now() - Date.parse(opened)) / 86_400_000 : null;
-  const me = social.data;
-  const list = friends.data;
-  const step = chooseNextStep({
-    kind,
-    avatarId,
-    hasEmail,
-    emailAsked,
-    social: me ? { hasEmail: me.hasEmail, handle: me.handle } : null,
-    friendsAndSent: list ? list.friends.length + list.outgoing.length : null,
-    level,
-    ageDays,
-    inviteDismissed: stored || dismissedNow,
-  });
-
-  switch (step) {
-    case "avatar":
-      return (
-        <StepCard title={words.avatarTitle} sub={words.avatarSub}>
-          <AvatarPicker avatarId={null} level={level} first />
-        </StepCard>
-      );
-    case "email":
-      return (
-        <Panel as="div" className="flex flex-col gap-2 p-3">
-          <span className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">{words.nextStep}</span>
-          <AddEmailBlock hasEmail={false} />
-        </Panel>
-      );
-    case "username":
-      return (
-        <StepCard title={copy.social.pickTitle} sub={copy.social.pickSub}>
-          <NamePicker />
-        </StepCard>
-      );
-    case "invite":
-      return (
-        <InviteStep
-          handle={me!.handle!}
-          onDismiss={() => {
-            setDismissedNow(true);
-            if (!dismissKey) return;
-            try {
-              localStorage.setItem(dismissKey, "1");
-            } catch {
-              // Storage refused: dismissed for this visit only.
-            }
-          }}
-        />
-      );
-    default:
-      return null;
-  }
-}
-
-function InviteStep({ handle, onDismiss }: { handle: string; onDismiss: () => void }) {
-  const words = useCopy().drawer;
-  const { token, share } = useShareFriendLink(handle);
-  return (
-    <StepCard title={words.inviteTitle} sub={words.inviteSub}>
-      <div className="flex flex-col gap-1.5">
-        <Button className="w-full gap-2" disabled={!token} onClick={() => void share()}>
-          <ShareNetwork weight="duotone" className="size-4.5" />
-          {words.inviteAction}
-        </Button>
-        <Button variant="ghost" size="sm" className="self-center text-muted-foreground" onClick={onDismiss}>
-          {words.notNow}
-        </Button>
-      </div>
-    </StepCard>
-  );
-}
-
-function StepCard({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
-  const words = useCopy().drawer;
-  return (
-    <Panel as="div" className="flex flex-col gap-3 p-3">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground">{words.nextStep}</span>
-        <span className="font-heading text-[17px] leading-snug tracking-[-0.02em] text-foreground">{title}</span>
-        <span className="text-sm text-muted-foreground">{sub}</span>
-      </div>
-      {children}
     </Panel>
   );
 }

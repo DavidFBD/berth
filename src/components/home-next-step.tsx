@@ -24,24 +24,42 @@ import { cn } from "@/lib/utils";
  * page comes after it, at a quieter pitch.
  */
 
+/**
+ * What the guided path (components/first-path) adds to a step's card: its
+ * progress line above the title, and a quiet skip under the action.
+ */
+export type StepFrame = { eyebrow?: ReactNode; footer?: ReactNode };
+
 /** The card a next step sits in: a heading, a line, then what to do. */
-function StepCard({ title, line, children }: { title: string; line: ReactNode; children: ReactNode }) {
+export function StepCard({
+  title,
+  line,
+  children,
+  frame,
+}: {
+  title: string;
+  line: ReactNode;
+  children: ReactNode;
+  frame?: StepFrame;
+}) {
   return (
     <Panel>
       <div className="px-[18px] pt-5 pb-4 lg:px-6 lg:pt-6">
+        {frame?.eyebrow}
         <h2 className="font-display text-[24px] leading-[1.15] tracking-[-0.022em] text-foreground lg:text-[28px]">{title}</h2>
         <div className="mt-2 text-[14.5px] leading-[1.55] text-muted-foreground">{line}</div>
       </div>
       {children}
+      {frame?.footer}
     </Panel>
   );
 }
 
 /** The step's one accent: a full width pill. */
-const PRIMARY = "h-11 w-full rounded-full text-[15px] font-medium";
+export const PRIMARY = "h-11 w-full rounded-full text-[15px] font-medium";
 
 /** A quiet way on, under the accent. */
-function QuietLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+export function QuietLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -69,15 +87,24 @@ export function AddMoneyStep({
   onAddMoney,
   onBrowse,
   aside,
+  frame,
+  title: titleOverride,
+  note,
 }: {
+  /** A quiet line under the action (a campaign's rules, inside the guided path). */
+  note?: ReactNode;
   walletAccount: boolean;
   onAddMoney: () => void;
   onBrowse: () => void;
   aside?: MoneyAside;
+  /** The guided path's progress line and skip (components/first-path). */
+  frame?: StepFrame;
+  /** The guided path names the step itself. */
+  title?: string;
 }) {
   const copy = useCopy().calmHome;
   const money = useMoney();
-  const title = walletAccount ? copy.walletAddTitle : aside ? copy.addTitleCash : copy.addTitle;
+  const title = titleOverride ?? (walletAccount ? copy.walletAddTitle : aside ? copy.addTitleCash : copy.addTitle);
   const line =
     aside?.kind === "vault"
       ? copy.vaultLine(aside.usd === undefined ? undefined : money.format(aside.usd))
@@ -89,7 +116,7 @@ export function AddMoneyStep({
           ? copy.walletAddLine
           : copy.addLine;
   return (
-    <StepCard title={title} line={line}>
+    <StepCard title={title} line={line} frame={frame}>
       <div className="flex flex-col gap-1 px-[18px] pb-3 lg:px-6 lg:pb-4">
         {walletAccount ? (
           <Button className={PRIMARY} onClick={onBrowse}>
@@ -104,6 +131,7 @@ export function AddMoneyStep({
             <QuietLink onClick={onBrowse}>{copy.browse}</QuietLink>
           </>
         )}
+        {note}
       </div>
     </StepCard>
   );
@@ -134,7 +162,19 @@ export function FirstBuyStep({
   onBrowse,
   onAsk,
   onReadNews,
+  frame,
+  unfunded = false,
+  title,
+  note,
 }: {
+  /** The guided path's progress line and skip (components/first-path). */
+  frame?: StepFrame;
+  /** The money step was set aside and nothing spendable is known: say so rather than claim money. */
+  unfunded?: boolean;
+  /** The guided path names the step itself. */
+  title?: string;
+  /** A quiet line under the action (the guided path's XP line, a campaign's rules). */
+  note?: ReactNode;
   /** Opens Ask with a factual question about the chosen name; absent while Ask is locked or off. */
   onAsk?: (prompt: string) => void;
   /** Opens the news drawer on a listing, from the first look's quiet link. */
@@ -152,7 +192,9 @@ export function FirstBuyStep({
   const performance = useListingPerformance();
   const [chosen, setChosen] = useState<TokenListing | null>(null);
   const { lookOf } = useFirstLook();
-  const line = loading ? (
+  const line = unfunded ? (
+    copy.firstPath.firstUnfunded
+  ) : loading ? (
     <Skeleton className="h-4 w-56 max-w-full" />
   ) : readyUsd === undefined ? (
     copy.calmHome.firstReadyUnpriced
@@ -161,7 +203,7 @@ export function FirstBuyStep({
   );
 
   return (
-    <StepCard title={copy.calmHome.firstTitle} line={line}>
+    <StepCard title={title ?? copy.calmHome.firstTitle} line={line} frame={frame}>
       <div role="radiogroup" aria-label={copy.calmHome.pickLabel} className="divide-y divide-border border-y border-border">
         {PICKS.map((listing) => {
           const price = prices.priceOf(listing);
@@ -240,16 +282,18 @@ export function FirstBuyStep({
           {chosen ? copy.calmHome.firstBuy(rowName(chosen)) : copy.calmHome.firstChoose}
         </Button>
         <QuietLink onClick={onBrowse}>{copy.calmHome.seeAll(STOCK_LISTINGS.length)}</QuietLink>
+        {note}
       </div>
     </StepCard>
   );
 }
 
 /** (c) Under what the account owns: the one accent, which opens every stock and fund. */
-export function BuyMoreButton({ onOpen }: { onOpen: () => void }) {
+export function BuyMoreButton({ onOpen, quiet = false }: { onOpen: () => void; quiet?: boolean }) {
   const copy = useCopy().calmHome;
   return (
-    <Button className={PRIMARY} onClick={onOpen}>
+    // Quiet (an outline) while the guided path holds the one accent.
+    <Button variant={quiet ? "outline" : "default"} className={PRIMARY} onClick={onOpen}>
       <Plus weight="bold" aria-hidden className="size-4" />
       {copy.buyAction}
     </Button>

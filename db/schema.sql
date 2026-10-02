@@ -1670,6 +1670,22 @@ declare
   ; return 'paid'
 ; end $$;
 
+-- The guided first path (lib/first-path, lib/server/first-path): one row per
+-- account that has touched it. Every step is decided by facts read elsewhere
+-- (avatar, username, orders, friends); this keeps only what no other table
+-- knows: which steps were set aside, that money was once seen in the
+-- account (the balances live on chain), that an invite link was shared, and
+-- that "You're set up" was closed, after which the path never shows again.
+create table if not exists first_paths (
+  user_id uuid primary key references users(id) on delete cascade,
+  skipped text[] not null default '{}',
+  funded_at timestamptz,
+  invite_shared_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- Wallet sessions ended on the server (lib/server/wallet-session-revocations):
 -- a wallet session is a self-issued JWT, so signing out records its id here
 -- and every route that reads a session refuses one listed. A row is needed

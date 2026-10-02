@@ -9,7 +9,7 @@ import { sha256Hex } from "@/lib/server/oauth/crypto";
  * keyed by a hash of their address, never the address itself.
  */
 
-export type RateBucket = "register" | "register:all" | "cimd" | "account-wallets" | "account-merge" | "wallet-revoke";
+export type RateBucket = "register" | "register:all" | "cimd" | "account-wallets" | "account-merge" | "wallet-revoke" | "first-path";
 
 function windowStart(now: Date): string {
   const start = new Date(now);

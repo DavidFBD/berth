@@ -35,11 +35,14 @@ export function AvatarPicker({
   level,
   first,
   onSaved,
+  demoSave,
 }: {
   avatarId: string | null;
   level: number;
   first: boolean;
   onSaved?: () => void;
+  /** Dev galleries only: the save, without a session. */
+  demoSave?: (avatarId: string) => void;
 }) {
   const copy = useCopy();
   const words = copy.drawer;
@@ -51,6 +54,11 @@ export function AvatarPicker({
 
   const save = () => {
     if (!picked || !changed) return;
+    if (demoSave) {
+      demoSave(picked);
+      onSaved?.();
+      return;
+    }
     setAvatar.mutate(picked as AvatarId, {
       onSuccess: (data) => {
         if (!data) {

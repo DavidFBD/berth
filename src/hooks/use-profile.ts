@@ -30,6 +30,7 @@ import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route
 import type { WalletsResponse } from "@/app/api/account/wallets/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
 import type { FirstStockResponse } from "@/lib/first-stock";
+import { withSkip, withoutSkip, type FirstPathResponse, type PathStep } from "@/lib/first-path";
 import type { CampaignProgress, CampaignResponse } from "@/lib/campaigns";
 import type { EmailSettingsResponse, SwitchableKind } from "@/lib/email-kinds";
 import { CHAT_UNLOCK_LEVEL, RANKS } from "@/lib/xp";
@@ -757,5 +758,61 @@ export function useWalletAct() {
       // Totals and history now read another hub wallet.
       void queryClient.invalidateQueries({ queryKey: ["portfolio-history"] });
     },
+  });
+}
+
+/**
+ * The guided first path's record and server facts (app/api/first-path,
+ * lib/first-path). A minute fresh, so a step done on another device lands
+ * at the next focus. A route that is not there reads as an account that is
+ * not on the path.
+ */
+export const FIRST_PATH_QUERY = "first-path";
+
+export function useFirstPathRecord(enabled: boolean) {
+  return useRewardsQuery<FirstPathResponse>(FIRST_PATH_QUERY, "/api/first-path", {
+    enabled,
+    staleTime: 60_000,
+    notFound: NOT_ON_PATH,
+  });
+}
+
+const NOT_ON_PATH: FirstPathResponse = {
+  eligible: false,
+  skipped: [],
+  finished: true,
+  referred: false,
+  facts: { avatarSet: false, usernameSet: false, hasEmail: false, funded: false, firstBuy: false, inviteSent: false },
+};
+
+export type FirstPathWriteBody = { skip: PathStep } | { unskip: PathStep } | { funded: true } | { invited: true } | { finish: true };
+
+/**
+ * One write to the path's record. The cache moves at once (a skip, an
+ * unskip, the finish), the server's answer then replaces it; each write is
+ * idempotent there, so a lost answer is simply asked again.
+ */
+export function useFirstPathWrite() {
+  const queryClient = useQueryClient();
+  const { key, call } = useRewardsCall();
+  return useMutation({
+    retry: 3,
+    retryDelay: (attempt) => Math.min(8_000, 1_000 * 2 ** attempt),
+    mutationFn: async (body: FirstPathWriteBody) => {
+      if (!key) throw new Error("no account");
+      const data = await call<FirstPathResponse>("/api/first-path", body);
+      if (!data) throw new Error("not saved");
+      return data;
+    },
+    onMutate: (body) =>
+      queryClient.setQueryData<FirstPathResponse>([FIRST_PATH_QUERY, key], (previous) => {
+        if (!previous) return previous;
+        if ("skip" in body) return { ...previous, skipped: withSkip(previous.skipped, body.skip) };
+        if ("unskip" in body) return { ...previous, skipped: withoutSkip(previous.skipped, body.unskip) };
+        if ("finish" in body) return { ...previous, finished: true };
+        if ("funded" in body) return { ...previous, facts: { ...previous.facts, funded: true } };
+        return { ...previous, facts: { ...previous.facts, inviteSent: true } };
+      }),
+    onSuccess: (data) => queryClient.setQueryData([FIRST_PATH_QUERY, key], data),
   });
 }

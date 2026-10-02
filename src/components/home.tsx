@@ -63,6 +63,8 @@ import { useAccountHeaders } from "@/hooks/use-profile";
 import { onPlanSheet, openPlanSheet } from "@/components/recurring/plan-sheet-events";
 import { NoAccountHere, NotHereBanner, useAvailability } from "@/components/availability/availability";
 import { useUnavailableRefused } from "@/lib/unavailable-refusal";
+import { FirstPathProvider, HomePathCard, pathOnScreen, useLiveFirstPath } from "@/components/first-path";
+import { NUDGES_SAID_BY_PATH, buyStepState, pathPlace } from "@/lib/first-path";
 
 /** The board's frame, shared with the dev gallery (/dev/board?home=…) so the two cannot drift. */
 export const BOARD_PAGE = "mx-auto flex w-full max-w-lg flex-col px-4 pb-12 lg:max-w-[80rem] lg:px-10";
@@ -269,6 +271,18 @@ function SignedInHome() {
   // Decided from the session, not from whether the embedded wallet exists
   // yet: the drawer says the account is being opened until it does.
   const emailSession = useEmailSession();
+  // The guided first path (lib/first-path): one view for the home's step,
+  // the drawer's Next step and the nudge line. What the home proves about
+  // money and holdings are its facts; the rest it reads for itself.
+  const pageAvailability = useAvailability();
+  const holdingsKnown = holdings.settled && !linkedWallets.isLoading;
+  const livePath = useLiveFirstPath({
+    funded: decided === undefined ? undefined : decided !== "empty",
+    ownsStock: holdingsKnown ? holdings.held.some((holding) => holding.listing.kind === "stock") : undefined,
+    account: emailSession ? "email" : "wallet",
+    canBuy: pageAvailability.available,
+    accountKey: accountKey ?? null,
+  });
   // An email account adds money in its own small drawer; a wallet account's
   // money lives in its wallet, so it keeps the account drawer as before.
   const openAddMoney = () => {
@@ -390,15 +404,30 @@ function SignedInHome() {
     </Panel>
   );
   const openBoard = () => setBoardOpen(true);
+  const path = {
+    ...livePath,
+    buy: buyStepState({ everFunded: livePath.facts.funded, stage, liveStage: live.stage }),
+    go: {
+      // From the drawer's Next step to the home's own: the drawer closes first.
+      money: () => {
+        onAccountOpenChange(false);
+        if (emailSession) setAddMoneyOpen(true);
+        else openBoard();
+      },
+      firstBuy: () => onAccountOpenChange(false),
+    },
+  };
+  const pathShown = pathOnScreen(path);
+  const pathWaiting = path.view.kind === "wait";
   const spendable = funds.totalUsd !== undefined && funds.totalUsd >= MIN_ORDER_USD ? funds.totalUsd : undefined;
 
   // Where Berth is not available, a sign in the server made no account
   // for (lib/server/availability) says so instead of an empty board.
-  const availability = useAvailability();
+  const availability = pageAvailability;
   const noAccountHere = useUnavailableRefused("/api/profile");
 
   return (
-    <>
+    <FirstPathProvider value={path}>
       {noAccountHere ? (
         <NoAccountHere availability={availability} />
       ) : (
@@ -418,7 +447,43 @@ function SignedInHome() {
           banner={<NotHereBanner />}
           total={<AccountTotal />}
           owned={owned}
-          buy={<BuyMoreButton onOpen={openBoard} />}
+          buy={<BuyMoreButton onOpen={openBoard} quiet={pathShown} />}
+          path={{
+            shown: pathShown,
+            waiting: pathWaiting,
+            card: (
+              <HomePathCard
+                // A campaign's line, under every path card while the path holds the page.
+                footnote={stage !== undefined && holdings.settled ? <CampaignLine enabled={hasAccount} bare /> : null}
+                slots={{
+                  money: (frame, title) => (
+                    <AddMoneyStep
+                      walletAccount={!emailSession}
+                      onAddMoney={openAddMoney}
+                      onBrowse={openBoard}
+                      aside={vaults.present ? { kind: "vault", usd: vaults.usd } : holdsCash ? { kind: "cash" } : undefined}
+                      frame={frame}
+                      title={title}
+                    />
+                  ),
+                  firstBuy: (frame, title, note, buy) => (
+                    <FirstBuyStep
+                      readyUsd={spendable}
+                      loading={buy.loading}
+                      unfunded={buy.unfunded}
+                      onBuy={openBuy}
+                      onBrowse={openBoard}
+                      onAsk={askAvailable ? openChat : undefined}
+                      onReadNews={openNewsOn}
+                      frame={frame}
+                      title={title}
+                      note={note}
+                    />
+                  ),
+                }}
+              />
+            ),
+          }}
           next={
             stage === "empty" ? (
               <AddMoneyStep
@@ -462,18 +527,18 @@ function SignedInHome() {
                   and the unlinked-wallet prompt above both outrank this one
                   (lib/email-nudge). */}
               <EmailNudgeLine
-                otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing}
+                otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing || pathShown}
                 onOpen={openAccountForEmail}
               />
               <NudgeLine
-                hide={stage ? NUDGES_SAID_BY_STEP[stage] : undefined}
+                hide={pathShown || pathWaiting ? NUDGES_SAID_BY_PATH : stage ? NUDGES_SAID_BY_STEP[stage] : undefined}
                 onAddFunds={openAddMoney}
                 onParkCash={() => openBuy(CASH_LISTING)}
                 onOpenAccount={() => openAccount()}
               />
               {/* Only for an account that arrived through a campaign link (lib/campaigns). Last, and only once the
                   step and the holdings are settled, so it never lands above anything and pushes it down. */}
-              {stage !== undefined && holdings.settled && <CampaignLine enabled={hasAccount} />}
+              {stage !== undefined && holdings.settled && !pathShown && !pathWaiting && <CampaignLine enabled={hasAccount} />}
             </>
           }
           moneyAside={moneyAside}
@@ -604,7 +669,7 @@ function SignedInHome() {
       {askAvailable && <AskDock onOpen={() => openChat()} hidden={anyDrawerOpen} busy={chatBusy} />}
       </>
       )}
-    </>
+    </FirstPathProvider>
   );
 }
 
@@ -638,7 +703,14 @@ export function HomeTracks({
   moneyAside = false,
   ask,
   more,
+  path,
 }: {
+  /**
+   * The guided first path (components/first-path), while it is on screen
+   * or still being read: its card takes the next step's place, and once
+   * the account owns something it leads the page and Buy goes quiet.
+   */
+  path?: { shown: boolean; waiting: boolean; card: ReactNode };
   stage: HomeStage | undefined;
   /** Cash parked or money waiting in an order: the total shows before a first stock too. */
   moneyAside?: boolean;
@@ -652,6 +724,7 @@ export function HomeTracks({
   ask: ReactNode;
   more: ReactNode;
 }) {
+  const place = pathPlace(path);
   return (
     <div className={BOARD_GRID}>
       <div className={BOARD_TRACK}>
@@ -659,6 +732,8 @@ export function HomeTracks({
         {banner}
         {stage === "owns" ? (
           <>
+            {/* The path's place is held while it is read, so the total never jumps when it lands. */}
+            {place === "card" ? path?.card : place === "hold" && <NextStepSkeleton />}
             {total}
             {owned}
             {buy}
@@ -666,7 +741,7 @@ export function HomeTracks({
         ) : (
           <>
             {moneyAside && total}
-            {stage === undefined ? <NextStepSkeleton /> : next}
+            {stage === undefined || place === "hold" ? <NextStepSkeleton /> : place === "card" ? path?.card : next}
           </>
         )}
         {strips}

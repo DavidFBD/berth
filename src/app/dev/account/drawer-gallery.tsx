@@ -10,6 +10,35 @@ import type { FriendsList, MySocial } from "@/lib/social-types";
 import type { EmailSettingsResponse } from "@/lib/email-kinds";
 import { COPY } from "@/lib/copy";
 import type { DrawerView } from "@/components/account-drawer-nav";
+import { FirstPathProvider, type FirstPathValue } from "@/components/first-path";
+import { firstPath, type PathFacts } from "@/lib/first-path";
+
+/** The guided path as each scene stands, so the drawer's Next step shows (an established account is not on it). */
+function scenePath(scene: DrawerScene, old = false): FirstPathValue {
+  const facts: PathFacts = {
+    avatarSet: scene !== "new",
+    usernameSet: scene === "named" || scene === "established",
+    hasEmail: true,
+    funded: scene !== "new" && scene !== "mid",
+    firstBuy: scene !== "new" && scene !== "mid",
+    inviteSent: scene === "established",
+  };
+  const noop = () => {};
+  return {
+    view: firstPath({ facts, record: { eligible: scene !== "established" && !old, skipped: [], finished: false }, context: { account: "email", canBuy: true } }),
+    established: scene === "established" || old,
+    facts,
+    referred: true,
+    account: "email",
+    canBuy: true,
+    done: null,
+    skip: noop,
+    unskip: noop,
+    finish: noop,
+    shared: noop,
+    go: { money: noop, firstBuy: noop },
+  };
+}
 
 /**
  * Dev-only: the email account drawer, whole and open, from seeded data, so
@@ -52,6 +81,12 @@ const PLAN: PlanView = {
 
 function seededClient(scene: DrawerScene): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
+  seedDrawer(client, scene);
+  return client;
+}
+
+/** Seeds every query the drawer reads, for one scene, into a client (the guided path's gallery shares it). */
+export function seedDrawer(client: QueryClient, scene: DrawerScene): void {
   const now = Date.now();
   const established = scene === "established";
   const profile: Profile = {
@@ -115,17 +150,21 @@ function seededClient(scene: DrawerScene): QueryClient {
   });
   client.setQueryData(["assistant-grants", null], []);
   client.setQueryData([...RECURRING_QUERY_KEY, null], recurring);
-  return client;
 }
 
-function Seeded({ scene, children }: { scene: DrawerScene; children: ReactNode }) {
+function Seeded({ scene, old = false, children }: { scene: DrawerScene; old?: boolean; children: ReactNode }) {
   const [client] = useState(() => seededClient(scene));
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      <FirstPathProvider value={scenePath(scene, old)}>{children}</FirstPathProvider>
+    </QueryClientProvider>
+  );
 }
 
-export function DrawerGallery({ scene, view }: { scene: DrawerScene; view?: DrawerView }) {
+/** `old`: the scene's account made before the guided path began (`&established=1`): the drawer's one quiet prompt instead of the path's step. */
+export function DrawerGallery({ scene, view, old = false }: { scene: DrawerScene; view?: DrawerView; old?: boolean }) {
   return (
-    <Seeded scene={scene}>
+    <Seeded scene={scene} old={old}>
       <Drawer open onOpenChange={() => {}}>
         <DrawerContent>
           <DrawerHeader>

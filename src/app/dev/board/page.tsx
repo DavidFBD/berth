@@ -15,6 +15,7 @@ import {
 } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { HomeGallery } from "./home-gallery";
+import { PathGallery } from "./path-gallery";
 import { LINE_FIXTURES } from "../campaigns/fixtures";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { Panel } from "@/components/ui/panel";
@@ -60,6 +61,9 @@ import {
  *                                       money, home=new funded but holding
  *                                       nothing, &dock=0
  *                                       without the docked Ask
+ *   /dev/board?home=path                the guided first path, walked live from
+ *                                       fixtures (path-gallery.tsx: &account=wallet,
+ *                                       &at=, &skipped=, &drawer=1, &done=)
  *   /dev/board?open=NVDA&country=US     any of these as seen where Berth is
  *                                       not available (lib/availability): the
  *                                       buy drawer is the soft landing, the
@@ -79,6 +83,19 @@ export default function BoardGalleryPage() {
 function Galleries() {
   const params = useSearchParams();
   const home = params.get("home");
+  if (home === "path") {
+    return (
+      <PathGallery
+        key={params.toString()}
+        account={params.get("account") === "wallet" ? "wallet" : "email"}
+        at={params.get("at")}
+        skipped={params.get("skipped")}
+        drawer={params.get("drawer") === "1"}
+        done={params.get("done")}
+        campaign={LINE_FIXTURES[params.get("campaign") ?? ""]}
+      />
+    );
+  }
   if (home === "held" || home === "new" || home === "empty" || home === "cash" || home === "walletEmail") {
     const drawer = params.get("drawer");
     return (
