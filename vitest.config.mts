@@ -11,6 +11,10 @@ export default defineConfig({
     // No include here: a root include merges into every project below
     // (extends: true), which ran each unit file in the db project too.
     environment: "node",
+    // A hard cap on workers, whatever the command line says: `pnpm test --
+    // --maxWorkers=3` passes the flag after "--" as a file filter, so vitest
+    // used to start one worker per core (about 9 here, 100 to 400 MB each).
+    maxWorkers: 3,
     // PGlite boots a whole Postgres in WASM per file; under a loaded full run
     // that alone can pass the 5s default. The db tests get room, the pure
     // tests keep the tight default so a real hang still shows.

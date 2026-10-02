@@ -107,7 +107,15 @@ for (let tries = 0; !isFile; tries++) {
   }
 }
 
-const browser = await engine.launch();
+const browser = await engine.launch({ headless: true });
+// Never leave a browser behind: close it on any failure or interrupt too.
+const closeAndExit = (code) => () => {
+  browser.close().catch(() => {}).finally(() => process.exit(code));
+};
+process.on("uncaughtException", (error) => { console.error(error); closeAndExit(1)(); });
+process.on("unhandledRejection", (error) => { console.error(error); closeAndExit(1)(); });
+process.on("SIGINT", closeAndExit(130));
+process.on("SIGTERM", closeAndExit(143));
 const ctx = await browser.newContext({
   viewport: { width, height },
   deviceScaleFactor: dpr,

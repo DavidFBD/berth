@@ -31,6 +31,31 @@ only in Chromium is not verified. If the browser build is missing:
 installed in this browser, family by family, beside what the welcome screen
 would offer).
 
+## Resource rules
+
+The Mac this runs on has 16 GB. A Next dev server, a vitest run and a
+Playwright browser each take gigabytes, so these are rules, not advice:
+
+1. Before starting a dev server, check the port (`lsof -i :3000`, or the
+   port you were given). If one is already running there, reuse it.
+2. Run a dev server only while actively verifying a change, and stop it
+   (by its own pid) when verification is done. Delete `.next` afterwards.
+3. Playwright is headless only, and every browser and context is closed
+   right after each screenshot or test. `pnpm shot` closes its browser on
+   success, failure and interrupt.
+4. For longer preview sessions, prefer `pnpm build && pnpm exec next start`
+   over `next dev`.
+5. A dev server running for more than 60 minutes gets restarted.
+6. At the end of every task, run
+   `ps -axo pid,rss,etime,command | grep -E "next|node|playwright|chrom" | grep -v grep`
+   and kill any process you started that is still running.
+7. `pnpm dev` caps the dev server's heap at 3 GB (`NODE_OPTIONS`), and
+   vitest is capped at 3 workers in `vitest.config.mts`. Run tests as
+   `pnpm test`, not `pnpm test -- --maxWorkers=3` (the flag after `--` is
+   read as a file filter).
+8. At most 3 agents work at once, and no more than one of them builds or
+   runs a dev server at a time where it can be avoided.
+
 ## Copy rules
 
 - Plain, exact, calm, adult, unhurried, never clever about money. Names, not
