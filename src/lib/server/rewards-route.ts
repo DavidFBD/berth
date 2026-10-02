@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { fetchPrivyWallet, verifyPrivyAuth } from "@/lib/server/privy";
 import { readWalletSession } from "@/lib/server/wallet-session";
+import { walletSessionRevoked } from "@/lib/server/wallet-session-revocations";
 import { getSql } from "@/lib/server/db";
 import { AVAILABLE, requestAvailability, unavailableResponse, type Availability } from "@/lib/server/availability";
 import { detectFamily, toCaip10 } from "@/lib/identity/caip";
@@ -92,7 +93,24 @@ export async function readRewardsCaller(
   const sessionToken = request.headers.get("x-wallet-session");
   const session = sessionToken ? await readWalletSession(sessionToken) : null;
   const wallet = session ? normalizeWallet(session.address) : null;
-  if (!wallet || (session && (await signedBeforeMerge(wallet, session.issuedAt)))) {
+  let revoked = false;
+  try {
+    revoked = session ? await walletSessionRevoked(session.jti) : false;
+  } catch (error) {
+    // Unknown is neither yes nor no: 503 keeps the browser's session (it
+    // forgets only on a 401) and the read is tried again later.
+    console.error("[wallet-session] revocation read failed", error);
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "session check unavailable" }, { status: 503 }),
+    };
+  }
+  if (
+    !wallet ||
+    (session && (await signedBeforeMerge(wallet, session.issuedAt))) ||
+    // Signed out on the server (lib/server/wallet-session-revocations).
+    revoked
+  ) {
     return {
       ok: false,
       response: NextResponse.json(

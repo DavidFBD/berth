@@ -1669,3 +1669,16 @@ declare
     values (p_staff, p_action, p_claim::text, p_detail || jsonb_build_object('outcome', 'done'))
   ; return 'paid'
 ; end $$;
+
+-- Wallet sessions ended on the server (lib/server/wallet-session-revocations):
+-- a wallet session is a self-issued JWT, so signing out records its id here
+-- and every route that reads a session refuses one listed. A row is needed
+-- only until the token would have expired anyway; older rows are pruned.
+create table if not exists wallet_session_revocations (
+  jti text primary key,
+  address text not null,
+  revoked_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+create index if not exists wallet_session_revocations_expires on wallet_session_revocations (expires_at);

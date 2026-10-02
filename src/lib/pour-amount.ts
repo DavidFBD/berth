@@ -249,7 +249,13 @@ export type PourGate =
    */
   | { kind: "walletNotLinked" }
   /** A sell from a hub wallet another of the account's addresses owns: only that address can sign it. */
-  | { kind: "signWithOther" };
+  | { kind: "signWithOther" }
+  /**
+   * Signed in on a pocketed wallet session while the extension is away
+   * (locked, or not back since a refresh; lib/wallet-restore): everything
+   * reads, and the wallet is asked to open for the signature.
+   */
+  | { kind: "wakeWallet" };
 
 /**
  * Whether the destination's account is ready. Cups deliver to the signing
@@ -269,6 +275,8 @@ export function depositGate(state: {
   quoted: bigint | undefined;
   minOut: bigint | undefined;
   hasWalletProvider: boolean;
+  /** The paying (or signing) wallet is away; its session still reads (lib/wallet-restore). */
+  walletAsleep?: boolean;
   /** Defaults to ready: cups never wait on the account. */
   account?: AccountReadiness;
   /** False when the paying wallet is connected but not on the account. Defaults to true. */
@@ -295,6 +303,7 @@ export function depositGate(state: {
   if (state.belowMinimum) return { kind: "belowMinimum" };
   if (state.isWrongChain) return { kind: "wrongChain" };
   if (state.noRoute) return { kind: "noRoute" };
+  if (state.walletAsleep && !state.hasWalletProvider) return { kind: "wakeWallet" };
   if (
     state.quoted === undefined ||
     state.minOut === undefined ||
@@ -322,6 +331,8 @@ export function withdrawGate(state: {
   quoted: bigint | undefined;
   minOut: bigint | undefined;
   hasWalletProvider: boolean;
+  /** The paying (or signing) wallet is away; its session still reads (lib/wallet-restore). */
+  walletAsleep?: boolean;
   /**
    * Whether this session can sign for the hub wallet the sell comes from:
    * false when the account holds the listing behind another of its
@@ -349,6 +360,7 @@ export function withdrawGate(state: {
   if (state.isWrongChain) return { kind: "wrongChain" };
   if (state.noRoute) return { kind: "noRoute" };
   if (state.belowDust) return { kind: "belowDust" };
+  if (state.walletAsleep && !state.hasWalletProvider) return { kind: "wakeWallet" };
   if (
     state.quoted === undefined ||
     state.minOut === undefined ||

@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "@/lib/toast";
 import { useState } from "react";
 import { formatUnits } from "viem";
 import { AnimatePresence, motion } from "motion/react";
@@ -161,7 +162,7 @@ export function WithdrawDrawer({
 
   // Privy embedded wallet on EVM chains when signed in via email; external
   // wallets otherwise. Email mode switches chains silently.
-  const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureReady } =
+  const { address, walletProvider, mode, isWrongChain, handleSwitchChain, ensureReady, asleep } =
     useVaultWallet(srcChainKey);
   // The sell is one transaction the person signs on `srcChainKey`, paid in
   // that chain's native token: without enough of it the wallet refuses
@@ -462,6 +463,7 @@ export function WithdrawDrawer({
     quoted: limit.active ? 1n : quote.quoted,
     minOut: limit.active ? 1n : quote.minOut,
     hasWalletProvider: !!walletProvider,
+    walletAsleep: !!asleep,
     signerLinked,
     canSignSource: chosenSource ? chosenSource.canSign : undefined,
     gasShort: signGasShort,
@@ -526,6 +528,18 @@ export function WithdrawDrawer({
         return { label: copy.ctaNoRoute, disabled: true };
       case "belowDust":
         return { label: copy.ctaTooSmallForBtc, disabled: true };
+      case "wakeWallet":
+        // Signed in on the session alone (lib/wallet-restore): the one
+        // prompt is here, when the person asked for a signature.
+        return {
+          label: copy.ctaWakeWallet(asleep?.name ?? null),
+          disabled: false,
+          onClick: () => {
+            void asleep?.wake().then((woke) => {
+              if (!woke) toast(copy.wakeWalletFailed(asleep?.name ?? null));
+            });
+          },
+        };
       case "quotePending":
         return { label: copy.ctaGettingQuote, disabled: true, busy: true };
       default: {

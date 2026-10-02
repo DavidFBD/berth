@@ -5,7 +5,7 @@ import { reportWithRetry } from "@/lib/pour-retry";
 import { useCallback, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
-import { useXAccount } from "@sodax/wallet-sdk-react";
+import { useAccountXAccount } from "@/hooks/use-wallet-restore";
 import { ChainKeys } from "@sodax/sdk";
 import { getAddress } from "viem";
 import { createSiweMessage } from "viem/siwe";
@@ -62,7 +62,9 @@ export type { Profile } from "@/lib/profile-types";
 function useIdentity() {
   const privy = usePrivyEmbeddedWallet();
   const { getAccessToken } = usePrivy();
-  const external = useXAccount({ xChainId: ChainKeys.SONIC_MAINNET });
+  // The connected wallet, or the pocketed session's address while the
+  // extension reconnects after a refresh (hooks/use-wallet-restore).
+  const external = useAccountXAccount({ xChainId: ChainKeys.SONIC_MAINNET });
   // A wallet account borrowing a Privy session to add an email is still a
   // wallet account: keyed on the DID for that moment, the panel would blank
   // mid-flow and a shared browser could inherit the wrong row.
@@ -106,7 +108,8 @@ function useIdentity() {
 function refusedSession(response: Response, auth: Record<string, string>): void {
   const token = auth["x-wallet-session"];
   if (response.status !== 401 || !token) return;
-  // Only this refusal: a 401 for a bad act signature keeps the session.
+  // Only this refusal: a 401 for a bad act signature keeps the session, and
+  // a 503 (the server could not check it) keeps it for the next try.
   void response
     .clone()
     .json()

@@ -1,6 +1,7 @@
 "use client";
 
 import { useConnectedChains, useXDisconnect } from "@sodax/wallet-sdk-react";
+import { forgetWalletSignIn } from "@/hooks/use-wallet-restore";
 import { Button } from "@/components/ui/button";
 import { BerthMark } from "@/components/berth-mark";
 import { useCopy } from "@/components/settings-provider";
@@ -27,6 +28,7 @@ export function NoAccountHere({ availability }: { availability: Availability }) 
       await disconnect({ xChainType: chainType }).catch(() => undefined);
     }
     forgetUnavailable();
+    forgetWalletSignIn();
   };
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[34rem] flex-col items-center justify-center gap-6 px-4 py-10">

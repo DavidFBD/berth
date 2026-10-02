@@ -22,6 +22,7 @@ import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useCopy } from "@/components/settings-provider";
 import { COPY } from "@/lib/copy";
 import { useMounted } from "@/hooks/use-mounted";
+import { useWalletRestore } from "@/hooks/use-wallet-restore";
 import { useInstalledWallets } from "@/hooks/use-installed-wallets";
 import type { InstalledWallet } from "@/lib/installed-wallets";
 import { pendingReferralCode } from "@/lib/referral";
@@ -74,11 +75,18 @@ export function AuthGate({
       });
   }, [stray, logout, noWallet, copy.walletAccountEmailSignIn]);
 
+  // A wallet sign in survives a refresh on its pocketed session while the
+  // extension reconnects (lib/wallet-restore): the splash while Berth tries
+  // quietly, then the account, on the session alone if the wallet stays
+  // away. Never the welcome page to someone signed in.
+  const restore = useWalletRestore();
+  const emailIn = PRIVY_ENABLED && privy.authenticated && !privy.walletAccountSession;
   const settling =
-    (PRIVY_ENABLED && !privy.ready) || connected.status === "loading" || stray;
-  const isIn =
-    (PRIVY_ENABLED && privy.authenticated && !privy.walletAccountSession) ||
-    connected.total > 0;
+    (PRIVY_ENABLED && !privy.ready) ||
+    connected.status === "loading" ||
+    stray ||
+    (!emailIn && connected.total === 0 && restore.phase === "restoring");
+  const isIn = emailIn || connected.total > 0 || restore.phase === "session";
 
   // Signed out, there is no drawer to come back to (lib/drawer-return):
   // a copied ?account= address must not open one after sign in.

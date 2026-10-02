@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { storedWalletSession, subscribeWalletSessions, walletSessionsVersion } from "@/hooks/use-wallet-session";
 import { useSodaxContext } from "@sodax/dapp-kit";
-import { useXAccount } from "@sodax/wallet-sdk-react";
+import { useAccountXAccount } from "@/hooks/use-wallet-restore";
 import type { Address } from "@sodax/sdk";
 import { HOME_CHAIN, homeSpokeAddress } from "@/lib/account";
 import { accountHubPlan } from "@/lib/account-wallets";
@@ -68,7 +68,7 @@ export function useHubAccount(spokeAddressOverride?: string): HubAccount {
   const session = useAccountSession();
   // The connected EVM wallet, when there is one: the store address the
   // home-chain rule falls back to outside an email session.
-  const connectedEvm = useXAccount({ xChainType: "EVM" });
+  const connectedEvm = useAccountXAccount({ xChainType: "EVM" });
   const sessionSpoke = homeSpokeAddress(session, connectedEvm.address);
   const pending = usePendingWallet();
   // Re-read when a wallet session is pocketed (the sign-in signature given).

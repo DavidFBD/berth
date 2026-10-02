@@ -535,6 +535,14 @@ export type Copy = {
   ctaAtLeast: (amount: string) => string;
   smallestOrder: (amount: string) => string;
   ctaGettingQuote: string;
+  /** A signed in wallet whose extension is away: the order button opens it. */
+  ctaWakeWallet: (name: string | null) => string;
+  /** The wallet would not open for the signature (locked prompt dismissed, or not in this browser). */
+  wakeWalletFailed: (name: string | null) => string;
+  /** The wallet drawer's row for a wallet signed in whose extension is away. */
+  walletAsleepLabel: string;
+  walletAsleepNote: (name: string | null) => string;
+  walletSignOutLabel: string;
   ctaSignInToBuy: string;
   ctaOpeningAccount: string;
   buyFilledTitle: string;
@@ -2600,6 +2608,12 @@ export const COPY: Copy = {
   ctaAtLeast: (amount) => `Minimum ${amount}`,
   smallestOrder: (amount) => `The smallest order is ${amount}.`,
   ctaGettingQuote: "Getting a quote…",
+  ctaWakeWallet: (name) => (name ? `Open ${name} to sign` : "Open your wallet to sign"),
+  wakeWalletFailed: (name) =>
+    name ? `${name} did not open. Unlock it, then try again.` : "Your wallet did not open. Unlock it, then try again.",
+  walletAsleepLabel: "Signed in",
+  walletAsleepNote: (name) => (name ? `Open ${name} when you want to sign.` : "Open your wallet when you want to sign."),
+  walletSignOutLabel: "Sign out",
   ctaSignInToBuy: "Sign in with email to buy",
   ctaOpeningAccount: "Opening your account…",
   buyFilledTitle: "Bought.",

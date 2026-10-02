@@ -12,6 +12,7 @@ import { SignOutSweep } from "@/components/sign-out-sweep";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
 import { SettingsProvider } from "@/components/settings-provider";
 import { WalletDiagnostics } from "@/components/dev/wallet-diagnostics";
+import { WalletRestore } from "@/hooks/use-wallet-restore";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
 import { installLogCapture } from "@/lib/error-log-buffer";
 import { captureReferralFromUrl, stripReferralParam } from "@/lib/referral";
@@ -48,6 +49,8 @@ export function Providers({ children }: { children: ReactNode }) {
               <MotionConfig reducedMotion="user">
                 {PRIVY_ENABLED && mounted && <PrivySolanaBridge />}
                 {PRIVY_ENABLED && mounted && <SignOutSweep />}
+                {/* A refresh keeps a wallet sign in (lib/wallet-restore). */}
+                {mounted && <WalletRestore />}
                 {/* Temporary: diagnosing why localhost shows an empty wallet
                     while prod shows the same embedded wallet's holdings. */}
                 {process.env.NODE_ENV !== "production" && mounted && (

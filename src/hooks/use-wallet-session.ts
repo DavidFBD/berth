@@ -18,6 +18,12 @@ import { useXSignMessage } from "@sodax/wallet-sdk-react";
 const LEGACY_KEY = "lsteatime.wallet-session";
 const STORAGE_KEY = "berth.wallet-sessions";
 const KEEP_SEPARATE_KEY = "berth.keep-separate";
+/**
+ * Which wallet signed the pocketed session in (lib/wallet-restore). Versioned
+ * and new with the restore: a browser that signed in before it has no
+ * record, so its old session never opens the account on load.
+ */
+const WALLET_RECORD_KEY = "berth.wallet-restore.v1";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SIWE_STATEMENT =
   "Prove this wallet is yours to Berth. Signing is free and moves nothing.";
@@ -51,11 +57,34 @@ function changed() {
   for (const listener of listeners) listener();
 }
 
+/**
+ * Sign out, on the server and here: every pocketed session is sent to be
+ * ended (lib/server/wallet-session-revocations), then forgotten with the
+ * wallet record. The local half never waits on the network: a sign out
+ * that cannot reach the server still forgets, and the token expires on its
+ * own within the week.
+ */
+export function revokeWalletSessions(): void {
+  const tokens = Object.values(readAll())
+    .map((stored) => stored.token)
+    .filter((token): token is string => typeof token === "string")
+    .slice(0, 20);
+  clearWalletSession();
+  if (tokens.length === 0) return;
+  void fetch("/api/siwe/revoke", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ tokens }),
+    // Survives the page going away right after the tap.
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 /** Subscribe to pocketed sessions and keep-separate choices (useSyncExternalStore). */
 export function subscribeWalletSessions(listener: () => void): () => void {
   listeners.add(listener);
   const onStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY || event.key === KEEP_SEPARATE_KEY) changed();
+    if (event.key === STORAGE_KEY || event.key === KEEP_SEPARATE_KEY || event.key === WALLET_RECORD_KEY) changed();
   };
   window.addEventListener("storage", onStorage);
   return () => {
@@ -70,6 +99,39 @@ export function walletSessionsVersion(): number {
 }
 
 const isFresh = (stored: StoredSession | undefined) => !!stored && stored.expiresAt > Date.now() + 60_000;
+
+export type WalletRecord = { address: string; id: string; name: string };
+
+/** The wallet this browser last signed in with (hooks/use-wallet-restore). */
+export function walletRecord(): WalletRecord | null {
+  try {
+    const raw = localStorage.getItem(WALLET_RECORD_KEY);
+    const parsed = raw ? (JSON.parse(raw) as WalletRecord) : null;
+    return parsed && typeof parsed.address === "string" && typeof parsed.id === "string" && typeof parsed.name === "string"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberWallet(record: WalletRecord | null): void {
+  try {
+    const current = localStorage.getItem(WALLET_RECORD_KEY);
+    const next = record ? JSON.stringify({ ...record, address: record.address.toLowerCase() }) : null;
+    if (current === next) return;
+    if (next) localStorage.setItem(WALLET_RECORD_KEY, next);
+    else localStorage.removeItem(WALLET_RECORD_KEY);
+  } catch {
+    return;
+  }
+  changed();
+}
+
+function forgetRecordFor(addresses: string[]): void {
+  const record = walletRecord();
+  if (record && addresses.includes(record.address.toLowerCase())) rememberWallet(null);
+}
 
 /** A still-fresh session token for this address, if one is pocketed. */
 export function storedWalletSession(address: string): string | null {
@@ -112,12 +174,17 @@ export function forgetWalletSession(match: { address?: string; token?: string })
   try {
     const all = readAll();
     let changedAny = false;
+    const dropped: string[] = [];
     for (const [key, stored] of Object.entries(all)) {
       if ((match.address && key === match.address.toLowerCase()) || (match.token && stored.token === match.token)) {
         delete all[key];
+        dropped.push(key);
         changedAny = true;
       }
     }
+    // A refused session's wallet record goes with it: the record is what
+    // lets a load restore (lib/wallet-restore).
+    forgetRecordFor(dropped);
     if (!changedAny) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
     localStorage.removeItem(LEGACY_KEY);
@@ -131,6 +198,7 @@ export function clearWalletSession(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(LEGACY_KEY);
+    localStorage.removeItem(WALLET_RECORD_KEY);
   } catch {
     // Nothing to clear.
   }

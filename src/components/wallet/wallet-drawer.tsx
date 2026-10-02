@@ -30,6 +30,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useMounted } from "@/hooks/use-mounted";
 import { shortenAddress } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { forgetWalletSignIn, useSignOut, useWalletRestore } from "@/hooks/use-wallet-restore";
 
 /** `ChainType` is not exported from the package roots we may import — derive it. */
 type ChainType = ChainGroup["chainType"];
@@ -91,6 +92,9 @@ export function WalletDrawer({
   const handleDisconnect = async (chainType: ChainType) => {
     setDisconnecting(chainType);
     try {
+      // Unplugging the EVM wallet is signing out: the pocketed session must
+      // not bring the account back on the next refresh (lib/wallet-restore).
+      if (chainType === "EVM") forgetWalletSignIn();
       await disconnect({ xChainType: chainType });
     } finally {
       setDisconnecting(null);
@@ -166,10 +170,53 @@ function FamilyList({
   onDisconnect: (chainType: ChainType) => void;
 }) {
   const copy = useCopy();
+  // Signed in on a pocketed session while the extension is away: the EVM row
+  // says so, opens the connector list to bring the wallet back, and signs out.
+  const restore = useWalletRestore();
+  const signOut = useSignOut();
+  const asleepAddress = restore.phase === "session" ? restore.address : undefined;
   return (
     <ScrollArea className="group-data-[swipe-axis=y]/drawer-popup:max-h-[55svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
       <div className="flex flex-col gap-0.5 px-2">
         {groups.map((group) => {
+          if (!group.isConnected && group.chainType === "EVM" && asleepAddress) {
+            return (
+              <div key={group.chainType} className={ROW_CLASS}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(group.chainType)}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  <FamilyIcon group={group} />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">{group.displayName}</span>
+                      <Badge variant="secondary" className="h-4 gap-1 px-1.5 text-[10px]">
+                        <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground" />
+                        {copy.walletAsleepLabel}
+                      </Badge>
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      <span className="font-mono tabular-nums">{shortenAddress(asleepAddress)}</span>
+                      {" · "}
+                      {copy.walletAsleepNote(restore.wallet?.name ?? null)}
+                    </span>
+                  </span>
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={copy.walletSignOutLabel}
+                  // Signs out of everything this browser holds, every
+                  // family, not only the wallet that is away.
+                  onClick={() => void signOut()}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <Plugs />
+                </Button>
+              </div>
+            );
+          }
           // The Privy-bridged embedded wallet surfaces here like any
           // wallet-standard connector, but it's the user's embedded account wallet, not an
           // external wallet: label it as such and hide the unplug (a manual

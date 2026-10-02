@@ -1,4 +1,4 @@
-import { hkdfSync } from "node:crypto";
+import { hkdfSync, randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { normalizeWallet } from "@/lib/server/accounts";
 
@@ -32,8 +32,10 @@ function sessionKey(): Uint8Array {
   return key;
 }
 
-async function sign(claims: Record<string, string>, ttl: string) {
-  return new SignJWT(claims)
+async function sign(claims: Record<string, string>, ttl: string, jti?: string) {
+  const jwt = new SignJWT(claims);
+  if (jti) jwt.setJti(jti);
+  return jwt
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(ttl)
@@ -54,17 +56,34 @@ export async function readNonceToken(token: string): Promise<string | null> {
   }
 }
 
-/** The subject is the address in its family's one spelling (normalizeWallet): EVM lowercase, base58 as given. */
+/**
+ * The subject is the address in its family's one spelling (normalizeWallet): EVM lowercase, base58 as given.
+ * Every session carries its own id (`jti`), so signing out can end it on the
+ * server (lib/server/wallet-session-revocations), not only in the browser.
+ */
 export async function issueWalletSession(address: string): Promise<string> {
-  return sign({ purpose: "wallet-session", sub: normalizeWallet(address) ?? address }, SESSION_TTL);
+  return sign({ purpose: "wallet-session", sub: normalizeWallet(address) ?? address }, SESSION_TTL, randomUUID());
 }
 
-/** The address a session token proves and when it was signed (epoch ms), or null for anything less. */
-export async function readWalletSession(token: string): Promise<{ address: string; issuedAt: number } | null> {
+/**
+ * The address a session token proves, when it was signed (epoch ms), when it
+ * ends, and its id, or null for anything less. Sessions signed before ids
+ * existed have none: they keep working until they expire, and nothing can
+ * revoke them, which is why the browser never restores one on load
+ * (lib/wallet-restore).
+ */
+export async function readWalletSession(
+  token: string,
+): Promise<{ address: string; issuedAt: number; expiresAt: number; jti: string | null } | null> {
   try {
     const { payload } = await jwtVerify(token, sessionKey());
     if (payload.purpose !== "wallet-session" || typeof payload.sub !== "string") return null;
-    return { address: payload.sub, issuedAt: typeof payload.iat === "number" ? payload.iat * 1000 : 0 };
+    return {
+      address: payload.sub,
+      issuedAt: typeof payload.iat === "number" ? payload.iat * 1000 : 0,
+      expiresAt: typeof payload.exp === "number" ? payload.exp * 1000 : 0,
+      jti: typeof payload.jti === "string" && payload.jti.length > 0 ? payload.jti : null,
+    };
   } catch {
     return null;
   }

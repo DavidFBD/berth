@@ -13,6 +13,12 @@
  *                                               # in order, one repeatable flag
  *   pnpm shot --local-storage '{"key":"value"}' # seeded once, before first load
  *   pnpm shot --reload-out second.png          # reload in the same context, shoot again
+ *   pnpm shot --reload-probe "document.title"  # print a page expression after the reload's shutter
+ *   pnpm shot --wait-until load                # a signed in page that polls never goes network idle
+ *   pnpm shot --init-script scripts/lib/mock-evm-wallet.js
+ *                                               # run a script before every page load
+ *                                               # (repeatable): a stand-in extension wallet,
+ *                                               # announced through EIP-6963
  *   pnpm shot --full                           # the whole page, not just the viewport
  *   pnpm shot --reduced-motion                 # emulates prefers-reduced-motion: reduce
  *   pnpm shot --scroll-to "[data-film-phone]" --scroll-offset -200
@@ -82,6 +88,9 @@ if (storageSeedRaw) {
   }
 }
 const reloadOut = arg("reload-out", null);
+const reloadProbe = arg("reload-probe", null);
+const initScripts = argAll("init-script");
+const waitUntil = arg("wait-until", "networkidle");
 const scrollTo = arg("scroll-to", null);
 const scrollOffset = Number(arg("scroll-offset", "0"));
 const probe = arg("probe", null);
@@ -136,6 +145,8 @@ if (storageSeed) {
     } catch {}
   }, storageSeed);
 }
+// After the storage seed, so a script can read what was seeded.
+for (const path of initScripts) await ctx.addInitScript({ path });
 const cookies = argAll("cookie");
 if (cookies.length && origin) {
   await ctx.addCookies(
@@ -146,7 +157,7 @@ if (cookies.length && origin) {
   );
 }
 const page = await ctx.newPage();
-await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });
+await page.goto(url, { waitUntil, timeout: 90_000 });
 // Font swaps and first queries need a beat after network idle.
 await page.waitForTimeout(settleMs);
 if (hover) {
@@ -196,9 +207,10 @@ console.log(
 );
 if (probe) console.log(`probe: ${JSON.stringify(await page.evaluate(probe))}`);
 if (reloadOut) {
-  await page.reload({ waitUntil: "networkidle", timeout: 90_000 });
+  await page.reload({ waitUntil, timeout: 90_000 });
   await page.waitForTimeout(settleMs);
   await page.screenshot({ path: reloadOut, fullPage });
   console.log(`${reloadOut} (after reload, same context)`);
+  if (reloadProbe) console.log(`reload probe: ${JSON.stringify(await page.evaluate(reloadProbe))}`);
 }
 await browser.close();

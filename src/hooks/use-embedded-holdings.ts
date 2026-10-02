@@ -5,8 +5,8 @@ import { getXBalancesQueryOptions } from "@sodax/dapp-kit";
 import {
   getXChainType,
   getXService,
-  useXAccounts,
 } from "@sodax/wallet-sdk-react";
+import { useAccountXAccounts } from "@/hooks/use-wallet-restore";
 import {
   ChainKeys,
   isEvmChainKeyType,
@@ -101,7 +101,7 @@ export type EmbeddedHoldingsResult = {
  */
 export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
   const session = useAccountSession();
-  const xAccounts = useXAccounts();
+  const xAccounts = useAccountXAccounts();
   const prices = useUsdPrices();
 
   const emailMode = session.emailSession;

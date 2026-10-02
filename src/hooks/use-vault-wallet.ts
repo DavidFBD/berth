@@ -3,8 +3,8 @@
 import {
   useEvmSwitchChain,
   useWalletProvider,
-  useXAccount,
 } from "@sodax/wallet-sdk-react";
+import { useAccountXAccount, useWakeWallet } from "@/hooks/use-wallet-restore";
 import {
   ChainKeys,
   type GetWalletProviderType,
@@ -29,6 +29,12 @@ export type VaultWallet = {
   /** True while an EVM external wallet sits on the wrong network. */
   isWrongChain: boolean;
   handleSwitchChain: () => void;
+  /**
+   * The address reads from a pocketed wallet session while its extension is
+   * away (locked, or not back since a refresh; hooks/use-wallet-restore):
+   * no provider until `wake` opens the wallet. Undefined otherwise.
+   */
+  asleep?: { name: string | null; wake: () => Promise<boolean> };
   /**
    * Email mode only: the send precondition. MUST be awaited right before any
    * on-chain send. Checks the Privy session still holds a token (a lapsed one
@@ -57,7 +63,7 @@ export function useVaultAddress(
   chainKey: SpokeChainKey | null | undefined,
 ): string | undefined {
   const session = useAccountSession();
-  const externalAccount = useXAccount({
+  const externalAccount = useAccountXAccount({
     xChainId: chainKey ?? ChainKeys.SONIC_MAINNET,
   });
   return resolveAccount(
@@ -84,7 +90,8 @@ export function useVaultWallet(
   const session = useAccountSession();
   const privyProvider = usePrivyEvmWalletProvider(chainKey);
 
-  const externalAccount = useXAccount({ xChainId: key });
+  const externalAccount = useAccountXAccount({ xChainId: key });
+  const wakeable = useWakeWallet();
   const externalProvider = useWalletProvider({ xChainId: key });
   const evmSwitch = useEvmSwitchChain({ xChainId: key });
 
@@ -111,6 +118,10 @@ export function useVaultWallet(
     address: resolved.address,
     walletProvider: chainKey ? externalProvider : undefined,
     mode: "external",
+    asleep:
+      wakeable.asleep && externalAccount.xChainType === "EVM" && !externalProvider
+        ? { name: wakeable.name, wake: wakeable.wake }
+        : undefined,
     isWrongChain: evmSwitch.isWrongChain,
     handleSwitchChain: evmSwitch.handleSwitchChain,
   };

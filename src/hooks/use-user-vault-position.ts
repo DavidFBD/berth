@@ -9,7 +9,8 @@ import {
   type LeverageYieldShareHolder,
   type SpokeChainKey,
 } from "@sodax/dapp-kit";
-import { getXChainType, useXAccounts } from "@sodax/wallet-sdk-react";
+import { getXChainType } from "@sodax/wallet-sdk-react";
+import { useAccountXAccounts } from "@/hooks/use-wallet-restore";
 
 import { DEPOSIT_SOURCE_CHAINS } from "@/lib/chains";
 import { resolveAccount } from "@/lib/account";
@@ -84,7 +85,7 @@ export type UserVaultPosition = {
 export function useUserVaultPosition(
   vault: Address | undefined,
 ): UserVaultPosition {
-  const xAccounts = useXAccounts();
+  const xAccounts = useAccountXAccounts();
   const session = useAccountSession();
 
   // One holder row per source chain whose family has an account, resolved

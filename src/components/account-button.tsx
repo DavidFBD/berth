@@ -34,6 +34,7 @@ import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { shortenAddress } from "@/lib/format";
 import { SPRING_SHELF } from "@/lib/motion";
+import { useSignOut } from "@/hooks/use-wallet-restore";
 import { AccountDrawerScreens } from "@/components/account-drawer";
 import type { DrawerView } from "@/components/account-drawer-nav";
 import { DRAWER_RETURN_KEY, DRAWER_RETURN_PARAM, NO_RETURN, initialScreen, readMark, resolveReturn, type ReturnState } from "@/lib/drawer-return";
@@ -61,6 +62,7 @@ export function AccountButton({
   const privy = usePrivyEmbeddedWallet();
   const linking = useLinkInProgress();
   const mounted = useMounted();
+  const signOut = useSignOut();
   const copy = useCopy();
   const [accountOpenState, setAccountOpenState] = useState(false);
   const accountOpen = openProp ?? accountOpenState;
@@ -119,7 +121,10 @@ export function AccountButton({
             onOpenSettings={() => {}}
             onSignOut={() => {
               setAccountOpen(false);
-              void privy.logout();
+              // The email session, and any wallet this account linked in
+              // this browser: its session would otherwise bring the same
+              // account back on the next load (lib/wallet-restore).
+              void signOut({ email: true });
             }}
           />
         </DrawerContent>

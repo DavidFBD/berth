@@ -1,6 +1,6 @@
 "use client";
 
-import { useXAccount } from "@sodax/wallet-sdk-react";
+import { useAccountXAccount } from "@/hooks/use-wallet-restore";
 import { ChainKeys, type SpokeChainKey } from "@sodax/sdk";
 import {
   resolveAccount,
@@ -36,7 +36,7 @@ export function useAccount(
   const session = useAccountSession();
   // Hooks can't be conditional: read the store on the hub as a placeholder
   // when no chain is picked; resolveAccount(null, …) ignores it.
-  const store = useXAccount({
+  const store = useAccountXAccount({
     xChainId: chainKey ?? ChainKeys.SONIC_MAINNET,
   });
   return resolveAccount(

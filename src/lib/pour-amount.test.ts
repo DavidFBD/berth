@@ -293,6 +293,10 @@ describe("depositGate", () => {
     expect(depositGate({ ...ready, noRoute: true }).kind).toBe("noRoute");
     expect(depositGate({ ...ready, quoted: undefined }).kind).toBe("quotePending");
     expect(depositGate({ ...ready, hasWalletProvider: false }).kind).toBe("quotePending");
+    // Signed in on a pocketed session, wallet away: the button opens it.
+    expect(depositGate({ ...ready, hasWalletProvider: false, walletAsleep: true }).kind).toBe("wakeWallet");
+    expect(depositGate({ ...ready, walletAsleep: true }).kind).toBe("ready");
+    expect(depositGate({ ...ready, hasWalletProvider: false, walletAsleep: true, buildAmount: 300n }).kind).toBe("insufficient");
   });
 
   it("routes to the picker before the wallet: token-first", () => {
@@ -366,6 +370,7 @@ describe("withdrawGate", () => {
     expect(withdrawGate({ ...ready, noRoute: true }).kind).toBe("noRoute");
     expect(withdrawGate({ ...ready, belowDust: true }).kind).toBe("belowDust");
     expect(withdrawGate({ ...ready, minOut: undefined }).kind).toBe("quotePending");
+    expect(withdrawGate({ ...ready, hasWalletProvider: false, walletAsleep: true }).kind).toBe("wakeWallet");
   });
 });
 
