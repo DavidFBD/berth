@@ -19,6 +19,12 @@ export const XP_ACTIONS = {
   /** Picking a face for the pantry, once. */
   avatar_set: { amount: 25, once: true },
   /**
+   * The first username, once per person: a rename pays nothing, and a merge
+   * of two accounts that each had one keeps a single award. A house word
+   * only staff may carry pays nothing (lib/server/social/handles).
+   */
+  username_set: { amount: 25, once: true },
+  /**
    * Trying a mode for the first time. Repeatable kind, but the dedup ref is
    * `userId:modeId`, so each theme pays exactly once per account — the whole
    * ladder caps at modes × 10 XP no matter how much the switch is toggled.
@@ -84,6 +90,7 @@ export const REWARD_REASONS: Record<XpKind, string> = {
   account_created: "for opening your account",
   email_linked: "for adding an email",
   avatar_set: "for picking an avatar",
+  username_set: "for picking a username",
   theme_tried: "for trying another appearance",
   friend_poured: "a friend made their first trade",
   invite_accepted: "for joining on a friend's invite",

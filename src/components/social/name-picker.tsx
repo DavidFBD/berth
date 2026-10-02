@@ -9,6 +9,7 @@ import { useCopy } from "@/components/settings-provider";
 import { useHandleCheck, useSetHandle } from "@/hooks/use-social";
 import { HANDLE_MAX, parseHandle, type HandleRefusal } from "@/lib/handle";
 import { cn } from "@/lib/utils";
+import { XP_ACTIONS } from "@/lib/xp";
 
 /**
  * "Pick a username": one field, the rules in one line, and a live answer
@@ -37,6 +38,7 @@ export function NamePickerView({
   saving,
   onCancel,
   title,
+  first = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -46,6 +48,8 @@ export function NamePickerView({
   onCancel?: () => void;
   /** Shown above the field for a first pick; a change needs none. */
   title?: { title: string; sub: string };
+  /** A first pick, which pays username_set: the XP line shows under it. */
+  first?: boolean;
 }) {
   const copy = useCopy().social;
   const line =
@@ -107,6 +111,7 @@ export function NamePickerView({
           </Button>
         )}
       </div>
+      {first && <p className="text-center text-xs text-muted-foreground">{copy.pickXp(XP_ACTIONS.username_set.amount)}</p>}
     </form>
   );
 }
@@ -146,6 +151,7 @@ export function NamePicker({
       saving={save.isPending}
       onCancel={onCancel}
       title={title}
+      first={!current}
       onSave={() => {
         save.mutate(value, {
           onSuccess: (result) => {

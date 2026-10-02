@@ -36,7 +36,7 @@ create unique index if not exists xp_events_kind_ref_unique
 create unique index if not exists xp_events_pour_ref_unique
   on xp_events (ref) where kind in ('pour_in', 'pour_out');
 
--- Once-per-account kinds (account_created, email_linked, avatar_set).
+-- Once-per-account kinds (account_created, email_linked, avatar_set, username_set).
 create unique index if not exists xp_events_once_per_user
   on xp_events (user_id, kind) where ref is null;
 

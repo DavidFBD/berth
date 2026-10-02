@@ -74,7 +74,8 @@ export async function runSocialOp(
     case "name": {
       if (!(await take("name"))) return slow;
       const result = await setHandle(viewer, body.handle);
-      return result.ok ? ok(result.social) : { status: 422, body: result };
+      // The social state, with what the first name paid beside it (lib/toast announces it).
+      return result.ok ? ok({ ...result.social, rewards: result.rewards, xp: result.xp }) : { status: 422, body: result };
     }
     case "visibility": {
       if (typeof body.visible !== "boolean") return bad("visible");

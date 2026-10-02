@@ -44,7 +44,7 @@ import { establishedPrompt } from "@/lib/first-path";
 import { writeMark } from "@/lib/drawer-return";
 import { useFriendsList, useMySocial } from "@/hooks/use-social";
 import { useRecurring } from "@/hooks/use-recurring";
-import { rankForXp } from "@/lib/xp";
+import { rankForXp, XP_ACTIONS } from "@/lib/xp";
 import { cn } from "@/lib/utils";
 
 /**
@@ -213,7 +213,7 @@ function MainScreen({
           <Row
             icon={quiet === "avatar" ? UserCircle : At}
             title={quiet === "avatar" ? words.avatarTitle : copy.firstPath.titles.username}
-            sub={quiet === "avatar" ? copy.firstPath.quietAvatar : copy.firstPath.quietUsername}
+            sub={quiet === "avatar" ? copy.firstPath.quietAvatar : copy.firstPath.quietUsername(XP_ACTIONS.username_set.amount)}
             onClick={() => nav.show(quiet === "avatar" ? "avatar" : "friends")}
           />
         </Panel>

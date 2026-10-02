@@ -1419,7 +1419,8 @@ export type FirstPathCopy = {
   setUpClose: string;
   /** An established account's one quiet drawer row (lib/first-path establishedPrompt). */
   quietAvatar: string;
-  quietUsername: string;
+  /** `amount` is the first username's XP (lib/xp username_set). */
+  quietUsername: (amount: number) => string;
 };
 
 export type DrawerCopy = {
@@ -1467,6 +1468,8 @@ export type SocialCopy = {
   pickSave: string;
   pickChecking: string;
   pickFree: string;
+  /** Under a first pick only: what the first username pays (lib/xp username_set). */
+  pickXp: (amount: number) => string;
   /** Why a name cannot be had; `nextChange` is a readable date for "cooldown". */
   refusal: (reason: HandleRefusal, nextChange?: string) => string;
   saved: (handle: string) => string;
@@ -2489,7 +2492,7 @@ export const COPY: Copy = {
     setUpSkipped: "You set these aside. Each is here if you want it now.",
     setUpClose: "Done",
     quietAvatar: "A face beside your name and rank",
-    quietUsername: "So friends can find you",
+    quietUsername: (amount) => `So friends can find you · +${amount} XP`,
   },
   welcomePage: {
     navLabel: "Berth",
@@ -4074,6 +4077,7 @@ export const COPY: Copy = {
     pickSave: "Save",
     pickChecking: "Checking",
     pickFree: "Available",
+    pickXp: (amount) => `+${amount} XP for your username`,
     refusal: (reason, nextChange) =>
       ({
         short: "At least 3 characters.",

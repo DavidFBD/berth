@@ -412,7 +412,7 @@ function DemoNamePicker({ onSave }: { onSave: (name: string) => void }) {
   const [value, setValue] = useState("gosia");
   const parsed = parseHandle(value);
   const status: PickerStatus = value.length === 0 ? { kind: "rules" } : parsed.ok ? { kind: "free" } : value.length < 3 ? { kind: "rules" } : { kind: "refused", reason: parsed.reason };
-  return <NamePickerView value={value} onChange={setValue} status={status} saving={false} onSave={() => onSave(value)} />;
+  return <NamePickerView value={value} onChange={setValue} status={status} saving={false} first onSave={() => onSave(value)} />;
 }
 
 /** The Done moment: the step that just closed, and what comes next. */

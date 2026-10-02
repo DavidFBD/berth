@@ -7,6 +7,8 @@ import {
   type HandleRefusal,
 } from "@/lib/handle";
 import type { HandleCheck, MySocial } from "@/lib/social-types";
+import type { RewardList } from "@/lib/profile-types";
+import { awardXp, flushUnannounced } from "@/lib/server/accounts";
 import { socialAudit } from "@/lib/server/social/audit";
 import { hasVerifiedEmail, ownHandle, type SocialViewer } from "@/lib/server/social/people";
 
@@ -61,7 +63,14 @@ export async function checkHandle(viewer: SocialViewer, value: unknown, now = ne
   return { ok: true, handle: parsed.handle };
 }
 
-export type SetHandleResult = { ok: true; social: MySocial } | { ok: false; reason: HandleRefusal };
+/**
+ * `rewards` is what this save paid (the first username's username_set, and
+ * any parked news flushed with it), `xp` the fresh total when it paid;
+ * a rename or a resave pays nothing and carries an empty list.
+ */
+export type SetHandleResult =
+  | { ok: true; social: MySocial; rewards: RewardList; xp: number | null }
+  | { ok: false; reason: HandleRefusal };
 
 /**
  * Picks or changes the username, and with the first pick turns the card on.
@@ -69,6 +78,12 @@ export type SetHandleResult = { ok: true; social: MySocial } | { ok: false; reas
  * have passed (saving the very same name changes nothing); the old fold is held 90 days for this
  * account; the profile row appears with the first name. A race for the same
  * name ends at the unique fold, and the loser hears "taken".
+ *
+ * The first name (the row inserted, not updated) pays username_set once per
+ * person: a rename pays nothing, the once per account index settles two
+ * first saves racing, and a merge keeps one award (merge_accounts leaves a
+ * second once kind on the retired row). A house word only staff may carry
+ * pays nothing.
  */
 export async function setHandle(viewer: SocialViewer, value: unknown, now = new Date()): Promise<SetHandleResult> {
   const check = await checkHandle(viewer, value, now);
@@ -76,7 +91,7 @@ export async function setHandle(viewer: SocialViewer, value: unknown, now = new 
   const parsed = parseHandle(check.handle);
   if (!parsed.ok) return parsed;
   const before = await ownHandle(viewer.id);
-  let rows: { handle: string }[];
+  let rows: { handle: string; inserted: boolean }[];
   try {
     rows = (await getSql().query(
       `with old as (select handle_norm from handles where user_id = $1),
@@ -89,7 +104,7 @@ export async function setHandle(viewer: SocialViewer, value: unknown, now = new 
                changed_at = case when handles.handle = excluded.handle then handles.changed_at else excluded.changed_at end
            where handles.handle = excluded.handle
               or handles.changed_at <= $4::timestamptz - make_interval(days => $5::int)
-         returning handle, handle_norm
+         returning handle, handle_norm, (xmax::text = '0') as inserted
        ),
        prof as (
          insert into profiles (user_id, visible, updated_at)
@@ -108,9 +123,9 @@ export async function setHandle(viewer: SocialViewer, value: unknown, now = new 
          delete from handle_reserved r using up
          where r.handle_norm = up.handle_norm and r.reason = 'retired' and r.user_id = $1
        )
-       select handle from up`,
+       select handle, inserted from up`,
       [viewer.id, parsed.handle, parsed.norm, now.toISOString(), HANDLE_CHANGE_DAYS, HANDLE_RETIRE_DAYS],
-    )) as { handle: string }[];
+    )) as { handle: string; inserted: boolean }[];
   } catch (error) {
     if (/unique|duplicate/i.test(error instanceof Error ? error.message : String(error))) return { ok: false, reason: "taken" };
     throw error;
@@ -122,7 +137,16 @@ export async function setHandle(viewer: SocialViewer, value: unknown, now = new 
       ...(before ? { was: before.handle } : {}),
     });
   }
-  return { ok: true, social: await mySocial(viewer, now) };
+  let rewards: RewardList = [];
+  let xp: number | null = null;
+  if (rows[0].inserted && refusedName(parsed) !== "reserved") {
+    const paid = await awardXp(viewer.id, "username_set", null);
+    if (paid.awarded > 0) {
+      rewards = [{ kind: "username_set", amount: paid.awarded }, ...(await flushUnannounced(viewer.id))];
+      xp = paid.xp;
+    }
+  }
+  return { ok: true, social: await mySocial(viewer, now), rewards, xp };
 }
 
 /** "Hide my card": one switch. Hidden reads exactly like missing, to everyone else. */

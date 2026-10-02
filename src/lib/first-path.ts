@@ -198,16 +198,18 @@ export function finishedStep(previous: PathView, next: PathView): PathStep | nul
 /**
  * The XP a step earns, from the existing award paths only (lib/xp): the path
  * itself pays nothing, so nothing is ever paid twice. The first avatar pays
- * avatar_set; the first buy pays pour_in, and invite_accepted too for an
+ * avatar_set, the first username username_set; the first buy pays pour_in, and invite_accepted too for an
  * account that came on a friend's invite. The invite step shares the friend
  * link, which pays no XP (friend_links); friend_poured belongs to the invite
  * code, which opens at level 3 (ADR-0002, ADR-0004), so the step promises
- * none. A username and adding money pay nothing.
+ * none. Adding money pays nothing.
  */
 export function stepXp(step: PathStep, { referred }: { referred: boolean }): number | null {
   switch (step) {
     case "avatar":
       return XP_ACTIONS.avatar_set.amount;
+    case "username":
+      return XP_ACTIONS.username_set.amount;
     case "firstBuy":
       return XP_ACTIONS.pour_in.amount + (referred ? XP_ACTIONS.invite_accepted.amount : 0);
     default:

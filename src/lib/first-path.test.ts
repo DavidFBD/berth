@@ -201,7 +201,7 @@ describe("the Done moment", () => {
 describe("what the path pays and says", () => {
   it("pays only through the existing XP kinds", () => {
     expect(stepXp("avatar", { referred: false })).toBe(XP_ACTIONS.avatar_set.amount);
-    expect(stepXp("username", { referred: false })).toBeNull();
+    expect(stepXp("username", { referred: false })).toBe(XP_ACTIONS.username_set.amount);
     expect(stepXp("money", { referred: false })).toBeNull();
     expect(stepXp("firstBuy", { referred: false })).toBe(XP_ACTIONS.pour_in.amount);
     expect(stepXp("firstBuy", { referred: true })).toBe(XP_ACTIONS.pour_in.amount + XP_ACTIONS.invite_accepted.amount);

@@ -8,6 +8,7 @@ import { DAILY_REQUEST_MAX, DECLINE_QUIET_DAYS, OUTGOING_MAX, FRIENDS_MAX, frien
 import { checkHandle, mySocial, setHandle, setVisible } from "./handles";
 import { runSocialOp } from "./ops";
 import type { SocialViewer } from "./people";
+import { XP_ACTIONS } from "@/lib/xp";
 import { setSalute } from "./salutes";
 
 /**
@@ -126,7 +127,7 @@ describe("the card", () => {
     const answer = await readCard(await person(), "Quay_Keeper");
     expect(answer).toEqual({
       found: true,
-      card: { handle: "quay_keeper", avatarId: null, xp: 0, memberSince: "2026-07", salutes: 0 },
+      card: { handle: "quay_keeper", avatarId: null, xp: XP_ACTIONS.username_set.amount, memberSince: "2026-07", salutes: 0 },
       viewer: { relation: "none", saluted: false, hasEmail: true, hasHandle: false },
     });
     const keys = answer.found ? Object.keys(answer.card).sort() : [];
@@ -234,8 +235,9 @@ describe("Salutes", () => {
     const star = await person("xp_star");
     await setSalute(giver, "xp_star", true);
     const xp = (await sql.query(`select id, xp from users where id in ($1, $2)`, [giver.id, star.id])) as { xp: number }[];
-    expect(xp.every((row) => row.xp === 0)).toBe(true);
-    expect(await sql.query(`select * from xp_events where user_id in ($1, $2)`, [giver.id, star.id])).toEqual([]);
+    // Only what each username paid; the Salute itself pays nothing.
+    expect(xp.every((row) => row.xp === XP_ACTIONS.username_set.amount)).toBe(true);
+    expect(await sql.query(`select * from xp_events where user_id in ($1, $2) and kind <> 'username_set'`, [giver.id, star.id])).toEqual([]);
   });
 
   it("cannot reach a hidden card", async () => {

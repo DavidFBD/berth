@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccountHeaders } from "@/hooks/use-profile";
+import { announceRewards } from "@/components/xp-toast";
+import type { RewardList } from "@/lib/profile-types";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import type {
   BlockedName,
@@ -95,14 +97,29 @@ export function useSetHandle() {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
   return useMutation({
-    mutationFn: async (handle: string): Promise<{ ok: true; social: MySocial } | { ok: false; reason: HandleRefusal | "failed" }> => {
-      const { status, data } = await call<MySocial | { ok: false; reason: HandleRefusal }>("name", { handle });
-      if (status === 200 && data) return { ok: true, social: data as MySocial };
+    mutationFn: async (
+      handle: string,
+    ): Promise<{ ok: true; social: MySocial; rewards: RewardList; xp: number | null } | { ok: false; reason: HandleRefusal | "failed" }> => {
+      type Saved = MySocial & { rewards?: RewardList; xp?: number | null };
+      const { status, data } = await call<Saved | { ok: false; reason: HandleRefusal }>("name", { handle });
+      if (status === 200 && data) {
+        // The first username pays username_set; the reward rides beside the social state.
+        const { rewards = [], xp = null, ...social } = data as Saved;
+        return { ok: true, social, rewards, xp };
+      }
       if (status === 422 && data && "reason" in data) return { ok: false, reason: data.reason };
       return { ok: false, reason: "failed" };
     },
     onSuccess: (result) => {
-      if (result.ok) queryClient.setQueryData(KEYS.me(key), result.social);
+      if (result.ok) {
+        queryClient.setQueryData(KEYS.me(key), result.social);
+        if (result.rewards.length > 0 && result.xp !== null) {
+          const xp = result.xp;
+          announceRewards(result.rewards, xp);
+          queryClient.setQueryData<{ xp: number }>(["profile", key], (previous) => (previous ? { ...previous, xp } : previous));
+          void queryClient.invalidateQueries({ queryKey: ["xp-history", key] });
+        }
+      }
       void queryClient.invalidateQueries({ queryKey: ["social-card"] });
       void queryClient.invalidateQueries({ queryKey: KEYS.board(key) });
     },
