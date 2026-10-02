@@ -71,16 +71,16 @@ export async function anyTarget(norm: string): Promise<string | null> {
   return rows[0]?.user_id ?? null;
 }
 
-export type OwnHandle = { handle: string; norm: string; changedAt: string; createdAt: string; visible: boolean; linkFace: boolean };
+export type OwnHandle = { handle: string; norm: string; changedAt: string; createdAt: string; visible: boolean; linkFace: boolean; shareHoldings: boolean };
 
 export async function ownHandle(userId: string): Promise<OwnHandle | null> {
   const rows = (await getSql().query(
     `select h.handle, h.handle_norm, h.changed_at, h.created_at, coalesce(p.visible, true) as visible,
-       coalesce(p.link_face, false) as link_face
+       coalesce(p.link_face, false) as link_face, coalesce(p.share_holdings, false) as share_holdings
      from handles h left join profiles p on p.user_id = h.user_id
      where h.user_id = $1`,
     [userId],
-  )) as { handle: string; handle_norm: string; changed_at: string; created_at: string; visible: boolean; link_face: boolean }[];
+  )) as { handle: string; handle_norm: string; changed_at: string; created_at: string; visible: boolean; link_face: boolean; share_holdings: boolean }[];
   const row = rows[0];
   if (!row) return null;
   return {
@@ -90,5 +90,6 @@ export async function ownHandle(userId: string): Promise<OwnHandle | null> {
     createdAt: new Date(row.created_at).toISOString(),
     visible: row.visible,
     linkFace: row.link_face,
+    shareHoldings: row.share_holdings,
   };
 }

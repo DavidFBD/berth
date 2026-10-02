@@ -2,12 +2,15 @@ import { getSql } from "@/lib/server/db";
 import { lookupKey } from "@/lib/handle";
 import type { CardAnswer, Relation } from "@/lib/social-types";
 import { hasVerifiedEmail, VISIBLE_SQL, type SocialViewer } from "@/lib/server/social/people";
+import { friendHolds } from "@/lib/server/social-proof";
 
 /**
  * The card: face, username, XP (the rank is derived from it), the month the
  * account opened and the Salutes count, and where the viewer stands. Nothing
  * else leaves this module: no money, no wallet, no email, no friends and no
- * friend count. Every way a card can be missing (no such name, hidden,
+ * friend count. The one exception is between friends who both share what
+ * they hold: then the card lists which board listings the other holds,
+ * never how much (lib/server/social-proof). Every way a card can be missing (no such name, hidden,
  * blocked, blocking, a malformed name) answers the same NOT_FOUND object.
  */
 
@@ -65,7 +68,7 @@ async function answer(viewer: SocialViewer, row: CardRow | null): Promise<CardAn
     memberSince: `${created.getUTCFullYear()}-${String(created.getUTCMonth() + 1).padStart(2, "0")}`,
     salutes: row.salutes,
   };
-  const [relation, saluted, hasHandle] = await Promise.all([
+  const [relation, saluted, hasHandle, sharesHoldings] = await Promise.all([
     relationTo(viewer.id, row.user_id),
     viewer.id === row.user_id
       ? Promise.resolve(false)
@@ -75,8 +78,17 @@ async function answer(viewer: SocialViewer, row: CardRow | null): Promise<CardAn
     getSql()
       .query(`select 1 from handles where user_id = $1`, [viewer.id])
       .then((rows) => (rows as unknown[]).length > 0),
+    getSql()
+      .query(`select 1 from profiles where user_id = $1 and share_holdings`, [viewer.id])
+      .then((rows) => (rows as unknown[]).length > 0),
   ]);
-  return { found: true, card, viewer: { relation, saluted, hasEmail: hasVerifiedEmail(viewer), hasHandle } };
+  const holds = relation === "friends" ? await friendHolds(viewer, row.user_id) : null;
+  return {
+    found: true,
+    card,
+    viewer: { relation, saluted, hasEmail: hasVerifiedEmail(viewer), hasHandle, ...(sharesHoldings ? { sharesHoldings: true } : {}) },
+    ...(holds && holds.length > 0 ? { holds } : {}),
+  };
 }
 
 /** The card behind a username as typed or as it sits in a URL. */

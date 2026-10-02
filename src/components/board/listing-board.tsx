@@ -16,6 +16,8 @@ import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
+import { useMostBought } from "@/hooks/use-most-bought";
+import type { MostBoughtResponse } from "@/lib/social-proof";
 import { STOCK_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT, SPRING_POP } from "@/lib/motion";
 import {
@@ -54,6 +56,7 @@ export function ListingBoard({
   newsFilterSymbol,
   held: heldOverride,
   expandAll = false,
+  mostBought: mostBoughtOverride,
 }: {
   onBuy: (listing: TokenListing) => void;
   onSell?: (listing: TokenListing) => void;
@@ -64,6 +67,8 @@ export function ListingBoard({
   held?: ReadonlyMap<string, bigint>;
   /** Every listing at once, with no "All" disclosure: the board as its own sheet. */
   expandAll?: boolean;
+  /** Stands in for app/api/most-bought, for the dev gallery. */
+  mostBought?: MostBoughtResponse;
 }) {
   const copy = useCopy();
   const moves = useMoves();
@@ -72,6 +77,12 @@ export function ListingBoard({
   const holdings = useHubHoldings(account.hubWallets);
   const prices = useListingPrices();
   const performance = useListingPerformance();
+  // How many people bought each listing this week (lib/social-proof): its
+  // own read-only section at the foot, never in a row and never beside the
+  // drawer's Buy. What friends hold is not on the board at all; it lives in
+  // the Friends screen and on a friend's card.
+  const fetchedMostBought = useMostBought();
+  const mostBought = mostBoughtOverride ?? fetchedMostBought;
   // One row at a time, so twelve rows do not each carry their own state. A
   // focus counts as a hover: the filter must be reachable from the keyboard,
   // and a control that is invisible when focused is a trap.
@@ -179,6 +190,7 @@ export function ListingBoard({
                 </span>
               </div>
             )}
+
           </div>
           <div className="flex flex-col items-center gap-0.5">
             {series && lineDirection && (
@@ -337,7 +349,40 @@ export function ListingBoard({
           label={copy.boardAll(STOCK_LISTINGS.length)}
         />
       )}
+      <MostBoughtList answer={mostBought} />
     </Panel>
+  );
+}
+
+/**
+ * Most bought on Berth, the last published week: a list to read, not to act on. No row
+ * buys, nothing is ranked by money, and there is no adjective or arrow;
+ * only a count of people. Nothing at all while the week is too quiet
+ * (lib/social-proof thresholds), so an empty answer leaves no trace.
+ */
+function MostBoughtList({ answer }: { answer: MostBoughtResponse }) {
+  const copy = useCopy();
+  const shown = answer.rows.flatMap((row) => {
+    const listing = STOCK_LISTINGS.find((candidate) => candidate.symbol === row.symbol);
+    return listing ? [{ listing, people: row.people, plus: row.plus }] : [];
+  });
+  if (shown.length === 0 || !answer.week) return null;
+  const week = new Date(`${answer.week}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return (
+    <>
+      <GroupLabel>{copy.mostBoughtTitle(week)}</GroupLabel>
+      <ol data-most-bought className="divide-y divide-border border-t border-border">
+        {shown.map(({ listing, people, plus }) => (
+          <li key={listing.address} className="flex min-h-14 items-center gap-2.5 px-[18px] py-2.5 lg:gap-3 lg:px-6">
+            <TickerTile symbol={listing.symbol} />
+            <div className="min-w-0 flex-1">
+              <div title={listing.name} className="truncate text-[14.5px] leading-snug font-medium text-foreground">{rowName(listing)}</div>
+              <div className="text-xs text-muted-foreground">{copy.mostBoughtRow(people, plus)}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </>
   );
 }
 

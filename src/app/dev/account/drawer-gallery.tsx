@@ -114,7 +114,7 @@ export function seedDrawer(client: QueryClient, scene: DrawerScene): void {
     hasEmail: true,
     handle: scene === "named" ? "gosia" : established ? "harbourfan" : null,
     visible: true,
-    linkFace: false,
+    linkFace: false, shareHoldings: false,
     nextChangeAt: null,
     requests: established ? 1 : 0,
   };

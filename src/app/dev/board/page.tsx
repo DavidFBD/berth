@@ -16,6 +16,7 @@ import {
 import { FundsModule } from "@/components/funds-module";
 import { HomeGallery } from "./home-gallery";
 import { PathGallery } from "./path-gallery";
+import { socialProofFor } from "./social-proof-fixtures";
 import { LINE_FIXTURES } from "../campaigns/fixtures";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { Panel } from "@/components/ui/panel";
@@ -64,6 +65,11 @@ import {
  *   /dev/board?home=path                the guided first path, walked live from
  *                                       fixtures (path-gallery.tsx: &account=wallet,
  *                                       &at=, &skipped=, &drawer=1, &done=)
+ *   /dev/board?proof=1                  the two social counts from fixtures
+ *                                       (social-proof-fixtures.ts): most bought
+ *                                       this week, and friends holding a row;
+ *                                       proof=0 the quiet week; also on a home
+ *                                       scene with &drawer=board
  *   /dev/board?open=NVDA&country=US     any of these as seen where Berth is
  *                                       not available (lib/availability): the
  *                                       buy drawer is the soft landing, the
@@ -108,6 +114,7 @@ function Galleries() {
         look={params.get("look") === "fixture" || params.get("look") === "quiet" ? (params.get("look") as "fixture" | "quiet") : undefined}
         firstStock={params.get("first") === "1"}
         campaign={LINE_FIXTURES[params.get("campaign") ?? ""]}
+        proof={params.get("proof")}
       />
     );
   }
@@ -237,6 +244,7 @@ function Gallery() {
               )
             }
             newsFilterSymbol={newsFilter?.symbol}
+            {...socialProofFor(params.get("proof"))}
           />
         </div>
         <div className="lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1 xl:self-stretch xl:[contain:size]">

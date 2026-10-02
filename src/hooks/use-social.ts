@@ -17,6 +17,7 @@ import type {
   ReportReason,
 } from "@/lib/social-types";
 import type { HandleRefusal } from "@/lib/handle";
+import type { FriendsHolding, FriendsHoldingResponse } from "@/lib/social-proof";
 
 /**
  * The client side of the social routes (app/api/social/[op]). Every call is
@@ -56,12 +57,15 @@ const KEYS = {
   link: (key: string | null) => ["social-link", key] as const,
   blocked: (key: string | null) => ["social-blocked", key] as const,
   board: (key: string | null) => ["social-board", key] as const,
+  holding: (key: string | null) => ["social-holding", key] as const,
+  notices: (key: string | null) => ["social-notices", key] as const,
   card: (key: string | null, handle: string) => ["social-card", key, handle.toLowerCase()] as const,
 };
 
 /** The viewer's own social state. */
-export function useMySocial(enabled = true) {
-  const { key, call } = useSocialCall();
+/** `prompt: false` for a quiet read that must never ask a wallet to sign (the notice strip). */
+export function useMySocial(enabled = true, { prompt = true }: { prompt?: boolean } = {}) {
+  const { key, call } = useSocialCall({ prompt });
   return useQuery({
     queryKey: KEYS.me(key),
     enabled: enabled && key !== null,
@@ -144,6 +148,19 @@ export function useSetLinkFace() {
   });
 }
 
+export function useSetShareHoldings() {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  return useMutation({
+    mutationFn: (on: boolean) => must(call<MySocial>("share-holdings", { on })),
+    onSuccess: (social) => {
+      queryClient.setQueryData(KEYS.me(key), social);
+      void queryClient.invalidateQueries({ queryKey: KEYS.holding(key) });
+      void queryClient.invalidateQueries({ queryKey: ["social-card"] });
+    },
+  });
+}
+
 export function useFriendsList(enabled: boolean) {
   const { key, call } = useSocialCall();
   return useQuery({
@@ -192,6 +209,60 @@ export function useFriendsBoard(enabled: boolean) {
     retry: 1,
     queryFn: () => must(call<FriendsBoard>("board")),
   });
+}
+
+/**
+ * Which board listings the viewer's friends hold, as counts
+ * (lib/server/social-proof), by symbol. Never asks a wallet to sign: it is
+ * a quiet line on the board, so it uses only a session already at hand,
+ * and says nothing without one. Private: the social route answers it with
+ * no-store, and the cache here is keyed on the viewer.
+ */
+export function useFriendsHolding(enabled = true): ReadonlyMap<string, FriendsHolding> {
+  const { key, headers } = useAccountHeaders({ prompt: false });
+  const query = useQuery({
+    queryKey: KEYS.holding(key),
+    enabled: enabled && key !== null,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: async (): Promise<FriendsHolding[]> => {
+      const auth = await headers();
+      if (!auth) return [];
+      const response = await fetch("/api/social/holding", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...auth },
+        body: "{}",
+      });
+      if (!response.ok) return [];
+      return ((await response.json()) as FriendsHoldingResponse).holding ?? [];
+    },
+  });
+  return new Map((query.data ?? []).map((line) => [line.symbol, line]));
+}
+
+/**
+ * Whether a once per account notice (lib/server/notices) is still due, and
+ * how to close it. Never asks a wallet to sign; without a session it says
+ * nothing. Closing hides it at once and records it for every device.
+ */
+export function useAccountNotice(notice: string): { due: boolean; close: () => void } {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall({ prompt: false });
+  const query = useQuery({
+    queryKey: KEYS.notices(key),
+    enabled: key !== null,
+    staleTime: 10 * 60_000,
+    retry: false,
+    queryFn: async () => {
+      const { status, data } = await call<{ pending: string[] }>("notices");
+      return status === 200 && data ? data.pending : [];
+    },
+  });
+  const close = () => {
+    queryClient.setQueryData<string[]>(KEYS.notices(key), (pending) => (pending ?? []).filter((id) => id !== notice));
+    void call("notice-seen", { notice });
+  };
+  return { due: (query.data ?? []).includes(notice), close };
 }
 
 /**
@@ -274,6 +345,7 @@ export function useSocialAction() {
         void queryClient.invalidateQueries({ queryKey: KEYS.friends(key) });
         void queryClient.invalidateQueries({ queryKey: KEYS.me(key) });
         void queryClient.invalidateQueries({ queryKey: KEYS.board(key) });
+        void queryClient.invalidateQueries({ queryKey: KEYS.holding(key) });
         void queryClient.invalidateQueries({ queryKey: KEYS.blocked(key) });
       }
     },

@@ -11,7 +11,20 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { useCopy } from "@/components/settings-provider";
 import { NamePicker } from "@/components/social/name-picker";
 import { FindFriend, type FindResult } from "@/components/social/find-friend";
-import { useBlocked, useFriendLink, useFriendsList, useMySocial, useSetLinkFace, useSetVisible, useSocialAction } from "@/hooks/use-social";
+import {
+  useBlocked,
+  useFriendLink,
+  useFriendsHolding,
+  useFriendsList,
+  useMySocial,
+  useSetLinkFace,
+  useSetShareHoldings,
+  useSetVisible,
+  useSocialAction,
+} from "@/hooks/use-social";
+import { TickerTile } from "@/components/board/holdings-list";
+import { STOCK_LISTINGS, rowName } from "@/lib/listings";
+import type { FriendsHolding } from "@/lib/social-proof";
 import type { BlockedName, FriendsList, MySocial, Person } from "@/lib/social-types";
 import { SPRING_SHELF } from "@/lib/motion";
 import { rankForXp } from "@/lib/xp";
@@ -24,7 +37,8 @@ import { isPlainClick } from "@/lib/drawer-return";
  * one row that points at adding one. With an email and no username, the
  * picker. With a username: the name (view, change), friend requests when
  * there are any, friends and the friend link folded, the friends board, the
- * hide switch, the link picture switch, and blocked people folded. One (i), on the title.
+ * hide switch, the link picture switch, "Your friends hold" folded with its
+ * sharing switch (off by default), and blocked people folded. One (i), on the title.
  */
 
 export type SocialDemo = {
@@ -32,7 +46,9 @@ export type SocialDemo = {
   friends?: FriendsList;
   blocked?: BlockedName[];
   token?: string;
-  open?: "friends" | "blocked" | "change";
+  open?: "friends" | "blocked" | "change" | "holding";
+  /** Stands in for the "holding" op's answer. */
+  holding?: FriendsHolding[];
   find?: { value: string; result: FindResult };
 };
 
@@ -87,12 +103,13 @@ function FirstPick() {
 
 function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialDemo; initialFold?: "friends" }) {
   const copy = useCopy().social;
-  const [open, setOpen] = useState<"friends" | "blocked" | "change" | null>(demo?.open ?? initialFold ?? null);
-  const toggle = (which: "friends" | "blocked" | "change") => setOpen((current) => (current === which ? null : which));
+  const [open, setOpen] = useState<"friends" | "blocked" | "change" | "holding" | null>(demo?.open ?? initialFold ?? null);
+  const toggle = (which: "friends" | "blocked" | "change" | "holding") => setOpen((current) => (current === which ? null : which));
   const friends = useFriendsList(!demo);
   const list = demo?.friends ?? friends.data;
   const visible = useSetVisible();
   const linkFace = useSetLinkFace();
+  const shareHoldings = useSetShareHoldings();
   const handle = social.handle!;
   const own = useDrawerLink(`/u/${handle}`);
   const board = useDrawerLink("/friends");
@@ -170,6 +187,26 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
         />
       </div>
 
+      <Fold open={open === "holding"} onToggle={() => toggle("holding")} title={copy.holdingTitle}>
+        <HoldingFold sharing={social.shareHoldings && social.visible} demo={demo} />
+      </Fold>
+
+      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm text-foreground">{copy.shareHoldings}</span>
+          <span className="text-xs text-muted-foreground">{copy.shareHoldingsSub}</span>
+        </span>
+        <Toggle
+          label={copy.shareHoldings}
+          on={social.shareHoldings}
+          disabled={shareHoldings.isPending}
+          onChange={(on) => {
+            if (demo) return;
+            shareHoldings.mutate(on, { onError: () => toast.error(copy.actionFailed) });
+          }}
+        />
+      </div>
+
       <Fold open={open === "blocked"} onToggle={() => toggle("blocked")} title={copy.blocked}>
         <BlockedFold demo={demo} />
       </Fold>
@@ -195,6 +232,7 @@ function Requests({ people, demo }: { people: Person[]; demo: boolean }) {
   return (
     <div className="flex flex-col gap-1 px-3 py-2.5">
       <span className="text-xs text-muted-foreground">{copy.requestsTitle}</span>
+      <p className="text-xs text-muted-foreground">{copy.acceptHoldingsNote}</p>
       <ul className="flex flex-col">
         {people.map((person) => (
           <li key={person.handle} className="flex min-h-11 items-center gap-2.5">
@@ -301,6 +339,37 @@ function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; de
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Your friends hold": which board listings friends who share hold, as a
+ * count, named when one or two. Read only: no row buys or opens a buy, and
+ * nothing here says how much. Empty, with the reason, unless the viewer
+ * shares too (lib/server/social-proof).
+ */
+function HoldingFold({ sharing, demo }: { sharing: boolean; demo?: SocialDemo }) {
+  const copy = useCopy();
+  const fetched = useFriendsHolding(!demo && sharing);
+  const lines = demo ? (demo.holding ?? []) : [...fetched.values()];
+  if (!sharing) return <p className="px-3 pb-3 text-xs text-muted-foreground">{copy.social.holdingOff}</p>;
+  const rows = lines.flatMap((line) => {
+    const listing = STOCK_LISTINGS.find((candidate) => candidate.symbol === line.symbol);
+    return listing ? [{ listing, line }] : [];
+  });
+  if (rows.length === 0) return <p className="px-3 pb-3 text-xs text-muted-foreground">{copy.social.holdingNone}</p>;
+  return (
+    <ul data-friends-hold className="flex flex-col px-3 pb-2.5">
+      {rows.map(({ listing, line }) => (
+        <li key={listing.address} className="flex min-h-12 items-center gap-2.5 py-1">
+          <TickerTile symbol={listing.symbol} />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-sm text-foreground">{rowName(listing)}</span>
+            <span className="truncate text-xs text-muted-foreground">{copy.friendsHold(line.count, line.names)}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

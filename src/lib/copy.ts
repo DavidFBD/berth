@@ -280,6 +280,15 @@ export type Copy = {
   boardYours: string;
   boardMovers: string;
   boardAll: (count: number) => string;
+  /** Over the board's quiet list of listings by how many people bought them (lib/social-proof). */
+  /** `week` is the published week's Monday, as words ("Oct 5"). */
+  mostBoughtTitle: (week: string) => string;
+  /** One row of it: a count of people, never an amount; `plus` when rounded down ("15+"). */
+  mostBoughtRow: (people: number, plus: boolean) => string;
+  /** A row of "Your friends hold" in the Friends screen: how many friends who share hold it, named when one or two. */
+  friendsHold: (count: number, names: readonly string[]) => string;
+  /** The once per account notice of the two social counts (components/board/social-notice-line). */
+  socialNotice: { text: string; action: string; dismiss: string };
   newsMoreStories: string;
   /** The Ask card's fake field and the phone's docked one. */
   askPlaceholder: string;
@@ -1515,6 +1524,19 @@ export type SocialCopy = {
   removeConfirm: string;
   needHandle: string;
   youAreFriends: (handle: string) => string;
+  /** The opt-in for friends to see which listings you hold (lib/server/social-proof), off by default. */
+  shareHoldings: string;
+  shareHoldingsSub: string;
+  /** Beside friend requests: what accepting does and does not share. */
+  acceptHoldingsNote: string;
+  /** Beside a card's Accept or Add friend, when the viewer's own switch is on. */
+  cardShareNote: string;
+  /** The read-only fold of which listings friends who share hold. */
+  holdingTitle: string;
+  holdingOff: string;
+  holdingNone: string;
+  /** On a friend's card, when both share: which listings they hold, by name. */
+  cardHolds: (names: readonly string[]) => string;
   requestSent: string;
   selfNote: string;
   signInLine: string;
@@ -2474,7 +2496,7 @@ export const COPY: Copy = {
     doneNext: (title) => `Next: ${title}.`,
     doneLast: "That was the last step.",
     avatarSub: "Tap a face to make it yours, then save it. It sits beside your name and rank.",
-    usernameSub: "Friends find you by your exact username. Your profile never shows money or what you own.",
+    usernameSub: "Friends find you by your exact username. Your profile never shows money, and shows what you hold only to friends if you turn it on.",
     usernameNeedsEmail: "A username needs an email on the account. Add one here first.",
     inviteSub: "Send your friend link. Anyone with it can ask to be friends.",
     inviteNeedsName: "Your friend link needs a username first.",
@@ -2559,6 +2581,19 @@ export const COPY: Copy = {
   boardYours: "Yours",
   boardMovers: "Moving most today",
   boardAll: (count) => `All ${count} stocks and funds`,
+  mostBoughtTitle: (week) => `Most bought on Berth, the week of ${week}`,
+  mostBoughtRow: (people, plus) => `Bought by ${people}${plus ? "+" : ""} ${people === 1 && !plus ? "person" : "people"}`,
+  friendsHold: (count, names) =>
+    names.length === 1
+      ? `Held by your friend ${names[0]}`
+      : names.length === 2
+        ? `Held by your friends ${names[0]} and ${names[1]}`
+        : `Held by ${count} of your friends`,
+  socialNotice: {
+    text: "New: each week, the board shows how many people bought each stock, never who. You can also let friends see which stocks and funds you hold. It is off unless you turn it on.",
+    action: "See the switch",
+    dismiss: "Got it",
+  },
   newsMoreStories: "More stories",
   askPlaceholder: "Ask about your account",
   askFine: "Facts, not advice. You sign every order.",
@@ -3560,7 +3595,7 @@ export const COPY: Copy = {
   privacyLink: "Privacy",
   privacyPolicy: {
     title: "Privacy policy",
-    status: "Effective 1 October 2026.",
+    status: "Effective 2 October 2026.",
     intro: [
       "This policy explains what Berth collects when you use www.berthmarkets.com and the Berth connector for your AI, why, who else sees it, how long we keep it, and what you can ask of us.",
       "Berth is self custodial. We never hold your keys and we never hold your money.",
@@ -3595,7 +3630,7 @@ export const COPY: Copy = {
         after: [
           "We use this to run your account, show what you own and how it has done, check an order before a reward is paid for it, pay invite and campaign rewards, keep the service secure, limit abuse, and fix what breaks.",
           "We do not sell personal data. We do not use it for advertising, and we do not build profiles of you for anyone else.",
-          "Where the law asks for a legal basis: running your account and your orders is necessary to provide the service you asked for. Security, abuse limits, error reports and usage statistics rest on our legitimate interest in a service that works and is safe. For anything else, we will ask you first.",
+          "Where the law asks for a legal basis: running your account and your orders is necessary to provide the service you asked for. Security, abuse limits, error reports and usage statistics rest on our legitimate interest in a service that works and is safe. Most bought on Berth rests on our legitimate interest in showing what people on Berth buy, with the safeguards described under Your profile and friends. Showing your friends what you hold rests on your consent, which you give and take back with its switch. For anything else, we will ask you first.",
         ],
       },
       {
@@ -3641,9 +3676,11 @@ export const COPY: Copy = {
         id: "profiles",
         heading: "Your profile and friends",
         body: [
-          "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your avatar, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets, your money or what you own.",
+          "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your avatar, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets or your money, and what you own only to friends, as below.",
           "The preview of a link to your profile or of your invite link, its picture, title and description, names no one unless you turn on Show my avatar, username and rank on links I share. Then a profile link's preview shows your username, your avatar (or your rank mark if you have not picked one) and your rank name, and an invite link's preview shows your username and your avatar or rank mark, to anyone who opens or previews the link, or guesses your username. Never your email, your wallets, your money or what you own. It is off unless you turn it on, and it shows no one while your profile is hidden. When you turn it off or hide your profile, Berth stops serving your preview within ten minutes. Apps where a link was already shared may keep their own copy of its preview for longer, and we cannot remove it from them.",
           "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. Nobody else can see your friends or who you block. The record of changes is kept for a year.",
+          "If you turn on Let my friends see which stocks and funds I hold, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username when one or two of their friends hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
+          "Most bought on Berth is public: anyone who opens the board sees it. It counts how many people bought each listing in one week, Monday to Sunday in UTC, from the orders we keep. Each week is counted once, after it ends, and kept as it was published; the first week counted begins on 5 October 2026. It names no one and shows no amount. Two accounts merged into one count as one person. Only buys of at least $10, from accounts at least a week old with a verified email, are counted, and staff accounts and buys that earn no XP are not. A listing bought by fewer than five people is left out, counts above ten are rounded down to a multiple of five, and the list is not shown at all in a week when fewer than ten people bought.",
         ],
       },
       {
@@ -4067,7 +4104,7 @@ export const COPY: Copy = {
   social: {
     sectionTitle: "Your profile",
     sectionWhy:
-      "Only people who know your username can open your profile. It shows your avatar, rank, XP and Salutes, never money or what you own.",
+      "Only people who know your username can open your profile. It shows your avatar, rank, XP and Salutes, never money. Which stocks and funds you hold is shown only to friends, and only if you turn it on.",
     addEmail: "Add an email to get a profile",
     addEmailSub: "A profile needs a verified email.",
     pickTitle: "Pick a username",
@@ -4095,7 +4132,7 @@ export const COPY: Copy = {
     change: "Change",
     cancel: "Cancel",
     hide: "Hide my profile",
-    hideSub: "While hidden, your username finds no one.",
+    hideSub: "While hidden, your username finds no one, and friends do not see what you hold.",
     linkFace: "Show my avatar, username and rank on links I share",
     linkFaceSub: "Links to your profile and your invite link then show your username, your avatar or rank mark, and your rank name to anyone who opens or previews them, or guesses your username. Off, they show no one.",
     hiddenNote: "Hidden. Only you can see this.",
@@ -4135,6 +4172,15 @@ export const COPY: Copy = {
     removeConfirm: "Tap again to remove",
     needHandle: "Pick a username to add friends.",
     youAreFriends: (handle) => `You and ${handle} are friends.`,
+    shareHoldings: "Let my friends see which stocks and funds I hold",
+    shareHoldingsSub: "Only the names, never how much, to every friend who shares too, including friends you add later. You see theirs only while yours is on. Off unless you turn it on.",
+    acceptHoldingsNote: "Friends never see your money. Which stocks and funds you hold is shared only if you both turn it on.",
+    cardShareNote: "Your switch to share what you hold is on: they will see which stocks and funds you hold if they share theirs.",
+    holdingTitle: "Your friends hold",
+    holdingOff: "Turn on the switch below to see which stocks and funds your friends hold, if they share theirs too.",
+    holdingNone: "None of your friends who share hold anything right now.",
+    cardHolds: (names) =>
+      names.length === 1 ? `Holds ${names[0]}.` : `Holds ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}.`,
     requestSent: "Request sent.",
     selfNote: "This is you.",
     signInLine: "Sign in to see this profile.",

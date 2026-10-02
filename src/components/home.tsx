@@ -11,6 +11,7 @@ import {
   AccountTotal,
   CashShelf,
   EmailNudgeLine,
+  SocialNoticeLine,
   HoldingsList,
   ListingBoard,
   NewsFeed,
@@ -130,8 +131,14 @@ function SignedInHome() {
   const [accountAssistant, setAccountAssistant] = useState<AssistantId | null>(null);
   // Whether the email nudge opened the drawer, so it lands on the add-email row.
   const [focusEmail, setFocusEmail] = useState(false);
+  // Whether the social notice opened the drawer, so it lands on the profile screen.
+  const [focusFriends, setFocusFriends] = useState(false);
   const openAccount = (assistant: AssistantId | null = null) => {
     setAccountAssistant(assistant);
+    setAccountOpen(true);
+  };
+  const openAccountForFriends = () => {
+    setFocusFriends(true);
     setAccountOpen(true);
   };
   const openAccountForEmail = () => {
@@ -143,6 +150,7 @@ function SignedInHome() {
     if (!next) {
       setAccountAssistant(null);
       setFocusEmail(false);
+      setFocusFriends(false);
     }
   };
   // Whether a higher-priority strip already holds the email nudge's slot.
@@ -439,6 +447,7 @@ function SignedInHome() {
             onOpenChange={onAccountOpenChange}
             assistant={accountAssistant}
             focusEmail={focusEmail}
+            focusFriends={focusFriends}
           />
         </HomeHeader>
 
@@ -529,6 +538,11 @@ function SignedInHome() {
               <EmailNudgeLine
                 otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing || pathShown}
                 onOpen={openAccountForEmail}
+              />
+              {/* Once per account (lib/server/notices): the policy's promise to say a change in the app. */}
+              <SocialNoticeLine
+                hidden={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing || pathShown}
+                onOpen={openAccountForFriends}
               />
               <NudgeLine
                 hide={pathShown || pathWaiting ? NUDGES_SAID_BY_PATH : stage ? NUDGES_SAID_BY_STEP[stage] : undefined}

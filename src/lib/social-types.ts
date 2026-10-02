@@ -27,6 +27,8 @@ export type Viewer = {
   hasEmail: boolean;
   /** Friends need a username on both sides. */
   hasHandle: boolean;
+  /** The viewer's own "Let my friends see which stocks and funds I hold" is on: said beside Accept and Add friend. */
+  sharesHoldings?: boolean;
 };
 
 /**
@@ -36,7 +38,21 @@ export type Viewer = {
  * not it is anyone's: no card is ever shown without a session, so signing
  * out cannot get round a block or tell someone they are blocked.
  */
-export type CardAnswer = { found: false } | { found: false; signIn: true } | { found: true; card: Card; viewer: Viewer };
+export type CardAnswer =
+  | { found: false }
+  | { found: false; signIn: true }
+  | {
+      found: true;
+      card: Card;
+      viewer: Viewer;
+      /**
+       * The board listings this friend holds, by symbol, never an amount:
+       * only between friends who both turned on "Let my friends see which
+       * stocks and funds I hold" (lib/server/social-proof friendHolds).
+       * Absent otherwise, and never on a stranger's card.
+       */
+      holds?: string[];
+    };
 
 /** The signed in person's own social state, for the account drawer. */
 export type MySocial = {
@@ -45,6 +61,8 @@ export type MySocial = {
   visible: boolean;
   /** "Show my avatar, username and rank on links I share": off by default; covers the profile and the invite card. */
   linkFace: boolean;
+  /** "Let my friends see which stocks and funds I hold": off by default (lib/server/social-proof). */
+  shareHoldings: boolean;
   /** When the username may change again; null when it may now. */
   nextChangeAt: string | null;
   /** Friend requests waiting for an answer. */

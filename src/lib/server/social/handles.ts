@@ -185,6 +185,24 @@ export async function setLinkFace(viewer: SocialViewer, on: boolean, now = new D
   return mine ? mySocial(viewer, now) : null;
 }
 
+/**
+ * "Let my friends see which stocks and funds I hold": one switch, off by
+ * default (B1 of reports/social-proof-review.md). It decides whether this
+ * account is counted or named in its friends' lists of what they hold, and,
+ * by the same switch, whether it sees theirs (lib/server/social-proof).
+ */
+export async function setShareHoldings(viewer: SocialViewer, on: boolean, now = new Date()): Promise<MySocial | null> {
+  const rows = (await getSql().query(
+    `update profiles set share_holdings = $2, updated_at = $3::timestamptz
+     where user_id = $1 and share_holdings is distinct from $2
+     returning share_holdings`,
+    [viewer.id, on, now.toISOString()],
+  )) as { share_holdings: boolean }[];
+  if (rows[0]) await socialAudit(viewer.id, on ? "share_holdings_on" : "share_holdings_off", viewer.id);
+  const mine = await ownHandle(viewer.id);
+  return mine ? mySocial(viewer, now) : null;
+}
+
 /** The drawer's view of the viewer's own social state. */
 export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<MySocial> {
   const mine = await ownHandle(viewer.id);
@@ -201,6 +219,7 @@ export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<
     handle: mine?.handle ?? null,
     visible: mine?.visible ?? false,
     linkFace: mine?.linkFace ?? false,
+    shareHoldings: mine?.shareHoldings ?? false,
     nextChangeAt: mine ? nextChange(mine.changedAt, now) : null,
     requests,
   };

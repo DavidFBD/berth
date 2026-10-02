@@ -1,6 +1,7 @@
 "use client";
 
 import { NotHereBanner } from "@/components/availability/availability";
+import { socialProofFor } from "./social-proof-fixtures";
 import { useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { parseUnits } from "viem";
@@ -106,7 +107,10 @@ export function HomeGallery({
   look,
   firstStock = false,
   campaign,
+  proof = null,
 }: {
+  /** `&proof=1` (or 0): the social counts on the board drawer from fixtures (social-proof-fixtures.ts). */
+  proof?: string | null;
   /** `&campaign=rules` (email, holding, qualified, paid, closed): the campaign line, from /dev/campaigns' fixtures. */
   campaign?: CampaignProgress;
   /** Seeds the first look (`&look=fixture` or `&look=quiet`); absent asks the live route. */
@@ -234,6 +238,7 @@ export function HomeGallery({
           onSell={noop}
           held={heldMap}
           expandAll
+          {...socialProofFor(proof)}
           onFilterNews={(listing) => {
             setNewsFilter(listing);
             setDrawer("news");

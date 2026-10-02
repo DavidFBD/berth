@@ -50,6 +50,7 @@ export function AccountButton({
   onOpenChange,
   assistant = null,
   focusEmail = false,
+  focusFriends = false,
 }: {
   /** Optional controlled open state so the page (the funds module's top-up button) can open the account drawer. */
   open?: boolean;
@@ -58,6 +59,8 @@ export function AccountButton({
   assistant?: AssistantId | null;
   /** Opened from the email nudge: the add-email row, scrolled to. */
   focusEmail?: boolean;
+  /** Opened from the social notice: the profile and friends screen. */
+  focusFriends?: boolean;
 } = {}) {
   const privy = usePrivyEmbeddedWallet();
   const linking = useLinkInProgress();
@@ -70,7 +73,7 @@ export function AccountButton({
   useScrollToAddEmail(accountOpen && focusEmail);
   // Back from a friend's profile opened in the drawer: open again, on that screen.
   const pending = useDrawerReturn(() => setAccountOpen(true), accountOpen);
-  const start = initialScreen({ assistant: assistant !== null, focusEmail, pending });
+  const start = initialScreen({ assistant: assistant !== null, focusEmail, friends: focusFriends, pending });
 
   if (!PRIVY_ENABLED) return <ConnectButton />;
 

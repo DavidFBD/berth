@@ -8,14 +8,16 @@ import { AvatarWithRank } from "@/components/rank-glyph";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
 import { rankForXp } from "@/lib/xp";
+import { STOCK_LISTINGS, rowName } from "@/lib/listings";
 import { REPORT_REASONS, type CardAnswer, type FriendAction, type ReportReason } from "@/lib/social-types";
 import { cn } from "@/lib/utils";
 
 /**
  * A profile, as one phone screen: face wearing its rank, username, rank
  * name, three figures (XP, Salutes, the month they joined), and the
- * viewer's side of it. Nothing else, ever: no money, no wallets, no
- * holdings, no friends and no friend count.
+ * viewer's side of it. Nothing else: no money, no wallets, no friends and
+ * no friend count. Holdings only between friends who both share them,
+ * and then only which listings, by name, never how much (answer.holds).
  *
  * Presentational: the page (profile-page) and the dev gallery hand it an
  * answer and callbacks. The accent goes to one thing only, the next friend
@@ -84,6 +86,17 @@ export function ProfileCardView({
         <Figure label={copy.sinceLabel} value={monthLabel(card.memberSince)} plain />
       </dl>
 
+      {answer.holds && answer.holds.length > 0 && (
+        <p data-card-holds className="w-full rounded-xl border border-border px-4 py-3 text-center text-sm text-muted-foreground">
+          {copy.cardHolds(
+            answer.holds.flatMap((symbol) => {
+              const listing = STOCK_LISTINGS.find((candidate) => candidate.symbol === symbol);
+              return listing ? [rowName(listing)] : [];
+            }),
+          )}
+        </p>
+      )}
+
       {viewer.relation === "self" && (
         <p className="text-center text-sm text-muted-foreground">{hidden ? copy.hiddenNote : copy.selfNote}</p>
       )}
@@ -103,6 +116,10 @@ export function ProfileCardView({
             }}
             handlers={handlers}
           />
+          {/* A new friend who shares too will see what the viewer holds: said at the moment it would start. */}
+          {viewer.sharesHoldings && viewer.relation !== "friends" && (
+            <p data-card-share-note className="text-center text-xs text-muted-foreground">{copy.cardShareNote}</p>
+          )}
           <div className="flex gap-2">
             <Button
               variant="outline"

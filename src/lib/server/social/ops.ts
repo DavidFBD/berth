@@ -1,9 +1,11 @@
 import type { CardAnswer, FriendAction } from "@/lib/social-types";
 import { isReportReason, listBlocked, report, setBlock } from "@/lib/server/social/blocks";
 import { friendsBoard } from "@/lib/server/social/board";
+import { friendsHolding } from "@/lib/server/social-proof";
+import { markNoticeSeen, pendingNotices } from "@/lib/server/notices";
 import { NOT_FOUND, readCard, SIGN_IN } from "@/lib/server/social/cards";
 import { friendAction, friendLink, listFriends, readLinkCard } from "@/lib/server/social/friends";
-import { checkHandle, mySocial, setHandle, setLinkFace, setVisible } from "@/lib/server/social/handles";
+import { checkHandle, mySocial, setHandle, setLinkFace, setShareHoldings, setVisible } from "@/lib/server/social/handles";
 import { takeSocialPlace, type SocialBucket } from "@/lib/server/social/limits";
 import { hasVerifiedEmail, type SocialViewer } from "@/lib/server/social/people";
 import { setSalute } from "@/lib/server/social/salutes";
@@ -89,6 +91,12 @@ export async function runSocialOp(
       const social = await setLinkFace(viewer, body.on);
       return social ? ok(social) : bad("no username");
     }
+    case "share-holdings": {
+      if (typeof body.on !== "boolean") return bad("on");
+      if (!(await take("settings"))) return slow;
+      const social = await setShareHoldings(viewer, body.on);
+      return social ? ok(social) : bad("no username");
+    }
     case "salute": {
       if (typeof body.on !== "boolean") return bad("on");
       if (!(await take("salute"))) return slow;
@@ -123,6 +131,19 @@ export async function runSocialOp(
     }
     case "board":
       return ok(await friendsBoard(viewer));
+    // Which board listings the viewer's friends hold, as counts
+    // (lib/server/social-proof). Per viewer, so only ever answered here,
+    // behind the viewer's proof and with no-store.
+    // The once per account notices (lib/server/notices), for any signed in account.
+    case "notices":
+      return ok({ pending: await pendingNotices(viewer.id) });
+    case "notice-seen": {
+      if (!(await take("settings"))) return slow;
+      return (await markNoticeSeen(viewer.id, body.notice)) ? ok({ ok: true }) : bad("notice");
+    }
+    case "holding":
+      if (!(await take("holding"))) return slow;
+      return ok(await friendsHolding(viewer));
     default:
       return { status: 404, body: { error: "unknown" } };
   }

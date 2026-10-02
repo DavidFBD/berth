@@ -483,7 +483,7 @@ const getMyProfile = defineTool({
   name: "get_my_profile",
   title: "Your Berth card",
   description:
-    "The signed in person's own Berth card: their username, whether the card can be found, their rank and XP, the month they joined, how many Salutes they have, and how many friends and waiting friend requests they have. A card never shows money, wallets or holdings. Cannot look up anyone else.",
+    "The signed in person's own Berth card: their username, whether the card can be found, their rank and XP, the month they joined, how many Salutes they have, and how many friends and waiting friend requests they have, and whether their switch to let friends see which stocks and funds they hold is on. A card never shows money or wallets; holdings, as listing names only, only to friends when both turned that switch on. Cannot look up anyone else.",
   input: z.object({}),
   annotations: { title: "Your Berth card", ...READ_ONLY },
   scope: SCOPE_READ,
@@ -510,10 +510,13 @@ const getMyProfile = defineTool({
       [
         `Username: ${social.handle}. Card: ${ctx.origin}/u/${social.handle}`,
         social.visible
-          ? "The card can be opened by anyone who knows the name. It shows the username, face, rank, XP, the month they joined and the Salutes count, nothing else."
+          ? "The card can be opened by anyone who knows the name. It shows the username, face, rank, XP, the month they joined and the Salutes count. To a friend who also shares, it also lists which stocks and funds this person holds, by name, never how much, if their switch is on."
           : "The card is hidden: to everyone else the name answers as if no one had it.",
         `Rank: ${rank.name}, level ${rank.level} of 10, ${row.xp} XP. Member since ${monthWords(card.found ? card.card.memberSince : new Date(row.created_at).toISOString().slice(0, 7))}.`,
         `Salutes: ${salutes}.`,
+        social.shareHoldings
+          ? "Friends who share can see which stocks and funds you hold: on. Only the names, never how much, and only to friends who turned it on too."
+          : "Friends who share can see which stocks and funds you hold: off. No friend sees what this person holds.",
         `Friends: ${friends.friends.length}. Waiting for your answer: ${friends.incoming.length}. Sent by you, not yet answered: ${friends.outgoing.length}.`,
         social.nextChangeAt ? `The username can change again from ${day(social.nextChangeAt)}.` : "The username can be changed now, once per 30 days.",
       ].join("\n"),

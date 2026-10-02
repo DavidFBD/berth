@@ -10,6 +10,8 @@ import { BoardView } from "@/components/social/friends-board";
 import { SocialSection, type SocialDemo } from "@/components/social/social-section";
 import { FindFriend } from "@/components/social/find-friend";
 import type { CardAnswer, FriendsBoard, Relation, Viewer } from "@/lib/social-types";
+import { SocialNoticeLineView } from "@/components/board/social-notice-line";
+import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
 
 /**
  * Dev-only gallery of the social screens, from fixtures (404 in prod). No
@@ -33,6 +35,11 @@ import type { CardAnswer, FriendsBoard, Relation, Viewer } from "@/lib/social-ty
  *   /dev/social?state=find-found         Find a friend, a card found
  *   /dev/social?state=find-missing       Find a friend, missing, hidden and blocked alike
  *   /dev/social?state=section-find       the drawer section, a card found
+ *   /dev/social?state=profile-holds      a friend's profile, both sharing what they hold
+ *   /dev/social?state=section-holding    the drawer section, sharing on, Your friends hold open
+ *   /dev/social?state=section-holding-off  the same, sharing off (the default)
+ *   /dev/social?state=notice             the once per account notice strip
+ *   /dev/social?state=profile-received-sharing  Accept on a card while the viewer shares what they hold
  */
 
 const CARD = { handle: "mira_k", avatarId: "lantern", xp: 1240, memberSince: "2026-07", salutes: 14 };
@@ -47,7 +54,9 @@ const viewer = (relation: Relation, extra: Partial<Viewer> = {}): Viewer => ({
 
 const PROFILES: Record<string, CardAnswer> = {
   "profile-friends": { found: true, card: CARD, viewer: viewer("friends") },
+  "profile-holds": { found: true, card: CARD, viewer: viewer("friends"), holds: ["NVDA", "AAPL", "QQQ"] },
   "profile-received": { found: true, card: CARD, viewer: viewer("received") },
+  "profile-received-sharing": { found: true, card: CARD, viewer: viewer("received", { sharesHoldings: true }) },
   "profile-none": { found: true, card: CARD, viewer: viewer("none") },
   "profile-sent": { found: true, card: CARD, viewer: viewer("sent") },
   "profile-noemail": { found: true, card: CARD, viewer: viewer("none", { hasEmail: false, hasHandle: false }) },
@@ -61,7 +70,7 @@ const PEOPLE = [
 ];
 
 const SECTION: SocialDemo = {
-  me: { hasEmail: true, handle: "mira_k", visible: true, linkFace: false, nextChangeAt: null, requests: 1 },
+  me: { hasEmail: true, handle: "mira_k", visible: true, linkFace: false, shareHoldings: false, nextChangeAt: null, requests: 1 },
   friends: { friends: PEOPLE.slice(0, 2), incoming: [PEOPLE[2]], outgoing: [{ handle: "tidewater", avatarId: "rope", xp: 90 }] },
   blocked: [],
   token: "abcdefghjkmn",
@@ -124,6 +133,20 @@ function Gallery() {
         />
       </Panel>
     );
+  if (state === "notice") return <SocialNoticeLineView show onOpen={() => {}} onDismiss={() => {}} />;
+  if (state === "section-holding" || state === "section-holding-off")
+    return (
+      <Panel>
+        <SocialSection
+          demo={{
+            ...SECTION,
+            me: { ...SECTION.me, shareHoldings: state === "section-holding" },
+            open: "holding",
+            holding: FRIENDS_HOLDING_FIXTURE,
+          }}
+        />
+      </Panel>
+    );
   if (state === "section-find")
     return (
       <Panel>
@@ -133,13 +156,13 @@ function Gallery() {
   if (state === "section-new")
     return (
       <Panel>
-        <SocialSection demo={{ me: { hasEmail: true, handle: null, visible: false, linkFace: false, nextChangeAt: null, requests: 0 } }} />
+        <SocialSection demo={{ me: { hasEmail: true, handle: null, visible: false, linkFace: false, shareHoldings: false, nextChangeAt: null, requests: 0 } }} />
       </Panel>
     );
   if (state === "section-noemail")
     return (
       <Panel>
-        <SocialSection demo={{ me: { hasEmail: false, handle: null, visible: false, linkFace: false, nextChangeAt: null, requests: 0 } }} />
+        <SocialSection demo={{ me: { hasEmail: false, handle: null, visible: false, linkFace: false, shareHoldings: false, nextChangeAt: null, requests: 0 } }} />
       </Panel>
     );
   return (

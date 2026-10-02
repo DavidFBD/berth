@@ -130,6 +130,13 @@ create index if not exists orders_hold_due_idx
   on orders ((coalesce(filled_at, placed_at, created_at)))
   where direction = 'buy' and hold_checked_at is null;
 
+-- Most bought on Berth this week (lib/server/social-proof) reads the last
+-- seven days of buys by the same effective date; this keeps it a short
+-- range scan. Only an index: nothing reads or writes a new column.
+create index if not exists orders_buys_recent_idx
+  on orders ((coalesce(filled_at, placed_at, created_at)))
+  where direction = 'buy';
+
 -- Limit orders (lib/limit-orders, lib/server/limit-orders), behind the
 -- LIMIT_ORDERS_USERS switch. A limit order is an intent that waits in the
 -- hub Intents contract until a solver fills it at the price or better, or
@@ -591,6 +598,13 @@ create table if not exists profiles (
 -- link name them (lib/server/og-people); off, each is the anonymous card
 -- every unknown name or code gets.
 alter table profiles add column if not exists link_face boolean not null default false;
+
+-- "Let my friends see which stocks and funds I hold": off unless the owner
+-- turns it on (lib/server/social-proof). Only then is this account counted
+-- or named in a friend's "Your friends hold" list or on its card shown to a
+-- friend, and only an account with it on sees its friends' (each sees the
+-- others' only by sharing their own). Never an amount, in either direction.
+alter table profiles add column if not exists share_holdings boolean not null default false;
 
 -- One Salute per giver per card. Revoking sets revoked_at; saluting again
 -- clears it and keeps first_at, so toggling cannot mint a new salute point
@@ -1858,3 +1872,26 @@ create table if not exists listing_events (
 );
 
 create index if not exists listing_events_day on listing_events (day, symbol);
+
+-- In-app notices said once per account (lib/server/notices): a change the
+-- policy promises to say in the app before it applies. One row once the
+-- person has seen and closed it; no row, the notice is still due. `notice`
+-- is a fixed id from code (lib/social-proof SOCIAL_NOTICE_ID), never text.
+create table if not exists account_notices (
+  user_id uuid not null references users(id) on delete cascade,
+  notice text not null,
+  seen_at timestamptz not null default now(),
+  primary key (user_id, notice)
+);
+
+-- Most bought on Berth (lib/server/social-proof): one stored answer per
+-- fixed Monday to Sunday UTC week, written once by the first request after
+-- the week is published (insert on conflict do nothing) and served as is
+-- by every instance from then on, whatever is recorded late. `answer` is
+-- the public response itself: listing symbols and rounded counts, never a
+-- person, an account or an amount.
+create table if not exists most_bought_weeks (
+  week_start date primary key,
+  answer jsonb not null,
+  computed_at timestamptz not null default now()
+);

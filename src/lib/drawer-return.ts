@@ -128,13 +128,17 @@ export const NO_RETURN: ReturnState = { view: "main", scroll: null };
 export function initialScreen({
   assistant,
   focusEmail,
+  friends = false,
   pending,
 }: {
   assistant: boolean;
   focusEmail: boolean;
+  /** Opened from the social notice: the profile and friends screen, where its switch lives. */
+  friends?: boolean;
   pending: ReturnState;
 }): ReturnState {
   if (assistant) return { view: "ai", scroll: null };
+  if (friends) return { view: "friends", scroll: null };
   if (focusEmail) return NO_RETURN;
   return pending;
 }
