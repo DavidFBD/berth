@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { setSqlClient, type SqlClient } from "@/lib/server/db";
 import { makeTestDb } from "@/lib/server/pglite-test-db";
 import { ingestNews, type IngestDeps } from "@/lib/server/news-ingest";
-import { claimNewsSlot, newsSpent, readEvents, takeIngestLease } from "@/lib/server/news-store";
+import { claimNewsSlot, newsSpent, readEvents, releaseIngestLease, takeIngestLease } from "@/lib/server/news-store";
 import { loadNewsColumn } from "@/lib/server/news-read";
 import { loadListingNews } from "@/lib/server/listing-news";
 import { postsFromCards } from "@/lib/server/moves";
@@ -63,6 +63,8 @@ beforeEach(async () => {
   jevCalls.mockClear();
   vi.stubEnv("JEV_API_KEY", "test-key");
   vi.stubEnv("JEV_DISABLED", "");
+  // Marketaux has its own test (news-marketaux.db.test); these runs never ask it.
+  vi.stubEnv("MARKETAU_API_KEY", "");
   vi.stubEnv("NASDAQ_DAILY_CALL_CAP", "");
   vi.stubEnv("JEV_DAILY_TOKEN_CAP", "");
   vi.stubGlobal(
@@ -358,6 +360,24 @@ describe("robustness (review, 2026-10-02)", () => {
     expect(await takeIngestLease(Date.now(), 90_000)).toBe(true);
     expect(await takeIngestLease(Date.now(), 90_000)).toBe(false);
     expect(await takeIngestLease(Date.now() + 120_000, 90_000)).toBe(true);
+  });
+
+  it("frees only its own lease: a run overtaken after the lease ran out frees nothing", async () => {
+    const stale = Date.now();
+    expect(await takeIngestLease(stale, 90_000)).toBe(true);
+    const successor = stale + 120_000;
+    expect(await takeIngestLease(successor, 90_000)).toBe(true);
+    // The slow first run finishes now and releases: the successor still holds it.
+    await releaseIngestLease(stale);
+    expect(await takeIngestLease(successor + 1_000, 90_000)).toBe(false);
+    await releaseIngestLease(successor);
+    expect(await takeIngestLease(successor + 2_000, 90_000)).toBe(true);
+  });
+
+  it("does not start pruning when the run is already past its deadline and grace", async () => {
+    const summary = await ingestNews({ phase: "evening", now: NOW, deadline: Date.now() - 60_000, deps: deps() });
+    expect(summary.pruned).toBe(false);
+    expect(summary.failures).toContain("prune: out of time, the next cron prunes");
   });
 
   it("stops starting items at the deadline and still settles its reservations", async () => {

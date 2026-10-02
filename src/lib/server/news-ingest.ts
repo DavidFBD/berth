@@ -15,20 +15,30 @@ import {
   EDGAR_SPACING_MS,
   INGEST_MAX_AGE_MS,
   KEEP_STORIES_MS,
+  MARKETAUX_ARTICLES_PER_CALL,
+  MARKETAUX_LOOKBACK_MS,
+  MARKETAUX_OVERLAP_MS,
+  MARKETAUX_PER_MINUTE,
+  MARKETAUX_REQUESTS_PER_RUN,
+  MARKETAUX_SYMBOLS_PER_CALL,
   dailyCap,
+  marketauxFetches,
 } from "@/lib/news-schedule";
 import { utcDay } from "@/lib/x-schedule";
 import { cachedVerdict, jevConfigured, type NoulQuestion } from "@/lib/server/jev";
 import { fetchEdgar } from "@/lib/server/news-sources/edgar";
+import { fetchMarketaux } from "@/lib/server/news-sources/marketaux";
 import { fetchNasdaq } from "@/lib/server/news-sources/nasdaq";
 import {
   addSource,
   insertStory,
   loadFoldIndex,
+  readCursors,
   pruneNews,
   releadStories,
   releaseIngestLease,
   reserveNews,
+  saveCursor,
   saveVerdicts,
   settleNews,
   storyTitles,
@@ -51,9 +61,12 @@ import type { XPost } from "@/lib/x-feed";
  * (lib/server/news-read). A source that fails costs its own items and
  * nothing else; the run reports it and goes on.
  *
- * Sources (rounds 1 and 2): Nasdaq's headline feeds, X (its own fetch path,
- * slots and cap untouched; this only mirrors what the X column judged), and
- * SEC EDGAR filings as dated events. Finnhub stays off (no licence).
+ * Sources: Nasdaq's headline feeds, Marketaux's news API (David's Basic
+ * plan, unless NEWS_MARKETAUX is "off"; a copy of a Nasdaq story folds into
+ * it and never leads it, while a story only Marketaux carried is led by its
+ * own item), X (its own fetch path, slots and cap untouched; this
+ * only mirrors what the X column judged), and SEC EDGAR filings as dated
+ * events. Finnhub stays off (no licence).
  *
  * Every dependency is passed in, so a test can run the whole thing against
  * PGlite with no network.
@@ -101,6 +114,7 @@ export type IngestDeps = {
 export type IngestSummary = {
   phase: IngestPhase;
   nasdaq: { requests: number; items: number; added: number; folded: number } | { skipped: string };
+  marketaux: { requests: number; items: number; added: number; folded: number } | { skipped: string };
   x: { stories: number; posts: number } | { skipped: string };
   edgar: { requests: number; events: number } | { skipped: string };
   judged: { asked: number; answered: number; kept: number } | { skipped: string };
@@ -115,6 +129,12 @@ const said = (error: unknown) => (error instanceof Error ? error.message : Strin
 
 /** A run that outlives this is taken to have died, and its lease can be taken. */
 export const LEASE_MS = 90_000;
+/**
+ * Pruning runs after the deadline (it is the last stage) only while this
+ * much of the function's time is left beyond it: a cron's run has 45 s to
+ * its deadline inside a 60 s function.
+ */
+export const PRUNE_GRACE_MS = 8_000;
 
 /**
  * One run. Holds the store's one ingest lease for its whole length, so two
@@ -139,6 +159,7 @@ export async function ingestNews({
   const skippedAll = (why: string): IngestSummary => ({
     phase,
     nasdaq: { skipped: why },
+    marketaux: { skipped: why },
     x: { skipped: why },
     edgar: { skipped: why },
     judged: { skipped: why },
@@ -146,11 +167,13 @@ export async function ingestNews({
     failures: [],
     ms: Date.now() - started,
   });
-  if (!(await takeIngestLease(Date.now(), LEASE_MS))) return skippedAll("another run holds the lease");
+  const leaseAt = Date.now();
+  if (!(await takeIngestLease(leaseAt, LEASE_MS))) return skippedAll("another run holds the lease");
   try {
     return await run({ phase, now, deadline, deps, started });
   } finally {
-    await releaseIngestLease().catch(() => undefined);
+    // Only this run's own lease: one overtaken after LEASE_MS frees nothing.
+    await releaseIngestLease(leaseAt).catch(() => undefined);
   }
 }
 
@@ -229,6 +252,15 @@ async function run({
     ? await stage("nasdaq", () => ingestNasdaq({ listings, day, now, fetcher: deps.fetcher, fold, failures, timeLeft }), { skipped: "failed" })
     : { skipped: "out of time" };
 
+  // After Nasdaq, so its copies fold into the licensed story and never lead.
+  const marketaux = !marketauxFetches()
+    ? { skipped: "off" }
+    : timeLeft()
+      ? await stage("marketaux", () => ingestMarketaux({ listings, day, now, fetcher: deps.fetcher, fold, failures, timeLeft }), {
+          skipped: "failed",
+        })
+      : { skipped: "out of time" };
+
   await stage("lead", () => releadStories(touched), undefined);
   touched.clear();
 
@@ -251,13 +283,19 @@ async function run({
 
   let pruned: boolean | undefined;
   if (phase === "morning" || phase === "evening") {
-    pruned = await stage("prune", async () => {
-      await pruneNews(now - KEEP_STORIES_MS, now - 8 * 24 * 60 * 60 * 1000);
-      return true;
-    }, false);
+    if (Date.now() < deadline + PRUNE_GRACE_MS) {
+      pruned = await stage("prune", async () => {
+        await pruneNews(now - KEEP_STORIES_MS, now - 8 * 24 * 60 * 60 * 1000);
+        return true;
+      }, false);
+    } else {
+      // The next cron phase prunes; nothing here is urgent.
+      failures.push("prune: out of time, the next cron prunes");
+      pruned = false;
+    }
   }
 
-  return { phase, nasdaq, x, edgar, judged, near, pruned, failures, ms: Date.now() - started };
+  return { phase, nasdaq, marketaux, x, edgar, judged, near, pruned, failures, ms: Date.now() - started };
 }
 
 /* — Nasdaq — */
@@ -313,6 +351,162 @@ async function ingestNasdaq({
   } finally {
     await settleNews("nasdaq", day, { reserved: listings.length, used: requests, requests }).catch(() => undefined);
   }
+  return { requests, items, added, folded };
+}
+
+/* — Marketaux — */
+
+/** One group's place in its window this run. */
+type GroupAsk = {
+  key: string;
+  group: string[];
+  since: number;
+  /** Paging back: the next page's published_before. Absent: the newest page. */
+  before?: number;
+  /** The window's upper end: what `covered_to` becomes once its last page is in. */
+  top: number;
+  coveredTo?: number;
+};
+
+/**
+ * Marketaux, four listings a request, newest first, twenty a page. Every
+ * request is reserved before it is sent against the day's cap, the
+ * minute's limit (news_budget, the minute as the key) and the run's share,
+ * and the run stops at any of them or at the deadline.
+ *
+ * Each group asks only for what was published since it was last fully
+ * heard (news_cursors, less a two hour overlap, a day at most). A full page
+ * whose window holds more (meta.found) pages back with published_before set
+ * to the oldest article returned, until the window is covered; only then
+ * does the group's `covered_to` move. A run stopped on the way leaves the
+ * cursor where it was, and the next run resumes it before asking anything
+ * newer. A group whose request fails keeps its cursor too. The groups start
+ * at a different one each hour, so a run stopped early never starves the
+ * same listings.
+ */
+async function ingestMarketaux({
+  listings,
+  day,
+  now,
+  fetcher,
+  fold,
+  failures,
+  timeLeft,
+}: {
+  listings: readonly TokenListing[];
+  day: string;
+  now: number;
+  fetcher?: typeof fetch;
+  fold: (item: IngestItem) => Promise<"known" | "added" | "folded">;
+  failures: string[];
+  timeLeft: () => boolean;
+}): Promise<IngestSummary["marketaux"]> {
+  const symbols = listings.filter((listing) => listing.kind === "stock").map((listing) => listing.symbol);
+  const groups: string[][] = [];
+  for (let start = 0; start < symbols.length; start += MARKETAUX_SYMBOLS_PER_CALL) {
+    groups.push(symbols.slice(start, start + MARKETAUX_SYMBOLS_PER_CALL).sort());
+  }
+  if (groups.length === 0) return { skipped: "no listings" };
+  const offset = Math.floor(now / (60 * 60 * 1000)) % groups.length;
+  const ordered = [...groups.slice(offset), ...groups.slice(0, offset)];
+
+  const askedAt = Date.now();
+  const floor = now - MARKETAUX_LOOKBACK_MS;
+  const cursors = await readCursors("marketaux", ordered.map((group) => group.join(",")));
+  let active: GroupAsk[] = ordered.map((group) => {
+    const key = group.join(",");
+    const cursor = cursors.get(key) ?? {};
+    const since = Math.max(floor, (cursor.coveredTo ?? 0) - MARKETAUX_OVERLAP_MS);
+    const resuming = cursor.pagingTop !== undefined && cursor.pagingBefore !== undefined && cursor.pagingBefore > since;
+    return resuming
+      ? { key, group, since, before: cursor.pagingBefore, top: cursor.pagingTop!, coveredTo: cursor.coveredTo }
+      : { key, group, since, top: askedAt, coveredTo: cursor.coveredTo };
+  });
+
+  const cap = dailyCap("marketaux");
+  let dayReserved = 0;
+  let requests = 0;
+  const minutes = new Map<string, { reserved: number; sent: number }>();
+  let items = 0;
+  let added = 0;
+  let folded = 0;
+  let stopped: string | undefined;
+  try {
+    while (active.length > 0 && !stopped) {
+      // One round: the next page of every group still open, reserved one by one, sent together.
+      const round: GroupAsk[] = [];
+      for (const ask of active) {
+        if (requests + round.length >= MARKETAUX_REQUESTS_PER_RUN) stopped = `run's share of ${MARKETAUX_REQUESTS_PER_RUN} reached`;
+        else if (!timeLeft()) stopped = "out of time";
+        else if (!(await reserveNews("marketaux", day, 1, cap))) stopped = `day's cap of ${cap} reached`;
+        if (stopped) break;
+        dayReserved += 1;
+        const minute = new Date().toISOString().slice(0, 16);
+        if (!(await reserveNews("marketaux-minute", minute, 1, MARKETAUX_PER_MINUTE))) {
+          stopped = "minute's limit reached";
+          break;
+        }
+        const count = minutes.get(minute) ?? { reserved: 0, sent: 0 };
+        count.reserved += 1;
+        count.sent += 1;
+        minutes.set(minute, count);
+        round.push(ask);
+      }
+      // Stopped part way: the groups not reached this round still wait.
+      const waiting = active.slice(round.length);
+      if (round.length === 0) break;
+      requests += round.length;
+      const results = await Promise.allSettled(
+        round.map((ask) => fetchMarketaux(ask.group, ask.since, { beforeMs: ask.before, fetcher })),
+      );
+      const next: GroupAsk[] = [];
+      for (const [index, result] of results.entries()) {
+        const ask = round[index];
+        if (result.status === "rejected") {
+          failures.push(`marketaux ${ask.key}: ${said(result.reason)}`);
+          continue;
+        }
+        const page = result.value;
+        let heard = true;
+        for (const item of [...page.items].sort((a, b) => a.publishedAt - b.publishedAt)) {
+          if (!timeLeft()) {
+            heard = false;
+            failures.push(`marketaux ${ask.key}: out of time, the rest wait for the next run`);
+            break;
+          }
+          if (!worthIngesting(item, now, INGEST_MAX_AGE_MS, looksLikeTickerList)) continue;
+          items += 1;
+          const outcome = await fold(item);
+          if (outcome === "added") added += 1;
+          if (outcome === "folded") folded += 1;
+        }
+        // Not every item folded: ask this page again next run.
+        if (!heard) continue;
+        const full = page.returned >= MARKETAUX_ARTICLES_PER_CALL && page.found > page.returned && page.oldestAt !== undefined;
+        // A second past the oldest, so one stamped the same second is not lost; never later than this page's own bound.
+        // Whole seconds, as Marketaux reads a time.
+        let before = full ? Math.floor(page.oldestAt! / 1000) * 1000 + 1000 : undefined;
+        if (before !== undefined && ask.before !== undefined && before >= ask.before) before = ask.before - 1000;
+        if (before !== undefined && before > ask.since) {
+          await saveCursor("marketaux", ask.key, { coveredTo: ask.coveredTo, pagingTop: ask.top, pagingBefore: before });
+          next.push({ ...ask, before });
+          continue;
+        }
+        // The window is covered.
+        await saveCursor("marketaux", ask.key, { coveredTo: ask.top });
+        // A resumed window ended before this run began: what came since is next.
+        if (ask.top < askedAt) next.push({ ...ask, since: Math.max(floor, ask.top - MARKETAUX_OVERLAP_MS), before: undefined, top: askedAt, coveredTo: ask.top });
+      }
+      active = [...next, ...waiting];
+    }
+    if (stopped && active.length > 0) failures.push(`marketaux: ${stopped}, ${active.length} of ${ordered.length} groups wait`);
+  } finally {
+    await settleNews("marketaux", day, { reserved: dayReserved, used: requests, requests }).catch(() => undefined);
+    for (const [minute, count] of minutes) {
+      await settleNews("marketaux-minute", minute, { reserved: count.reserved, used: count.sent, requests: count.sent }).catch(() => undefined);
+    }
+  }
+  if (requests === 0) return { skipped: stopped ?? "nothing to ask" };
   return { requests, items, added, folded };
 }
 

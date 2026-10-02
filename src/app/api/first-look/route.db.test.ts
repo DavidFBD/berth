@@ -102,6 +102,8 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("JEV_API_KEY", "test-key");
   vi.stubEnv("JEV_DISABLED", "");
+  // Marketaux has its own test (news-marketaux.db.test); these runs never ask it.
+  vi.stubEnv("MARKETAU_API_KEY", "");
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });

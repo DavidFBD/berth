@@ -157,6 +157,44 @@ describe("matchStory refuses two stories that only read alike (review, 2026-10-0
     expect(matchStory(item("Stocks to Watch This Week"), [target(7, "Stocks to Watch This Week", { publishedAt: NOW - 6 * 24 * HOUR })])).toEqual({ kind: "new" });
   });
 
+  it("measures the twelve hours to the story's nearest item, so a late copy of a copy still joins", () => {
+    const title = "Nvidia Wins Approval to Ship H20 Chips to China";
+    // First item 14 h ago, a second copy 2 h ago: a copy now is 2 h from the nearest.
+    const story = target(9, title, { publishedAt: NOW - 14 * HOUR, times: [NOW - 14 * HOUR, NOW - 2 * HOUR] });
+    expect(matchStory(item(title), [story])).toEqual({ kind: "same", storyId: 9, by: "title" });
+    // With only the first item's time, it would have split.
+    expect(matchStory(item(title), [target(9, title, { publishedAt: NOW - 14 * HOUR })])).toEqual({ kind: "new" });
+  });
+
+  it("never folds into a story whose first item is two days gone, however recent its last copy (review, 2026-10-02)", () => {
+    const zacks = "Nvidia (NVDA) Stock Sinks As Market Gains: What You Should Know";
+    // Yesterday's story, one late copy 11 h ago: today's template stays its own story.
+    const yesterday = target(20, zacks, { publishedAt: NOW - 50 * HOUR, times: [NOW - 50 * HOUR, NOW - 11 * HOUR] });
+    expect(matchStory(item(zacks), [yesterday])).toEqual({ kind: "new" });
+    const weekly = target(21, "Stocks to Watch This Week", { publishedAt: NOW - 6 * 24 * HOUR, times: [NOW - 6 * 24 * HOUR, NOW - 3 * HOUR] });
+    expect(matchStory(item("Stocks to Watch This Week"), [weekly])).toEqual({ kind: "new" });
+  });
+
+  it("keeps a filing template apart: sold against bought, raised against lowered, another holder", () => {
+    const sold = target(22, "NVIDIA Corporation $NVDA Shares Sold by Foo Advisors LLC");
+    expect(matchStory(item("NVIDIA Corporation $NVDA Shares Bought by Foo Advisors LLC"), [sold])).toEqual({ kind: "new" });
+    const lowered = target(23, "NVIDIA Corporation $NVDA Stock Position Lowered by Foo Capital");
+    expect(matchStory(item("NVIDIA Corporation $NVDA Stock Position Lowered by Bar Capital"), [lowered])).toEqual({ kind: "new" });
+    expect(matchStory(item("NVIDIA Corporation $NVDA Stock Position Raised by Foo Capital"), [lowered])).toEqual({ kind: "new" });
+    expect(matchStory(item("Nvidia Upgraded to Buy at Foo Securities"), [target(24, "Nvidia Downgraded to Buy at Foo Securities")]).kind).not.toBe("same");
+    expect(matchStory(item("Nvidia Increases Dividend for Shareholders Again"), [target(25, "Nvidia Decreases Dividend for Shareholders Again")]).kind).not.toBe("same");
+    // The same holder's same filing, copied, still folds.
+    expect(matchStory(item("NVIDIA Corporation $NVDA Shares Sold by Foo Advisors LLC"), [sold]).kind).toBe("same");
+  });
+
+  it("still refuses the earlier false folds with a story's items spread over the day", () => {
+    const spread = { publishedAt: NOW - 11 * HOUR, times: [NOW - 11 * HOUR, NOW - 2 * HOUR] };
+    expect(matchStory(item("Apple Raises Dividend by 4%", { symbols: ["AAPL"] }), [target(26, "Apple Raises Dividend by 5%", { symbols: ["AAPL"], ...spread })])).toEqual({ kind: "new" });
+    expect(matchStory(item("Micron Q2 Earnings Beat Estimates on AI Demand"), [target(27, "Micron Q3 Earnings Beat Estimates on AI Demand", spread)])).toEqual({ kind: "new" });
+    expect(matchStory(item("Nvidia (NVDA) Stock Rises As Market Gains: What You Should Know"), [target(28, "Nvidia (NVDA) Stock Sinks As Market Gains: What You Should Know", spread)]).kind).not.toBe("same");
+    expect(matchStory(item("Nvidia (NVDA) Stock Sinks As Market Gains: What You Should Know"), [target(29, "Nvidia (NVDA) Stock Sinks As Market Gains: What You Should Know", { publishedAt: NOW - 24 * HOUR })])).toEqual({ kind: "new" });
+  });
+
   it("while the same url is one story whatever else differs", () => {
     expect(matchStory(item("Anything", { symbols: ["AMD"], url: "https://e.example/a" }), [target(8, "Other", { urls: ["e.example/a"], publishedAt: NOW - 6 * 24 * HOUR })]).kind).toBe("same");
   });

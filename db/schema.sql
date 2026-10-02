@@ -1728,8 +1728,9 @@ create index if not exists stories_published on stories (published_at desc);
 
 -- story_sources: each source's own item. Idempotent on (source, source_id).
 -- `raw` carries what a card must show for an X post (author, avatar, counts)
--- and nothing a card may not show. Marketaux rows exist only while its flag
--- is on, and readers skip them until its display terms are settled.
+-- and nothing a card may not show. Marketaux rows (David's Basic plan,
+-- 2026-10-02) hold its title, link, publisher, time and matched listings
+-- only; readers show them as NEWS_MARKETAUX says (lib/news-schedule).
 create table if not exists story_sources (
   id bigserial primary key,
   story_id bigint not null references stories(id) on delete cascade,
@@ -1808,6 +1809,9 @@ create table if not exists news_fetch_slots (
 -- before they are sent, so each source's hard daily cap holds whatever the
 -- traffic (lib/news-schedule caps). A killed run leaves its reservation
 -- held, which errs toward spending less.
+-- A source with a per-minute limit too (Marketaux, 30 a minute) keeps rows
+-- under '<source>-minute' with the UTC minute (YYYY-MM-DDTHH:MM) as `day`,
+-- pruned after a week.
 create table if not exists news_budget (
   source text not null,
   day text not null,
@@ -1815,6 +1819,24 @@ create table if not exists news_budget (
   reserved int not null default 0,
   requests int not null default 0,
   primary key (source, day)
+);
+
+-- news_cursors: how far back a source's query has been heard, per query
+-- (Marketaux: per group of four listings, key "AAPL,AMD,MSTR,NVDA").
+-- `covered_to`: everything published before it (less an overlap) is in.
+-- While a window is being paged back, newest first, `paging_top` is the
+-- window's upper end and `paging_before` the next page's published_before;
+-- the window counts as covered (covered_to = paging_top) only once the last
+-- page is in. A run stopped by a cap, the deadline or an outage resumes
+-- from the cursor on the next run, so nothing between is lost.
+create table if not exists news_cursors (
+  source text not null,
+  key text not null,
+  covered_to timestamptz,
+  paging_top timestamptz,
+  paging_before timestamptz,
+  updated_at timestamptz not null default now(),
+  primary key (source, key)
 );
 
 -- listing_events: dated facts about a listing, written by code, never by AI.

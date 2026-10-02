@@ -1,11 +1,12 @@
 import { publisherFromUrl } from "@/lib/news-fold";
+import { MARKETAUX_ARTICLES_PER_CALL, marketauxKey } from "@/lib/news-schedule";
 import type { IngestItem } from "@/lib/server/news-store";
 
 /**
- * Marketaux's news API (api.marketaux.com/v1/news/all), asked only when
- * `NEWS_MARKETAUX` is "staff" or "everyone" (lib/news-schedule), within its
- * own daily request cap, a few listings a call because its free plan
- * answers three articles a request.
+ * Marketaux's news API (api.marketaux.com/v1/news/all), asked by
+ * lib/server/news-ingest unless `NEWS_MARKETAUX` is "off" (lib/news-schedule),
+ * within its own daily and per-minute caps, four listings and twenty
+ * articles a call (David's Basic plan).
  *
  * Kept: the title, the link, the publisher (from the link's host, since the
  * API gives a domain), the time and which of our listings it tags with its
@@ -58,20 +59,55 @@ export function marketauxItems(payload: { data?: Article[] }, wanted: readonly s
   return items;
 }
 
-/** One request for `symbols`, published after `sinceMs`. Throws on a refusal. */
+/** One page as ingestion needs it: its items, and whether the window is covered. */
+export type MarketauxPage = {
+  items: IngestItem[];
+  /** Articles in the window Marketaux says it has (meta.found). */
+  found: number;
+  /** Articles this page carried, kept or not. */
+  returned: number;
+  /** The oldest article's time on this page, epoch ms: the next page asks before it. */
+  oldestAt?: number;
+};
+
+/** Seconds, UTC, as Marketaux reads a time ("2026-10-02T08:35:16"). */
+const stamp = (epochMs: number) => new Date(epochMs).toISOString().slice(0, 19);
+
+/**
+ * One page for `symbols`, published after `sinceMs` and, paging back,
+ * before `beforeMs`, newest first. Throws on a refusal (a 429, an outage)
+ * or after five seconds, so a hung Marketaux costs a run little.
+ */
 export async function fetchMarketaux(
   symbols: readonly string[],
   sinceMs: number,
-  { key = process.env.MARKETAU_API_KEY, fetcher = fetch }: { key?: string; fetcher?: typeof fetch } = {},
-): Promise<IngestItem[]> {
-  if (!key) throw new Error("MARKETAU_API_KEY not set");
+  {
+    beforeMs,
+    key = marketauxKey(),
+    fetcher = fetch,
+  }: { beforeMs?: number; key?: string; fetcher?: typeof fetch } = {},
+): Promise<MarketauxPage> {
+  if (!key) throw new Error("Marketaux key not set");
   const url = new URL(ENDPOINT);
   url.searchParams.set("symbols", symbols.join(","));
   url.searchParams.set("filter_entities", "true");
   url.searchParams.set("language", "en");
-  url.searchParams.set("published_after", new Date(sinceMs).toISOString().slice(0, 16));
+  url.searchParams.set("limit", String(MARKETAUX_ARTICLES_PER_CALL));
+  url.searchParams.set("published_after", stamp(sinceMs));
+  if (beforeMs !== undefined) url.searchParams.set("published_before", stamp(beforeMs));
   url.searchParams.set("api_token", key);
-  const response = await fetcher(url, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+  const response = await fetcher(url, { cache: "no-store", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`Marketaux answered ${response.status}`);
-  return marketauxItems((await response.json()) as { data?: Article[] }, symbols);
+  const payload = (await response.json()) as { data?: Article[]; meta?: { found?: number; returned?: number } };
+  const data = payload.data ?? [];
+  const times = data.map((article) => (article.published_at ? Date.parse(article.published_at) : Number.NaN)).filter(Number.isFinite);
+  return {
+    items: marketauxItems(payload, symbols),
+    found: Number(payload.meta?.found ?? data.length),
+    returned: data.length,
+    oldestAt: times.length > 0 ? Math.min(...times) : undefined,
+  };
 }
+
+/** A run has 45 s for every source; a hung Marketaux must not take much of it. */
+export const FETCH_TIMEOUT_MS = 5_000;

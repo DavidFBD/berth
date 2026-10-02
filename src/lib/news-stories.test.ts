@@ -80,9 +80,9 @@ describe("Marketaux visibility, per mode", () => {
   const shared = story({ leadSourceId: 21, sources: [source(20, "marketaux", "GuruFocus"), source(21, "nasdaq", "Zacks")] });
   const env = (mode: string | undefined) => ({ MARKETAU_API_KEY: "k", NEWS_MARKETAUX: mode });
 
-  it("off (the default): a Marketaux only story reaches no one, a shared one shows through its licensed source", () => {
+  it("off: a Marketaux only story reaches no one, a shared one shows through its licensed source", () => {
     for (const staff of [false, true]) {
-      const visible = visibleSources({ staff }, env(undefined));
+      const visible = visibleSources({ staff }, env("off"));
       expect(toCard(onlyMarketaux, visible, NAMES)).toBeUndefined();
       const card = toCard(shared, visible, NAMES)!;
       expect(card.publisher).toBe("Zacks");
@@ -97,8 +97,10 @@ describe("Marketaux visibility, per mode", () => {
     expect(toCard(shared, visibleSources({ staff: true }, env("staff")), NAMES)?.alsoReportedBy).toEqual([{ publisher: "GuruFocus", url: "https://example.com/20" }]);
   });
 
-  it("everyone: shown to all", () => {
-    expect(toCard(onlyMarketaux, visibleSources({ staff: false }, env("everyone")), NAMES)?.publisher).toBe("GuruFocus");
+  it("everyone (the default with a key): shown to all", () => {
+    for (const mode of ["everyone", undefined]) {
+      expect(toCard(onlyMarketaux, visibleSources({ staff: false }, env(mode)), NAMES)?.publisher).toBe("GuruFocus");
+    }
   });
 
   it("is off without a key, whatever the flag says", () => {

@@ -21,8 +21,9 @@ export const DEFAULT_CAPS: Readonly<Record<NewsSource, number>> = {
   nasdaq: 400,
   // 20 companies a run, the two crons and the slots: about 100 expected.
   edgar: 300,
-  // Its free plan answers 100 a day; this keeps ten in hand.
-  marketaux: 90,
+  // Its Basic plan allows 2,500 a day (headers, 2026-10-02); this keeps 500 in hand.
+  // About 6 a run (24 listings, 4 a call), so 2,000 is a guard, never a throttle.
+  marketaux: 2000,
   // About $0.04 a day at $0.042 a million.
   jev: 1_000_000,
 };
@@ -30,38 +31,56 @@ export const DEFAULT_CAPS: Readonly<Record<NewsSource, number>> = {
 const CAP_ENV: Readonly<Record<NewsSource, string>> = {
   nasdaq: "NASDAQ_DAILY_CALL_CAP",
   edgar: "EDGAR_DAILY_CALL_CAP",
-  marketaux: "MARKETAUX_DAILY_REQUEST_CAP",
+  marketaux: "MARKETAUX_DAILY_CAP",
   jev: "JEV_DAILY_TOKEN_CAP",
+};
+
+/** Older names still read when the current one is unset (round 1 shipped MARKETAUX_DAILY_REQUEST_CAP). */
+const CAP_ENV_FALLBACK: Partial<Record<NewsSource, string>> = {
+  marketaux: "MARKETAUX_DAILY_REQUEST_CAP",
 };
 
 /** The day's cap for `source`, from its variable when that is a sane number. */
 export function dailyCap(source: NewsSource, env: Record<string, string | undefined> = process.env): number {
-  const raw = env[CAP_ENV[source]];
+  const fallback = CAP_ENV_FALLBACK[source];
+  const current = env[CAP_ENV[source]];
+  const raw = current !== undefined && current.trim() !== "" ? current : fallback ? env[fallback] : undefined;
   const parsed = raw === undefined || raw.trim() === "" ? Number.NaN : Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_CAPS[source];
 }
 
 /**
- * Who sees what Marketaux gives, from `NEWS_MARKETAUX` (David, 2026-10-02):
+ * Who sees what Marketaux gives, from `NEWS_MARKETAUX` (David, 2026-10-02,
+ * on his own paid Basic plan: "enable marketaux for all users"):
  *
- * - "off", the default: never asked, and anything it once gave never shown;
- * - "staff": asked within the free plan's budget, folded and judged like
- *   any source, but its items are shown only to a signed in staff member
- *   (a viewer or an admin, STAFF_VIEWER_IDS or STAFF_ADMIN_IDS, read from
- *   the staff session on the server);
- * - "everyone": shown to all.
+ * - "everyone", the default once its key is set (`marketauxKey`): asked within its
+ *   own daily cap, folded and judged by Jev like any source, shown to all;
+ * - "staff": asked the same way, but a story only Marketaux carried is shown
+ *   only to a signed in staff member (a viewer or an admin, read from the
+ *   staff session on the server), and is left out of every other reader,
+ *   the MCP tools and any email;
+ * - "off": never asked, and anything it once gave never shown.
  *
- * Its terms license the content for personal, non-commercial use only
- * (reports/marketaux.md), so "everyone" waits for written approval. A story
- * a licensed source also carried stays visible to everyone through that
- * source; a story only Marketaux carried is left out of their responses, the
- * MCP tools and any email. Its sentiment score is never stored or shown.
+ * Any other value reads as "off", so a typo never widens what is shown. In
+ * every mode a story a licensed source also carried stays visible through
+ * that source, and Marketaux never leads it. Kept from it: title, link,
+ * publisher, time and matched listings, never its description, snippet,
+ * image or sentiment score.
  */
 export type MarketauxMode = "off" | "staff" | "everyone";
 
+/**
+ * Marketaux's key. The variable is MARKETAU_API_KEY (as it was first set);
+ * the natural spelling MARKETAUX_API_KEY is read too, so either works.
+ */
+export function marketauxKey(env: Record<string, string | undefined> = process.env): string | undefined {
+  return env.MARKETAU_API_KEY?.trim() || env.MARKETAUX_API_KEY?.trim() || undefined;
+}
+
 export function marketauxMode(env: Record<string, string | undefined> = process.env): MarketauxMode {
-  if (!env.MARKETAU_API_KEY) return "off";
-  const value = env.NEWS_MARKETAUX?.trim().toLowerCase();
+  if (!marketauxKey(env)) return "off";
+  const value = (env.NEWS_MARKETAUX ?? "").trim().toLowerCase();
+  if (value === "") return "everyone";
   return value === "staff" || value === "everyone" ? value : "off";
 }
 
@@ -88,8 +107,24 @@ export function newsVariesByReader(env: Record<string, string | undefined> = pro
   return marketauxMode(env) === "staff";
 }
 
-/** Marketaux symbols per request: its free plan answers at most three articles a call. */
-export const MARKETAUX_SYMBOLS_PER_CALL = 3;
+/**
+ * Marketaux, per request: up to four listings, twenty articles (the Basic
+ * plan's most a call). Four keeps a busy listing from crowding a thin one
+ * out of the page, since each run asks only since the last one.
+ */
+export const MARKETAUX_SYMBOLS_PER_CALL = 4;
+export const MARKETAUX_ARTICLES_PER_CALL = 20;
+/** Its per-minute limit (x-ratelimit-limit), reserved per minute like the daily cap. */
+export const MARKETAUX_PER_MINUTE = 30;
+/** A group asks for articles since it was last fully heard, never further back than this. */
+export const MARKETAUX_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+/**
+ * And this far before that, again: Marketaux may index an article some
+ * time after its stamp. What is asked twice costs only "known" items.
+ */
+export const MARKETAUX_OVERLAP_MS = 2 * 60 * 60 * 1000;
+/** Requests one run may send, first pages and pages back together, under the caps. */
+export const MARKETAUX_REQUESTS_PER_RUN = 18;
 
 /**
  * Whether this process may ingest on demand: production on Vercel, or a

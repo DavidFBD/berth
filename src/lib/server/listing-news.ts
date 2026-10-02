@@ -14,8 +14,9 @@ import { readCards } from "@/lib/server/news-read";
  * and has Jev judge each story once; this only reads what was stored. A
  * headline is an article story's lead, with its verdict for the listing it
  * is filed under. One Jev has not judged yet is kept without a verdict,
- * exactly as before Jev. Licensed sources only: nothing a source shows to
- * staff alone reaches the first look or an AI.
+ * exactly as before Jev. Never a staff reader: with NEWS_MARKETAUX at
+ * "staff", nothing only Marketaux carried reaches the first look or an AI;
+ * at "everyone" (the default) it does, like any source.
  *
  * Always 200: no headlines is a soft degrade the card renders as a quiet
  * spell, never an error.

@@ -9,11 +9,20 @@
  * from its most primary source, with the others named under it.
  *
  * In order, an item joins a story when:
- *   1. its canonical url is one the story already has;
- *   2. its normalised title is one the story already has;
- *   3. its words are most of a story's words (Jaccard ≥ 0.75), the story is
- *      tagged to one of the same listings and is within two days of it;
+ *   1. its canonical url is one the story already has, whatever the time
+ *      or listing (an exact address is the same page);
+ *   2. its normalised title is one the story already has, the story is
+ *      tagged to one of the same listings and one of its items is within
+ *      twelve hours of it (SAME_DAY_MS);
+ *   3. its words are most of a story's words (Jaccard ≥ 0.75), on the same
+ *      terms, and no title of the story contradicts it (different figures,
+ *      opposite words such as sold and bought, or a different actor after
+ *      "by": `contradicts`);
  *   4. an X post's words are most of a headline's (≥ 0.6), on the same terms.
+ * The twelve hours are measured to the story's nearest item, not its first,
+ * so a late copy of a copy still joins (Nasdaq and Marketaux both carry it),
+ * but only while the story's first item is within two days (FOLD_WINDOW_MS):
+ * a chain of copies never keeps one story open for ever.
  * A pair that shares some words but not most (0.45 up to the floor) is a
  * near miss: lib/server/news-ingest may put it to Jev as one cheap question,
  * and without an answer it stays two stories, which is what it was before.
@@ -100,10 +109,37 @@ const UP = new Set("rise rises rising rose up gain gains gained jump jumps jumpe
 const DOWN = new Set("fall falls falling fell down drop drops dropped sink sinks sank slide slides slid slip slips slipped plunge plunges plunged tumble tumbles tumbled lower miss misses missed cuts cut".split(" "));
 
 /**
- * Whether two titles cannot be one story whatever their other words: their
- * figures differ, or one says up where the other says down.
+ * Pairs of words that point opposite ways in a headline. A word one title
+ * has and the other lacks, from opposite sides of a pair, makes them two
+ * stories: "Shares Sold by Foo" is not "Shares Bought by Foo", and a 13F
+ * template repeats with either many times a day (review, 2026-10-02).
  */
-export function contradicts(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+const OPPOSITES: readonly (readonly [ReadonlySet<string>, ReadonlySet<string>])[] = [
+  [UP, DOWN],
+  [new Set("buy buys bought buying acquires acquired".split(" ")), new Set("sell sells sold selling dumps dumped".split(" "))],
+  [new Set("raise raises raised raising boost boosts boosted".split(" ")), new Set("lower lowers lowered lowering trim trims trimmed".split(" "))],
+  [new Set("increase increases increased increasing".split(" ")), new Set("decrease decreases decreased decreasing reduce reduces reduced".split(" "))],
+  [new Set("upgrade upgrades upgraded".split(" ")), new Set("downgrade downgrades downgraded".split(" "))],
+];
+
+/** Who a title says did it: the words after its last " by ", as a key ("Foo Advisors LLC"). */
+function actor(title: string): string | undefined {
+  const key = normaliseTitle(title);
+  const at = key.lastIndexOf(" by ");
+  return at < 0 ? undefined : key.slice(at + 4).trim() || undefined;
+}
+
+/**
+ * Whether two titles cannot be one story whatever their other words: their
+ * figures differ, one points the opposite way to the other (`OPPOSITES`),
+ * or, given the raw titles, each names a different actor after "by"
+ * ("Position Lowered by Foo Capital" against "by Bar Capital").
+ */
+export function contradicts(
+  a: ReadonlySet<string>,
+  b: ReadonlySet<string>,
+  titles?: { a: string; b: string },
+): boolean {
   const figures = (words: ReadonlySet<string>) => [...words].filter((word) => /\d/.test(word));
   const fa = figures(a);
   const fb = figures(b);
@@ -113,7 +149,15 @@ export function contradicts(a: ReadonlySet<string>, b: ReadonlySet<string>): boo
   const onlyA = [...a].filter((word) => !b.has(word));
   const onlyB = [...b].filter((word) => !a.has(word));
   const has = (words: string[], set: ReadonlySet<string>) => words.some((word) => set.has(word));
-  return (has(onlyA, UP) && has(onlyB, DOWN)) || (has(onlyA, DOWN) && has(onlyB, UP));
+  for (const [one, other] of OPPOSITES) {
+    if ((has(onlyA, one) && has(onlyB, other)) || (has(onlyA, other) && has(onlyB, one))) return true;
+  }
+  if (titles) {
+    const first = actor(titles.a);
+    const second = actor(titles.b);
+    if (first && second && first !== second) return true;
+  }
+  return false;
 }
 
 /** Shared words over all words, 0 to 1. Two empty sets share nothing. */
@@ -174,7 +218,10 @@ export type FoldTarget = {
   /** The titles of its items, for the word test. */
   titles: readonly string[];
   symbols: readonly string[];
+  /** Its earliest item's time. */
   publishedAt: number;
+  /** Every item's time; the window is measured to the nearest. Absent: `publishedAt` alone. */
+  times?: readonly number[];
 };
 
 export type FoldItem = {
@@ -204,9 +251,13 @@ export function matchStory(item: FoldItem, targets: readonly FoldTarget[]): Fold
   }
   const key = normaliseTitle(item.title);
   const words = titleTokens(item.title);
+  // Near one of its items (a late copy of a copy still joins), but never a
+  // story whose first item is more than FOLD_WINDOW_MS away: a chain of
+  // copies each 12 h apart must not keep one story open for ever.
   const close = targets.filter(
     (target) =>
-      Math.abs(target.publishedAt - item.publishedAt) <= Math.min(FOLD_WINDOW_MS, SAME_DAY_MS) &&
+      Math.abs(target.publishedAt - item.publishedAt) <= FOLD_WINDOW_MS &&
+      (target.times ?? [target.publishedAt]).some((time) => Math.abs(time - item.publishedAt) <= SAME_DAY_MS) &&
       target.symbols.some((symbol) => item.symbols.includes(symbol)),
   );
   if (key) {
@@ -219,7 +270,7 @@ export function matchStory(item: FoldItem, targets: readonly FoldTarget[]): Fold
   for (const target of close) {
     const scores = target.titles.map((title) => {
       const theirs = titleTokens(title);
-      return contradicts(words, theirs) ? 0 : jaccard(words, theirs);
+      return contradicts(words, theirs, { a: item.title, b: title }) ? 0 : jaccard(words, theirs);
     });
     const score = Math.max(0, ...scores);
     if (score >= floor) {

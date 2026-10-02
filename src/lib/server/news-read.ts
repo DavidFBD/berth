@@ -207,8 +207,8 @@ export async function runClaimed(claim: string, phase: IngestPhase): Promise<voi
       deadline: Date.now() + RUN_MS,
       deps: { gather: gatherPosts, mayFetchX: xFetchAllowedHere() },
     });
-    requests = ["nasdaq", "edgar"].reduce((sum, key) => {
-      const part = summary[key as "nasdaq" | "edgar"];
+    requests = ["nasdaq", "marketaux", "edgar"].reduce((sum, key) => {
+      const part = summary[key as "nasdaq" | "marketaux" | "edgar"];
       return sum + ("requests" in part ? part.requests : 0);
     }, 0);
     // A run that found another holding the lease did nothing: its slot may try again.

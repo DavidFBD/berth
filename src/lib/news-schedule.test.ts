@@ -12,10 +12,22 @@ describe("daily caps", () => {
 });
 
 describe("Marketaux", () => {
-  it("is off by default and without a key", () => {
-    expect(marketauxMode({ MARKETAU_API_KEY: "k" })).toBe("off");
+  it("is for everyone by default once the key is set, off without a key or when said", () => {
+    expect(marketauxMode({ MARKETAU_API_KEY: "k" })).toBe("everyone");
+    expect(marketauxMode({ MARKETAU_API_KEY: "k", NEWS_MARKETAUX: " " })).toBe("everyone");
     expect(marketauxMode({ NEWS_MARKETAUX: "everyone" })).toBe("off");
-    expect(marketauxFetches({ MARKETAU_API_KEY: "k" })).toBe(false);
+    expect(marketauxMode({ MARKETAUX_API_KEY: "k" })).toBe("everyone");
+    expect(marketauxMode({ MARKETAU_API_KEY: "k", NEWS_MARKETAUX: "off" })).toBe("off");
+    expect(marketauxFetches({ MARKETAU_API_KEY: "k" })).toBe(true);
+    expect(marketauxFetches({ MARKETAU_API_KEY: "k", NEWS_MARKETAUX: "off" })).toBe(false);
+  });
+
+  it("caps its requests at 2,000 a day unless told otherwise", () => {
+    expect(dailyCap("marketaux", {})).toBe(2000);
+    expect(dailyCap("marketaux", { MARKETAUX_DAILY_CAP: "50" })).toBe(50);
+    // The first round's name still reads, under the current one.
+    expect(dailyCap("marketaux", { MARKETAUX_DAILY_REQUEST_CAP: "70" })).toBe(70);
+    expect(dailyCap("marketaux", { MARKETAUX_DAILY_CAP: "50", MARKETAUX_DAILY_REQUEST_CAP: "70" })).toBe(50);
   });
 
   it("is asked in staff and everyone modes, and only staff mode makes the answer depend on the reader", () => {

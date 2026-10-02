@@ -53,7 +53,10 @@ export class FoldIndex {
   readonly known = new Map<string, number>();
   /** Stories led by an X post: a post's own verdict belongs only to these. */
   readonly postLed = new Set<number>();
-  readonly targets = new Map<number, FoldTarget & { urls: string[]; titleKeys: string[]; titles: string[]; symbols: string[] }>();
+  readonly targets = new Map<
+    number,
+    FoldTarget & { urls: string[]; titleKeys: string[]; titles: string[]; symbols: string[]; times: number[] }
+  >();
 
   has(item: Pick<IngestItem, "source" | "sourceId">): boolean {
     return this.known.has(`${item.source}:${item.sourceId}`);
@@ -70,13 +73,15 @@ export class FoldIndex {
     this.known.set(`${item.source}:${item.sourceId}`, storyId);
     const target =
       this.targets.get(storyId) ??
-      { storyId, urls: [], titleKeys: [], titles: [], symbols: [], publishedAt: item.publishedAt };
+      { storyId, urls: [], titleKeys: [], titles: [], symbols: [], times: [], publishedAt: item.publishedAt };
     const url = canonicalUrl(item.url);
     if (url) target.urls.push(url);
     target.titleKeys.push(normaliseTitle(item.title));
     target.titles.push(item.title);
     for (const symbol of item.symbols) if (!target.symbols.includes(symbol)) target.symbols.push(symbol);
     target.publishedAt = Math.min(target.publishedAt, item.publishedAt);
+    // Every item's own time, so a copy is measured against its nearest item, not only the first.
+    target.times.push(item.publishedAt);
     this.targets.set(storyId, target);
   }
 }
@@ -305,8 +310,46 @@ export async function takeIngestLease(now: number, ttlMs: number): Promise<boole
   return rows.length > 0;
 }
 
-export async function releaseIngestLease(): Promise<void> {
-  await getSql().query(`update news_fetch_slots set ok = true where source = 'lease' and slot = 'ingest'`);
+/**
+ * Frees the lease, but only the one this run took at `claimedAt`: a run that
+ * outlived the lease and was overtaken must not free its successor's.
+ */
+export async function releaseIngestLease(claimedAt: number): Promise<void> {
+  await getSql().query(
+    `update news_fetch_slots set ok = true where source = 'lease' and slot = 'ingest' and claimed_at = $1::timestamptz`,
+    [at(claimedAt)],
+  );
+}
+
+/* — a source's cursors (news_cursors) — */
+
+export type NewsCursor = { coveredTo?: number; pagingTop?: number; pagingBefore?: number };
+
+const msOrUndefined = (value: unknown): number | undefined => (value === null || value === undefined ? undefined : ms(value));
+
+/** The cursors of `keys` for `source`; a key never heard is absent. */
+export async function readCursors(source: string, keys: readonly string[]): Promise<Map<string, NewsCursor>> {
+  if (keys.length === 0) return new Map();
+  const rows = (await getSql().query(
+    `select key, covered_to, paging_top, paging_before from news_cursors where source = $1 and key = any($2::text[])`,
+    [source, [...keys]],
+  )) as { key: string; covered_to: unknown; paging_top: unknown; paging_before: unknown }[];
+  return new Map(
+    rows.map((row) => [
+      row.key,
+      { coveredTo: msOrUndefined(row.covered_to), pagingTop: msOrUndefined(row.paging_top), pagingBefore: msOrUndefined(row.paging_before) },
+    ]),
+  );
+}
+
+export async function saveCursor(source: string, key: string, cursor: NewsCursor): Promise<void> {
+  const time = (value?: number) => (value === undefined ? null : at(value));
+  await getSql().query(
+    `insert into news_cursors (source, key, covered_to, paging_top, paging_before) values ($1, $2, $3::timestamptz, $4::timestamptz, $5::timestamptz)
+     on conflict (source, key) do update set
+       covered_to = excluded.covered_to, paging_top = excluded.paging_top, paging_before = excluded.paging_before, updated_at = now()`,
+    [source, key, time(cursor.coveredTo), time(cursor.pagingTop), time(cursor.pagingBefore)],
+  );
 }
 
 export type Unjudged = { storyId: number; symbol: string; title: string; publisher: string };
@@ -583,5 +626,9 @@ export async function pruneNews(beforeMs: number, slotsBeforeMs: number): Promis
   await sql.query(`delete from stories where last_item_at < $1::timestamptz`, [at(beforeMs)]);
   await sql.query(`delete from jev_answers where at < $1::timestamptz`, [at(beforeMs)]);
   await sql.query(`delete from news_fetch_slots where claimed_at < $1::timestamptz`, [at(slotsBeforeMs)]);
+  // A cursor no run has touched in the keeping time belongs to a group that is gone.
+  await sql.query(`delete from news_cursors where updated_at < $1::timestamptz`, [at(beforeMs)]);
+  // Per-minute rows (Marketaux's rate limit) matter only for their minute.
+  await sql.query(`delete from news_budget where source like '%-minute' and day < $1`, [at(slotsBeforeMs).slice(0, 16)]);
   await sql.query(`delete from listing_events where day < ($1::timestamptz)::date - 90`, [at(beforeMs)]);
 }
