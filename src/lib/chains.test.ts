@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, type XToken } from "@sodax/sdk";
-import { DEPOSIT_SOURCE_CHAINS, getChainName, toBalanceReadToken } from "./chains";
+import { DEPOSIT_SOURCE_CHAINS, getChainName, getNativeGasToken, toBalanceReadToken } from "./chains";
 
 /**
  * One representative token per chain family the picker can show (see
@@ -119,5 +119,16 @@ describe("DEPOSIT_SOURCE_CHAINS", () => {
   // omission from this explicit list, not by filtering elsewhere.
   it("never offers Robinhood Chain as a pay-from chain", () => {
     expect(DEPOSIT_SOURCE_CHAINS).not.toContain(ChainKeys.ROBINHOOD_MAINNET);
+  });
+});
+
+describe("getNativeGasToken", () => {
+  it("names no separate gas token on Bitcoin, whose fee comes out of the BTC sent", () => {
+    expect(getNativeGasToken(ChainKeys.BITCOIN_MAINNET)).toBeUndefined();
+  });
+
+  it("still names the native coin on an EVM chain and on Solana", () => {
+    expect(getNativeGasToken(ChainKeys.BASE_MAINNET)?.symbol).toBe("ETH");
+    expect(getNativeGasToken(ChainKeys.SOLANA_MAINNET)?.symbol).toBe("SOL");
   });
 });

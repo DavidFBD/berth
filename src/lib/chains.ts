@@ -77,8 +77,15 @@ export function getDepositTokens(chainKey: SpokeChainKey): readonly XToken[] {
  * The chain's native (gas) token as an XToken, when the solver list carries
  * it. A pour FROM a chain is an on-chain transaction there, so the sending
  * wallet needs a non-zero native balance to cover the network fee.
+ *
+ * Bitcoin has none in this sense: the fee comes out of the BTC being sent
+ * (lib/gas-need calls it `free`), so there is no separate balance to gate
+ * on. Up to @sodax/sdk 2.0.0 that held by accident, since Bitcoin's
+ * nativeToken was 'BTC' and matched no solver token; from 2.2 it is '0:0',
+ * BTC's own address, so it is said here on purpose.
  */
 export function getNativeGasToken(chainKey: SpokeChainKey): XToken | undefined {
+  if (isBitcoinChainKeyType(chainKey)) return undefined;
   const nativeAddress = spokeChainConfig[chainKey]?.nativeToken;
   if (!nativeAddress) return undefined;
   return getDepositTokens(chainKey).find(
