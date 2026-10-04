@@ -13,7 +13,7 @@ import { addPayoutSource, approveClaim, createCampaign, deleteCampaign, markClai
 const FUNDING_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 import { deriveSignals, foldEmail, revealClaim, staffQueue } from "./queue";
 import { TRANSFER_TOPIC, USDC_BASE, type Receipt } from "./usdc";
-import { advance, joined, qualifiedClaim, username } from "./test-kit";
+import { advance, heldWallet, joined, qualifiedClaim, username } from "./test-kit";
 
 /**
  * The staff side against the real schema: the gate (STAFF_ADMIN_IDS, never
@@ -363,6 +363,29 @@ describe("a claim from qualified to paid", () => {
     expect((await audits("claim.approve")).find((entry) => entry.target === claimId)?.detail).toMatchObject({ paidTo: "signup" });
     expect((await audits("claim.approve")).filter((entry) => entry.target === claimId).map((entry) => entry.detail.outcome)).toEqual(["done"]);
     expect(await approveClaim(staff.id, claimId)).toEqual({ ok: false, refusal: "wrong_state" });
+  });
+
+  it("writes the person's marks and the payout address at approval, in the same statement", async () => {
+    const staff = await person();
+    const { user, claimId } = await qualified("approve-marks");
+    // A wallet linked after the place was taken: approval stands on it too.
+    const late = hex(0x1a7e1a7e);
+    await heldWallet(user, late);
+    expect((await approveClaim(staff.id, claimId)).ok).toBe(true);
+    const marks = ((await sql.query(`select mark from campaign_invitee_marks where claim_id = $1 order by mark`, [claimId])) as { mark: string }[]).map((row) => row.mark);
+    expect(marks).toEqual(expect.arrayContaining([`wallet:${user.wallet_address}`, `wallet:${late}`, `email:${user.email}`]));
+  });
+
+  it("asks the guards and one payout per person again at mark paid", async () => {
+    const staff = await person();
+    const a = await approved("paid-recheck");
+    const b = await approved("paid-recheck");
+    // After both approvals, b links a wallet a already counted on.
+    await heldWallet(b.user, a.to);
+    const hash = `0x${"5e".repeat(32)}`;
+    expect(await markClaimPaid(staff.id, b.claimId, hash, async () => null, { STAFF_PAYOUT_ADDRESSES: hex(0xc0ffee) })).toMatchObject({ ok: false, refusal: "wallet_used" });
+    expect((await claimById(b.claimId))!.state).toBe("approved");
+    expect((await audits("claim.mark_paid")).filter((entry) => entry.target === b.claimId).at(-1)?.detail.outcome).toBe("wallet_used");
   });
 
   it("refuses to approve or pay a claim whose account staff marked not eligible", async () => {

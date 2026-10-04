@@ -314,17 +314,27 @@ export async function advanceClaim(claim: ClaimRow, campaign: CampaignRow, now: 
  * since), against every other claim. Null when it still stands, else why not.
  */
 export async function stillEligible(claim: ClaimRow): Promise<GuardOutcome | "wallet_used" | null> {
+  const checked = await eligibleMarks(claim);
+  return "refusal" in checked ? checked.refusal : null;
+}
+
+/**
+ * stillEligible, and when it stands, the marks the person stands on now
+ * (every wallet and folded email), which approval writes so a wallet or an
+ * email linked after the place was reserved still counts once.
+ */
+export async function eligibleMarks(claim: ClaimRow): Promise<{ refusal: GuardOutcome | "wallet_used" } | { marks: string[] }> {
   const checked = await guards(claim);
-  if ("refusal" in checked) return checked.refusal;
+  if ("refusal" in checked) return { refusal: checked.refusal };
   const marks = personMarks(checked.people.self);
   const taken = (await getSql().query(
     `select m.mark from campaign_invitee_marks m join campaign_claims o on o.id = m.claim_id
       where m.mark = any($1::text[]) and m.claim_id <> $2 and o.state <> 'expired'`,
     [marks, claim.id],
   )) as { mark: string }[];
-  if (taken.some((row) => row.mark.startsWith("wallet:"))) return "wallet_used";
-  if (taken.length) return "email_used";
-  return null;
+  if (taken.some((row) => row.mark.startsWith("wallet:"))) return { refusal: "wallet_used" };
+  if (taken.length) return { refusal: "email_used" };
+  return { marks };
 }
 
 export type CampaignStepSummary = {

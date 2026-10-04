@@ -4,7 +4,7 @@ import { staffAdminIds, staffAudit } from "@/lib/server/staff-auth";
 import { sendNotice } from "@/lib/server/email/notify";
 import { normalizeCampaignCode, REJECT_REASONS, campaignUsd } from "@/lib/campaigns";
 import { claimById, campaignById } from "@/lib/server/campaigns/store";
-import { claimPerson, MAX_STAY_DAYS, MIN_STAY_DAYS, staffIneligible, stillEligible } from "@/lib/server/campaigns/eligibility";
+import { claimPerson, eligibleMarks, MAX_STAY_DAYS, MIN_STAY_DAYS, staffIneligible, stillEligible } from "@/lib/server/campaigns/eligibility";
 import { personAccounts } from "@/lib/server/campaigns/store";
 import {
   fetchBaseReceipt,
@@ -80,13 +80,15 @@ async function refused(
 /**
  * A write and its audit row in one statement: the audit row is written
  * only when the write touched a row, and both commit or neither does.
+ * `also` is one more data modifying step in the same statement, reading
+ * `act` and the write's own params.
  */
 async function auditedWrite<T>(
-  write: { text: string; params: unknown[] },
+  write: { text: string; params: unknown[]; also?: string },
   audit: { staffUserId: string; action: string; target: string | null; detail?: Record<string, unknown> },
 ): Promise<T[]> {
   const n = write.params.length;
-  const text = `with act as (${write.text}),
+  const text = `with act as (${write.text}),${write.also ? `\n    also as (${write.also}),` : ""}
     aud as (
       insert into staff_audit (staff_user_id, action, target, detail)
       select $${n + 1}::uuid, $${n + 2}, $${n + 3}, $${n + 4}::jsonb || jsonb_build_object('outcome', 'done')
@@ -240,9 +242,12 @@ export async function approveClaim(staffUserId: string, claimId: string): Promis
   if (claim.state !== "qualified") return refused(staffUserId, "claim.approve", claimId, "wrong_state");
   const campaign = await campaignById(claim.campaign_id);
   if (!campaign || campaign.kind !== "signup") return refused(staffUserId, "claim.approve", claimId, "retired");
-  const still = await stillEligible(claim);
-  if (still) return refused(staffUserId, "claim.approve", claimId, still === "no_person" ? "no_person" : still);
-  const rows = await auditedWrite<{ payout_address: string }>(
+  const still = await eligibleMarks(claim);
+  if ("refusal" in still) return refused(staffUserId, "claim.approve", claimId, still.refusal);
+  // The approval and the person's marks as they are now (every wallet and
+  // folded email, and the payout address itself) in one statement: one
+  // payout per person holds for whatever was linked since the place was taken.
+  const rows = await auditedWrite<{ id: string; payout_address: string }>(
     {
       text: `update campaign_claims cl
                 set state = 'approved', approved_at = now(), approved_by = $2,
@@ -250,8 +255,13 @@ export async function approveClaim(staffUserId: string, claimId: string): Promis
                from users u join users p on p.id = coalesce(u.retired_into, u.id)
               where cl.id = $1 and u.id = cl.user_id and cl.state = 'qualified'
                 and p.wallet_address ~ '^0x[0-9a-f]{40}$'
-              returning cl.payout_address`,
-      params: [claimId, staffUserId, PAYOUT_CHAIN.key],
+              returning cl.id, cl.payout_address`,
+      params: [claimId, staffUserId, PAYOUT_CHAIN.key, still.marks],
+      also: `insert into campaign_invitee_marks (mark, claim_id)
+             select m, act.id from act, unnest($4::text[] || array['wallet:' || act.payout_address]) as m
+             where m is not null
+             on conflict do nothing
+             returning 1`,
     },
     { staffUserId, action: "claim.approve", target: claimId, detail: { chain: PAYOUT_CHAIN.key, paidTo: "signup" } },
   );
@@ -309,6 +319,9 @@ export async function markClaimPaid(
   // The one paid, the claim's own person, may not be marked not eligible.
   const payee = await claimPerson(claim);
   if (payee && (await staffIneligible(await personAccounts(payee.id)))) return refused(staffUserId, "claim.mark_paid", claimId, "staff_ineligible", { txHash });
+  // The guards and the one payout per person, asked once more of the person as they are now.
+  const still = await stillEligible(claim);
+  if (still) return refused(staffUserId, "claim.mark_paid", claimId, still, { txHash });
   const campaign = await campaignById(claim.campaign_id);
   if (!campaign) return refused(staffUserId, "claim.mark_paid", claimId, "not_found", { txHash });
   const senders = await claimPayoutSenders(claim.campaign_id, env);
