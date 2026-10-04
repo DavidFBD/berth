@@ -44,7 +44,7 @@ export const COUNTED_SYMBOLS: readonly string[] = STOCK_LISTINGS.map((listing) =
 );
 
 /** The staff accounts named by the environment (lib/server/staff-session), lowercased. */
-function staffIdsFromEnv(env: Record<string, string | undefined>): string[] {
+export function staffIdsFromEnv(env: Record<string, string | undefined>): string[] {
   return `${env.STAFF_ADMIN_IDS ?? ""},${env.STAFF_VIEWER_IDS ?? ""}`
     .split(",")
     .map((value) => value.trim().toLowerCase())
@@ -52,7 +52,7 @@ function staffIdsFromEnv(env: Record<string, string | undefined>): string[] {
 }
 
 /** Every account the buys name, every staff account, and every account their merges led into. */
-async function loadAccounts(ids: readonly string[], env: Record<string, string | undefined>): Promise<Map<string, AccountFact>> {
+export async function loadAccounts(ids: readonly string[], env: Record<string, string | undefined>): Promise<Map<string, AccountFact>> {
   const accounts = new Map<string, AccountFact>();
   let pending = [...new Set(ids)];
   // A merge chain is one or two links long; the bound only guards a loop.
@@ -234,7 +234,7 @@ export async function friendHolds(viewer: SocialViewer, friendId: string, now = 
 }
 
 /** A stored day's holdings (jsonb, or its text on a driver that does not parse it), reduced to what the rule reads. */
-function parseHoldings(raw: unknown): FriendHoldingsFact["holdings"] {
+export function parseHoldings(raw: unknown): FriendHoldingsFact["holdings"] {
   const value = typeof raw === "string" ? safeJson(raw) : raw;
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {

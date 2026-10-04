@@ -1,9 +1,13 @@
+import type { MostHeldResponse } from "@/lib/most-held";
 import type { FriendsHolding, MostBoughtResponse } from "@/lib/social-proof";
 
 /**
  * ?proof=1 on /dev/board (and on a home scene with &drawer=board): Most
  * bought on Berth this week as a busy week would show it, without a
- * database. ?proof=0 shows the quiet week, where it does not appear. The
+ * database, with Most held on Berth under it (and its line in the news
+ * column with &news=NVDA). ?proof=0 shows the quiet week, where neither
+ * appears; ?proof=held a week too quiet for Most bought, with Most held
+ * alone at the foot. The
  * friends' holdings fixture is for /dev/social's "Your friends hold".
  */
 export const MOST_BOUGHT_FIXTURE: MostBoughtResponse = { days: 7, week: "2026-10-05", rows: [
@@ -12,6 +16,15 @@ export const MOST_BOUGHT_FIXTURE: MostBoughtResponse = { days: 7, week: "2026-10
   { symbol: "AAPL", people: 9, plus: false },
   { symbol: "QQQ", people: 6, plus: false },
   { symbol: "MSFT", people: 5, plus: false },
+] };
+
+/** Most held as a busy week would show it: the five rows the answer carries. */
+export const MOST_HELD_FIXTURE: MostHeldResponse = { week: "2026-10-19", rows: [
+  { symbol: "NVDA", oneIn: 3 },
+  { symbol: "QQQ", oneIn: 4 },
+  { symbol: "AAPL", oneIn: 5 },
+  { symbol: "TSLA", oneIn: 5 },
+  { symbol: "MSFT", oneIn: 10 },
 ] };
 
 /** Six friends hold NVIDIA (four faces, then +2), two hold Apple, one Tesla. */
@@ -40,8 +53,15 @@ export const FRIENDS_HOLDING_FIXTURE: FriendsHolding[] = [
 ];
 
 /** What the gallery passes the board for a `proof` parameter: a fixture, an empty answer, or the live hook. */
-export function socialProofFor(proof: string | null): { mostBought?: MostBoughtResponse } {
-  if (proof === "1") return { mostBought: MOST_BOUGHT_FIXTURE };
-  if (proof === "0") return { mostBought: { rows: [], days: 7 } };
+export function socialProofFor(proof: string | null): { mostBought?: MostBoughtResponse; mostHeld?: MostHeldResponse } {
+  if (proof === "1") return { mostBought: MOST_BOUGHT_FIXTURE, mostHeld: MOST_HELD_FIXTURE };
+  if (proof === "0") return { mostBought: { rows: [], days: 7 }, mostHeld: { rows: [] } };
+  if (proof === "held") return { mostBought: { rows: [], days: 7 }, mostHeld: MOST_HELD_FIXTURE };
   return {};
+}
+
+/** The news column's share of it, for the same `proof` parameter. */
+export function mostHeldFor(proof: string | null): { mostHeld?: MostHeldResponse } {
+  const { mostHeld } = socialProofFor(proof);
+  return mostHeld ? { mostHeld } : {};
 }

@@ -58,18 +58,19 @@ function weekFrom(start: Date): MostBoughtWeek {
 
 /**
  * The week the board shows at `now`: the latest week that ended at least
- * MOST_BOUGHT_SETTLE_MS ago, and none before MOST_BOUGHT_FIRST_WEEK. Null
- * until the first week has been published.
+ * MOST_BOUGHT_SETTLE_MS ago, and none before `firstWeek` (Most bought's
+ * MOST_BOUGHT_FIRST_WEEK unless another weekly count, lib/most-held, names
+ * its own). Null until the first week has been published.
  */
-export function publishedWeek(now: Date): MostBoughtWeek | null {
+export function publishedWeek(now: Date, firstWeek = MOST_BOUGHT_FIRST_WEEK): MostBoughtWeek | null {
   const latest = new Date(mondayOf(new Date(now.getTime() - MOST_BOUGHT_SETTLE_MS)).getTime() - MOST_BOUGHT_DAYS * DAY_MS);
-  if (latest.getTime() < Date.parse(`${MOST_BOUGHT_FIRST_WEEK}T00:00:00Z`)) return null;
+  if (latest.getTime() < Date.parse(`${firstWeek}T00:00:00Z`)) return null;
   return weekFrom(latest);
 }
 
 /** When the next week will be published after `now`: the moment the shown answer changes. */
-export function nextPublishAt(now: Date): Date {
-  const first = Date.parse(`${MOST_BOUGHT_FIRST_WEEK}T00:00:00Z`) + MOST_BOUGHT_DAYS * DAY_MS + MOST_BOUGHT_SETTLE_MS;
+export function nextPublishAt(now: Date, firstWeek = MOST_BOUGHT_FIRST_WEEK): Date {
+  const first = Date.parse(`${firstWeek}T00:00:00Z`) + MOST_BOUGHT_DAYS * DAY_MS + MOST_BOUGHT_SETTLE_MS;
   if (now.getTime() < first) return new Date(first);
   const thisWeeks = mondayOf(new Date(now.getTime() - MOST_BOUGHT_SETTLE_MS)).getTime() + MOST_BOUGHT_SETTLE_MS;
   return new Date(thisWeeks + MOST_BOUGHT_DAYS * DAY_MS);
@@ -116,6 +117,27 @@ export function shownCount(people: number): { people: number; plus: boolean } {
 }
 
 /**
+ * Who may be counted in a weekly public count, as of `windowEnd`: a person
+ * (merges folded, personOf) whose surviving account has a verified email,
+ * whose oldest account was opened at least MOST_BOUGHT_MIN_ACCOUNT_DAYS
+ * before `windowEnd`, and none of whose accounts is staff. One rule for
+ * Most bought and Most held (lib/most-held).
+ */
+export function countablePerson(accounts: ReadonlyMap<string, AccountFact>, windowEnd: Date): (person: string) => boolean {
+  const staffPeople = new Set<string>();
+  const oldest = new Map<string, number>();
+  for (const account of accounts.values()) {
+    const person = personOf(account.id, accounts);
+    if (account.staff) staffPeople.add(person);
+    const opened = new Date(account.createdAt).getTime();
+    if (Number.isFinite(opened)) oldest.set(person, Math.min(oldest.get(person) ?? Infinity, opened));
+  }
+  const ageCutoff = windowEnd.getTime() - MOST_BOUGHT_MIN_ACCOUNT_DAYS * DAY_MS;
+  return (person) =>
+    !staffPeople.has(person) && accounts.get(person)?.hasEmail === true && (oldest.get(person) ?? Infinity) <= ageCutoff;
+}
+
+/**
  * Listings ranked by how many distinct people bought them, never by volume
  * or dollars. Buys are counted per person (merges folded). A person counts
  * only if their surviving account has a verified email, the oldest of their
@@ -137,18 +159,7 @@ export function rankMostBought(
   windowEnd: Date,
   shown = MOST_BOUGHT_SHOWN,
 ): MostBoughtRow[] {
-  const staffPeople = new Set<string>();
-  const oldest = new Map<string, number>();
-  for (const account of accounts.values()) {
-    const person = personOf(account.id, accounts);
-    if (account.staff) staffPeople.add(person);
-    const opened = new Date(account.createdAt).getTime();
-    if (Number.isFinite(opened)) oldest.set(person, Math.min(oldest.get(person) ?? Infinity, opened));
-  }
-  const ageCutoff = windowEnd.getTime() - MOST_BOUGHT_MIN_ACCOUNT_DAYS * DAY_MS;
-  const eligible = (person: string) =>
-    !staffPeople.has(person) && accounts.get(person)?.hasEmail === true && (oldest.get(person) ?? Infinity) <= ageCutoff;
-
+  const eligible = countablePerson(accounts, windowEnd);
   const allowed = new Set(listed);
   const everyone = new Set<string>();
   const bySymbol = new Map<string, Set<string>>();

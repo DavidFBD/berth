@@ -289,6 +289,16 @@ export type Copy = {
   mostBoughtTitle: (week: string) => string;
   /** One row of it: a count of people, never an amount; `plus` when rounded down ("15+"). */
   mostBoughtRow: (people: number, plus: boolean) => string;
+  /** Over the board's quiet card of listings by the share of people holding them (lib/most-held); `week` as for mostBoughtTitle. */
+  mostHeldTitle: (week: string) => string;
+  /**
+   * One row of it, and the quiet line in a listing's own view: a rounded "1 in N", never a count or an amount.
+   * It names its base, people who own a stock or fund on Berth, because the share is of them and not of every account.
+   */
+  mostHeldRow: (oneIn: number) => string;
+  /** The card's one (i): its accessible name, and the line behind it. */
+  mostHeldInfoLabel: string;
+  mostHeldInfo: string;
   /** A row of "Your friends hold" in the Friends screen: how many friends who share hold it, with up to four of their faces. */
   friendsHold: (count: number, names: readonly string[]) => string;
   /** After the faces under a "Your friends hold" row, the friends beyond them ("+2"). */
@@ -2533,6 +2543,10 @@ export const COPY: Copy = {
   boardAll: (count) => `All ${count} stocks and funds`,
   mostBoughtTitle: (week) => `Most bought on Berth, the week of ${week}`,
   mostBoughtRow: (people, plus) => `Bought by ${people}${plus ? "+" : ""} ${people === 1 && !plus ? "person" : "people"}`,
+  mostHeldTitle: (week) => `Most held on Berth, the week of ${week}`,
+  mostHeldRow: (oneIn) => `Held by 1 in ${oneIn} people who own a stock or fund on Berth`,
+  mostHeldInfoLabel: "About Most held on Berth",
+  mostHeldInfo: "Counted once a week among people who own a stock or fund on Berth, always rounded to the smaller share, and shown only once enough people hold it.",
   friendsHold: (count, names) =>
     names.length === 1
       ? `Held by your friend ${names[0]}`

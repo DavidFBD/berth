@@ -1904,6 +1904,20 @@ create table if not exists most_bought_weeks (
   computed_at timestamptz not null default now()
 );
 
+-- Most held on Berth (lib/server/most-held): the sibling of
+-- most_bought_weeks, on the same weeks and the same publish. One stored
+-- answer per fixed Monday to Sunday UTC week, counted from each account's
+-- last portfolio_days record at the week's close, written once by the first
+-- request after the week is published (insert on conflict do nothing) and
+-- served as is from then on. `answer` is the public response itself:
+-- listing symbols and a rounded "1 in N" each, never a count, a person, an
+-- account or an amount.
+create table if not exists most_held_weeks (
+  week_start date primary key,
+  answer jsonb not null,
+  computed_at timestamptz not null default now()
+);
+
 -- What the home last showed an account (lib/last-known): its figure in
 -- parts, the stage and the holdings, saved by the browser only once every
 -- part was read live, so the next visit on any device opens on these,

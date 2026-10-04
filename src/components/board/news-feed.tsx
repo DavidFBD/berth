@@ -19,6 +19,8 @@ import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
 import { useNews } from "@/hooks/use-news";
+import { useMostHeld } from "@/hooks/use-most-held";
+import type { MostHeldResponse } from "@/lib/most-held";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useRotatingFeed } from "@/hooks/use-rotating-feed";
 import { useSeenPosts } from "@/hooks/use-seen-posts";
@@ -105,6 +107,7 @@ export function NewsFeed({
   fill = false,
   collapsible = false,
   held,
+  mostHeld: mostHeldOverride,
 }: {
   filter?: TokenListing | null;
   onClearFilter?: () => void;
@@ -116,8 +119,16 @@ export function NewsFeed({
   collapsible?: boolean;
   /** The listings this person holds, cash aside; absent or empty for someone who owns nothing. */
   held?: readonly string[];
+  /** Stands in for app/api/most-held, for the dev gallery. */
+  mostHeld?: MostHeldResponse;
 }) {
   const copy = useCopy();
+  // A listing's own view: when the news is pointed at one listing, a quiet
+  // line with its rounded share from Most held (lib/most-held), only while
+  // the listing is one of the five the last published week carries (the
+  // card's own rows, nothing past them). Here, never beside a Buy.
+  const fetchedMostHeld = useMostHeld();
+  const heldIn = filter ? (mostHeldOverride ?? fetchedMostHeld).rows.find((row) => row.symbol === filter.symbol)?.oneIn : undefined;
   const [open, toggle, listId] = useDisclosure("news");
   const sectionId = useId();
   const limit = collapsible ? (open ? EXPANDED_LIMIT : COLLAPSED_LIMIT) : limitProp;
@@ -231,7 +242,7 @@ export function NewsFeed({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18, ease: EASE_LIFT }}
-              className={`flex items-center gap-2 ${PAD} pb-2.5`}
+              className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${PAD} pb-2.5`}
             >
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
                 {copy.newsFilteredTo(filter.name)}
@@ -247,6 +258,11 @@ export function NewsFeed({
                   <X className="size-3" />
                   {copy.newsShowAll}
                 </motion.button>
+              )}
+              {heldIn !== undefined && (
+                <p data-most-held-line className="basis-full text-xs text-muted-foreground">
+                  {copy.mostHeldRow(heldIn)}
+                </p>
               )}
             </motion.div>
           )}

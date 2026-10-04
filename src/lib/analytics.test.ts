@@ -59,7 +59,7 @@ describe("the event catalogue", () => {
       "sell_drawer_opened", "sell_amount_entered", "sell_quote_shown", "sell_sign_requested", "sell_signed", "sell_filled", "sell_failed",
       "limit_started", "limit_saved", "account_screen_opened",
       "news_story_opened", "news_refresh_tapped", "campaign_landed", "campaign_step", "first_look_shown",
-      "invite_link_shared", "invite_link_copied", "ai_connect_started", "ai_connect_finished", "most_bought_viewed",
+      "invite_link_shared", "invite_link_copied", "ai_connect_started", "ai_connect_finished", "most_bought_viewed", "most_held_viewed",
     ]) {
       expect(ANALYTICS_EVENTS).toContain(name);
     }

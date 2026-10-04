@@ -78,6 +78,7 @@ export type AnalyticsEvents = {
   ai_connect_started: { assistant: string };
   ai_connect_finished: { assistant: string; decision: "approve" | "decline" };
   most_bought_viewed: { rows: number };
+  most_held_viewed: { rows: number };
 };
 
 export type AnalyticsEvent = keyof AnalyticsEvents;
@@ -124,6 +125,7 @@ export const EVENT_PROPS = {
   ai_connect_started: ["assistant"],
   ai_connect_finished: ["assistant", "decision"],
   most_bought_viewed: ["rows"],
+  most_held_viewed: ["rows"],
 } as const satisfies { [K in AnalyticsEvent]: readonly (keyof AnalyticsEvents[K])[] };
 
 export const ANALYTICS_EVENTS = Object.keys(EVENT_PROPS) as AnalyticsEvent[];

@@ -17,6 +17,9 @@ import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
 import { useMostBought } from "@/hooks/use-most-bought";
+import { useMostHeld } from "@/hooks/use-most-held";
+import { InfoTip } from "@/components/ui/info-tip";
+import { MOST_HELD_SHOWN, type MostHeldResponse } from "@/lib/most-held";
 import type { MostBoughtResponse } from "@/lib/social-proof";
 import { STOCK_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT, SPRING_POP } from "@/lib/motion";
@@ -57,6 +60,7 @@ export function ListingBoard({
   held: heldOverride,
   expandAll = false,
   mostBought: mostBoughtOverride,
+  mostHeld: mostHeldOverride,
 }: {
   onBuy: (listing: TokenListing) => void;
   onSell?: (listing: TokenListing) => void;
@@ -69,6 +73,8 @@ export function ListingBoard({
   expandAll?: boolean;
   /** Stands in for app/api/most-bought, for the dev gallery. */
   mostBought?: MostBoughtResponse;
+  /** Stands in for app/api/most-held, for the dev gallery. */
+  mostHeld?: MostHeldResponse;
 }) {
   const copy = useCopy();
   const moves = useMoves();
@@ -83,6 +89,11 @@ export function ListingBoard({
   // the Friends screen and on a friend's card.
   const fetchedMostBought = useMostBought();
   const mostBought = mostBoughtOverride ?? fetchedMostBought;
+  // Its sibling, the rounded share of accounts holding each listing at the
+  // last published week's close (lib/most-held): the same kind of section,
+  // under it, never in a row.
+  const fetchedMostHeld = useMostHeld();
+  const mostHeld = mostHeldOverride ?? fetchedMostHeld;
   // One row at a time, so twelve rows do not each carry their own state. A
   // focus counts as a hover: the filter must be reachable from the keyboard,
   // and a control that is invisible when focused is a trap.
@@ -348,7 +359,14 @@ export function ListingBoard({
           label={copy.boardAll(STOCK_LISTINGS.length)}
         />
       )}
-      <MostBoughtList answer={mostBought} />
+      {/* The read-only foot: the weekly counts, set apart from the rows
+          above by a strip of canvas, whichever of them shows (Most held may
+          show in a week too quiet for Most bought). Gone entirely, strip and
+          all, while neither does. */}
+      <div data-board-foot className="empty:hidden before:block before:h-3 before:border-t before:border-border before:bg-background before:content-['']">
+        <MostBoughtList answer={mostBought} />
+        <MostHeldList answer={mostHeld} />
+      </div>
     </Panel>
   );
 }
@@ -398,6 +416,65 @@ function MostBoughtShown({ week: weekDay, shown }: { week: string; shown: { list
             <div className="min-w-0 flex-1">
               <div title={listing.name} className="truncate text-[14.5px] leading-snug font-medium text-foreground">{rowName(listing)}</div>
               <div className="text-xs text-muted-foreground">{copy.mostBoughtRow(people, plus)}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
+/**
+ * Most held on Berth, the last published week: the first MOST_HELD_SHOWN
+ * listings by the rounded share of accounts holding them, read only, like
+ * Most bought above it. Only "1 in N"; no count, no amount, no Buy. Nothing
+ * at all until the thresholds are met (lib/most-held), so it switches on by
+ * itself the first week they are.
+ */
+function MostHeldList({ answer }: { answer: MostHeldResponse }) {
+  const shown = answer.rows.slice(0, MOST_HELD_SHOWN).flatMap((row) => {
+    const listing = STOCK_LISTINGS.find((candidate) => candidate.symbol === row.symbol);
+    return listing ? [{ listing, oneIn: row.oneIn }] : [];
+  });
+  if (shown.length === 0 || !answer.week) return null;
+  return <MostHeldShown week={answer.week} shown={shown} />;
+}
+
+/** The card once there is one; seen at least half in view counts once a page session (lib/analytics). */
+function MostHeldShown({ week: weekDay, shown }: { week: string; shown: { listing: TokenListing; oneIn: number }[] }) {
+  const copy = useCopy();
+  const list = useRef<HTMLOListElement>(null);
+  const rows = shown.length;
+  useEffect(() => {
+    const element = list.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        trackOnce("most-held", "most_held_viewed", { rows });
+        observer.disconnect();
+      },
+      { threshold: 0.5 },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [rows]);
+  const week = new Date(`${weekDay}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return (
+    <>
+      <div className="flex items-center gap-1 border-t border-border bg-background px-[18px] pt-2.5 pb-1.5 lg:px-6">
+        <p className="text-xs text-muted-foreground">{copy.mostHeldTitle(week)}</p>
+        <InfoTip label={copy.mostHeldInfoLabel} className="size-4">
+          {copy.mostHeldInfo}
+        </InfoTip>
+      </div>
+      <ol ref={list} data-most-held className="divide-y divide-border border-t border-border">
+        {shown.map(({ listing, oneIn }) => (
+          <li key={listing.address} className="flex min-h-14 items-center gap-2.5 px-[18px] py-2.5 lg:gap-3 lg:px-6">
+            <TickerTile symbol={listing.symbol} />
+            <div className="min-w-0 flex-1">
+              <div title={listing.name} className="truncate text-[14.5px] leading-snug font-medium text-foreground">{rowName(listing)}</div>
+              <div className="text-xs text-muted-foreground">{copy.mostHeldRow(oneIn)}</div>
             </div>
           </li>
         ))}

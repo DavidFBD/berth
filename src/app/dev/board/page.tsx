@@ -16,7 +16,7 @@ import {
 import { FundsModule } from "@/components/funds-module";
 import { HomeGallery } from "./home-gallery";
 import { PathGallery } from "./path-gallery";
-import { socialProofFor } from "./social-proof-fixtures";
+import { mostHeldFor, socialProofFor } from "./social-proof-fixtures";
 import { LINE_FIXTURES } from "../campaigns/fixtures";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { Panel } from "@/components/ui/panel";
@@ -67,9 +67,10 @@ import {
  *   /dev/board?home=path                the guided first path, walked live from
  *                                       fixtures (path-gallery.tsx: &account=wallet,
  *                                       &at=, &skipped=, &drawer=1, &done=)
- *   /dev/board?proof=1                  the two social counts from fixtures
+ *   /dev/board?proof=1                  the social counts from fixtures
  *                                       (social-proof-fixtures.ts): most bought
- *                                       this week, and friends holding a row;
+ *                                       and most held on Berth (&news=NVDA for
+ *                                       most held's line in the news column);
  *                                       proof=0 the quiet week; also on a home
  *                                       scene with &drawer=board
  *   /dev/board?open=NVDA&country=US     any of these as seen where Berth is
@@ -253,6 +254,7 @@ function Gallery() {
           <NewsFeed
             filter={newsFilter}
             onClearFilter={() => setNewsFilter(null)}
+            {...mostHeldFor(params.get("proof"))}
             limit={6}
             fill
           />
