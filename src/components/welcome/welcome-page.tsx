@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { HandHeart, PencilSimpleLine, Trophy } from "@phosphor-icons/react";
 import { BerthMark } from "@/components/berth-mark";
+import { XMark } from "@/components/x-mark";
+import { BERTH_X_URL } from "@/lib/berth-x";
 import { MarketPreview } from "@/components/board";
 import { HeroPhone, WallStreetFilm } from "@/components/welcome/welcome-films";
 import { useCopy } from "@/components/settings-provider";
@@ -130,9 +132,13 @@ export function WelcomePage({
 
       <footer className="flex flex-col gap-4 border-t border-border pt-7 pb-12 text-[12.5px] text-muted-foreground sm:flex-row sm:justify-between sm:gap-6">
         <p className="max-w-[40rem] leading-relaxed">{page.legal}</p>
-        <div className="flex gap-4 whitespace-nowrap">
+        <div className="flex items-start gap-4 whitespace-nowrap">
           <Link href="/privacy" className="hover:text-foreground">{copy.privacyLink}</Link>
           <Link href="/terms" className="hover:text-foreground">{copy.termsLink}</Link>
+          <a href={BERTH_X_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-foreground">
+            <XMark className="size-3" />
+            {copy.xLink}
+          </a>
         </div>
       </footer>
     </div>

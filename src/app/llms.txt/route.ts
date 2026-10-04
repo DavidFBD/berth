@@ -1,4 +1,5 @@
 import { publicOrigin, resourceFor } from "@/lib/server/oauth/config";
+import { BERTH_X_URL } from "@/lib/berth-x";
 
 /**
  * A short plain text note for language models and the people configuring
@@ -30,6 +31,7 @@ export function GET(request: Request): Response {
 - Privacy policy (covers the MCP connector): ${origin}/privacy
 - Terms of use: ${origin}/terms
 - How to connect an assistant, what it can and cannot do, and support: ${origin}/assistants
+- Berth on X: ${BERTH_X_URL}
 `;
   return new Response(body, {
     headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" },

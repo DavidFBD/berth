@@ -1184,6 +1184,10 @@ export type Copy = {
   termsLink: string;
   termsOfUse: LegalDocument;
 
+  /* — Berth's own account on X (lib/berth-x): the quiet link in the welcome footer and in Settings — */
+  /** The link's label, beside X's mark. */
+  xLink: string;
+
   /* — the help page for assistants (app/assistants): public, the directories' documentation and support page — */
   /** The small link to /assistants under "Your assistant" in the account drawer. */
   assistantsLink: string;
@@ -3889,6 +3893,7 @@ export const COPY: Copy = {
     backHome: "Back to Berth",
   },
   termsLink: "Terms",
+  xLink: "Berth on X",
   termsOfUse: {
     title: "Terms of use",
     status: `Effective ${LEGAL_EFFECTIVE_DATE}.`,

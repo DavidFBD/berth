@@ -19,6 +19,8 @@ import { CURRENCIES, type Currency } from "@/lib/currencies";
 import { cn } from "@/lib/utils";
 import { useAwardTheme } from "@/hooks/use-profile";
 import { AdvancedSection } from "@/components/key-export-row";
+import { XMark } from "@/components/x-mark";
+import { BERTH_X_URL } from "@/lib/berth-x";
 import { ANALYTICS_CONFIGURED } from "@/components/analytics/analytics-root";
 import { AnalyticsSwitch } from "@/components/analytics/analytics-switch";
 
@@ -177,6 +179,15 @@ export function SettingsBody({ evmAddress }: { evmAddress?: string }) {
               </a>
               <a href="/terms" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
                 {copy.termsLink}
+              </a>
+              <a
+                href={BERTH_X_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-muted-foreground underline underline-offset-4 hover:text-foreground"
+              >
+                <XMark className="size-3" />
+                {copy.xLink}
               </a>
             </div>
 

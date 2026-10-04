@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { BERTH_X_HANDLE } from "@/lib/berth-x";
 import { Providers } from "@/components/providers";
 import { ToastStack } from "@/components/toast-stack";
 import "./globals.css";
@@ -73,6 +74,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    site: BERTH_X_HANDLE,
+    creator: BERTH_X_HANDLE,
     title: TITLE,
     description: DESCRIPTION,
   },
