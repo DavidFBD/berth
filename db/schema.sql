@@ -1521,9 +1521,11 @@ create index if not exists campaign_claims_inviter_idx on campaign_claims (campa
 
 -- An invite campaign whose rules paid the inviter becomes a signup
 -- campaign, as long as it never made a claim under the old rules: its dates,
--- amount, budget and places stay as they were. One that did make a claim
--- stays 'invite', retired, read only, like the buy campaigns.
-update campaigns c set kind = 'signup'
+-- amount, budget and places stay as they were, and it is switched off, so
+-- it goes live under the new rules only through the activation gates again.
+-- One that did make a claim stays 'invite', retired, read only, like the
+-- buy campaigns.
+update campaigns c set kind = 'signup', active = false
  where c.kind = 'invite'
    and not exists (select 1 from campaign_claims cl where cl.campaign_id = c.id);
 

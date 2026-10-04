@@ -168,8 +168,8 @@ describe("signup attribution", () => {
 });
 
 describe("the migration of an invite campaign", () => {
-  it("turns an invite campaign that never made a claim into a signup one, and leaves one that did retired", async () => {
-    const fresh = await campaign("mig-fresh", { kind: "invite", active: false });
+  it("turns an invite campaign that never made a claim into a switched off signup one, and leaves one that did retired", async () => {
+    const fresh = await campaign("mig-fresh", { kind: "invite", active: true });
     const used = await campaign("mig-used", { kind: "invite", active: false });
     await sql.query(`insert into campaign_claims (campaign_id, user_id, state) values ($1, $2, 'expired')`, [used, (await account()).id]);
     // The statement exactly as db:push runs it, from db/schema.sql.
@@ -177,7 +177,9 @@ describe("the migration of an invite campaign", () => {
     const statement = schema.split(/;\s*\n/).find((text) => text.includes("update campaigns c set kind = 'signup'"));
     expect(statement).toBeTruthy();
     await sql.query(statement!);
-    const kinds = (await sql.query(`select id, kind from campaigns where id = any($1::uuid[])`, [[fresh, used]])) as { id: string; kind: string }[];
+    const kinds = (await sql.query(`select id, kind, active from campaigns where id = any($1::uuid[])`, [[fresh, used]])) as { id: string; kind: string; active: boolean }[];
     expect(Object.fromEntries(kinds.map((row) => [row.id, row.kind]))).toEqual({ [fresh]: "signup", [used]: "invite" });
+    // Switched off: it goes live under the new rules only through the activation gates again.
+    expect(kinds.find((row) => row.id === fresh)!.active).toBe(false);
   });
 });
