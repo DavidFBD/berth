@@ -319,16 +319,23 @@ export async function markClaimPaid(
   // The one paid, the claim's own person, may not be marked not eligible.
   const payee = await claimPerson(claim);
   if (payee && (await staffIneligible(await personAccounts(payee.id)))) return refused(staffUserId, "claim.mark_paid", claimId, "staff_ineligible", { txHash });
-  // The guards and the one payout per person, asked once more of the person as they are now.
-  const still = await stillEligible(claim);
-  if (still) return refused(staffUserId, "claim.mark_paid", claimId, still, { txHash });
+  // The transfer was already sent by hand: the guards are never a reason to refuse recording it.
+  // What they say of the person now is kept in the audit row; the queue warned before sending.
+  const eligibilityNow = await stillEligible(claim);
   const campaign = await campaignById(claim.campaign_id);
   if (!campaign) return refused(staffUserId, "claim.mark_paid", claimId, "not_found", { txHash });
   const senders = await claimPayoutSenders(claim.campaign_id, env);
   if (senders.size === 0) return refused(staffUserId, "claim.mark_paid", claimId, "no_payout_senders", { txHash });
   const replacing = claim.paid_tx !== null && claim.paid_tx !== txHash ? claim.paid_tx : null;
   const action = replacing ? "claim.replace_paid_tx" : claim.paid_tx === txHash ? "claim.recheck_paid" : "claim.mark_paid";
-  const base = { txHash, to: claim.payout_address, chain: PAYOUT_CHAIN.key, amountUsd: campaign.amount_usd, ...(replacing ? { replaced: replacing } : {}) };
+  const base = {
+    txHash,
+    to: claim.payout_address,
+    chain: PAYOUT_CHAIN.key,
+    amountUsd: campaign.amount_usd,
+    eligibilityNow,
+    ...(replacing ? { replaced: replacing } : {}),
+  };
 
   const transfers = await fetchUsdcTransfers(txHash, senders, fetchReceipt);
   const clearPending = async (refusal: ActionRefusal, detail: Record<string, unknown>) => {

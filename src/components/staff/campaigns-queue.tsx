@@ -603,6 +603,11 @@ function ClaimCard({
           {copy.ineligibleClaim(when(claim.staffIneligibleAt))}
         </p>
       )}
+      {claim.state === "approved" && claim.eligibilityNow && (
+        <p role="alert" data-testid="claim-since-approval" className="rounded-md border border-warn/50 bg-warn-soft px-3 py-2 text-sm font-medium text-foreground">
+          {copy.sinceApproval[claim.eligibilityNow]}
+        </p>
+      )}
       {claim.state === "approved" && <p className="text-xs text-muted-foreground">{copy.batchNote}</p>}
       {claim.state === "approved" && (
         <div className="flex flex-col gap-2 sm:flex-row">

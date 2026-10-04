@@ -5,6 +5,8 @@ import { CLAIM_STATES, SLOT_STATES, type CampaignKind, type ClaimState } from "@
 import { CAMPAIGN_COLUMNS, toCampaign, type CampaignRow } from "@/lib/server/campaigns/store";
 import { PAYOUT_CHAIN } from "@/lib/server/campaigns/usdc";
 import { foldEmail } from "@/lib/server/campaigns/fold-email";
+import { stillEligible, type GuardOutcome } from "@/lib/server/campaigns/eligibility";
+import { claimById } from "@/lib/server/campaigns/store";
 
 export { foldEmail };
 
@@ -93,6 +95,12 @@ export type QueueClaim = {
    * queue says so first, so nobody sends USDC by hand to one marked since.
    */
   staffIneligibleAt: string | null;
+  /**
+   * An approved claim only: what the campaign's checks say of the person
+   * now, or null when they still stand. Something linked or merged since
+   * approval shows here, so staff see it before sending USDC by hand.
+   */
+  eligibilityNow: GuardOutcome | "wallet_used" | null;
 };
 
 export type CampaignMeter = {
@@ -316,7 +324,14 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
       reason: (row.reason as string | null) ?? null,
       signals: signals.get(String(row.id)) ?? [],
       staffIneligibleAt: iso(row.staff_ineligible_at),
+      eligibilityNow: null,
     });
+  }
+
+  for (const claim of claims) {
+    if (claim.state !== "approved") continue;
+    const stored = await claimById(claim.id);
+    claim.eligibilityNow = stored ? await stillEligible(stored) : null;
   }
 
   return {

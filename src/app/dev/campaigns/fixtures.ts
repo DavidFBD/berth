@@ -40,6 +40,7 @@ const claim = (n: number, over: Partial<Claim>): Claim => ({
   reason: null,
   signals: [],
   staffIneligibleAt: null,
+  eligibilityNow: null,
   ...over,
 });
 

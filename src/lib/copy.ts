@@ -1533,6 +1533,8 @@ export type CampaignStaffCopy = {
   /** Approved claims whose account staff marked not eligible since: said before anyone pays by hand. */
   ineligibleApproved: (count: number) => string;
   ineligibleClaim: (at: string) => string;
+  /** On an approved claim, before anyone sends USDC by hand: what the campaign's checks say of the person now. */
+  sinceApproval: Record<"wallet_used" | "email_used" | "existing_customer" | "staff_ineligible" | "no_person", string>;
   markPaid: string;
   txHash: string;
   batchNote: string;
@@ -4873,6 +4875,13 @@ export const COPY: Copy = {
       ineligibleApproved: (count) =>
         `Do not pay ${count === 1 ? "1 approved claim" : `${count} approved claims`}: the account was marked not eligible after approval. Mark paid will refuse it. Reject it instead.`,
       ineligibleClaim: (at) => `Marked not eligible on ${at}. Do not send USDC for this claim; Mark paid will refuse it. Reject it.`,
+      sinceApproval: {
+        wallet_used: "Since approval, this person stands on a wallet that already counted for another claim. Check before you send.",
+        email_used: "Since approval, this person's email already counted for another claim. Check before you send.",
+        existing_customer: "Since approval, this person turns out to have been on Berth before. Check before you send.",
+        staff_ineligible: "Since approval, this person was marked not eligible. Check before you send.",
+        no_person: "Since approval, this account is no longer there. Check before you send.",
+      },
       markPaid: "Mark paid",
       txHash: "Transaction hash on Base",
       batchNote: "Send USDC from the payout wallet itself, one transfer per address or a batch the wallet signs (a Safe multisend, disperseTokenSimple). Never through a disperse contract's own transfer: that comes from the contract, and will not count.",

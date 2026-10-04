@@ -376,16 +376,27 @@ describe("a claim from qualified to paid", () => {
     expect(marks).toEqual(expect.arrayContaining([`wallet:${user.wallet_address}`, `wallet:${late}`, `email:${user.email}`]));
   });
 
-  it("asks the guards and one payout per person again at mark paid", async () => {
+  it("warns in the queue before sending, and records a payment already sent whatever the checks say now", async () => {
     const staff = await person();
     const a = await approved("paid-recheck");
     const b = await approved("paid-recheck");
     // After both approvals, b links a wallet a already counted on.
     await heldWallet(b.user, a.to);
+    const queued = (await staffQueue()).claims.find((claim) => claim.id === b.claimId)!;
+    expect(queued.eligibilityNow).toBe("wallet_used");
+    expect((await staffQueue()).claims.find((claim) => claim.id === a.claimId)!.eligibilityNow).toBeNull();
     const hash = `0x${"5e".repeat(32)}`;
-    expect(await markClaimPaid(staff.id, b.claimId, hash, async () => null, { STAFF_PAYOUT_ADDRESSES: hex(0xc0ffee) })).toMatchObject({ ok: false, refusal: "wallet_used" });
-    expect((await claimById(b.claimId))!.state).toBe("approved");
-    expect((await audits("claim.mark_paid")).filter((entry) => entry.target === b.claimId).at(-1)?.detail.outcome).toBe("wallet_used");
+    const pad = (address: string) => `0x${address.slice(2).padStart(64, "0")}`;
+    const house = hex(0xc0ffee);
+    const receipt = async (): Promise<Receipt> => ({
+      status: "0x1",
+      blockNumber: "0x1",
+      logs: [{ address: USDC_BASE, topics: [TRANSFER_TOPIC, pad(house), pad(b.to)], data: `0x${(5_000_000n).toString(16)}` }],
+    });
+    expect(await markClaimPaid(staff.id, b.claimId, hash, receipt, { STAFF_PAYOUT_ADDRESSES: house })).toEqual({ ok: true, detail: { verified: true } });
+    expect((await claimById(b.claimId))!.state).toBe("paid");
+    const audit = (await audits("claim.mark_paid")).filter((entry) => entry.target === b.claimId).at(-1)!;
+    expect(audit.detail).toMatchObject({ outcome: "done", eligibilityNow: "wallet_used" });
   });
 
   it("refuses to approve or pay a claim whose account staff marked not eligible", async () => {
