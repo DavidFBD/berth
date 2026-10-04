@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChainKeys } from "@sodax/sdk";
-import { keccak256, toHex } from "viem";
+import { createWalletClient, custom, keccak256, toHex } from "viem";
+import { base } from "viem/chains";
 import {
   gasSponsored,
   isSponsoredChain,
@@ -55,17 +56,18 @@ describe("sponsorChainsFromEnv", () => {
   it("keeps only chains Privy sponsors for Berth, and warns about each one dropped", () => {
     const warn = vi.fn();
     expect([...sponsorChainsFromEnv("8453,146,42161,43114,999,10,137,56,1,4663", warn)]).toEqual([
-      8453, 42161, 10, 137, 56, 1, 4663,
+      8453, 42161, 10, 137, 56, 4663,
     ]);
-    expect(warn).toHaveBeenCalledTimes(3);
-    expect(warn.mock.calls.map(([message]) => message).join(" ")).toMatch(/146.*43114.*999/);
+    expect(warn).toHaveBeenCalledTimes(4);
+    expect(warn.mock.calls.map(([message]) => message).join(" ")).toMatch(/146.*43114.*999.*\b1,/);
   });
-  it("gives nothing for chains Privy cannot sponsor", () => {
+  it("gives nothing for chains Privy cannot sponsor, nor for Ethereum, whose blocks outlast Privy's 20 second wait", () => {
     expect(sponsorChainsFromEnv("146,43114,999").size).toBe(0);
+    expect(sponsorChainsFromEnv("1").size).toBe(0);
     expect(sponsorChainsFromEnv("").size).toBe(0);
   });
   it("is exactly the agreed set", () => {
-    expect([...PRIVY_SPONSORABLE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([1, 10, 56, 137, 4663, 8453, 42161]);
+    expect([...PRIVY_SPONSORABLE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 56, 137, 4663, 8453, 42161]);
   });
 });
 
@@ -148,9 +150,48 @@ describe("classifySponsorError", () => {
   it("refuses, so falls back, only on client error statuses from Privy's API", () => {
     for (const status of [400, 401, 402, 403, 404, 422]) {
       expect(classifySponsorError(api(status, "Insufficient credits"))).toBe("refused");
-      expect(sponsorFallbackAllowed(api(status))).toBe(true);
     }
+    for (const status of [401, 402, 403, 404]) expect(sponsorFallbackAllowed(api(status))).toBe(true);
     expect(classifySponsorError(api(429, "Too many requests"))).toBe("rate-limited");
+  });
+
+  it("tells a simulation revert from a sponsorship refusal on a 400 or 422", () => {
+    for (const status of [400, 422]) {
+      // Simulation reverts: an ordinary failed order, no paid send.
+      expect(classifySponsorError(api(status, "Transaction simulation failed: execution reverted"))).toBe("failed");
+      expect(classifySponsorError(api(status, "x", "transaction_execution_failure"))).toBe("failed");
+      expect(classifySponsorError(api(status, "Too little received", "invalid_data"))).toBe("failed");
+      expect(classifySponsorError(api(status, "Sponsored transaction reverted in simulation"))).toBe("failed");
+      // Unsure: still an ordinary failure, sponsorship stays on.
+      expect(classifySponsorError(api(status))).toBe("failed");
+      expect(classifySponsorError(api(status, "Invalid request", "invalid_request"))).toBe("failed");
+      expect(sponsorFallbackAllowed(api(status, "execution reverted"))).toBe(false);
+      // Genuine refusals: by code or by words about sponsorship.
+      expect(classifySponsorError(api(status, "x", "feature_not_enabled"))).toBe("refused");
+      expect(classifySponsorError(api(status, "x", "not_supported"))).toBe("refused");
+      expect(classifySponsorError(api(status, "x", "transaction_limit_reached"))).toBe("refused");
+      expect(classifySponsorError(api(status, "Gas sponsorship is not enabled for this chain"))).toBe("refused");
+      expect(classifySponsorError(api(status, "Paymaster deposit too low"))).toBe("refused");
+    }
+    // Words on a wrapped cause count too.
+    expect(classifySponsorError(new Error("Transaction failed", { cause: api(400, "execution reverted: STF") }))).toBe("failed");
+  });
+
+  it("holds a 400 or 422 at or after broadcast as unknown, never failed or refused, whatever else it says", () => {
+    for (const status of [400, 422]) {
+      expect(classifySponsorError(api(status, "x", "transaction_broadcast_failure"))).toBe("unknown");
+      expect(classifySponsorError(api(status, "Failed to broadcast transaction"))).toBe("unknown");
+      expect(classifySponsorError(api(status, "eth_sendUserOperation timed out"))).toBe("unknown");
+      expect(classifySponsorError(api(status, "Request timeout from bundler"))).toBe("unknown");
+      expect(classifySponsorError(api(status, "nonce too low"))).toBe("unknown");
+      expect(classifySponsorError(api(status, "already known"))).toBe("unknown");
+      expect(classifySponsorError(api(status, "replacement transaction underpriced"))).toBe("unknown");
+      // Broadcast outranks revert words and sponsorship words alike.
+      expect(classifySponsorError(api(status, "execution reverted", "transaction_broadcast_failure"))).toBe("unknown");
+      expect(classifySponsorError(api(status, "Sponsored transaction broadcast failed"))).toBe("unknown");
+      expect(sponsorFallbackAllowed(api(status, "x", "transaction_broadcast_failure"))).toBe(false);
+    }
+    expect(classifySponsorError(new Error("Transaction failed", { cause: api(400, "x", "transaction_broadcast_failure") }))).toBe("unknown");
   });
 
   it("treats every server or timeout status as unknown, whatever the message says", () => {
@@ -165,7 +206,10 @@ describe("classifySponsorError", () => {
 
   it("reads status before the message", () => {
     expect(classifySponsorError(api(500, "Sponsoring is only supported for wallets on the TEE stack"))).toBe("unknown");
-    expect(classifySponsorError(api(400, "Request timed out"))).toBe("refused");
+    expect(classifySponsorError(api(400, "Invalid request"))).toBe("failed");
+    // A 400 that timed out may have reached the bundler: held, never failed.
+    expect(classifySponsorError(api(400, "Request timed out"))).toBe("unknown");
+    expect(classifySponsorError(api(403, "execution reverted"))).toBe("refused");
   });
 
   it("falls back on react-auth's own pre-send throws", () => {
@@ -329,6 +373,18 @@ describe("withGasSponsor", () => {
     expect(inner2.request).not.toHaveBeenCalled();
   });
 
+  it("treats a simulation revert as an ordinary failed order: no paid send, no hold, the chain stays sponsored", async () => {
+    const revert = Object.assign(new Error("Transaction simulation failed: execution reverted"), { name: "PrivyApiError", status: 400 });
+    const { inner, onFallback, sponsored, provider } = setup(async () => {
+      throw revert;
+    });
+    await expect(provider.request(sendArgs)).rejects.toBe(revert);
+    expect(sponsored).toHaveBeenCalledTimes(1);
+    expect(inner.request).not.toHaveBeenCalled();
+    expect(onFallback).not.toHaveBeenCalled();
+    expect(outcomeHoldUntil()).toBe(0);
+  });
+
   it("does not fall back or drop the chain when the MFA prompt is closed", async () => {
     const mfa = { code: "mfa_canceled", error: "MFA canceled" };
     const { inner, onFallback, provider } = setup(async () => {
@@ -341,11 +397,43 @@ describe("withGasSponsor", () => {
 
   it("closes viem's wallet_sendTransaction retry while sponsorship is on, and opens it when off", async () => {
     const on = setup(async () => ({ hash: HASH }));
-    await expect(on.provider.request({ method: "wallet_sendTransaction", params: [{}] })).rejects.toMatchObject({ code: 4200 });
+    await expect(on.provider.request({ method: "wallet_sendTransaction", params: [{}] })).rejects.toMatchObject({ code: -32601 });
     expect(on.inner.request).not.toHaveBeenCalled();
     const off = setup(async () => ({ hash: HASH }), false);
     await off.provider.request({ method: "wallet_sendTransaction", params: [{}] });
     expect(off.inner.request).toHaveBeenCalledOnce();
+  });
+
+  it("after two 429s, a paid send short of gas still says how much to add, through viem", async () => {
+    const address = "0x000000000000000000000000000000000000000a";
+    const inner = {
+      request: vi.fn(async ({ method }: { method: string }) => {
+        if (method === "eth_chainId") return "0x2105";
+        if (method === "eth_sendTransaction") {
+          throw Object.assign(new Error("insufficient funds for gas * price + value: have 1000 want 200000000001000"), { code: -32000 });
+        }
+        throw new Error(`unexpected ${method}`);
+      }),
+    };
+    const busy = Object.assign(new Error("Too many requests"), { name: "PrivyApiError", status: 429 });
+    const provider = withGasSponsor(inner, {
+      chainId: 8453,
+      address,
+      active: () => true,
+      sendSponsored: async () => {
+        throw busy;
+      },
+      sleep: async () => {},
+    });
+    const wallet = createWalletClient({ account: address, chain: base, transport: custom(provider) });
+    const error = await wallet
+      .sendTransaction({ to: "0x000000000000000000000000000000000000000b", value: 1n, gas: 21_000n, maxFeePerGas: 1n, maxPriorityFeePerGas: 1n })
+      .catch((caught: unknown) => caught);
+    // viem asked wallet_sendTransaction once, was told the method is not there, and kept the original error.
+    expect(inner.request.mock.calls.filter(([args]) => args.method === "eth_sendTransaction")).toHaveLength(1);
+    const words = friendlyError(error, COPY.errOrderFailed, { symbol: "ETH", decimals: 18, network: "Base" });
+    expect(words).toMatch(/^Not enough to cover the network fee\. Add about 0\.000\d+ ETH on Base/);
+    expect(words).not.toBe(COPY.errOrderFailed);
   });
 
   it("does not ask Privy once sponsorship is off for the chain", async () => {
@@ -422,6 +510,82 @@ describe("an unknown outcome", () => {
       .request(args)
       .catch(() => null);
     expect(outcomeHoldUntil()).toBeGreaterThanOrEqual(before + OUTCOME_HOLD_MS);
+  });
+});
+
+describe("the hold after an unknown outcome, across a refresh and other tabs", () => {
+  function fakeStorage(blocked = false) {
+    const items = new Map<string, string>();
+    const guard = () => {
+      if (blocked) throw new DOMException("blocked", "SecurityError");
+    };
+    return {
+      getItem: (key: string) => (guard(), items.get(key) ?? null),
+      setItem: (key: string, value: string) => (guard(), void items.set(key, value)),
+      removeItem: (key: string) => (guard(), void items.delete(key)),
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("survives a reload within the minute and lapses after it", async () => {
+    vi.stubGlobal("window", { localStorage: fakeStorage() });
+    const first = await import("./gas-sponsor");
+    const now = Date.now();
+    first.holdAfterUnknownOutcome(now);
+
+    vi.resetModules();
+    const reloaded = await import("./gas-sponsor");
+    expect(reloaded.outcomeHoldUntil()).toBe(now + OUTCOME_HOLD_MS);
+
+    reloaded.resetOutcomeHold();
+    first.holdAfterUnknownOutcome(now - OUTCOME_HOLD_MS - 1);
+    vi.resetModules();
+    expect((await import("./gas-sponsor")).outcomeHoldUntil()).toBe(0);
+  });
+
+  it("reaches a tab that was already open, and never shortens a hold of its own", async () => {
+    const storage = fakeStorage();
+    const handlers: ((event: { key: string | null }) => void)[] = [];
+    vi.stubGlobal("window", {
+      localStorage: storage,
+      addEventListener: (type: string, handler: (event: { key: string | null }) => void) => {
+        if (type === "storage") handlers.push(handler);
+      },
+      removeEventListener: () => {},
+    });
+    const other = await import("./gas-sponsor");
+    const heard = vi.fn();
+    other.subscribeOutcomeHold(heard);
+    expect(other.outcomeHoldUntil()).toBe(0);
+
+    // The first tab holds; the browser tells this one through a storage event.
+    const now = Date.now();
+    storage.setItem("berth.gasSponsorOutcomeHold", String(now + OUTCOME_HOLD_MS));
+    for (const handler of handlers) handler({ key: "berth.gasSponsorOutcomeHold" });
+    expect(other.outcomeHoldUntil()).toBe(now + OUTCOME_HOLD_MS);
+    expect(heard).toHaveBeenCalledTimes(1);
+
+    // An unrelated key, or an earlier end, changes nothing.
+    for (const handler of handlers) handler({ key: "something.else" });
+    storage.setItem("berth.gasSponsorOutcomeHold", String(now + 1_000));
+    for (const handler of handlers) handler({ key: "berth.gasSponsorOutcomeHold" });
+    expect(other.outcomeHoldUntil()).toBe(now + OUTCOME_HOLD_MS);
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it("still holds this page when storage is blocked", async () => {
+    vi.stubGlobal("window", { localStorage: fakeStorage(true) });
+    const mod = await import("./gas-sponsor");
+    expect(mod.outcomeHoldUntil()).toBe(0);
+    const now = Date.now();
+    mod.holdAfterUnknownOutcome(now);
+    expect(mod.outcomeHoldUntil()).toBe(now + OUTCOME_HOLD_MS);
+    mod.resetOutcomeHold();
+    expect(mod.outcomeHoldUntil()).toBe(0);
   });
 });
 

@@ -2,9 +2,10 @@
   "name": "leveraged-staked-yield-vibe",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.13.1",
   "scripts": {
     "dev": "NODE_OPTIONS=--max-old-space-size=3072 next dev",
-    "build": "next build",
+    "build": "node scripts/check-privy-patch.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
@@ -30,8 +31,8 @@
     "orders:recover": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/orders-recover.mjs",
     "referral-friends:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/referral-friends-backfill.mjs",
     "avatars:build": "node scripts/avatars/build.mjs",
-  "home:timing": "node scripts/home-timing.mjs",
-  "home:reads": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/time-home-reads.mjs"
+    "home:timing": "node scripts/home-timing.mjs",
+    "home:reads": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/time-home-reads.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.78",
