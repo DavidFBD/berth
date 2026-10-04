@@ -1,5 +1,6 @@
 import { Sodax, type Intent } from "@sodax/sdk";
 import { sodaxConfig } from "@/lib/sodax-config";
+import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
 import { listListings } from "@/lib/listings";
 import {
   proveOwnership,
@@ -38,7 +39,7 @@ export function getSodax(): Sodax {
 }
 
 export type PourRejection =
-  | "not confirmed" // no receipt, reverted, or not an intent at all
+  | "not confirmed" // reverted, or not an intent at all (no receipt yet is "not yet known")
   | "not a pour" // a real intent, but no tea vault on the claimed side
   | "not your pour" // not proven the account's (lib/server/pour-ownership)
   | "not yet known"; // a read did not answer: try again later, never a refusal
@@ -95,26 +96,10 @@ export function judgePour({
   return vaultAddresses.has(touched) ? { ok: true } : { ok: false, reason: "not a pour" };
 }
 
-const SONIC_RPC = "https://sonic-rpc.publicnode.com";
-/** How long one hub read may take in a route. */
-const READ_MS = 6_000;
-
+/** A hub read through the failover list (lib/server/hub-rpc): the result, null when the node has none, or UNKNOWN. */
 async function rpc<T>(method: string, params: unknown[]): Promise<Maybe<T | null>> {
-  try {
-    const response = await fetch(SONIC_RPC, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(READ_MS),
-    });
-    if (!response.ok) return UNKNOWN;
-    const payload = (await response.json()) as { result?: T | null; error?: unknown };
-    if (payload.error) return UNKNOWN;
-    return payload.result ?? null;
-  } catch {
-    return UNKNOWN;
-  }
+  const answer = await hubRpc<T>(method, params, ROUTE_READ);
+  return answer.ok ? answer.result : UNKNOWN;
 }
 
 export type HubLog = { address: string; topics: readonly string[]; data: string };
@@ -122,14 +107,16 @@ export type HubReceipt = { blockNumber: string | null; from: string | null; to: 
 
 /**
  * The hub transaction's receipt, said three ways: it succeeded (with its
- * sender and logs), it does not exist or reverted, or the read could not
- * answer. One cheap read before the SDK gets involved: getIntent waits and
+ * sender and logs), it reverted, or it is not known yet (the read could not
+ * answer, or the node has no receipt for it). One cheap read before the SDK gets involved: getIntent waits and
  * polls for receipts, so an invented hash would hold the route open.
  */
 export async function readReceipt(txHash: string): Promise<{ state: "ok"; receipt: HubReceipt } | { state: "failed" } | { state: "unknown" }> {
   const result = await rpc<{ status?: string; blockNumber?: string; from?: string; to?: string | null; logs?: HubLog[] }>("eth_getTransactionReceipt", [txHash]);
-  if (result === UNKNOWN) return { state: "unknown" };
-  if (!result || result.status !== "0x1") return { state: "failed" };
+  // No receipt yet is not a refusal: a node a few blocks behind answers null
+  // for a transaction seconds old, so the caller asks again later.
+  if (result === UNKNOWN || result === null) return { state: "unknown" };
+  if (result.status !== "0x1") return { state: "failed" };
   return {
     state: "ok",
     receipt: { blockNumber: result.blockNumber ?? null, from: result.from?.toLowerCase() ?? null, to: result.to?.toLowerCase() ?? null, logs: result.logs ?? [] },
@@ -178,8 +165,9 @@ export async function ownsIntent({
   const hubReceipt = async (): Promise<Maybe<HubReceipt>> => {
     if (held === undefined) {
       const read = await readReceipt(txHash);
-      // A receipt that does not exist or reverted holds no intent at all;
-      // here the intent was read, so a missing receipt is a read that failed.
+      // The intent was read, so its transaction succeeded: a receipt that
+      // reads as unknown (no answer, or a node behind with none yet) or as
+      // reverted (a node that disagrees) is a read that failed here.
       held = read.state === "ok" ? read.receipt : UNKNOWN;
     }
     return held;

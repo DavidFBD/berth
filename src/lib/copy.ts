@@ -4458,6 +4458,7 @@ export const COPY: Copy = {
         bad_reason: "Choose a reason.",
         bad_input: "Check the fields.",
         code_taken: "That code is taken.",
+        hold_too_long: "A hold can be 30 days at most. Its window is read every morning, and a longer one does not fit.",
         counsel_required: "Confirm counsel review first.",
       },
       create: {
@@ -4468,7 +4469,7 @@ export const COPY: Copy = {
         budget: "Budget, USD",
         maxClaims: "Places",
         minBuy: "Minimum buy, USD",
-        holdDays: "Days to hold",
+        holdDays: "Days to hold, 30 at most",
         starts: "Starts",
         ends: "Ends",
         submit: "Create, inactive",

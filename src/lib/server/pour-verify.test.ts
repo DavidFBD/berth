@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { holdsIntentCreated, judgePour } from "./pour-verify";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { holdsIntentCreated, judgePour, readReceipt } from "./pour-verify";
 
 // Whose pour it is: lib/server/pour-ownership.test.
 const VAULT = "0xd09de2f5070699a909c0fd32fb5a909d3886701d";
@@ -49,5 +49,28 @@ describe("holdsIntentCreated", () => {
     expect(holdsIntentCreated([{ ...created, address: "0x1111111111111111111111111111111111111111" }], INTENTS)).toBe(false);
     expect(holdsIntentCreated([{ ...created, topics: ["0xddf252ad" + "0".repeat(56)] }], INTENTS)).toBe(false);
     expect(holdsIntentCreated([], INTENTS)).toBe(false);
+  });
+});
+
+describe("readReceipt", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const answering = (result: unknown) =>
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result })));
+
+  it("reads a missing receipt as not known yet, never as a refusal", async () => {
+    answering(null);
+    expect(await readReceipt("0x01")).toEqual({ state: "unknown" });
+  });
+
+  it("refuses only a reverted transaction", async () => {
+    answering({ status: "0x0", blockNumber: "0x10", logs: [] });
+    expect(await readReceipt("0x01")).toEqual({ state: "failed" });
+  });
+
+  it("reads a successful one with its sender and logs", async () => {
+    answering({ status: "0x1", blockNumber: "0x10", from: "0xAB", to: null, logs: [] });
+    expect(await readReceipt("0x01")).toEqual({ state: "ok", receipt: { blockNumber: "0x10", from: "0xab", to: null, logs: [] } });
   });
 });

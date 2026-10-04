@@ -5,7 +5,7 @@ import { awardXp } from "@/lib/server/accounts";
 import { getSql } from "@/lib/server/db";
 import { fetchIntentRecord } from "@/lib/server/limit-orders";
 import { recordOrder } from "@/lib/server/orders";
-import { accountOwnedWallets, type OwnershipVerdict } from "@/lib/server/pour-ownership";
+import { UNKNOWN, accountOwnedWallets, withTimeout, type OwnershipVerdict } from "@/lib/server/pour-ownership";
 import { getSodax, ownsIntent } from "@/lib/server/pour-verify";
 import { limitStateFrom, type IntentRecord } from "@/lib/limit-orders";
 import type { RewardList } from "@/lib/profile-types";
@@ -75,13 +75,15 @@ export async function fillVerdict({
   const sodax = getSodax();
   const intentsContract = sodax.config.solver.intentsContract;
   if (claimedFillTx) {
+    // Bounded (5s): the SDK client's own failover waits out a hung first
+    // endpoint for longer than the pour route can spare. Unread falls
+    // through to the backend's record.
     const read =
       readReceipt ??
-      ((hash: string) =>
-        sodax.hubProvider.publicClient
-          .getTransactionReceipt({ hash: hash as `0x${string}` })
-          .then((receipt) => receipt as unknown as Receipt)
-          .catch(() => null));
+      (async (hash: string) => {
+        const receipt = await withTimeout(() => sodax.hubProvider.publicClient.getTransactionReceipt({ hash: hash as `0x${string}` }));
+        return receipt === UNKNOWN ? null : (receipt as unknown as Receipt);
+      });
     if (fillsIntent(await read(claimedFillTx), EvmSolverService.getIntentHash(intent), intentsContract)) return "filled";
   }
   // The backend trails the hub by seconds: a second look covers a fill just made.

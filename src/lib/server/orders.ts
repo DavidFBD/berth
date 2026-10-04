@@ -1,6 +1,8 @@
 import type { Intent, Sodax } from "@sodax/sdk";
 import { BENCHMARKS } from "@/lib/benchmarks";
 import { getSql } from "@/lib/server/db";
+import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
+import { HUB_RPC_URLS } from "@/lib/sodax-config";
 import { COINGECKO_ID_BY_LOWER_SYMBOL } from "@/lib/coingecko-ids";
 import { listListings } from "@/lib/listings";
 import {
@@ -29,26 +31,39 @@ import { LLAMA_SHARE_QUOTES_FROM_MS } from "@/lib/token-multiplier";
  * known and adds what is new).
  */
 
-const SONIC_RPC = "https://sonic-rpc.publicnode.com";
 /** Sonic makes a block about every 0.3s; this is well over an hour of them. */
 const FILL_SEARCH_BLOCKS = 20_000;
 
-async function rpc<T>(method: string, params: unknown[]): Promise<T | undefined> {
-  try {
-    const response = await fetch(SONIC_RPC, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) return undefined;
-    const payload = (await response.json()) as { result?: T };
-    return payload.result ?? undefined;
-  } catch {
-    return undefined;
-  }
+/**
+ * The fill search's endpoints. Its 20k block range is inside publicnode's
+ * 50k log cap but over dRPC's free 10k (code 35, HTTP 400, every time), so
+ * dRPC is left out rather than spending part of the budget on a sure
+ * refusal: publicnode, then soniclabs.
+ */
+export const FILL_LOG_URLS: readonly string[] = HUB_RPC_URLS.filter((url) => !url.includes("drpc"));
+
+/**
+ * A hub read through the failover list (lib/server/hub-rpc), undefined when
+ * nothing answered or there is no such thing. The route budget (4s an
+ * endpoint, 8s a read), the one pour-verify uses: buildOrder makes up to
+ * four of these in a row inside the pour route, after its proofs, so a
+ * hung publicnode costs 4s a read, not 10. What is missed is filled in on a
+ * later call (the evening pass, orders:recover).
+ */
+export async function orderRpc<T>(
+  method: string,
+  params: unknown[],
+  {
+    urls,
+    fetcher,
+    budget = ROUTE_READ,
+  }: { urls?: readonly string[]; fetcher?: typeof fetch; budget?: { attemptMs: number; totalMs: number } } = {},
+): Promise<T | undefined> {
+  const answer = await hubRpc<T>(method, params, { ...budget, urls, fetcher });
+  return answer.ok ? (answer.result ?? undefined) : undefined;
 }
+
+const rpc = orderRpc;
 
 export type PriceAtMoment = { price: number; /** When DefiLlama's price was taken. */ pricedAt: Date };
 
@@ -244,6 +259,7 @@ export async function buildOrder({
           topics: [TRANSFER_TOPIC, null, addressTopic(intent.dstAddress)],
         },
       ],
+      { urls: FILL_LOG_URLS },
     );
     fill = logs ? pickFill(logs, claimedFillTx) : undefined;
   }

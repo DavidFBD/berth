@@ -67,6 +67,9 @@ export function useNudge(): { nudge: Nudge | null; dismiss: () => void } {
     holdings.settled &&
     !funds.isLoading &&
     funds.totalUsd !== undefined &&
+    // A network not read (failed, or slow past the sweep's deadline) may hold
+    // the money: without it, "add funds" could be said to an account that has some.
+    funds.erroredChains.length === 0 &&
     profile.data !== undefined;
 
   const facts: NudgeFacts | undefined = settled

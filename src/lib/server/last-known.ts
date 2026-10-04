@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/server/db";
+import { takeRatePlace } from "@/lib/server/oauth/rate-limit";
 import { parseSnapshot, snapshotFromDay, type LastKnown, type LastKnownSnapshot } from "@/lib/last-known";
 
 /**
@@ -37,4 +38,16 @@ export async function saveLastKnown(userId: string, snapshot: LastKnownSnapshot)
     [userId, JSON.stringify(snapshot)],
   )) as { as_of: string | Date }[];
   return { snapshot, asOf: new Date(rows[0].as_of).getTime(), source: "live" };
+}
+
+/**
+ * Saves per account per hour. The page saves at most once a minute per tab
+ * (lib/last-known shouldSave), so this leaves room for a second tab or
+ * device and only stops a loop. Reads are not limited.
+ */
+export const LAST_KNOWN_WRITES_PER_HOUR = 120;
+
+/** Takes one save place for the account this hour; false once the limit is reached. */
+export function lastKnownWriteAllowed(userId: string, now = new Date()): Promise<boolean> {
+  return takeRatePlace("last-known", userId, LAST_KNOWN_WRITES_PER_HOUR, now);
 }

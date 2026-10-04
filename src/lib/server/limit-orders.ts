@@ -2,7 +2,7 @@ import { ChainKeys, getChainKeyFromRelayChainId, getIntentRelayChainId, type Int
 import { HOME_CHAIN } from "@/lib/account";
 import { formatUnits } from "viem";
 import { getSql } from "@/lib/server/db";
-import { getSodax, ownsIntent, readReceipt } from "@/lib/server/pour-verify";
+import { getSodax, holdsIntentCreated, ownsIntent, readReceipt } from "@/lib/server/pour-verify";
 import type { OwnedWallet } from "@/lib/server/pour-ownership";
 import { recordOrderMarks, saveOrder } from "@/lib/server/orders";
 import { forgoHold, isNoXp, markNoXp } from "@/lib/server/no-xp";
@@ -245,8 +245,11 @@ export async function placeLimitOrder({
   intentHash,
   srcChain,
   homeHub,
+  readIntent,
 }: {
   homeHub?: string | null;
+  /** The SDK's intent read, injectable for tests. */
+  readIntent?: (intentTx: string) => Promise<{ ok: true; value: Intent } | { ok: false }>;
   userId: string;
   owners: ReadonlySet<string>;
   /** The ownership proof every ledger path shares (limitOwnership, lib/server/pour-ownership). */
@@ -261,13 +264,23 @@ export async function placeLimitOrder({
   if (receipt.state === "unknown") return { ok: false, reason: "not yet known" };
   if (receipt.state === "failed") return { ok: false, reason: "not confirmed" };
   const sodax = getSodax();
-  let intent: Intent;
+  const read = readIntent ?? ((tx: string) => sodax.swaps.getIntent(tx as `0x${string}`));
+  let intent: Intent | undefined;
   try {
-    const result = await withTimeout(sodax.swaps.getIntent(intentTx as `0x${string}`), 15_000);
-    if (!result.ok) return { ok: false, reason: "not confirmed" };
-    intent = result.value;
+    const result = await withTimeout(read(intentTx), 15_000);
+    if (result.ok) intent = result.value;
   } catch {
-    return { ok: false, reason: "not confirmed" };
+    // A timeout or a failed read, judged below.
+  }
+  if (!intent) {
+    // The receipt succeeded (above) and may come from another endpoint than
+    // the SDK's read, which can lag or time out. When it holds an
+    // IntentCreated from the Intents contract, the read failed, not the
+    // intent: not yet known, asked again (as verifyPourTx answers). Otherwise
+    // it is not an intent.
+    return holdsIntentCreated(receipt.receipt.logs, sodax.config.solver.intentsContract)
+      ? { ok: false, reason: "not yet known" }
+      : { ok: false, reason: "not confirmed" };
   }
   const recorded = await saveVerifiedIntent({ userId, owners, owns, intentTx, intent, direction, typedPrice, intentHash, homeHub });
   // The chain the page says it signed on must be the chain the intent came from.

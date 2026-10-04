@@ -11,23 +11,43 @@ import { parseUnits } from "viem";
  * hold must still cover the buy's quantity.
  *
  * Shape: the pure walk (`lowestBalance`) and the IO (`readHoldWindow`,
- * plain JSON-RPC against Sonic's public endpoint, chunked to its log
- * range). Anything that cannot be read is "unknown": no verdict, tried
+ * plain JSON-RPC against one Sonic endpoint, chunked to its log range).
+ * Anything that cannot be read is "unknown": no verdict, tried
  * again the next morning. Nothing is ever judged on doubt.
  */
 
-export const SONIC_LOGS_RPC = "https://rpc.soniclabs.com";
-/** The widest eth_getLogs range the endpoint answers (measured 2026-10-01: 500k works). */
-export const LOG_CHUNK_BLOCKS = 400_000n;
+/**
+ * ONE endpoint per check, never a failover list: the logs and the balance
+ * must come from the same backend for CONFIRMATIONS to hold, so a check that
+ * cannot finish on it is "unknown" and is tried again the next morning.
+ * rpc.soniclabs.com (the old choice) answered 503 to everything on
+ * 2026-10-04, so no hold was judged. Overridable with SONIC_LOGS_RPC.
+ */
+export const DEFAULT_SONIC_LOGS_RPC = "https://sonic-rpc.publicnode.com";
+export const SONIC_LOGS_RPC = process.env.SONIC_LOGS_RPC?.trim() || DEFAULT_SONIC_LOGS_RPC;
+/**
+ * Blocks per eth_getLogs call, both ends inclusive. publicnode refuses a
+ * range wider than 50,000 (measured 2026-10-04: -32701 "exceed maximum
+ * block range: 50000" at 60k, answered at 50,001). Sonic makes about 58k
+ * blocks a day, so a 30 day hold is some 35 chunks.
+ */
+export const LOG_CHUNK_BLOCKS = 50_000n;
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const LISTING_DECIMALS = 18;
 /**
  * Blocks behind the head the window ends at. Logs and the balance are read
  * at the same block, this far back, so a node of a load balanced RPC that
  * has not seen the newest blocks cannot hand over a balance that includes
- * a transfer its logs leave out.
+ * a transfer its logs leave out. publicnode is such a balancer, and a node
+ * behind answers a log range past its own head with what it has, no error
+ * (measured 2026-10-04), so the margin is wide: 3,000 blocks, some 75
+ * minutes at Sonic's 58k blocks a day, far past any lag seen. A hold whose
+ * end is not yet that far back is not judged (`pending`), and the morning
+ * asks again the next day.
  */
-export const CONFIRMATIONS = 64n;
+export const CONFIRMATIONS = 3_000n;
+/** Log chunks (and block header reads) read at once in one window. */
+export const LOG_CHUNK_CONCURRENCY = 3;
 
 export type TransferEvent = {
   block: bigint;
@@ -53,9 +73,24 @@ export type HoldQuery = {
 
 export type HoldReading =
   | { verdict: "held" | "not_held"; balanceRaw: string; lowestRaw: string; outflows: number; fromBlock: string; toBlock: string }
-  | { verdict: "unknown"; error: string };
+  | {
+      verdict: "unknown";
+      error: string;
+      /**
+       * Not a failed read: the hold's end is not yet CONFIRMATIONS behind the
+       * head (too early), or the read was cut by its deadline (out of time).
+       * Asked again another morning; never counts toward hold_unreadable.
+       */
+      pending?: true;
+    };
 
-export type HoldVerifier = (query: HoldQuery) => Promise<HoldReading>;
+export type HoldVerifier = (
+  query: HoldQuery,
+  options?: {
+    /** Epoch ms after which the read gives up as "unknown", in flight requests aborted. */
+    deadline?: number;
+  },
+) => Promise<HoldReading>;
 
 /**
  * The lowest balance the holder had at any moment from just after the
@@ -100,15 +135,15 @@ export function judgeWindow(quantity: string, lowest: bigint): "held" | "not_hel
   return lowest >= needed ? "held" : "not_held";
 }
 
-type Rpc = (method: string, params: unknown[]) => Promise<unknown>;
+type Rpc = (method: string, params: unknown[], signal?: AbortSignal) => Promise<unknown>;
 
 export function jsonRpc(url: string, fetcher: typeof fetch = fetch): Rpc {
-  return async (method, params) => {
+  return async (method, params, signal) => {
     const response = await fetcher(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      signal: AbortSignal.timeout(10_000),
+      signal: signal ? AbortSignal.any([AbortSignal.timeout(10_000), signal]) : AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new Error(`rpc http ${response.status}`);
     const body = (await response.json()) as { result?: unknown; error?: { message?: string } };
@@ -121,9 +156,28 @@ const pad = (address: string) => `0x${address.toLowerCase().slice(2).padStart(64
 const hex = (value: bigint) => `0x${value.toString(16)}`;
 const topicAddress = (topic: string) => `0x${topic.slice(26).toLowerCase()}`;
 
-/** The IO half against Sonic: one window read per call. */
-export function readHoldWindow(rpc: Rpc = jsonRpc(SONIC_LOGS_RPC)): HoldVerifier {
-  return async (query) => {
+/** `work` over `items`, `size` at a time, results in order. */
+async function inBatches<T, R>(items: readonly T[], size: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let index = 0; index < items.length; index += size) out.push(...(await Promise.all(items.slice(index, index + size).map(work))));
+  return out;
+}
+
+/**
+ * The IO half against Sonic: one window read per call. With a deadline,
+ * the read stops there (requests in flight aborted, none started after)
+ * and answers "unknown", so one long window cannot hold the morning's
+ * campaign stage past its turn.
+ */
+export function readHoldWindow(rpc0: Rpc = jsonRpc(SONIC_LOGS_RPC), clock: () => number = Date.now): HoldVerifier {
+  return async (query, { deadline = Number.POSITIVE_INFINITY } = {}) => {
+    const left = deadline - clock();
+    if (left <= 0) return { verdict: "unknown", error: "deadline passed", pending: true };
+    const stop = Number.isFinite(left) ? AbortSignal.timeout(left) : undefined;
+    const rpc = (method: string, params: unknown[]) => {
+      if (clock() > deadline || stop?.aborted) throw new Error("deadline passed");
+      return rpc0(method, params, stop);
+    };
     try {
       const receipt = (await rpc("eth_getTransactionReceipt", [query.startTx])) as {
         blockNumber?: string;
@@ -144,18 +198,29 @@ export function readHoldWindow(rpc: Rpc = jsonRpc(SONIC_LOGS_RPC)): HoldVerifier
       const head = BigInt((await rpc("eth_blockNumber", [])) as string);
       const toBlock = head - CONFIRMATIONS;
       if (toBlock < fromBlock) return { verdict: "unknown", error: "buy too recent" };
+      // The window must reach the hold's end: a transfer between its last
+      // block and the end would go unread. Too early is not a failed read.
+      const endHeader = (await rpc("eth_getBlockByNumber", [hex(toBlock), false])) as { timestamp?: string } | null;
+      if (!endHeader?.timestamp) return { verdict: "unknown", error: "block time not read" };
+      if (Number(BigInt(endHeader.timestamp)) * 1000 < query.until.getTime()) {
+        return { verdict: "unknown", error: "hold end not yet confirmed", pending: true };
+      }
       const data = `0x70a08231${pad(query.holder).slice(2)}`;
       const balanceNow = BigInt((await rpc("eth_call", [{ to: query.listing, data }, hex(toBlock)])) as string);
-      const logs: { blockNumber: string; logIndex: string; topics: string[]; data: string }[] = [];
+      type RawLog = { blockNumber: string; logIndex: string; topics: string[]; data: string };
+      const ranges: { fromBlock: string; toBlock: string; address: string }[] = [];
       for (let start = fromBlock; start <= toBlock; start += LOG_CHUNK_BLOCKS) {
         const end = start + LOG_CHUNK_BLOCKS - 1n < toBlock ? start + LOG_CHUNK_BLOCKS - 1n : toBlock;
-        const range = { fromBlock: hex(start), toBlock: hex(end), address: query.listing };
+        ranges.push({ fromBlock: hex(start), toBlock: hex(end), address: query.listing });
+      }
+      const chunks = await inBatches(ranges, LOG_CHUNK_CONCURRENCY, async (range) => {
         const [out, into] = (await Promise.all([
           rpc("eth_getLogs", [{ ...range, topics: [TRANSFER_TOPIC, pad(query.holder)] }]),
           rpc("eth_getLogs", [{ ...range, topics: [TRANSFER_TOPIC, null, pad(query.holder)] }]),
-        ])) as (typeof logs)[];
-        logs.push(...out, ...into);
-      }
+        ])) as RawLog[][];
+        return [...out, ...into];
+      });
+      const logs = chunks.flat();
       const seen = new Set<string>();
       const unique = logs.filter((log) => {
         const id = `${log.blockNumber}:${log.logIndex}`;
@@ -164,10 +229,14 @@ export function readHoldWindow(rpc: Rpc = jsonRpc(SONIC_LOGS_RPC)): HoldVerifier
         return true;
       });
       const times = new Map<string, number>();
-      for (const block of new Set(unique.map((log) => log.blockNumber))) {
+      const blocks = [...new Set(unique.map((log) => log.blockNumber))];
+      const headers = await inBatches(blocks, LOG_CHUNK_CONCURRENCY, async (block) => {
         const header = (await rpc("eth_getBlockByNumber", [block, false])) as { timestamp?: string } | null;
-        if (!header?.timestamp) return { verdict: "unknown", error: "block time not read" };
-        times.set(block, Number(BigInt(header.timestamp)) * 1000);
+        return [block, header?.timestamp] as const;
+      });
+      for (const [block, timestamp] of headers) {
+        if (!timestamp) return { verdict: "unknown", error: "block time not read" };
+        times.set(block, Number(BigInt(timestamp)) * 1000);
       }
       const events: TransferEvent[] = unique.map((log) => ({
         block: BigInt(log.blockNumber),
@@ -189,6 +258,9 @@ export function readHoldWindow(rpc: Rpc = jsonRpc(SONIC_LOGS_RPC)): HoldVerifier
         toBlock: toBlock.toString(),
       };
     } catch (error) {
+      // Out of time is not unreadable: a long window on a slow morning must
+      // not lose its claim to the seven day release.
+      if (stop?.aborted || clock() > deadline) return { verdict: "unknown", error: "deadline passed", pending: true };
       return { verdict: "unknown", error: error instanceof Error ? error.message.slice(0, 120) : "error" };
     }
   };

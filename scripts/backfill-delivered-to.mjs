@@ -32,7 +32,11 @@ if (!process.env.DATABASE_URL) {
 
 const sql = neon(process.env.DATABASE_URL);
 // The same client the orders backfill uses: getIntent only needs the hub.
-const sodax = new Sodax();
+// The SDK's default hub RPC (rpc.soniclabs.com) answered 503 to everything on
+// 2026-10-04; the app's own failover list, as in src/lib/sodax-config HUB_RPC_URLS.
+const sodax = new Sodax({
+  hub: { rpcUrls: ["https://sonic-rpc.publicnode.com", "https://sonic.drpc.org", "https://rpc.soniclabs.com"] },
+});
 
 async function intentOf(tx) {
   try {

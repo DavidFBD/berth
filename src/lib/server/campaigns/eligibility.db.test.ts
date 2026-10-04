@@ -7,6 +7,7 @@ import { CASH_LISTING } from "@/lib/listings";
 import { claimById } from "./store";
 import { campaignProgress, ownBuy, runCampaignStep } from "./eligibility";
 import { advance, arrival, buy, campaign, DAY, DEPS, hex, hubOf, next, state, verifier } from "./test-kit";
+import type { HoldVerifier } from "./hold-window";
 
 /**
  * Every eligibility rule against the real schema (PGlite): the verified
@@ -256,6 +257,55 @@ describe("the hold window", () => {
     const claim = (await claimById(claimId))!;
     expect(claim.state).toBe("holding");
     expect(claim.hold_attempted_at).not.toBeNull();
+  });
+
+  it("waits for a hold that ended too recently to read behind the confirmations, without calling it unreadable", async () => {
+    const { claimId } = await holding("just-ended");
+    const pending = (async () => ({ verdict: "unknown", error: "hold end not yet confirmed", pending: true }) as const) as HoldVerifier;
+    await runCampaignStep({ now: later(8), verifyHold: pending, deps: DEPS });
+    const claim = (await claimById(claimId))!;
+    expect(claim).toMatchObject({ state: "holding", hold_unreadable_since: null });
+    expect(claim.hold_attempted_at).not.toBeNull();
+  });
+
+  it("hands its deadline to the hold read, and a read cut there is retried without ever counting as unreadable", async () => {
+    const { claimId } = await holding("cut-short");
+    const deadline = Date.now() + 60_000;
+    const seen: (number | undefined)[] = [];
+    const cut = (async (_query, options) => {
+      seen.push(options?.deadline);
+      return { verdict: "unknown", error: "deadline passed", pending: true } as const;
+    }) as HoldVerifier;
+    await runCampaignStep({ now: later(8), verifyHold: cut, deadline, deps: DEPS });
+    expect(seen.length).toBeGreaterThan(0);
+    expect(new Set(seen)).toEqual(new Set([deadline]));
+    const claim = (await claimById(claimId))!;
+    expect(claim).toMatchObject({ state: "holding", hold_unreadable_since: null });
+    expect(claim.hold_attempted_at).not.toBeNull();
+    // Cut every morning for well past the seven day release: still holding.
+    for (const day of [9, 12, 16, 20]) await runCampaignStep({ now: later(day), verifyHold: cut, deadline, deps: DEPS });
+    expect(await claimById(claimId)).toMatchObject({ state: "holding", hold_unreadable_since: null });
+  });
+
+  it("rotates: claims cut by the deadline go behind the ones not reached, which come first the next morning", async () => {
+    for (let index = 0; index < 8; index += 1) await holding(`rotate-${index}`);
+    const morning = () => {
+      let over = false;
+      const asked: string[] = [];
+      const cut = (async (query) => {
+        asked.push(query.holder);
+        over = true;
+        return { verdict: "unknown", error: "deadline passed", pending: true } as const;
+      }) as HoldVerifier;
+      return { asked, cut, clock: () => (over ? 2 : 0) };
+    };
+    const first = morning();
+    await runCampaignStep({ now: later(30), verifyHold: first.cut, deadline: 1, clock: first.clock, deps: DEPS });
+    const second = morning();
+    await runCampaignStep({ now: later(31), verifyHold: second.cut, deadline: 1, clock: second.clock, deps: DEPS });
+    expect(first.asked.length).toBeGreaterThan(0);
+    expect(second.asked.length).toBeGreaterThan(0);
+    expect(second.asked.filter((holder) => first.asked.includes(holder))).toEqual([]);
   });
 
   it("flags a window unread for three days and lets its slot go after seven", async () => {

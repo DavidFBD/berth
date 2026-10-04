@@ -21,9 +21,12 @@ import {
  * settles; one that closed unfilled earns nothing.
  */
 /**
- * The reads here are each bounded (getIntent 15s, every ownership read 5s,
- * the fill's backend look about 14s, the order's own reads), so the route
- * answers well inside this.
+ * The reads here are each bounded (hub reads 4s an endpoint and 8s across
+ * the failover, getIntent 15s, every ownership read 5s, the fill receipt
+ * 5s, the fill's backend look about 14s, the order's own reads 8s each).
+ * Their sum on a bad day can still pass this, so a filled pour is kept as
+ * a claim before the order is written, and the evening pass finishes what
+ * a stopped function did not.
  */
 export const maxDuration = 60;
 
@@ -127,11 +130,15 @@ export async function POST(request: NextRequest) {
       noXp = true;
     }
   }
-  if (verdict === "unknown") {
-    // The claim keeps its listing, so a recurring run it may answer is not
-    // offered again (a second buy) while the evening pass confirms it.
-    await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction));
-  } else if (noXp) {
+  // The claim keeps its listing, so a recurring run it may answer is not
+  // offered again (a second buy) while the evening pass confirms it. A filled
+  // pour keeps one too, before the order's reads: should the function be
+  // stopped at maxDuration while they wait on a hung endpoint, the evening
+  // pass records and pays it (lib/server/pour-claims payClaim). Closed below
+  // once paid or recorded.
+  await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction));
+  // An unknown verdict stops at the claim: the evening pass confirms it.
+  if (verdict === "filled" && noXp) {
     await recordOrder({
       sodax: verified.sodax,
       userId: user.id,
@@ -142,7 +149,7 @@ export async function POST(request: NextRequest) {
     });
     await forgoHold(txHash);
     await closePourClaim(txHash, new Date(), "recorded_no_xp", user.id);
-  } else {
+  } else if (verdict === "filled") {
     // Awaited, not fired and forgotten: a serverless function may be frozen
     // the moment it answers. recordOrder never throws, so the award is safe.
     await recordOrder({

@@ -1,7 +1,8 @@
-import { createPublicClient, http, recoverMessageAddress, type Hex } from "viem";
+import { createPublicClient, fallback, http, recoverMessageAddress, type Hex } from "viem";
 import { sonic } from "viem/chains";
 import { parseSiweMessage, validateSiweMessage } from "viem/siwe";
 import { siweMadeForBerth } from "@/lib/server/siwe-origin";
+import { HUB_RPC_URLS } from "@/lib/sodax-config";
 
 /**
  * The one SIWE check (EIP-4361), shared by the sign in handshake
@@ -14,9 +15,10 @@ import { siweMadeForBerth } from "@/lib/server/siwe-origin";
  * Returns the signer, lowercase, or null.
  */
 
+// The SDK hub's failover list (lib/sodax-config HUB_RPC_URLS), one round, as the hub client does.
 const client = createPublicClient({
   chain: sonic,
-  transport: http("https://sonic-rpc.publicnode.com"),
+  transport: fallback(HUB_RPC_URLS.map((url) => http(url)), { retryCount: 1 }),
 });
 
 export type SiweVerifier = (input: { message: string; signature: string; nonce: string }) => Promise<string | null>;

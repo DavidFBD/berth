@@ -9,6 +9,7 @@ import {
   type XToken,
 } from "@sodax/sdk";
 import type { SodaxWalletConfig } from "@sodax/wallet-sdk-react";
+import { fallback, http, type Transport } from "viem";
 import { TOKEN_LISTINGS, toXToken } from "@/lib/listings";
 
 /**
@@ -74,6 +75,42 @@ const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
   },
   [ChainKeys.SONIC_MAINNET]: { rpcUrl: "https://sonic-rpc.publicnode.com" },
 };
+
+/**
+ * Endpoints tried after a chain's pin, in order, when the pin errors or
+ * times out. Polygon's pin is dRPC's keyless tier, which rate limits; its
+ * publicnode (slow on 2026-10-04, but answering) is the second. Only the
+ * embedded wallet's own clients fail over (pinnedEvmTransport). The core
+ * SDK's spoke reads (allowance, gas estimates, the deposit's simulation)
+ * use the pin alone: in @sodax/sdk 2.0.0 EvmSpokeService.getPublicClient
+ * builds http(rpcUrl) and never reads a spoke's rpcUrls, which only the
+ * hub honours. So no list is passed on the spoke config; when the SDK
+ * builds spokes with its rpc transport (reported upstream), pass
+ * getPinnedRpcUrls there. The wallet SDK's balance clients read the pin
+ * alone too.
+ */
+const EVM_RPC_FAILOVERS: Partial<Record<EvmChainKey, readonly string[]>> = {
+  [ChainKeys.POLYGON_MAINNET]: ["https://polygon-bor-rpc.publicnode.com"],
+};
+
+/** The pin, then its failovers: the chain's RPC list, empty when we pin none. */
+export function getPinnedRpcUrls(chainKey: EvmChainKey): string[] {
+  const pinned = PINNED_EVM_RPCS[chainKey]?.rpcUrl;
+  return pinned ? [pinned, ...(EVM_RPC_FAILOVERS[chainKey] ?? [])] : [];
+}
+
+/**
+ * A viem transport over the chain's RPC list: one http transport when there
+ * is a single endpoint (or none, viem's default), else a one round fallback.
+ */
+export function pinnedEvmTransport(chainKey: EvmChainKey): Transport {
+  const urls = getPinnedRpcUrls(chainKey);
+  if (urls.length < 2) return http(urls[0]);
+  return fallback(
+    urls.map((url) => http(url)),
+    { retryCount: 1 },
+  );
+}
 
 /**
  * The fourth cup, carried by hand until an SDK release brings it.

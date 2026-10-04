@@ -39,6 +39,7 @@ export type ActionRefusal =
   | "bad_reason"
   | "bad_input"
   | "code_taken"
+  | "hold_too_long"
   | "counsel_required"
   | "no_payout_senders"
   | "not_held"
@@ -112,6 +113,15 @@ const whole = (value: unknown, min: number, max: number): number | null => {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 };
+/**
+ * The longest hold a new campaign may ask for. A hold is read every morning
+ * inside the campaign stage's few seconds, chunk by chunk from the buy to
+ * now (lib/server/campaigns/hold-window), and a window much past a month
+ * does not fit; it would be retried for ever. Campaigns made before the cap
+ * keep their days.
+ */
+export const MAX_HOLD_DAYS = 30;
+
 const date = (value: unknown): Date | null => {
   if (typeof value !== "string" || !value.trim()) return null;
   const parsed = new Date(value);
@@ -127,6 +137,9 @@ export async function createCampaign(staffUserId: string, input: CampaignInput):
   const maxClaims = whole(input.maxClaims, 1, 10_000);
   const minBuy = money(input.minBuyUsd, 100_000);
   const holdDays = whole(input.holdDays, 1, 90);
+  if (holdDays !== null && holdDays > MAX_HOLD_DAYS) {
+    return refused(staffUserId, "campaign.create", code, "hold_too_long", { code, holdDays });
+  }
   const startsAt = date(input.startsAt);
   const endsAt = date(input.endsAt);
   const shown = { code, title, amount, budget, maxClaims, minBuy, holdDays, startsAt: startsAt?.toISOString(), endsAt: endsAt?.toISOString() };

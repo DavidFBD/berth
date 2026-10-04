@@ -6,7 +6,6 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
-  http,
   type PublicClient,
 } from "viem";
 import { EvmWalletProvider } from "@sodax/wallet-sdk-core";
@@ -17,7 +16,7 @@ import {
   type SpokeChainKey,
 } from "@sodax/sdk";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
-import { getPinnedRpcUrl } from "@/lib/sodax-config";
+import { pinnedEvmTransport } from "@/lib/sodax-config";
 
 /** The user's Privy embedded EVM wallet, if signed in via email. */
 export function usePrivyEmbeddedWallet() {
@@ -213,7 +212,7 @@ export function usePrivyEvmWalletProvider(
       // receipt polling for the pour itself.
       const publicClient = createPublicClient({
         chain,
-        transport: http(getPinnedRpcUrl(evmChainKey)),
+        transport: pinnedEvmTransport(evmChainKey),
       }) as PublicClient;
       setBuilt({
         key,

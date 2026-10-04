@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ChainKeys, Sodax, sonicSupportedTokens } from "@sodax/sdk";
 import { DEPOSIT_SOURCE_CHAINS, getDepositTokens } from "./chains";
 import { TOKEN_LISTINGS } from "./listings";
-import { sodaxConfig } from "./sodax-config";
+import { getPinnedRpcUrls, sodaxConfig } from "./sodax-config";
 
 /**
  * The vault shelf is only as long as the SDK's static registry, which the app
@@ -139,5 +139,22 @@ describe("sodaxConfig listing registration", () => {
         ),
       ).toBe(true);
     }
+  });
+});
+
+describe("Polygon RPC failover", () => {
+  it("lists dRPC first, then publicnode, for the embedded wallet's own clients", () => {
+    const urls = ["https://polygon.drpc.org", "https://polygon-bor-rpc.publicnode.com"];
+    expect(getPinnedRpcUrls(ChainKeys.POLYGON_MAINNET)).toEqual(urls);
+  });
+
+  it("gives the core SDK's spoke the pin alone: @sodax/sdk 2.0.0 ignores a spoke's rpcUrls, so a list there would promise a failover that does not happen", () => {
+    expect(sodaxConfig.chains?.[ChainKeys.POLYGON_MAINNET]).toMatchObject({ rpcUrl: "https://polygon.drpc.org" });
+    expect(sodaxConfig.chains?.[ChainKeys.POLYGON_MAINNET]).not.toHaveProperty("rpcUrls");
+  });
+
+  it("leaves a chain without failovers on its single pin", () => {
+    expect(getPinnedRpcUrls(ChainKeys.BASE_MAINNET)).toEqual(["https://mainnet.base.org"]);
+    expect(sodaxConfig.chains?.[ChainKeys.BASE_MAINNET]).not.toHaveProperty("rpcUrls");
   });
 });

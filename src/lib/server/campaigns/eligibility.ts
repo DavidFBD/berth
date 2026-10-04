@@ -467,7 +467,11 @@ export async function runCampaignStep({
   now?: Date;
   verifyHold?: HoldVerifier;
   limit?: number;
-  /** Epoch ms (on `clock`) after which no new claim is started. */
+  /**
+   * Epoch ms (on `clock`) after which no new claim is started, and a hold
+   * window still being read gives up as unknown (lib/server/campaigns
+   * hold-window), so the retry bookkeeping below is always written.
+   */
   deadline?: number;
   clock?: () => number;
   deps?: EligibilityDeps;
@@ -498,10 +502,13 @@ export async function runCampaignStep({
     // A no XP buy never qualifies, whenever the mark was written.
     const reading: HoldReading = row.no_xp
       ? { verdict: "not_held", balanceRaw: "0", lowestRaw: "0", outflows: 0, fromBlock: "0", toBlock: "0" }
-      : await verifyHold(holdQuery(row));
+      : await verifyHold(holdQuery(row), { deadline });
     if (reading.verdict === "unknown") {
       retried.push(row.id);
-      unreadable.push(row.id);
+      // A hold ended too recently to be read behind the confirmations, or a
+      // read cut by the deadline, is not unreadable: it goes to the back of
+      // the queue (hold_attempted_at) and no clock is started.
+      if (!reading.pending) unreadable.push(row.id);
       return;
     }
     const held = reading.verdict === "held";
@@ -522,8 +529,11 @@ export async function runCampaignStep({
     else summary.notHeld += 1;
   };
   for (let index = 0; index < due.length; index += HOLD_CONCURRENCY) {
+    // Claims not reached keep their earlier hold_attempted_at, so they come
+    // before the ones tried (and cut) today on the next morning: the queue
+    // rotates instead of the same front claims taking every turn.
     if (clock() > deadline) {
-      retried.push(...due.slice(index).map((row) => row.id));
+      summary.retried += due.length - index;
       break;
     }
     await Promise.all(

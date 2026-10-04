@@ -242,9 +242,12 @@ describe("campaigns", () => {
     expect(await createCampaign(staff.id, { ...base, code: "x" })).toMatchObject({ ok: false, refusal: "bad_input" });
     expect(await createCampaign(staff.id, { ...base, code: "ok-code", amountUsd: 500 })).toMatchObject({ ok: false, refusal: "bad_input" });
     expect(await createCampaign(staff.id, { ...base, code: "ok-code", endsAt: base.startsAt })).toMatchObject({ ok: false, refusal: "bad_input" });
+    expect(await createCampaign(staff.id, { ...base, code: "long-hold", holdDays: 31 })).toMatchObject({ ok: false, refusal: "hold_too_long" });
+    expect((await createCampaign(staff.id, { ...base, code: "month-hold", holdDays: 30 })).ok).toBe(true);
     expect((await createCampaign(staff.id, { ...base, code: "ok-code" })).ok).toBe(true);
     expect(await createCampaign(staff.id, { ...base, code: "ok-code" })).toMatchObject({ ok: false, refusal: "code_taken" });
     expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("code_taken");
+    expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("hold_too_long");
   });
 });
 

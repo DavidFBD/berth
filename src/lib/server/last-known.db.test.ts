@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setSqlClient, type SqlClient } from "@/lib/server/db";
 import { makeTestDb } from "@/lib/server/pglite-test-db";
 import { getOrCreateUser } from "@/lib/server/accounts";
-import { readLastKnown, saveLastKnown } from "@/lib/server/last-known";
+import { LAST_KNOWN_WRITES_PER_HOUR, lastKnownWriteAllowed, readLastKnown, saveLastKnown } from "@/lib/server/last-known";
 import type { LastKnownSnapshot } from "@/lib/last-known";
 
 /**
@@ -89,5 +89,17 @@ describe("readLastKnown and saveLastKnown", () => {
     const id = await user("0x00000000000000000000000000000000001a5705");
     await sql.query(`insert into home_last_known (user_id, snapshot) values ($1, '{"v":9}'::jsonb)`, [id]);
     expect(await readLastKnown(id)).toBeNull();
+  });
+});
+
+describe("lastKnownWriteAllowed", () => {
+  it("allows a minute's saves from a couple of tabs and stops a loop, per account", async () => {
+    const id = await user("0x00000000000000000000000000000000000c0de1");
+    const other = await user("0x00000000000000000000000000000000000c0de2");
+    const at = new Date("2026-10-04T10:15:00Z");
+    for (let i = 0; i < LAST_KNOWN_WRITES_PER_HOUR; i++) expect(await lastKnownWriteAllowed(id, at)).toBe(true);
+    expect(await lastKnownWriteAllowed(id, at)).toBe(false);
+    expect(await lastKnownWriteAllowed(other, at)).toBe(true);
+    expect(await lastKnownWriteAllowed(id, new Date("2026-10-04T11:00:00Z"))).toBe(true);
   });
 });

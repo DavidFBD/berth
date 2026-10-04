@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { createPublicClient, http, parseUnits } from "viem";
+import { createPublicClient, parseUnits } from "viem";
 import {
   ChainKeys,
   getEvmViemChain,
@@ -10,7 +10,7 @@ import {
   type SpokeChainKey,
   type XToken,
 } from "@sodax/sdk";
-import { getPinnedRpcUrl } from "@/lib/sodax-config";
+import { pinnedEvmTransport } from "@/lib/sodax-config";
 import { OBSERVED_DEPOSIT_GAS, walletFeeFloor } from "@/lib/gas-need";
 
 /**
@@ -85,8 +85,8 @@ export function evmFeeFloorBuffer(chainKey: SpokeChainKey): bigint {
 export async function readEvmFeePerGas(chainKey: EvmChainKey): Promise<bigint> {
   const client = createPublicClient({
     chain: getEvmViemChain(chainKey),
-    // Pinned endpoint where we have one; viem's default otherwise.
-    transport: http(getPinnedRpcUrl(chainKey)),
+    // Pinned endpoint (and its failovers) where we have one; viem's default otherwise.
+    transport: pinnedEvmTransport(chainKey),
   });
   try {
     const fees = await client.estimateFeesPerGas();
