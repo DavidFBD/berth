@@ -376,3 +376,13 @@ p {
 /* No grain, no glass (2026-09-29). The bar the page scrolls under is the
    opaque canvas with a hairline under it, and a drawer's scrim is a plain
    tint. Every surface a person reads money on is opaque. */
+
+/* The 404 page's staff door (lib/staff/door, app/not-found): while a
+   browser at a /staff address asks whether it may come in, the 404's words
+   wait behind "Loading". Without the attribute, the plain 404. */
+html[data-berth-door="wait"] [data-door="page"] {
+  display: none;
+}
+html:not([data-berth-door="wait"]) [data-door="wait"] {
+  display: none;
+}

@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DOOR_ATTR,
+  DOOR_MARK_KEY,
+  DOOR_PRIVY_TIMEOUT_MS,
+  DOOR_WAIT,
+  doorDecide,
+  doorStart,
+} from "@/lib/staff/door";
 import { useLogin, usePrivy } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
 import { useCopy } from "@/components/settings-provider";
@@ -20,41 +28,90 @@ async function exchange(getAccessToken: () => Promise<string | null>): Promise<b
   return Boolean(response?.ok);
 }
 
+function openNotFound(): void {
+  document.documentElement.removeAttribute(DOOR_ATTR);
+}
+
+function readMark(): string | null {
+  try {
+    return window.sessionStorage.getItem(DOOR_MARK_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeMark(value: string | null): void {
+  try {
+    if (value === null) window.sessionStorage.removeItem(DOOR_MARK_KEY);
+    else window.sessionStorage.setItem(DOOR_MARK_KEY, value);
+  } catch {
+    // Storage refused: the door then cannot guard a reload, so it does not reload.
+  }
+}
+
 /**
- * On a 404 at a /staff address: a signed in browser asks, once and quietly,
- * whether it may come in. For everyone else the page stays the plain
- * "No page here" it looks like.
+ * The 404 page's door at a /staff address (lib/staff/door). The page's
+ * words are hidden behind "Loading" (DOOR_SCRIPT, before first paint)
+ * while a signed in browser asks for the staff cookie with a fresh Privy
+ * token; on a yes the page loads again and the server's gate draws the
+ * area. Anyone else, and anything that goes wrong, gets the 404's words,
+ * the same page as any address Berth has no page for.
  */
-export function StaffSessionProbe() {
+export function StaffDoor() {
   const { ready, authenticated, getAccessToken } = usePrivy();
-  const router = useRouter();
-  const asked = useRef(false);
-  useEffect(() => {
-    if (!ready || !authenticated || asked.current) return;
-    if (!/^\/staff(\/|$)/.test(window.location.pathname)) return;
-    asked.current = true;
-    // Once per page per tab: a staff member at an address that really is
-    // missing gets the 404 again after the refresh, and must not loop.
-    const key = `berth-staff-probe:${window.location.pathname}`;
-    try {
-      if (window.sessionStorage.getItem(key)) return;
-      window.sessionStorage.setItem(key, "1");
-    } catch {
-      // Storage refused: the ref above still holds it to once per mount.
+  // new: not judged yet; asking: waiting for Privy; knocking: asking the
+  // server; done: the 404's words show, or the page is loading again.
+  const phase = useRef<"new" | "asking" | "knocking" | "done">("new");
+
+  // Mount: decide whether to ask at all. Also covers a client side
+  // navigation, where the inline script never ran: a layout effect, so the
+  // 404's words are hidden before that paint, not after it.
+  useLayoutEffect(() => {
+    if (phase.current === "new") {
+      const start = doorStart(window.location.pathname, readMark(), Date.now());
+      if (start === "guard") writeMark(null);
+      phase.current = start === "ask" ? "asking" : "done";
     }
-    void exchange(getAccessToken).then((ok) => {
-      if (!ok) return;
-      router.refresh();
-      // Let a later visit (a session that ran out) ask again.
-      window.setTimeout(() => {
-        try {
-          window.sessionStorage.removeItem(key);
-        } catch {
-          // nothing to undo
-        }
-      }, 5_000);
+    if (phase.current === "done") {
+      openNotFound();
+      return;
+    }
+    document.documentElement.setAttribute(DOOR_ATTR, DOOR_WAIT);
+    // Privy that never gets ready opens nothing, and hides nothing for long.
+    const timer = window.setTimeout(openNotFound, DOOR_PRIVY_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (phase.current !== "asking" || !ready) return;
+    phase.current = "knocking";
+    void doorDecide({
+      authenticated,
+      path: window.location.pathname,
+      now: Date.now,
+      store: { read: readMark, write: writeMark },
+      getToken: () => getAccessToken(),
+      post: async (token) => {
+        const response = await fetch("/api/staff/session", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+          cache: "no-store",
+        }).catch(() => null);
+        return response ? response.status : null;
+      },
+      sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+    }).then((next) => {
+      phase.current = "done";
+      if (next === "open") {
+        openNotFound();
+        return;
+      }
+      // A navigation this page starts itself carries the SameSite=Strict
+      // cookie even when the visit began with a link from another site.
+      window.location.replace(window.location.href);
     });
-  }, [ready, authenticated, getAccessToken, router]);
+  }, [ready, authenticated, getAccessToken]);
+
   return null;
 }
 

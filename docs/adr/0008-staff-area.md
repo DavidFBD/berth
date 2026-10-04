@@ -48,6 +48,22 @@ without becoming a back door into anyone's account. `/staff` is that place.
   against `next start`. Known limit: a bad cookie or token together with
   an RSC header gets the HTML 404, as Next strips that header before the
   proxy. The campaigns pages and routes stand behind the same door.
+- The way back in (2026-10-04). The cookie ends with its Privy token and
+  is SameSite=Strict, so a staff member back after an hour, or arriving
+  by a link from another site, gets that 404. The 404 page, static and
+  the same bytes at every address (kept at the edge like any 404; a
+  cookie bearing request is never rewritten to it), carries a door (`lib/staff/door`,
+  `components/staff/fresh` StaffDoor): on a /staff address an inline
+  script hides its words behind "Loading" before first paint, the door
+  asks `POST /api/staff/session` with a fresh Privy token (patiently,
+  three tries), and on a yes the page loads again with the cookie and the
+  server's gate draws the area. Signed out, not staff, or Privy not ready
+  within ten seconds: the 404's words. A mark in sessionStorage stops a
+  staff address that really is missing from looping. The door carries no
+  staff data and no ids; the area is still drawn only by the server.
+  Accepted (review m1): every 404's HTML and script name the /staff path,
+  so the 404 tells that a staff area exists, as the public bundle already
+  did. It never tells who is staff: no id, role or list reaches a browser.
 - Behind the proxy each page calls `staffGate("page")`
   (`lib/server/staff-gate`) first and each route is `staffRoute`, checked
   again with the database. A test reads every file under both trees to
