@@ -64,7 +64,7 @@ export function FirstLookReadingView({
           {words.move(name, movePct >= 0 ? "rose" : "fell", `${Math.abs(movePct).toFixed(1)}%`)}
         </p>
       )}
-      {looked && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{inNews ? words.newsNote : words.credit}</p>}
+      {looked && inNews && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{words.newsNote}</p>}
       {((looked && inNews && onReadNews) || onAsk) && (
         <div className="mt-1.5 -ml-1 flex flex-wrap gap-x-4">
           {looked && inNews && onReadNews && (

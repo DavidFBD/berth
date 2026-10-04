@@ -14,7 +14,6 @@ import {
   XLogo,
 } from "@phosphor-icons/react";
 import { ThinkingOrb } from "@/components/ui/thinking-orb";
-import { JevMark } from "@/components/jev-mark";
 import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,9 +49,6 @@ const CARD = {
   leave: { opacity: 0, transition: { duration: 0.2, ease: EASE_LIFT } },
 };
 const ARRIVE = { duration: 0.5, ease: EASE_LIFT };
-
-/** Where Jev's name links: its maker, where the claim can be checked. */
-const JEV_URL = "https://typesafe.ai";
 
 const COLLAPSED_LIMIT = 2;
 const EXPANDED_LIMIT = 8;
@@ -156,9 +152,9 @@ export function NewsFeed({
   const upToDate =
     pressed !== null && !refreshing && updatedAt !== undefined && updatedAt === pressed.updatedAt && now - pressed.at < 60_000;
   const verdictWord: Record<Verdict, string> = {
-    material: copy.jevVerdictMaterial,
-    fact: copy.jevVerdictFact,
-    analysis: copy.jevVerdictAnalysis,
+    material: copy.newsVerdictMaterial,
+    fact: copy.newsVerdictFact,
+    analysis: copy.newsVerdictAnalysis,
   };
   const count = (value: number) => value.toLocaleString("en-US");
   const nameOf = (symbol: string) => LISTING_BY_SYMBOL.get(symbol)?.name ?? symbol;
@@ -166,12 +162,11 @@ export function NewsFeed({
 
   const verdictChip = (verdict: Verdict) => (
     <span
-      title={copy.jevVerdictLabel(verdictWord[verdict])}
+      title={copy.newsVerdictLabel(verdictWord[verdict])}
       className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground"
     >
-      <JevMark className="size-2.5" aria-hidden />
       <span aria-hidden="true">{verdictWord[verdict]}</span>
-      <span className="sr-only">{copy.jevVerdictLabel(verdictWord[verdict])}</span>
+      <span className="sr-only">{copy.newsVerdictLabel(verdictWord[verdict])}</span>
     </span>
   );
   const movement = (symbol: string) => {
@@ -203,17 +198,8 @@ export function NewsFeed({
         more={
           judged ? (
             <>
-              <p className="mt-1.5">{copy.jevAboutStories}</p>
-              <p className="mt-1.5 text-muted-foreground">{copy.jevReadKept(count(judged.read), count(judged.kept))}</p>
-              <a
-                href={JEV_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1.5 inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-2 hover:underline"
-              >
-                {copy.jevLinkLabel}
-                <ArrowUpRight className="size-3" aria-hidden />
-              </a>
+              <p className="mt-1.5">{copy.newsAboutStories}</p>
+              <p className="mt-1.5 text-muted-foreground">{copy.newsReadKept(count(judged.read), count(judged.kept))}</p>
             </>
           ) : undefined
         }
@@ -276,18 +262,7 @@ export function NewsFeed({
       </span>
       {(judged || updatedAt !== undefined) && (
         <div className={`flex min-h-5 items-center gap-1.5 ${PAD} pb-3 text-[11px]`}>
-          {judged && (
-            <>
-              {news.isFetching && !refreshing ? (
-                <ThinkingOrb state="searching" size={20} decorative />
-              ) : (
-                <span className="flex size-5 items-center justify-center" aria-hidden>
-                  <JevMark className="size-3.5 text-foreground" />
-                </span>
-              )}
-              <span className="font-medium text-foreground">{copy.jevCuratedBy}</span>
-            </>
-          )}
+          {news.isFetching && !refreshing && <ThinkingOrb state="searching" size={20} decorative />}
           {updatedAt !== undefined && (
             <span className="ml-auto shrink-0 text-muted-foreground">
               {(upToDate ? copy.newsUpToDate : copy.newsUpdated)(formatTimeAgo(updatedAt, now))}

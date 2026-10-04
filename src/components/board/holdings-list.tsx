@@ -9,7 +9,6 @@ import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
-import { JevMark } from "@/components/jev-mark";
 import { shortDate } from "@/components/board/portfolio-summary";
 import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { useOrders } from "@/hooks/use-profile";
@@ -255,7 +254,6 @@ export function HoldingsView({
                       aria-label={copy.moveReadPost(move.name)}
                       className="mt-0.5 flex w-fit items-center gap-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >
-                      <JevMark className="size-2.5" />
                       {copy.moveInTheNews(move.name)}
                     </a>
                   )}

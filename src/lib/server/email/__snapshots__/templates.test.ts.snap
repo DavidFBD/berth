@@ -36,11 +36,11 @@ Berth. Wall Street, in your wallet."
 `;
 
 exports[`notice templates > budget-low renders HTML and text without personal data 1`] = `
-"Subject: Running low: the Jev credit
+"Subject: Running low: the news model credit
 
 A paid service is running low
 
-The Jev credit has $0.80 left, by Berth's own estimate.
+The news model credit has $0.80 left, by Berth's own estimate.
 At the last week's pace it runs out in about 4 days.
 
 Top it up on the provider's own dashboard, then enter the new balance on the Budgets page. This email comes at most once a day for each service.

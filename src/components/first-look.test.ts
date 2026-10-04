@@ -36,10 +36,11 @@ describe("FirstLookReadingView", () => {
     expect(html).not.toContain("x.com");
   });
 
-  it("says nothing in today's news only when Jev looked, with who read and no advice note", () => {
+  it("says nothing in today's news only when it was looked at, with no credit and no advice note", () => {
     const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: true, inNews: false } }, onReadNews: noop });
     expect(html).toContain("Nothing in today&#x27;s news about NVIDIA.");
-    expect(html).toContain("Jev, a model by TypeSafe, read today&#x27;s headlines.");
+    expect(html).not.toContain("Jev");
+    expect(html).not.toContain("TypeSafe");
     expect(html).not.toContain("Read the news");
     expect(html).not.toContain("not advice");
   });

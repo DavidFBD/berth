@@ -227,9 +227,9 @@ describe("the MCP door answers as it always has", () => {
     expect(text).not.toContain("<untrusted");
   });
 
-  it("credits Jev's reading of a post in words", async () => {
+  it("reports the reading of a post in words", async () => {
     const result = await byName.get_listing.handler({ listing: "NVDA" }, mcpCtx([]));
-    expect(result.content[0].text).toContain("which Jev reads as a new fact");
+    expect(result.content[0].text).toContain("read as a new fact");
   });
 });
 

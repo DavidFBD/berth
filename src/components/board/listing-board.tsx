@@ -7,7 +7,6 @@ import { Funnel } from "@phosphor-icons/react";
 import { Sparkline } from "@/components/board/sparkline";
 import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
 import { TickerTile } from "@/components/board/holdings-list";
-import { JevMark } from "@/components/jev-mark";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Panel, SectionHeading } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -185,7 +184,6 @@ export function ListingBoard({
                 the post itself is in the news column. */}
             {moves.get(listing.symbol) && (
               <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-                <JevMark className="size-2.5" />
                 <span className="truncate">
                   {copy.moveInTheNews(moves.get(listing.symbol)!.post.name)}
                 </span>

@@ -329,7 +329,7 @@ describe("budgets", () => {
     vi.stubEnv("EMAIL_DAILY_CAP", "0"); // a security notice passes even a full day
     const first = await runBudgetAlerts();
     expect(first).toMatchObject({ low: 1, sent: 1 });
-    expect(sent).toEqual([{ to: "admin@sodax.com", subject: "Running low: the Jev credit" }]);
+    expect(sent).toEqual([{ to: "admin@sodax.com", subject: "Running low: the news model credit" }]);
     const second = await runBudgetAlerts();
     expect(second).toMatchObject({ low: 1, sent: 0, already: 1 });
     expect(sent).toHaveLength(1);

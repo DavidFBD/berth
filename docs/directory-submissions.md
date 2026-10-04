@@ -193,8 +193,8 @@ no key exists on the server; the person signs in Berth or closes it.
   plainly, in the tool description and the listing, that the person signs in Berth and the assistant cannot.
 - Usage Policy: "investment advice" is a high risk use case requiring a qualified human review and AI disclosure
   when a business presents model advice to consumers. Berth's tools return facts, not recommendations; the server
-  instructions already say not to present past performance as advice. The Jev reading of posts is AI output shown
-  to people, and it is disclosed as "read by Jev, a model by TypeSafe". Keep it that way.
+  instructions already say not to present past performance as advice. The reading of posts is AI output shown
+  to people, and it is disclosed in the privacy policy as a news-relevance model from TypeSafe. Users are not told its name elsewhere.
 - Data handling: answer "our own API". Berth's server calls its own backend, which aggregates licensed third party
   data (X API, TypeSafe, news and price feeds). Before submitting, confirm the X API and the news/price terms allow
   redistribution into an assistant.

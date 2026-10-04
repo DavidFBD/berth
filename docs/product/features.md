@@ -53,9 +53,9 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
    Berth account through Berth's MCP server. Your own AI can read your
    account beside everything else it does (the web, your files, your other
    tools) and draft orders you sign in Berth. Disconnect any time.
-8. **News that is about your stocks, curated by Jev.** A live column of posts
-   on X and headlines, each read and labelled by Jev (a model by TypeSafe),
-   kept only when it reports something. "What moved" links a large price move
+8. **News that is about your stocks.** A live column of posts
+   on X and headlines, each labelled and kept only when it reports
+   something. "What moved" links a large price move
    to the post that reported it. A calm one-line nudge when there is news
    about something you own.
 9. **Buy and sell any day, weekends included.** Orders fill outside
@@ -130,6 +130,12 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
 
 ## Say it this way
 
+- **Don't name Jev to users.** Jev (TypeSafe's model) filters and judges the
+  news silently. No "read by Jev", no credit line, no link to TypeSafe, in the
+  app, emails, the Assistant, MCP tool text, metadata or marketing. The one
+  exception is the privacy policy's processor list, which names TypeSafe as a
+  news-relevance provider that receives headlines. Code, env vars, logs, the
+  staff area and developer docs may keep the name.
 - The Assistant and connected AIs **read and draft; you sign.** Never "trades
   for you", "does it for you" or "autonomous".
 - Leaderboards rank **XP and salutes, never returns.** Never "see who made the

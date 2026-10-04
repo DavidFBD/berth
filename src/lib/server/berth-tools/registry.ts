@@ -181,10 +181,10 @@ const listListings = defineTool({
   },
 });
 
-/** Jev's reading in words the assistant can pass on, credited to Jev. */
+/** The reading of a post in words the assistant can pass on. */
 const VERDICT_WORDS = { material: "material news", fact: "a new fact", analysis: "analysis" } as const;
 function readAs(verdict: keyof typeof VERDICT_WORDS | undefined): string {
-  return verdict ? `, which Jev reads as ${VERDICT_WORDS[verdict]}` : "";
+  return verdict ? `, read as ${VERDICT_WORDS[verdict]}` : "";
 }
 function alsoBy(ctx: ToolContext, others: { name: string }[] | undefined): string {
   return others && others.length > 0 ? `, also posted by ${others.map((other) => said(ctx, "x", other.name)).join(", ")}` : "";
@@ -194,7 +194,7 @@ const getListing = defineTool({
   name: "get_listing",
   title: "Look at one listing",
   description:
-    "One listing in detail: its price, its recent daily closes and change, whether its last move was large for it and the post that reported it, recent headlines, its latest SEC filings, and the most substantial recent posts on X about it (read and ranked by Jev, a model by TypeSafe).",
+    "One listing in detail: its price, its recent daily closes and change, whether its last move was large for it and the post that reported it, recent headlines, its latest SEC filings, and the most substantial recent posts on X about it (read and ranked for relevance).",
   input: z.object({ listing: LISTING_ARG }),
   annotations: { title: "Look at one listing", ...READ_ONLY, openWorldHint: true },
   scope: null,
@@ -255,7 +255,7 @@ const getMoves = defineTool({
   name: "get_moves",
   title: "What moved",
   description:
-    "Every listing's change over the last trading day, largest first, marking the moves that were large for that listing (at least twice its usual day and 1%) and, where Jev found one, the post from around that day that reported something related. Never a cause, only what was being said.",
+    "Every listing's change over the last trading day, largest first, marking the moves that were large for that listing (at least twice its usual day and 1%) and, where one was found, the post from around that day that reported something related. Never a cause, only what was being said.",
   input: z.object({}),
   annotations: { title: "What moved", ...READ_ONLY, openWorldHint: true },
   scope: null,
@@ -284,7 +284,7 @@ const getMarketFeed = defineTool({
   name: "get_market_feed",
   title: "What is being said",
   description:
-    "Berth's live market column: recent posts on X about the listings, from the companies and a press list, each read by Jev (a model by TypeSafe) and kept only if it reports something. Optionally narrowed to one listing.",
+    "Berth's live market column: recent posts on X about the listings, from the companies and a press list, each kept only if it reports something. Optionally narrowed to one listing.",
   input: z.object({ listing: LISTING_ARG.optional() }),
   annotations: { title: "What is being said", ...READ_ONLY, openWorldHint: true },
   scope: null,
@@ -294,7 +294,7 @@ const getMarketFeed = defineTool({
     const feed = await loadListingX(listing?.symbol);
     if (feed.items.length === 0) return ok("Nothing substantial has been posted in the last while.");
     const out = feed.curation
-      ? [`Jev read ${feed.curation.read} of ${feed.curation.seen} posts this week and kept ${feed.curation.kept}. Newest and most substantial first:`]
+      ? [`${feed.curation.kept} of ${feed.curation.seen} posts this week were kept. Newest and most substantial first:`]
       : ["Newest and most substantial first:"];
     for (const post of feed.items) {
       out.push(

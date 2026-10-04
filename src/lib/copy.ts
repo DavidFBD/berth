@@ -162,8 +162,6 @@ export type Copy = {
     move: (name: string, direction: "rose" | "fell", pct: string) => string;
     /** Under the news line when news is linked. */
     newsNote: string;
-    /** Under the news line when Jev found nothing: who read. */
-    credit: string;
     ask: (name: string) => string;
     askPrompt: (name: string) => string;
     firstStockTitle: string;
@@ -450,28 +448,20 @@ export type Copy = {
    * report (lib/story-groups). Names, in the order they posted.
    */
   postsAlsoBy: (names: readonly string[]) => string;
-  /**
-   * The posts tab's credit line. Jev (TypeSafe's model) reads every post
-   * before it is shown, and saying so is the point: the column is chosen,
-   * not scraped. The counts are real, from this refresh; see x-column.
-   */
-  jevCuratedBy: string;
-  /** The link out to its maker, inside the (i). */
-  jevLinkLabel: string;
-  /** Jev's reading of one post, on its card. Absent when Jev did not read it. */
-  jevVerdictMaterial: string;
-  jevVerdictFact: string;
-  jevVerdictAnalysis: string;
-  /** The chip's tooltip and accessible name: "Jev reads this as new fact". */
-  jevVerdictLabel: (verdict: string) => string;
+  /** The reading of one post, on its card. Absent when none was made. */
+  newsVerdictMaterial: string;
+  newsVerdictFact: string;
+  newsVerdictAnalysis: string;
+  /** The chip's tooltip and accessible name: "Read as new fact". */
+  newsVerdictLabel: (verdict: string) => string;
 
   /* — the news column's sections (lib/news-stories) — */
   /** The column's hint, now one list of stories from every source. */
   newsStoriesHint: string;
-  /** The (i): what Jev does with a story. */
-  jevAboutStories: string;
+  /** The (i): what keeps a story in. */
+  newsAboutStories: string;
   /** Under it, the last 24 hours' real counts across every source. */
-  jevReadKept: (read: string, kept: string) => string;
+  newsReadKept: (read: string, kept: string) => string;
   /** The first section, for someone who owns something. */
   newsForWhatYouOwn: string;
   /** Dated lines about holdings: "Coming up" for dates ahead, "Recently filed" when there are only filings. */
@@ -2449,8 +2439,7 @@ export const COPY: Copy = {
     readNews: "Read the news",
     nothingToday: (name) => `Nothing in today's news about ${name}.`,
     move: (name, direction, pct) => `${name} ${direction} ${pct} on the last trading day, more than it usually moves.`,
-    newsNote: "News to read, not advice. Jev, a model by TypeSafe, read today's headlines.",
-    credit: "Jev, a model by TypeSafe, read today's headlines.",
+    newsNote: "News to read, not advice.",
     ask: (name) => `Ask about ${name}`,
     askPrompt: (name) => `What has been in the news about ${name} this week?`,
     firstStockTitle: "Your first stock",
@@ -2488,7 +2477,7 @@ export const COPY: Copy = {
     addMoneySub: "Choose how to pay. What you add lands in your account, ready to buy with.",
     moreLabel: "More on Berth",
     moreBoardSub: "Every stock and fund, with today's moves.",
-    moreNewsSub: "Stories about the stocks on Berth, each read by Jev.",
+    moreNewsSub: "Stories about the stocks on Berth.",
     moreAiSub: "Let Claude, ChatGPT or Grok read your account.",
   },
   firstPath: {
@@ -3085,26 +3074,23 @@ export const COPY: Copy = {
     name === null ? REWARD_REASONS.held_30_days : `for holding ${name} thirty days`,
   ledgerHoldDue: (date) => `on ${date}`,
 
-  jevCuratedBy: "Live curation by Jev",
-  jevLinkLabel: "About Jev, by TypeSafe",
-  jevVerdictMaterial: "Material news",
-  jevVerdictFact: "New fact",
-  jevVerdictAnalysis: "Analysis",
-  jevVerdictLabel: (verdict) => `Jev reads this as ${verdict.toLowerCase()}`,
+  newsVerdictMaterial: "Material news",
+  newsVerdictFact: "New fact",
+  newsVerdictAnalysis: "Analysis",
+  newsVerdictLabel: (verdict) => `Read as ${verdict.toLowerCase()}`,
 
   newsStoriesHint:
     "Stories about the stocks and funds on Berth, from the publishers, the companies' own accounts and the SEC. Each story shows once, from its first source, with who else reported it. Tapping a headline opens the publisher's own page.",
-  jevAboutStories:
-    "Jev is a model by TypeSafe. It reads each story once, and keeps the ones that are about the company or fund and report something.",
-  jevReadKept: (read, kept) => `Jev read ${read} stories in the last day and kept ${kept}.`,
+  newsAboutStories: "A story is kept only when it is about the company or fund and reports something.",
+  newsReadKept: (read, kept) => `${read} stories looked at in the last day, ${kept} kept.`,
   newsForWhatYouOwn: "For what you own",
   newsComingUp: "Coming up",
   newsRecentlyFiled: "Recently filed",
   newsAcrossBerth: "Across Berth",
   quietDayTitle: "Quiet day for what you own.",
-  quietDayBody: (names) => `Jev found nothing it reads as news about ${orNames(names)} in the last day and a half.`,
-  quietDayNotRead: (names) => `It has not read anything about ${orNames(names)} yet.`,
-  quietDayUnjudged: "Jev has not read the latest stories about what you own yet.",
+  quietDayBody: (names) => `Nothing new about ${orNames(names)} in the last day and a half.`,
+  quietDayNotRead: (names) => `No stories about ${orNames(names)} have been checked yet.`,
+  quietDayUnjudged: "The latest stories about what you own are still being looked at.",
   newsUnavailable: "The news cannot be read right now.",
   alsoReportedByPrefix: "Also reported by",
   alsoReportedBy: (count) => (count === 1 ? "Also reported by one other" : `Also reported by ${count} others`),
@@ -3464,7 +3450,7 @@ export const COPY: Copy = {
       button: "Open the audit log",
     },
     budgetLow: {
-      service: { openai: "the Assistant's OpenAI budget", jev: "the Jev credit", x: "the X API credit", resend: "the Resend email quota" },
+      service: { openai: "the Assistant's OpenAI budget", jev: "the news model credit", x: "the X API credit", resend: "the Resend email quota" },
       subject: (service) => `Running low: ${service}`,
       heading: "A paid service is running low",
       body: (service, remaining, estimate) => `${service.charAt(0).toUpperCase()}${service.slice(1)} has ${remaining} left${estimate ? ", by Berth's own estimate" : ""}.`,
@@ -3757,7 +3743,7 @@ export const COPY: Copy = {
           "OpenAI, if you use the Assistant in Berth, as described above.",
           "PostHog, only if you allow product analytics, as described above. It receives the named events and masked replays, stored in the European Union.",
           "Resend, which delivers our emails. It receives your email address, the notice's content (such as a listing's name, an amount, a price, or a friend's username, and in a weekly summary you turned on, your account's value and holdings, what filled, your recurring buys' names, dates and how many runs you signed or let pass, and how many new friends and Salutes you had) and whether the email was delivered, bounced or reported as spam.",
-          "TypeSafe, whose Jev model helps choose the one line shown at the top of the app, such as news about something you own. It receives which listings your account holds and whether it has cash to spend, never your name, email or address.",
+          "TypeSafe, which provides a news-relevance model that helps choose the one line shown at the top of the app, such as news about something you own. It receives headlines, and which listings your account holds and whether it has cash to spend, never your name, email or address.",
           "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
         ],
         after: [
