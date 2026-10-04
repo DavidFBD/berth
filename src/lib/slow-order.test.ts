@@ -175,6 +175,14 @@ describe("watchFill", () => {
     expect(s.released[0]).toMatchObject({ code: STARTED, error: "503" });
   });
 
+  it("keeps waiting through the 2.2 SDK's UNKNOWN (-999) answer, as an error or as a code", async () => {
+    // getStatus now asks the backend when the solver says NOT_FOUND or fails,
+    // and answers ok:false with detail.code -999 when that read fails too.
+    const unknown = JSON.stringify({ detail: { code: -999, message: "solver reported NOT_FOUND and the durable intent record could not be read to verify it" } });
+    const s = solver((now) => (now < MIN ? { error: unknown } : now < 2 * MIN ? { code: -999 } : { code: SOLVED, fillTxHash: "0xf" }));
+    expect(await watchFill(s.deps, opts)).toMatchObject({ kind: "filled", fillTxHash: "0xf" });
+  });
+
   it("reports a failed fill as failed", async () => {
     const s = solver(() => ({ code: FAILED }));
     expect((await watchFill(s.deps, opts)).kind).toBe("fillFailed");

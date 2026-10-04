@@ -26,6 +26,8 @@ const STARTED = SolverIntentStatusCode.STARTED_NOT_FINISHED;
 describe("resolveTracking", () => {
   it("resolves a tracking pour on terminal status", () => {
     expect(resolveTracking("tracking", SOLVED)).toBe("filled");
+    // The 2.2 SDK's UNKNOWN (-999) is never an outcome: keep waiting.
+    expect(resolveTracking("tracking", -999)).toBeNull();
     expect(resolveTracking("tracking", FAILED)).toBe("fillFailed");
   });
 
