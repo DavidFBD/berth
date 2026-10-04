@@ -16,6 +16,7 @@ import type { Unlock } from "@/lib/unlocks";
 import type { BerthToolName } from "@/lib/berth-tool-names";
 import { REWARD_REASONS } from "@/lib/xp";
 import { LEGAL_EFFECTIVE_DATE } from "@/lib/legal-version";
+import { ACTIVE_WINDOW_DAYS } from "@/lib/campaigns";
 import type { ConsentParty } from "@/lib/assistant-party";
 import type { HandleRefusal } from "@/lib/handle";
 import type { Currency } from "@/lib/currencies";
@@ -1402,6 +1403,8 @@ export type CampaignCopy = {
   /** The /c/<code> landing, under the mark. */
   landingTitle: string;
   landingLede: (amount: string, days: number) => string;
+  /** Under the lede: the link is remembered only in the browser it was opened in, before sign up. */
+  landingSameBrowser: string;
   /** The home line of an account that opened through a campaign's link and has not finished setting up. */
   setUp: (amount: string, days: number) => string;
   /** Set up, but no place is free for now (all taken, or the campaign paused): it may still free up before `deadline`. */
@@ -4063,6 +4066,7 @@ export const COPY: Copy = {
           "Most held on Berth, a weekly rounded share of the people who hold each stock or fund, from the week of 19 October 2026.",
           "What to do with an email account's wallet before you ask us to delete your account.",
           "The record of which version of the terms you accepted, and when.",
+          "Campaigns now record the account opened through a campaign's own link, which is the one paid, instead of who invited whom. Inviting someone with your own invite link never earns money.",
         ],
       },
       {
@@ -4229,7 +4233,8 @@ export const COPY: Copy = {
         ],
         list: [
           "You must be new to Berth: a new account, opened inside the campaign's dates through the campaign's link. An account that existed before, or one merged with an older account, does not count.",
-          "Set up means your account has a verified email, a username and a wallet with an EVM address, which can receive USDC on Base. Still uses Berth means you opened Berth signed in at least once in the last 7 days of the stated number of days, on a later day than the one you set up on.",
+          "Open the campaign's link in the same browser you then sign up in, before you sign up. The link is remembered only in that browser, and an account opened anywhere else does not count.",
+          `Set up means your account has a verified email, a username and a wallet with an EVM address, which can receive USDC on Base. Still uses Berth means you opened Berth signed in at least once in the last ${ACTIVE_WINDOW_DAYS} days of the stated number of days, on a later day than the one you set up on.`,
           "One reward per person. Accounts that are merged count as one person, and a wallet or an email address that already counted for another reward does not count again.",
           "Each campaign states a budget and a number of places. Once they are taken, or the campaign ends, it is closed.",
           "We review every reward before it is paid. We send it by hand, usually within a few days, in USDC on Base to your Berth account's own address. An account with no EVM address of its own cannot be paid.",
@@ -4349,6 +4354,7 @@ export const COPY: Copy = {
           "New sections on XP, ranks and rewards, on what AI tells you, on services run by others, on what we promise, on ending these terms, and general terms.",
           "Liability is rewritten to keep every right consumer law gives you.",
           "Governing law and the courts for disputes are stated: the Netherlands, without taking away the protection of the law where you live.",
+          "Campaigns now reward the new account opened through a campaign's own link, paid to that account. Inviting someone with your own invite link or invite code never earns money.",
         ],
       },
       {
@@ -4698,6 +4704,7 @@ export const COPY: Copy = {
     landingTitle: "A Berth welcome offer",
     landingLede: (amount, days) =>
       `Open a new Berth account through this link, set it up and still use Berth ${dayCount(days)} later, and ${amount} in USDC on Base is added to your account, while places last.`,
+    landingSameBrowser: "Sign up in this same browser, right after opening the link. The offer is remembered only here, and only for a new account.",
     setUp: (amount, days) =>
       `You joined through a Berth offer. Once your account is set up, with a verified email, a username and a wallet with an address on Base, and you still use Berth ${dayCount(days)} later, ${amount} in USDC on Base is added to your account, while places last.`,
     waiting: (amount, days, deadline) =>

@@ -1,7 +1,7 @@
 import { getSql } from "@/lib/server/db";
 import { liveAccount, normalizeWallet, type UserRow } from "@/lib/server/accounts";
 import { parseCaip10 } from "@/lib/identity/caip";
-import { type CampaignProgress, type ClaimState } from "@/lib/campaigns";
+import { ACTIVE_WINDOW_DAYS, type CampaignProgress, type ClaimState } from "@/lib/campaigns";
 import {
   CAMPAIGN_COLUMNS,
   CLAIM_COLUMNS,
@@ -72,8 +72,8 @@ import { foldEmail } from "@/lib/server/campaigns/fold-email";
 const DAY_MS = 86_400_000;
 /** An account older than this before its claim was made is not new (the attribution window). */
 export const NEW_ACCOUNT_MS = 72 * 3_600_000;
-/** Rule 5: the person must have opened Berth in this many last days of the stay. */
-export const ACTIVE_WINDOW_DAYS = 7;
+/** Rule 5: the person must have opened Berth in this many last days of the stay (lib/campaigns). */
+export { ACTIVE_WINDOW_DAYS };
 /** The stay a new campaign may ask for, in days. */
 export const MIN_STAY_DAYS = 7;
 export const MAX_STAY_DAYS = 60;

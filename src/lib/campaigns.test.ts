@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activationGaps, campaignDay, campaignLine, campaignUsd, normalizeCampaignCode, type CampaignProgress } from "./campaigns";
+import { ACTIVE_WINDOW_DAYS, activationGaps, campaignDay, campaignLine, campaignUsd, normalizeCampaignCode, type CampaignProgress } from "./campaigns";
 import { COPY } from "./copy";
 
 const base: CampaignProgress = {
@@ -120,6 +120,12 @@ describe("the words", () => {
     const text = [...terms.body, ...(terms.list ?? [])].join(" ");
     expect(text).toMatch(/No campaign asks you to buy, hold or trade anything/);
     expect(text).toMatch(/your own invite link or invite code never earns money/);
+    expect(text).toMatch(/same browser/);
+    expect(text).toContain(`last ${ACTIVE_WINDOW_DAYS} days`);
+    for (const doc of [COPY.termsOfUse, COPY.privacyPolicy]) {
+      const changed = doc.sections.find((section) => section.id === "what-changed")!;
+      expect((changed.list ?? []).some((line) => /own link/.test(line) && /never earns money/.test(line))).toBe(true);
+    }
     expect(text).not.toMatch(/buys at least|market buy|keeps it for/);
   });
 

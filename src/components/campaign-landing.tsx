@@ -43,6 +43,7 @@ export function CampaignLanding({
       <p className="max-w-80 text-sm leading-relaxed text-muted-foreground">
         {copy.campaign.landingLede(amount, stayDays)}
       </p>
+      <p className="max-w-80 text-xs leading-relaxed text-muted-foreground">{copy.campaign.landingSameBrowser}</p>
     </div>
   );
 }

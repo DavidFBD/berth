@@ -105,6 +105,14 @@ export function campaignLine(progress: CampaignProgress | null | undefined, now:
   }
 }
 
+/**
+ * The stay's last days that count (lib/server/campaigns/eligibility rule 5):
+ * the account must open Berth signed in at least once in this many last
+ * days of the stated stay. Here, client safe, so the terms say the same
+ * number the rules use.
+ */
+export const ACTIVE_WINDOW_DAYS = 7;
+
 /** A whole dollar amount as "$5", anything else with cents: "$5.50". */
 export function campaignUsd(value: number): string {
   return Number.isInteger(value) ? `$${value}` : `$${value.toFixed(2)}`;
