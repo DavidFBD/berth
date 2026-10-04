@@ -26,7 +26,8 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
   const words = COPY.email.unsubscribePage;
   const claims = await readUnsubscribeToken(t);
   const action = `/api/email/unsubscribe?t=${encodeURIComponent(t)}`;
-  const kind = claims ? words.kindName[claims.kind] : null;
+  const retired = claims !== null && "retired" in claims;
+  const kind = claims && !("retired" in claims) ? words.kindName[claims.kind] : null;
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col px-5 pt-10 pb-[max(env(safe-area-inset-bottom),3rem)] sm:pt-14">
@@ -37,7 +38,9 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
 
       <section className="mt-10 flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:p-6">
         <h1 className="font-display text-2xl tracking-[-0.02em] text-foreground">{words.title}</h1>
-        {!kind ? (
+        {retired ? (
+          <p className="text-[15px] leading-relaxed text-foreground">{words.retired}</p>
+        ) : !kind ? (
           <p className="text-[15px] leading-relaxed text-foreground">{words.invalid}</p>
         ) : s === "off" ? (
           <>

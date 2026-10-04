@@ -10,7 +10,7 @@ import { TERMS_AVAILABILITY } from "@/lib/copy";
  * page, the terms, privacy and the assistants pages. From the United
  * States, an account that already exists can always see what it holds,
  * sell and withdraw; what is refused is starting something new: an
- * account, a buy, a limit buy, a recurring plan, an assistant connection.
+ * account, a buy, a limit buy, an assistant connection.
  * From a comprehensively sanctioned place ("sanctions") nothing beyond the
  * public pages is served, an existing account included
  * (lib/server/availability refuseSanctioned).

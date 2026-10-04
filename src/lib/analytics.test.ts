@@ -57,7 +57,7 @@ describe("the event catalogue", () => {
       "path_step_shown", "path_step_completed", "path_step_skipped", "path_finished", "home_stage_shown",
       "buy_drawer_opened", "buy_pay_token_chosen", "buy_amount_entered", "buy_quote_shown", "buy_sign_requested", "buy_signed", "buy_filled", "buy_failed",
       "sell_drawer_opened", "sell_amount_entered", "sell_quote_shown", "sell_sign_requested", "sell_signed", "sell_filled", "sell_failed",
-      "limit_started", "limit_saved", "recurring_started", "recurring_saved", "account_screen_opened",
+      "limit_started", "limit_saved", "account_screen_opened",
       "news_story_opened", "news_refresh_tapped", "campaign_landed", "campaign_step", "first_look_shown",
       "invite_link_shared", "invite_link_copied", "ai_connect_started", "ai_connect_finished", "most_bought_viewed",
     ]) {

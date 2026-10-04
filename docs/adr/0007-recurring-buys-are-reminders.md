@@ -1,5 +1,45 @@
 # No automatic buying: recurring buys are reminders the person signs
 
+**Status: superseded on 2026-10-04. The feature is removed.**
+
+## Superseded, 2026-10-04
+
+David removed recurring buys on 2026-10-04 because reminders are not true
+recurring buys: a plan only ever sent a reminder that the person still had
+to open and sign, so it promised a habit it could not keep on its own, and
+the name said more than the product did.
+
+- **What went.** The plan sheet and its entry points (the buy drawer's
+  "Make this recurring", the account drawer's row, the home strip, the
+  Assistant's plan card), `/api/recurring`, the morning cron's recurring
+  stage, the `recurring_due` email with its switch and its half of the
+  daily cap (returned to the general budget), the weekly summary's
+  recurring section, the `list_recurring` and `draft_recurring` tools on
+  both doors, and their copy. No XP kind was ever tied to recurring, so the
+  ledger's history is unchanged.
+- **What stays.** `recurring_plans` and `recurring_runs` are kept in
+  `db/schema.sql`, marked retired; nothing reads or writes them. The
+  `recurring` row kind in `email_prefs` stays valid for the rows already
+  written. An unsubscribe link for the retired kind still opens a calm
+  page saying there is nothing left to turn off (`lib/email-kinds`
+  `RETIRED_KINDS`).
+- **True recurring buys, if ever.** Research on 2026-10-04
+  (`~/Github/_scratch-berth/reports/solana-subscriptions.md`) looked at
+  Solana's Subscriptions and Allowances program. It is real and audited,
+  but a pull is only a token transfer to an account the puller names: it
+  cannot make the person's own wallet the creator of a SODAX intent, so on
+  its own it makes Berth the buyer and the refund owner, which is custody
+  in substance. The only designs that keep the person's wallet as payer
+  and creator are Privy session signers with a policy on embedded wallets
+  (EVM and Solana), or ERC-7715 delegations on smart accounts. Both give
+  Berth standing authority to trade, so true recurring would need Privy
+  session signers and counsel's clearance first, written up as its own
+  decision record. The question for counsel: is a server signed,
+  pre-authorised, capped, revocable buy from the person's own wallet, on a
+  schedule they set, order transmission or portfolio management?
+
+## The original decision, 2026-09-30
+
 Decided by David on 2026-09-30. Replaces "recurring DCA" on CONTEXT.md's cut
 list. The cut stands for anything that buys by itself; what ships is a
 reminder with a draft attached, which the person signs or lets pass.

@@ -5,8 +5,7 @@ import { getSql } from "@/lib/server/db";
  * reported from where Berth is not available (lib/availability), or one
  * whose payer cannot be proven the account's although it was delivered to
  * the account (lib/server/pour-ownership, reason 'unproven_source'). The
- * ledger stays true, the order, its marks and the recurring run it
- * answers are all written, but no XP is paid for it and no hold is judged,
+ * ledger stays true, the order and its marks are written, but no XP is paid for it and no hold is judged,
  * on every path that could pay: the pour route from any country (so a
  * replay from home pays nothing), the evening pass over claims, a limit
  * order's fill, and the daily hold check. Written once, never removed.

@@ -5,8 +5,8 @@ import type { Availability } from "@/lib/availability";
 /**
  * The routes that start something refuse it where Berth is not available
  * (HTTP 451, code unavailable_here), and nothing that gets money out is
- * ever refused: a sell is recorded, a limit sell is placed, a plan can be
- * paused or deleted, an assistant can be declined. A buy that happened
+ * ever refused: a sell is recorded, a limit sell is placed, an assistant
+ * can be declined. A buy that happened
  * anyway is recorded, so the ledger stays true, and pays nothing. The account and chain
  * work behind each route is stubbed; the gate is what is under test.
  */
@@ -75,23 +75,6 @@ vi.mock("@/lib/server/limit-orders", () => ({
 const sweepMissing = vi.fn(async () => 0);
 vi.mock("@/lib/server/portfolio", () => ({ hubWalletFor: vi.fn(async () => "0x00000000000000000000000000000000000000bb") }));
 
-// recurring
-const createPlan = vi.fn(async () => "ok");
-const setPaused = vi.fn(async () => true);
-const deletePlan = vi.fn(async () => true);
-vi.mock("@/lib/server/recurring", () => ({
-  ageRuns: vi.fn(async () => undefined),
-  createPlan: (...args: unknown[]) => createPlan(...(args as [])),
-  deletePlan: (...args: unknown[]) => deletePlan(...(args as [])),
-  listPlans: vi.fn(async () => []),
-  makeDueRuns: vi.fn(async () => []),
-  openRun: vi.fn(async () => "opened"),
-  readyRuns: vi.fn(async () => []),
-  setPaused: (...args: unknown[]) => setPaused(...(args as [])),
-  skipRun: vi.fn(async () => "skipped"),
-  updatePlan: vi.fn(async () => true),
-}));
-vi.mock("@/lib/server/morning", () => ({ lazyPrices: vi.fn(() => async () => undefined) }));
 
 // oauth decision
 const issueCode = vi.fn(async () => "code-1");
@@ -104,12 +87,10 @@ vi.mock("@/lib/server/oauth/tokens", () => ({ issueCode: (...args: unknown[]) =>
 
 const pour = await import("./xp/pour/route");
 const limit = await import("./limit-orders/route");
-const recurring = await import("./recurring/route");
 const decision = await import("./oauth/decision/route");
 
 const AWAY: Availability = { available: false, reason: "united-states" };
 const TX = `0x${"a".repeat(64)}`;
-const PLAN_ID = "11111111-1111-4111-8111-111111111111";
 
 const post = (path: string, body: Record<string, unknown>) =>
   new NextRequest(`http://localhost${path}`, { method: "POST", body: JSON.stringify(body) });
@@ -214,7 +195,7 @@ describe("recording a pour", () => {
     const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const response = await buy();
     expect(response.status).toBe(200);
-    // The ledger stays true: the order (with its marks and recurring run, inside recordOrder) is written.
+    // The ledger stays true: the order (with its marks, inside recordOrder) is written.
     expect(recordOrder).toHaveBeenCalledOnce();
     expect(noXp.markNoXp).toHaveBeenCalledWith(TX);
     expect(noXp.forgoHold).toHaveBeenCalledWith(TX);
@@ -312,33 +293,6 @@ describe("limit orders", () => {
     // The sweep that keeps a refused limit buy visible marks what it finds as paying nothing.
     expect(sweepMissing).toHaveBeenLastCalledWith("u1", expect.any(Set), expect.objectContaining({ noXpBuys: true }));
     expect((await limit.POST(post("/api/limit-orders", { action: "cancelAsked", intentTxHash: TX, cancelTxHash: TX }))).status).toBe(200);
-  });
-});
-
-describe("recurring plans", () => {
-  const plan = { listing: "SPY", usd: 20, cadence: "weekly", weekday: 1, timeZone: "Europe/Amsterdam" };
-
-  it("refuses making, changing or resuming a plan where Berth is not available", async () => {
-    availability = AWAY;
-    await expectRefused(await recurring.POST(post("/api/recurring", { action: "create", plan })));
-    await expectRefused(await recurring.POST(post("/api/recurring", { action: "update", planId: PLAN_ID, plan })));
-    await expectRefused(await recurring.POST(post("/api/recurring", { action: "resume", planId: PLAN_ID })));
-    expect(createPlan).not.toHaveBeenCalled();
-  });
-
-  it("always lets a plan be listed, paused or deleted", async () => {
-    availability = AWAY;
-    expect((await recurring.POST(post("/api/recurring", { action: "list" }))).status).toBe(200);
-    expect((await recurring.POST(post("/api/recurring", { action: "pause", planId: PLAN_ID }))).status).toBe(200);
-    expect((await recurring.POST(post("/api/recurring", { action: "delete", planId: PLAN_ID }))).status).toBe(200);
-    expect(setPaused).toHaveBeenCalledOnce();
-    expect(deletePlan).toHaveBeenCalledOnce();
-  });
-
-  it("makes a plan where Berth is available", async () => {
-    availability = { available: true };
-    expect((await recurring.POST(post("/api/recurring", { action: "create", plan }))).status).toBe(200);
-    expect(createPlan).toHaveBeenCalledOnce();
   });
 });
 

@@ -3,7 +3,7 @@ import { setSqlClient, type SqlClient } from "@/lib/server/db";
 import { makeTestDb } from "@/lib/server/pglite-test-db";
 import { writeMarks } from "@/lib/server/marks";
 import { savePortfolioDay } from "@/lib/server/portfolio";
-import { dailyCap, recurringDailyCap, retryPendingSends, setBackoff, setEmailTransport, weeklyDailyCap } from "@/lib/server/email/send";
+import { dailyCap, retryPendingSends, setBackoff, setEmailTransport, weeklyDailyCap } from "@/lib/server/email/send";
 import type { EmailTransport, OutgoingEmail } from "@/lib/server/email/resend";
 import { setPref, suppress } from "@/lib/server/email/store";
 import { isoWeekKey, runWeeklySummaries, weeklyNotice, weeklyWindow } from "./weekly";
@@ -142,14 +142,12 @@ describe("the week", () => {
     const env = (vars: Record<string, string>) => vars as unknown as NodeJS.ProcessEnv;
     expect(weeklyDailyCap(env({}))).toBe(22);
     expect(weeklyDailyCap(env({ EMAIL_DAILY_CAP: "10" }))).toBe(2);
-    // 10 a day: 3 kept for orders and friends, 5 for reminders, so at most 2 for summaries.
-    expect(weeklyDailyCap(env({ EMAIL_DAILY_CAP: "10", EMAIL_WEEKLY_DAILY_CAP: "50" }))).toBe(2);
-    // The overrides the review feared: 60 + 40 of 90 would leave orders nothing.
-    const both = env({ EMAIL_RECURRING_DAILY_CAP: "60", EMAIL_WEEKLY_DAILY_CAP: "40" });
-    expect(recurringDailyCap(both)).toBe(60);
-    expect(weeklyDailyCap(both)).toBe(7);
-    for (const vars of [both, env({ EMAIL_RECURRING_DAILY_CAP: "90", EMAIL_WEEKLY_DAILY_CAP: "90" }), env({ EMAIL_DAILY_CAP: "3", EMAIL_WEEKLY_DAILY_CAP: "3" })]) {
-      expect(dailyCap(vars) - recurringDailyCap(vars) - weeklyDailyCap(vars)).toBeGreaterThanOrEqual(Math.ceil(dailyCap(vars) / 4));
+    // 10 a day: 3 kept for orders and friends, so an override reaches at most 7.
+    expect(weeklyDailyCap(env({ EMAIL_DAILY_CAP: "10", EMAIL_WEEKLY_DAILY_CAP: "50" }))).toBe(7);
+    // The recurring reminders' half went back to the general budget on 2026-10-04: 40 of 90 now fits.
+    expect(weeklyDailyCap(env({ EMAIL_WEEKLY_DAILY_CAP: "40" }))).toBe(40);
+    for (const vars of [env({ EMAIL_WEEKLY_DAILY_CAP: "90" }), env({ EMAIL_DAILY_CAP: "3", EMAIL_WEEKLY_DAILY_CAP: "3" })]) {
+      expect(dailyCap(vars) - weeklyDailyCap(vars)).toBeGreaterThanOrEqual(Math.ceil(dailyCap(vars) / 4));
     }
   });
 });
@@ -177,6 +175,7 @@ describe("weeklyNotice", () => {
       [plan[0].id, id],
     );
 
+    // A plan set before recurring buys were retired (2026-10-04) stays in the database and says nothing here.
     const notice = await weeklyNotice(id, weeklyWindow(MONDAY)!);
     // Time weighted: the half bought on Tuesday is money added, not a gain.
     const growth = (102 / 100) * (156 / (102 + 52)) * (154.5 / 156) * (157.5 / 154.5) * (165 / 157.5);
@@ -192,8 +191,6 @@ describe("weeklyNotice", () => {
       holdings: [{ name: "NVIDIA", worth: "$165.00", move: "+10.00%" }],
       holdingsRest: null,
       orders: { buys: 1, sells: 0, limitsFilled: 0, limitsExpired: 1 },
-      // The run was due Monday the 21st in Amsterdam (Sunday 22:00 UTC): before the UTC week, so not counted.
-      recurring: { placed: 0, skipped: 0, next: { name: "S&P 500 ETF", day: "Monday 5 October" } },
       friends: { added: 1, salutes: 1 },
     });
   });
@@ -218,34 +215,6 @@ describe("weeklyNotice", () => {
     const { composeNotice } = await import("@/lib/server/email/compose");
     const facts = composeNotice(notice, "https://www.berthmarkets.com").sections?.find((section) => section.heading === "Orders")?.facts;
     expect(facts).toEqual([{ label: "Filled", value: "2 buys, of which 1 was a limit order" }]);
-  });
-
-  it("counts as let pass only what went unsigned or the person skipped, never a pause or a merge", async () => {
-    const id = await account("sailor@example.com");
-    const plan = async (paused: boolean, updatedAt: string) =>
-      (
-        (await sql.query(
-          `insert into recurring_plans (user_id, listing_symbol, usd, cadence, weekday, time_zone, next_due_at, paused, updated_at)
-           values ($1, 'SPY', 20, 'weekly', 2, 'UTC', '2026-10-06T00:00:00Z', $2, $3) returning id`,
-          [id, paused, updatedAt],
-        )) as { id: string }[]
-      )[0].id;
-    const run = (planId: string, due: string, closed: string) =>
-      sql.query(
-        `insert into recurring_runs (plan_id, user_id, due_at, status, listing_symbol, usd, closed_at) values ($1, $2, $3, 'skipped', 'SPY', 20, $4)`,
-        [planId, id, due, closed],
-      );
-    const kept = await plan(false, "2026-09-01T00:00:00Z");
-    await run(kept, "2026-09-22T00:00:00Z", "2026-09-25T06:05:00Z"); // three days unsigned: let pass
-    await run(kept, "2026-09-23T00:00:00Z", "2026-09-23T09:00:00Z"); // the person skipped it: let pass
-    const paused = await plan(true, "2026-09-24T10:00:00Z");
-    await run(paused, "2026-09-24T00:00:00Z", "2026-09-24T10:00:00.010Z"); // closed by the pause: not counted
-    const resumed = await plan(false, "2026-09-26T10:00:00Z");
-    await run(resumed, "2026-09-24T00:00:00Z", "2026-09-24T10:00:00Z"); // paused then, resumed since: not counted
-    const merged = await plan(true, "2026-09-24T12:00:00Z");
-    await run(merged, "2026-09-24T00:00:00Z", "2026-09-24T12:00:00Z"); // a merge, the same statement: not counted
-    const notice = await weeklyNotice(id, weeklyWindow(MONDAY)!);
-    expect(notice.recurring).toMatchObject({ placed: 0, skipped: 2 });
   });
 
   it("tells what the list leaves out, so the holdings add up to the account's worth", async () => {
@@ -327,7 +296,7 @@ describe("weeklyNotice", () => {
   it("leaves the account out when no day of the week is stored, and says nothing it cannot tell", async () => {
     const id = await account("sailor@example.com");
     const notice = await weeklyNotice(id, weeklyWindow(MONDAY)!);
-    expect(notice).toMatchObject({ closeDay: null, account: null, holdings: [], orders: null, recurring: null, friends: null });
+    expect(notice).toMatchObject({ closeDay: null, account: null, holdings: [], orders: null, friends: null });
   });
 
   it("gives the value without a change when the week is not yet filled", async () => {

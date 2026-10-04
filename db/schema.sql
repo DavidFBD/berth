@@ -1146,8 +1146,14 @@ create index if not exists email_sends_pending_idx on email_sends (created_at) w
 create unique index if not exists email_sends_friend_daily
   on email_sends (user_id, day_key) where type = 'friend_request';
 
--- Recurring buys (docs/adr/0007, lib/recurring, lib/server/recurring):
--- reminders the person signs, never automatic execution. A plan is a
+-- RETIRED 2026-10-04: recurring buys were removed from Berth (docs/adr/0007,
+-- superseded). recurring_plans and recurring_runs are kept as they stand,
+-- with their triggers, indexes and the merge's handling of them, so the
+-- record of what people set is not lost; nothing in the app or the cron
+-- reads or writes them any more. Do not drop them without a decision.
+--
+-- Recurring buys (docs/adr/0007, lib/recurring, lib/server/recurring, all
+-- removed): reminders the person signed, never automatic execution. A plan is a
 -- listing, a dollar amount and a day (weekly: weekday 0 Sunday to 6
 -- Saturday; monthly: month_day 1 to 28, so February never skips), read in
 -- the person's own time zone. next_due_at is the start (local midnight) of
@@ -1243,6 +1249,8 @@ create unique index if not exists recurring_runs_order_once on recurring_runs (o
 create unique index if not exists recurring_runs_limit_once on recurring_runs (limit_order_id) where limit_order_id is not null;
 
 -- The recurring reminder's own switch, on by default for anyone with a plan.
+-- Retired 2026-10-04 with the reminders: 'recurring' stays allowed so the
+-- rows already written stay valid; the app no longer reads or writes it.
 -- Production's only check on kind was email_prefs_kind_check (read
 -- 2026-09-30); any other check naming kind, whatever it is called, is
 -- dropped first too, so an older name can never keep refusing

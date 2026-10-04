@@ -10,6 +10,12 @@ describe("unsubscribe token", () => {
     expect(await readUnsubscribeToken(token, { env })).toEqual({ userId, kind: "orders" });
   });
 
+  it("reads an old link for a retired kind as retired, never as broken", async () => {
+    // Recurring buy reminders were retired on 2026-10-04; their links must still land calmly.
+    const token = await issueUnsubscribeToken({ userId, kind: "recurring" as never }, { env });
+    expect(await readUnsubscribeToken(token, { env })).toEqual({ userId, retired: "recurring" });
+  });
+
   it("carries no readable id: the claims are sealed, not just signed", async () => {
     const token = await issueUnsubscribeToken({ userId, kind: "friends" }, { env });
     const decoded = token

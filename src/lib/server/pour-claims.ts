@@ -164,9 +164,9 @@ async function dropOtherClaims(intentTx: string, userId: string): Promise<void> 
 
 /**
  * Keep a claim for a pour that could not be judged filled yet. Idempotent
- * per intent. `listingSymbol`, when the intent names a listing, lets an
- * open buy claim hold back a recurring run of that listing until the
- * evening pass settles it (lib/server/recurring). Whether it will pay is
+ * per intent. `listingSymbol` is kept when the intent names a listing; it
+ * held back a recurring run of that listing until recurring buys were
+ * retired on 2026-10-04, and nothing reads it now. Whether it will pay is
  * not the claim's to say: a no XP buy is marked by intent (lib/server/no-xp).
  */
 export async function savePourClaim(

@@ -4,7 +4,7 @@ import { NotHereDrawer, useAvailability } from "@/components/availability/availa
 import { useState } from "react";
 import { toast } from "@/lib/toast";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowsClockwise, ArrowsDownUp, CaretDown, CaretRight, GasPump } from "@phosphor-icons/react";
+import { ArrowsDownUp, CaretDown, GasPump } from "@phosphor-icons/react";
 import { ChainKeys, getChainType, isEvmChainKeyType, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import { useXBalances } from "@sodax/dapp-kit";
 import {
@@ -32,8 +32,7 @@ import {
   toBalanceReadToken,
 } from "@/lib/chains";
 import { getVaultMeta } from "@/lib/vaults-meta";
-import type { Listing, TokenListing } from "@/lib/listings";
-import { MAX_PLAN_USD, MIN_PLAN_USD } from "@/lib/recurring";
+import type { Listing } from "@/lib/listings";
 import { formatTokenAmount, formatUsd } from "@/lib/format";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import {
@@ -109,7 +108,6 @@ export function DepositDrawer({
   onTopUp,
   onPoured,
   prefill,
-  onMakeRecurring,
   devHoldings,
   devLimit,
 }: {
@@ -130,12 +128,6 @@ export function DepositDrawer({
    * priced, so it is always read as money; never submitted.
    */
   prefill?: { usd?: number; limit?: LimitPrefill } | null;
-  /**
-   * "Make this recurring", once an amount is chosen on a stock or fund:
-   * the caller closes this drawer and opens the plan sheet with the
-   * listing and the dollars (docs/adr/0007). Absent, the row is not shown.
-   */
-  onMakeRecurring?: (listing: TokenListing, usd: number) => void;
   /**
    * Dev galleries only: stands in for the wallet sweep, so the drawer's
    * waiting and picked states can be reviewed without a session.
@@ -979,25 +971,6 @@ export function DepositDrawer({
                     )}
                   </div>
                 ) : null}
-
-                {onMakeRecurring &&
-                  listing?.kind === "stock" &&
-                  !limit.active &&
-                  worthUsd !== undefined &&
-                  !tooSmall &&
-                  worthUsd >= MIN_PLAN_USD &&
-                  worthUsd <= MAX_PLAN_USD && (
-                    <button
-                      type="button"
-                      data-testid="make-recurring"
-                      onClick={() => onMakeRecurring(listing, Number(worthUsd.toFixed(2)))}
-                      className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-1 text-left text-sm text-secondary-foreground transition-[background-color,color] duration-150 ease-lift hover:text-foreground active:scale-[0.99]"
-                    >
-                      <ArrowsClockwise weight="duotone" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="flex-1">{copy.recurring.makeRecurring}</span>
-                      <CaretRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                    </button>
-                  )}
 
                 <EarlierOrderNote order={action.earlierOrder} />
 

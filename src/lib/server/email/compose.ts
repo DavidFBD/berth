@@ -32,21 +32,6 @@ export type Notice =
   /** A campaign claim was paid, by hand (lib/server/campaigns). Amount formatted: "$5". */
   | { type: "campaign_paid"; amount: string; chain: string }
   | {
-      type: "recurring_due";
-      /** "Monday" for a weekly plan, "monthly" for a monthly one. */
-      lead: string;
-      /** The listing's plain name. */
-      name: string;
-      /** Formatted: "$20.00". */
-      usd: string;
-      /** A dip plan's limit, formatted, or null for a market buy. */
-      limitPrice: string | null;
-      /** A dip plan whose price could not be set today: the draft is an ordinary buy, and the email says so. */
-      dipUnpriced?: boolean;
-      /** The draft link's path and query on Berth ("/?open=…&run=…"), never another host. */
-      path: string;
-    }
-  | {
       /** To staff admins only (lib/server/staff/budgets). Names a service and a sum, never a person. */
       type: "budget_low";
       service: "openai" | "jev" | "x" | "resend";
@@ -100,7 +85,6 @@ export type WeeklyNotice = {
    * of buys + sells, never more), and limit orders that expired unfilled.
    */
   orders: { buys: number; sells: number; limitsFilled: number; limitsExpired: number } | null;
-  recurring: { placed: number; skipped: number; next: { name: string; day: string } | null } | null;
   friends: { added: number; salutes: number } | null;
 };
 
@@ -118,7 +102,6 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   campaign_paid: "orders",
   // Who may send campaign money is a security matter for staff: no switch.
   payout_source_changed: "security",
-  recurring_due: "recurring",
   weekly: "weekly",
   budget_low: "security",
   staff_reveals: "security",
@@ -158,7 +141,7 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
   const email = COPY.email;
   const kind = NOTICE_KIND[notice.type];
   const button = { label: email.openBerth, href: `${baseUrl}/` };
-  const why = kind === "security" ? email.securityWhy : email.why[kind as "orders" | "friends" | "weekly" | "recurring"];
+  const why = kind === "security" ? email.securityWhy : email.why[kind as "orders" | "friends" | "weekly"];
   switch (notice.type) {
     case "wallet_added":
     case "wallet_removed": {
@@ -239,26 +222,6 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
         why,
       };
     }
-    case "recurring_due": {
-      const words = email.recurringDue;
-      const name = plain(notice.name);
-      const body = words.body(notice.lead, notice.usd, name);
-      const path = notice.path.startsWith("/?") ? notice.path : "/";
-      return {
-        kind,
-        subject: words.subject(notice.lead, name),
-        preview: body,
-        heading: words.heading,
-        paragraphs: notice.limitPrice
-          ? [body, words.limitBody(notice.limitPrice)]
-          : notice.dipUnpriced
-            ? [body, words.unpricedBody]
-            : [body],
-        after: [words.after],
-        button: { label: words.button, href: `${baseUrl}${path}` },
-        why,
-      };
-    }
     case "budget_low": {
       const words = email.budgetLow;
       const service = words.service[notice.service];
@@ -330,15 +293,6 @@ function composeWeekly(
       facts.push({ label: words.orders.limits, value: words.orders.limitsValue(notice.orders.limitsExpired) });
     }
     if (facts.length > 0) sections.push({ heading: words.orders.heading, facts });
-  }
-  if (notice.recurring) {
-    const facts: { label: string; value: string }[] = [];
-    if (notice.recurring.placed > 0) facts.push({ label: words.recurring.placed, value: String(notice.recurring.placed) });
-    if (notice.recurring.skipped > 0) facts.push({ label: words.recurring.skipped, value: String(notice.recurring.skipped) });
-    if (notice.recurring.next) {
-      facts.push({ label: words.recurring.next, value: words.recurring.nextValue(plain(notice.recurring.next.name), notice.recurring.next.day) });
-    }
-    if (facts.length > 0) sections.push({ heading: words.recurring.heading, facts });
   }
   if (notice.friends) {
     const facts: { label: string; value: string }[] = [];

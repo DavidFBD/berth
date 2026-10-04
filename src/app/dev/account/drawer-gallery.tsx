@@ -4,7 +4,6 @@ import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { AccountButton, EmailDrawerBody } from "@/components/account-button";
-import { RECURRING_QUERY_KEY, type PlanView, type RecurringResponse } from "@/lib/recurring";
 import type { Hold, Profile, ReferralPanel, XpHistoryEntry } from "@/lib/profile-types";
 import type { FriendsList, MySocial } from "@/lib/social-types";
 import type { EmailSettingsResponse } from "@/lib/email-kinds";
@@ -48,7 +47,7 @@ function scenePath(scene: DrawerScene, old = false): FirstPathValue {
  *   /dev/account?drawer=new           just signed up on an invite: no avatar, no username
  *   /dev/account?drawer=mid           avatar chosen, no username yet
  *   /dev/account?drawer=named         avatar and username, no friends yet
- *   /dev/account?drawer=established   a rung up, friends, a request, a plan
+ *   /dev/account?drawer=established   a rung up, friends, a request
  *   /dev/account?button=established   the real AccountButton over these fixtures (see below)
  *   &view=friends                     opened on one screen (any DrawerView)
  *
@@ -62,22 +61,6 @@ export type DrawerScene = (typeof DRAWER_SCENES)[number];
 const DEMO_ADDRESS = "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be";
 const DEMO_EMAIL = "gosia@example.com";
 const DAY = 86_400_000;
-
-const PLAN: PlanView = {
-  id: "p1",
-  symbol: "SPY",
-  usd: 20,
-  cadence: "weekly",
-  weekday: 1,
-  monthDay: null,
-  timeZone: "Europe/Amsterdam",
-  orderType: "market",
-  dipPct: null,
-  paused: false,
-  nextDueAt: "2026-10-04T22:00:00.000Z",
-  createdVia: "app",
-  runs: [],
-};
 
 function seededClient(scene: DrawerScene): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
@@ -132,9 +115,8 @@ export function seedDrawer(client: QueryClient, scene: DrawerScene): void {
   const email: EmailSettingsResponse = {
     address: DEMO_EMAIL,
     deliverable: true,
-    prefs: { orders: true, recurring: true, friends: true, weekly: false },
+    prefs: { orders: true, friends: true, weekly: false },
   };
-  const recurring: RecurringResponse = { plans: established ? [PLAN] : [], ready: [], limitAllowed: true };
   client.setQueryData(["profile", null], profile);
   client.setQueryData(["xp-history", null], history);
   client.setQueryData(["xp-holds", null], holds);
@@ -149,7 +131,6 @@ export function seedDrawer(client: QueryClient, scene: DrawerScene): void {
     signedInWith: null,
   });
   client.setQueryData(["assistant-grants", null], []);
-  client.setQueryData([...RECURRING_QUERY_KEY, null], recurring);
 }
 
 function Seeded({ scene, old = false, children }: { scene: DrawerScene; old?: boolean; children: ReactNode }) {

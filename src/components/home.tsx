@@ -61,10 +61,7 @@ import dynamic from "next/dynamic";
 import { ChatButton } from "@/components/chat/chat-button";
 import type { ChatDraft } from "@/components/chat/chat-parts";
 import { draftOpening, type BuyPrefill, type SellPrefill } from "@/lib/draft-open";
-import { RecurringStrip, useRecurringStripShowing } from "@/components/recurring/recurring-strip";
-import { PlanSheetHost } from "@/components/recurring/plan-sheet";
 import { useAccountHeaders } from "@/hooks/use-profile";
-import { onPlanSheet, openPlanSheet } from "@/components/recurring/plan-sheet-events";
 import { NoAccountHere, NotHereBanner, useAvailability } from "@/components/availability/availability";
 import { useUnavailableRefused } from "@/lib/unavailable-refusal";
 import { FirstPathProvider, HomePathCard, pathOnScreen, useLiveFirstPath } from "@/components/first-path";
@@ -159,24 +156,8 @@ function SignedInHome() {
   // Whether a higher-priority strip already holds the email nudge's slot.
   const waitingOrdersShowing = useWaitingOrdersShowing();
   const unlinkedWalletShowing = useUnlinkedWalletShowing(accountOpen);
-  const recurringShowing = useRecurringStripShowing();
-  // A plan needs an account to belong to: signed out, the buy drawer does not offer one.
   const hasAccount = useAccountHeaders({ prompt: false }).key !== null;
   const [chatReturn, setChatReturn] = useState(false);
-  // The plan sheet takes the screen: whichever drawer asked for it has closed, and the chat does too.
-  // Asked for from the chat (the Assistant's plan card), closing the sheet brings the chat back.
-  const chatOpenNow = useRef(false);
-  useEffect(() => {
-    chatOpenNow.current = chatOpen;
-  }, [chatOpen]);
-  useEffect(
-    () =>
-      onPlanSheet(() => {
-        if (chatOpenNow.current) setChatReturn(true);
-        setChatOpen(false);
-      }),
-    [],
-  );
   const privy = usePrivyEmbeddedWallet();
   const copy = useCopy();
   // Where the account stands decides the home's one next step
@@ -553,8 +534,6 @@ function SignedInHome() {
                   }}
                 />
               )}
-              {/* Only on a recurring plan's day (lib/recurring): Berth reminds, the person signs. */}
-              <RecurringStrip onOpen={openDraftBuy} />
               {/* Only while a limit order waits, and only behind its switch. */}
               <WaitingOrders />
               <UnlinkedWalletPrompt hidden={accountOpen} />
@@ -562,12 +541,12 @@ function SignedInHome() {
                   and the unlinked-wallet prompt above both outrank this one
                   (lib/email-nudge). */}
               <EmailNudgeLine
-                otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing || pathShown}
+                otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || pathShown}
                 onOpen={openAccountForEmail}
               />
               {/* Once per account (lib/server/notices): the policy's promise to say a change in the app. */}
               <SocialNoticeLine
-                hidden={waitingOrdersShowing || unlinkedWalletShowing || recurringShowing || pathShown}
+                hidden={waitingOrdersShowing || unlinkedWalletShowing || pathShown}
                 onOpen={openAccountForFriends}
               />
               <NudgeLine
@@ -652,7 +631,6 @@ function SignedInHome() {
         <AddMoneyDrawer open={addMoneyOpen} onOpenChange={setAddMoneyOpen} />
 
         <DraftLinkOpener onBuy={openDraftBuy} onSell={openDraftSell} />
-        <PlanSheetHost onSignIn={openWallet} onClosed={returnToChat} />
         <DepositDrawer
           listing={buyListing}
           prefill={buyPrefill}
@@ -666,15 +644,6 @@ function SignedInHome() {
             setBuyOpen(false);
             openAddMoney();
           }}
-          onMakeRecurring={
-            hasAccount
-              ? (listing, usd) => {
-                  setChatReturn(false);
-                  setBuyOpen(false);
-                  openPlanSheet({ symbol: listing.symbol, usd });
-                }
-              : undefined
-          }
         />
         <SellHost
           listing={sellListing}

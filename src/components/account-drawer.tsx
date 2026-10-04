@@ -8,7 +8,6 @@ import {
   At,
   Bell,
   GearSix,
-  Repeat,
   SignOut,
   Sparkle,
   Trophy,
@@ -26,7 +25,6 @@ import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { AddEmailBlock, InviteCorner, Ladder, LedgerRow } from "@/components/rewards-panel";
 import { SocialSection } from "@/components/social/social-section";
-import { RecurringSection } from "@/components/recurring/recurring-section";
 import { WalletsSection } from "@/components/account-wallets";
 import { EmailSection } from "@/components/email-section";
 import { AssistantSection } from "@/components/assistant/assistant-section";
@@ -44,7 +42,6 @@ import { DrawerPathStep, useFirstPath } from "@/components/first-path";
 import { establishedPrompt } from "@/lib/first-path";
 import { writeMark } from "@/lib/drawer-return";
 import { useFriendsList, useMySocial } from "@/hooks/use-social";
-import { useRecurring } from "@/hooks/use-recurring";
 import { rankForXp, XP_ACTIONS } from "@/lib/xp";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +64,6 @@ export function AccountDrawerScreens({
   returnScroll = null,
   focusEmail = false,
   money,
-  onLeave,
   onOpenSettings,
   settingsAddress,
   onSignOut,
@@ -83,8 +79,12 @@ export function AccountDrawerScreens({
   focusEmail?: boolean;
   /** The money screen's receive and top up rows (email accounts), from the account button. */
   money?: ReactNode;
-  /** The drawer closes for another sheet (the plan sheet). */
-  onLeave: () => void;
+  /**
+   * The drawer closed for the recurring plan sheet, retired 2026-10-04. No
+   * screen calls it now; it stays only so callers keep compiling, as
+   * onOpenSettings does.
+   */
+  onLeave?: () => void;
   /**
    * The account has Settings (an email account). Settings is a screen of
    * this drawer now; the callback is no longer called and stays only so
@@ -159,7 +159,7 @@ export function AccountDrawerScreens({
         {view === "main" ? (
           <MainScreen kind={kind} hasAddress={hasAddress} emailAsked={emailAsked} onOpenSettings={onOpenSettings} onSignOut={onSignOut} />
         ) : (
-          <SubScreen view={view} kind={kind} money={money} onLeave={onLeave} assistant={assistant} settingsAddress={settingsAddress} />
+          <SubScreen view={view} kind={kind} money={money} assistant={assistant} settingsAddress={settingsAddress} />
         )}
       </div>
     </DrawerNavContext.Provider>
@@ -184,7 +184,6 @@ function MainScreen({
   const profile = useProfile();
   const social = useMySocial();
   const friends = useFriendsList(true);
-  const recurring = useRecurring();
   const nav = useRequiredNav();
 
   const path = useFirstPath();
@@ -235,7 +234,6 @@ function MainScreen({
           badge={requests > 0 ? requests : undefined}
           onClick={() => nav.show("friends")}
         />
-        <Row icon={Repeat} title={words.rows.recurring.title} sub={words.rows.recurring.sub(recurring.plans.length)} onClick={() => nav.show("recurring")} />
         {kind === "email" ? (
           <Row icon={Wallet} title={words.rows.money.title} sub={words.rows.money.sub} onClick={() => nav.show("money")} />
         ) : (
@@ -368,14 +366,12 @@ function SubScreen({
   view,
   kind,
   money,
-  onLeave,
   assistant,
   settingsAddress,
 }: {
   view: Exclude<DrawerView, "main">;
   kind: DrawerKind;
   money?: ReactNode;
-  onLeave: () => void;
   assistant: AssistantId | null;
   settingsAddress?: string;
 }) {
@@ -391,7 +387,7 @@ function SubScreen({
         <CaretLeft className="size-4" aria-hidden />
         {words.back}
       </button>
-      <SubContent view={view} kind={kind} money={money} onLeave={onLeave} assistant={assistant} settingsAddress={settingsAddress} />
+      <SubContent view={view} kind={kind} money={money} assistant={assistant} settingsAddress={settingsAddress} />
     </>
   );
 }
@@ -400,14 +396,12 @@ function SubContent({
   view,
   kind,
   money,
-  onLeave,
   assistant,
   settingsAddress,
 }: {
   view: Exclude<DrawerView, "main">;
   kind: DrawerKind;
   money?: ReactNode;
-  onLeave: () => void;
   assistant: AssistantId | null;
   settingsAddress?: string;
 }) {
@@ -443,12 +437,6 @@ function SubContent({
       return (
         <Panel>
           <SocialSection initialFold="friends" />
-        </Panel>
-      );
-    case "recurring":
-      return (
-        <Panel>
-          <RecurringSection onLeave={onLeave} />
         </Panel>
       );
     case "money":

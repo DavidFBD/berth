@@ -2,7 +2,6 @@ import { findBenchmark, DEFAULT_BENCHMARK } from "@/lib/benchmarks";
 import type { Marks } from "@/lib/benchmark";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { addDays, type IsoDay } from "@/lib/marks";
-import { SKIP_AFTER_DAYS } from "@/lib/recurring";
 import { weeklyRef, weeklyWindow, type WeeklyWindow } from "@/lib/weekly-window";
 export { WEEKLY_SEND_DAYS, isoWeekKey, weeklyRef, weeklyWindow, type WeeklyWindow } from "@/lib/weekly-window";
 import { formatPercentChange, percentChange } from "@/lib/performance";
@@ -34,8 +33,8 @@ import { storedComparison } from "@/lib/server/portfolio-view";
  * (lib/server/portfolio-view storedComparison, the same arithmetic, the
  * same refusals), each holding on that day with its price's move over the
  * week (stored closes, marks), and counts of what happened: orders filled,
- * how many of those were limit orders, limit orders expired, recurring runs signed or let pass and the
- * next one, new friends and Salutes. Whatever the app would not tell is
+ * how many of those were limit orders, limit orders expired, new friends
+ * and Salutes. Whatever the app would not tell is
  * left out, and a week with nothing to say sends nothing.
  *
  * The S&P 500 fund is the benchmark because the benchmark a person picks
@@ -88,22 +87,8 @@ type Counts = {
    */
   limitsFilled: number;
   limitsExpired: number;
-  placed: number;
-  /**
-   * Runs let pass: the ones that went unsigned for their three days
-   * (SKIP_AFTER_DAYS, closed at or after that), and the ones the person
-   * skipped (closed earlier, on a plan neither paused nor changed since).
-   * A run closed because its plan was paused, or by a merge (which pauses
-   * the absorbed plans in the same statement), is left out: a number
-   * saying the person chose it would not be true. A deleted plan's runs
-   * are gone with it. A person's skip on a plan paused or edited later is
-   * left out too; the count errs toward saying less.
-   */
-  skipped: number;
   friendsAdded: number;
   salutes: number;
-  next: { symbol: string; dueAt: string | Date; timeZone: string } | null;
-  hasPlans: boolean;
 };
 
 /** Everything countable about the week, in one round trip. */
@@ -113,54 +98,28 @@ async function readCounts(userId: string, window: WeeklyWindow): Promise<Counts>
        (select count(*)::int from orders where user_id = $1 and order_type = 'limit' and listing_symbol = any($4::text[])
            and coalesce(filled_at, placed_at, created_at) >= $2 and coalesce(filled_at, placed_at, created_at) < $3) as limits_filled,
        (select count(*)::int from limit_orders where user_id = $1 and status = 'expired' and closed_at >= $2 and closed_at < $3) as limits_expired,
-       (select count(*)::int from recurring_runs where user_id = $1 and status = 'placed' and due_at >= $2 and due_at < $3) as placed,
-       (select count(*)::int from recurring_runs r join recurring_plans p on p.id = r.plan_id
-         where r.user_id = $1 and r.status = 'skipped' and r.due_at >= $2 and r.due_at < $3
-           and (r.closed_at >= r.due_at + make_interval(days => $5::int)
-                or (not p.paused and p.updated_at < r.closed_at))) as skipped,
        (select count(*)::int from friends where (a_id = $1 or b_id = $1) and since >= $2 and since < $3) as friends_added,
-       (select count(*)::int from salutes where recipient_id = $1 and revoked_at is null and first_at >= $2 and first_at < $3) as salutes,
-       (select count(*)::int from recurring_plans where user_id = $1) as plans,
-       (select json_build_object('symbol', listing_symbol, 'dueAt', next_due_at, 'timeZone', time_zone)
-          from recurring_plans where user_id = $1 and not paused order by next_due_at limit 1) as next`,
-    [userId, window.from.toISOString(), window.to.toISOString(), LISTING_SYMBOL_LIST, SKIP_AFTER_DAYS],
+       (select count(*)::int from salutes where recipient_id = $1 and revoked_at is null and first_at >= $2 and first_at < $3) as salutes`,
+    [userId, window.from.toISOString(), window.to.toISOString(), LISTING_SYMBOL_LIST],
   )) as {
     limits_filled: number;
     limits_expired: number;
-    placed: number;
-    skipped: number;
     friends_added: number;
     salutes: number;
-    plans: number;
-    next: Counts["next"] | string | null;
   }[];
   const row = rows[0];
-  const next = typeof row.next === "string" ? (JSON.parse(row.next) as Counts["next"]) : row.next;
   return {
     limitsFilled: row.limits_filled,
     limitsExpired: row.limits_expired,
-    placed: row.placed,
-    skipped: row.skipped,
     friendsAdded: row.friends_added,
     salutes: row.salutes,
-    next,
-    hasPlans: row.plans > 0,
   };
-}
-
-/** A plan's next day in its own time zone: "Monday 5 October". */
-function planDay(dueAt: string | Date, timeZone: string): string | null {
-  try {
-    return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone }).format(new Date(dueAt));
-  } catch {
-    return null;
-  }
 }
 
 /** One person's summary of `window`, from stored data only. */
 export async function weeklyNotice(userId: string, window: WeeklyWindow): Promise<WeeklyNotice> {
   const benchmark = findBenchmark(DEFAULT_BENCHMARK)!;
-  // One name for the fund in the whole email: the listing's, as the holdings and the recurring plans name it.
+  // One name for the fund in the whole email: the listing's, as the holdings name it.
   const benchmarkName = NAME_BY_SYMBOL.get(benchmark.symbol) ?? benchmark.name;
   const end = window.to.getTime();
   const [allDays, allOrders, counts] = await Promise.all([
@@ -218,8 +177,6 @@ export async function weeklyNotice(userId: string, window: WeeklyWindow): Promis
   const inWeek = orders.filter((order) => Date.parse(order.placedAt) >= window.from.getTime());
   const buys = inWeek.filter((order) => order.direction === "buy").length;
   const sells = inWeek.length - buys;
-  const nextName = counts.next ? NAME_BY_SYMBOL.get(counts.next.symbol) : undefined;
-  const nextDay = counts.next ? planDay(counts.next.dueAt, counts.next.timeZone) : null;
 
   return {
     type: "weekly",
@@ -231,10 +188,6 @@ export async function weeklyNotice(userId: string, window: WeeklyWindow): Promis
     orders:
       buys + sells + counts.limitsExpired > 0
         ? { buys, sells, limitsFilled: Math.min(counts.limitsFilled, buys + sells), limitsExpired: counts.limitsExpired }
-        : null,
-    recurring:
-      counts.hasPlans || counts.placed + counts.skipped > 0
-        ? { placed: counts.placed, skipped: counts.skipped, next: nextName && nextDay ? { name: nextName, day: nextDay } : null }
         : null,
     friends: counts.friendsAdded + counts.salutes > 0 ? { added: counts.friendsAdded, salutes: counts.salutes } : null,
   };

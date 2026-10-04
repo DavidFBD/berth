@@ -74,7 +74,6 @@ describe("notice templates", () => {
         account: null,
         holdings: [],
         orders: { buys: 0, sells: 0, limitsFilled: 0, limitsExpired: 1 },
-        recurring: { placed: 0, skipped: 0, next: null },
         friends: { added: 0, salutes: 0 },
       },
       "https://www.berthmarkets.com",
@@ -94,7 +93,6 @@ describe("notice templates", () => {
           account: null,
           holdings: [],
           orders: { buys, sells, limitsFilled, limitsExpired: 0 },
-          recurring: null,
           friends: null,
         },
         "https://www.berthmarkets.com",
@@ -119,7 +117,6 @@ describe("notice templates", () => {
           holdings,
           holdingsRest: { count: 2, worth: "$12.40" },
           orders: null,
-          recurring: null,
           friends: null,
         },
         "https://www.berthmarkets.com",
@@ -140,12 +137,11 @@ describe("notice templates", () => {
         account: { worth: "$100.00", change: null, benchmark: { name: "S&P 500 ETF", change: "+0.50%" } },
         holdings: [],
         orders: null,
-        recurring: null,
         friends: null,
       },
       "https://www.berthmarkets.com",
     );
     expect(content.sections).toEqual([{ heading: "Your account", facts: [{ label: "Worth at the close", value: "$100.00" }] }]);
-    expect(weeklyHasContent({ type: "weekly", weekOf: "x", closeDay: null, account: null, holdings: [], orders: null, recurring: null, friends: null })).toBe(false);
+    expect(weeklyHasContent({ type: "weekly", weekOf: "x", closeDay: null, account: null, holdings: [], orders: null, friends: null })).toBe(false);
   });
 });

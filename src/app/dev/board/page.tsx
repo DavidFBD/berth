@@ -266,7 +266,6 @@ function Gallery() {
             devHoldings={devHoldings}
             open={buyOpen}
             onOpenChange={setBuyOpen}
-            onMakeRecurring={() => setBuyOpen(false)}
           />
           <WithdrawDrawer
             listing={sellListing}

@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/server/db";
 import { latestCronRuns, type CronRun } from "@/lib/server/cron-runs";
-import { dailyCap, recurringDailyCap, weeklyDailyCap } from "@/lib/server/email/send";
+import { dailyCap, weeklyDailyCap } from "@/lib/server/email/send";
 import { dailyPostCap } from "@/lib/x-schedule";
 import { scrubText } from "@/lib/staff/mask";
 
@@ -13,7 +13,7 @@ import { scrubText } from "@/lib/staff/mask";
 export type EmailToday = {
   byType: { type: string; going: number; failed: number }[];
   total: number;
-  caps: { all: number; recurring: number; weekly: number };
+  caps: { all: number; weekly: number };
   suppressions: { reason: string; n: number; last30: number }[];
   stuck: { id: string; type: string; attempts: number; at: string; error: string | null }[];
 };
@@ -47,7 +47,7 @@ export async function emailToday(): Promise<EmailToday> {
   return {
     byType,
     total: byType.reduce((sum, row) => sum + row.going, 0),
-    caps: { all: dailyCap(), recurring: recurringDailyCap(), weekly: weeklyDailyCap() },
+    caps: { all: dailyCap(), weekly: weeklyDailyCap() },
     suppressions: (suppressions as { reason: string; n: number; last30: number }[]).map((row) => ({
       reason: row.reason,
       n: Number(row.n),

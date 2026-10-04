@@ -8,7 +8,6 @@ import { markNoXp } from "@/lib/server/no-xp";
 import type { WalletFamily } from "@/lib/identity/caip";
 import { accountOwnedWallets } from "@/lib/server/pour-ownership";
 import { buildOrder, recordOrderMarks } from "@/lib/server/orders";
-import { placeRunForOrder } from "@/lib/server/recurring";
 import { fillsIntent, verdictFromRecord } from "@/lib/server/pour-claims";
 import { getSodax, verifyPourTx, type VerifiedPour } from "@/lib/server/pour-verify";
 
@@ -198,8 +197,6 @@ export async function insertRecoveredOrder(userId: string, order: OrderRecord, n
          from limit_orders l where orders.id = $1 and l.intent_tx = orders.intent_tx`,
       [id],
     );
-    // A recovered buy answers its recurring run as any recorded buy does (lib/server/recurring).
-    if (order.direction === "buy") await placeRunForOrder(id);
   }
   return id;
 }

@@ -63,8 +63,7 @@ export function dailyCap(env: NodeJS.ProcessEnv = process.env): number {
 /**
  * The part of the day's cap no share may take: a quarter, rounded up, kept
  * for an order filling or a friend asking (and security, which no cap
- * stops), whatever EMAIL_RECURRING_DAILY_CAP and EMAIL_WEEKLY_DAILY_CAP
- * say.
+ * stops), whatever EMAIL_WEEKLY_DAILY_CAP says.
  */
 export function reservedDailyRoom(env: NodeJS.ProcessEnv = process.env): number {
   return Math.ceil(dailyCap(env) / 4);
@@ -76,30 +75,19 @@ function wantedShare(raw: string | undefined, fallback: number): number {
 }
 
 /**
- * Recurring reminders' own share of the day: half the daily cap, so a
- * Monday full of plans never takes the room an order filling or a friend
- * asking needs. A reminder past it waits for the next morning's retry
- * (lib/server/recurring, over the run's life); the strip shows it anyway.
- * EMAIL_RECURRING_DAILY_CAP overrides it, never into the reserved quarter
- * (reservedDailyRoom).
- */
-export function recurringDailyCap(env: NodeJS.ProcessEnv = process.env): number {
-  const cap = dailyCap(env);
-  return Math.min(wantedShare(env.EMAIL_RECURRING_DAILY_CAP, Math.floor(cap / 2)), cap - reservedDailyRoom(env));
-}
-
-/**
  * The weekly summary's own share of the day: a quarter of the daily cap,
- * so with the recurring reminders' half there is still a quarter left for
- * an order filling, a friend asking, and every security notice (which no
- * cap stops). A summary past it waits for the next morning within its
- * week (lib/server/weekly). EMAIL_WEEKLY_DAILY_CAP overrides it, never
- * past what the recurring share and the reserved quarter leave, so the
- * two shares together never take order and friend notices' room.
+ * so the other three quarters stay for an order filling, a friend asking,
+ * and every security notice (which no cap stops). A summary past it waits
+ * for the next morning within its week (lib/server/weekly).
+ * EMAIL_WEEKLY_DAILY_CAP overrides it, never into the reserved quarter
+ * (reservedDailyRoom), so the summaries never take order and friend
+ * notices' room. The recurring reminders' half, which this share used to
+ * stand beside, went back to the general budget when recurring buys were
+ * retired on 2026-10-04 (docs/adr/0007).
  */
 export function weeklyDailyCap(env: NodeJS.ProcessEnv = process.env): number {
   const cap = dailyCap(env);
-  const left = cap - reservedDailyRoom(env) - recurringDailyCap(env);
+  const left = cap - reservedDailyRoom(env);
   return Math.max(0, Math.min(wantedShare(env.EMAIL_WEEKLY_DAILY_CAP, Math.floor(cap / 4)), left));
 }
 
@@ -230,7 +218,6 @@ export async function deliver(input: NoticeInput): Promise<DeliverOutcome> {
   const checked = await recipient(input);
   if (typeof checked === "string") return checked;
   if (NOTICE_KIND[input.notice.type] !== "security" && (await sendsToday()) >= dailyCap()) return "daily_volume";
-  if (input.notice.type === "recurring_due" && (await sendsToday("recurring_due")) >= recurringDailyCap()) return "daily_volume";
   if (input.notice.type === "weekly" && (await sendsToday("weekly")) >= weeklyDailyCap()) return "daily_volume";
   const claim = await claimSend(input.userId, input.notice.type, input.ref, input.notice);
   if (typeof claim === "string") return claim;
@@ -337,10 +324,6 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
   },
   { name: "campaign-paid", notice: { type: "campaign_paid", amount: "$5", chain: "Base" } },
   {
-    name: "recurring-due",
-    notice: { type: "recurring_due", lead: "Monday", name: "S&P 500 ETF", usd: "$20.00", limitPrice: null, path: "/?open=SPY&side=buy&usd=20&run=sample" },
-  },
-  {
     name: "weekly-summary",
     notice: {
       type: "weekly",
@@ -353,7 +336,6 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
         { name: "Treasury ETF", worth: "$232.25", move: "+0.08%" },
       ],
       orders: { buys: 3, sells: 0, limitsFilled: 1, limitsExpired: 1 },
-      recurring: { placed: 1, skipped: 1, next: { name: "S&P 500 ETF", day: "Monday 5 October" } },
       friends: { added: 1, salutes: 3 },
     },
   },
@@ -366,7 +348,6 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
       account: { worth: "$50.12", change: null, benchmark: null },
       holdings: [{ name: "NVIDIA", worth: "$50.12", move: "\u22121.40%" }],
       orders: { buys: 1, sells: 0, limitsFilled: 0, limitsExpired: 0 },
-      recurring: null,
       friends: null,
     },
   },

@@ -5,13 +5,12 @@ import { toast } from "@/lib/toast";
 import { useCopy } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
-import { useAccountHeaders } from "@/hooks/use-profile";
-import { useRecurringAction } from "@/hooks/use-recurring";
 import { readDraftParams, type DraftParams } from "@/lib/draft-order";
 import { draftOpening, type BuyPrefill, type DraftOpening, type SellPrefill } from "@/lib/draft-open";
 import type { Copy } from "@/lib/copy";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 
+// "run" was a recurring reminder's run (retired 2026-10-04); still taken off an old link's address.
 const DRAFT_KEYS = ["open", "side", "usd", "qty", "price", "until", "run"] as const;
 
 /** How long a sell waits for the holdings before saying it could not check them. */
@@ -40,11 +39,6 @@ export function DraftLinkOpener({
   const copy = useCopy();
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
-  // No tap opened this link, so no wallet is asked to sign for it (prompt: false).
-  const { key: accountKey } = useAccountHeaders({ prompt: false });
-  const { mutate: recurringAction } = useRecurringAction({ prompt: false });
-  // A reminder's run, marked opened once the account is known (identity may still be hydrating at mount).
-  const openedRun = useRef<string | null>(null);
   // Read once, at mount, on the client: this component never renders on the server.
   const pending = useRef<DraftParams | null | undefined>(undefined);
   if (pending.current === undefined) {
@@ -79,22 +73,8 @@ export function DraftLinkOpener({
       heldAddresses: holdings.held.map((holding) => holding.listing.address),
     });
     if (!showDraftOpening(opening, copy, { onBuy, onSell })) return;
-    // A recurring reminder's link (lib/recurring runDraftUrl): Berth reminded, nobody suggested it.
-    if (draft.runId) {
-      openedRun.current = draft.runId;
-      toast(copy.recurring.linkOpenedTitle, { description: copy.recurring.linkOpenedBody });
-    } else {
-      toast(copy.draftOpenedTitle, { description: copy.draftOpenedBody });
-    }
+    toast(copy.draftOpenedTitle, { description: copy.draftOpenedBody });
   }, [holdings.settled, holdings.held, holdingsUnknown, onBuy, onSell, copy]);
-
-  // Sent once, when the account key is there; if it never is, the run still closes when the matching buy is recorded.
-  useEffect(() => {
-    const runId = openedRun.current;
-    if (!runId || accountKey === null) return;
-    openedRun.current = null;
-    recurringAction({ action: "open", runId }, { onError: () => undefined });
-  });
 
   return null;
 }

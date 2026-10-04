@@ -17,7 +17,6 @@ import { AskDock } from "@/components/chat/ask-surfaces";
  *   /dev/toasts?play=buy        a buy that fills and earns XP
  *   /dev/toasts?play=avatar     a first face that pays XP and crosses a rank
  *   /dev/toasts?play=salute     a Salute, then a friend's reward from the sync
- *   /dev/toasts?play=recurring  a recurring buy saved, the plan opened
  *   /dev/toasts?play=burst      five things at once
  *   /dev/toasts?play=all        a buy and an avatar together
  *   &dock=1                     with the phone's Ask dock at the foot
@@ -31,8 +30,8 @@ export default function ToastGalleryPage() {
   );
 }
 
-type Scenario = "buy" | "avatar" | "salute" | "recurring" | "burst" | "all";
-const SCENARIOS: Scenario[] = ["buy", "avatar", "salute", "recurring", "burst", "all"];
+type Scenario = "buy" | "avatar" | "salute" | "burst" | "all";
+const SCENARIOS: Scenario[] = ["buy", "avatar", "salute", "burst", "all"];
 
 const later = (ms: number, run: () => void) => window.setTimeout(run, ms);
 
@@ -48,10 +47,6 @@ function play(scenario: Scenario, copy: Copy) {
     case "salute":
       toast.success(copy.social.saluted);
       later(400, () => announceRewards([{ kind: "friend_poured", amount: 250 }], 1200));
-      return;
-    case "recurring":
-      toast.success(copy.recurring.saved("Monday 6 October"));
-      later(300, () => toast(copy.recurring.planOpened));
       return;
     case "burst":
       toast.success(copy.walletsLinkedToast, { description: "0x12ab…9f3e" });

@@ -116,12 +116,11 @@ a round that changes behaviour.
   that binds makes the pair friends at once, no request (ADR-0006).
 - **Friends board** — you and your friends ranked on board points
   (ADR-0005), this calendar month.
-- **Recurring buy** — a plan (`recurring_plans`): a listing, a dollar
-  amount, weekly on a weekday or monthly on a day from 1 to 28, in the
-  person's own time zone. On its day Berth makes a **run**
-  (`recurring_runs`: due, opened, placed or skipped) with a draft attached,
-  shows the strip and sends one reminder email. The person signs it or lets
-  it pass (ADR-0007). Never automatic buying.
+- **Recurring buy** — retired 2026-10-04 (ADR-0007, superseded): plans
+  (`recurring_plans`) and their runs (`recurring_runs`) were reminders the
+  person signed, removed because a reminder is not a true recurring buy.
+  The tables stay, unread. True recurring would need Privy session signers
+  and counsel's clearance, as its own decision record.
 - **Campaign** — a reward link, `/c/<code>` (`lib/campaigns`,
   `lib/server/campaigns`, docs/plans/campaigns.md): a new account that
   arrives through it, buys at least the minimum of a stock or fund and
@@ -131,8 +130,8 @@ a round that changes behaviour.
   (`lib/server/staff-auth`, STAFF_ADMIN_IDS); David pays by hand. Never
   automatic money, never an XP trigger.
 - **Morning run** — the 06:00 UTC cron (`/api/cron/morning`,
-  `lib/server/morning`): the hold check, the campaign step, the recurring runs and their
-  reminders, the email retry. The evening run is the other of Hobby's two.
+  `lib/server/morning`): the hold check, the campaign step, the email
+  retry, the weekly summary and the budget alerts. The evening run is the other of Hobby's two.
 - **Appearance** — light, dark or system (`lib/appearance`), stamped by
   next-themes before hydration. The `useCopy()` seam returns the one voice.
 
@@ -140,15 +139,16 @@ a round that changes behaviour.
 
 Load-bearing decisions live in `docs/adr/` (base-voice rewards copy, the
 level-3 invite gate, no leaderboard of strangers, referral pays at first
-verified order, the friends board on capped points, referral is friendship,
-recurring buys are reminders)
+verified order, the friends board on capped points, referral is friendship;
+ADR-0007, recurring buys as reminders, is superseded: the feature was
+removed on 2026-10-04)
 and in `docs/research/2026-09-16-colosseum-pivot-deep-dive.md` (the pivot,
 the account model, the name). Recorded in `thoughts.md`: the account-linking
 edge is accepted; SIWE and order-ownership proof are done. The
 `useVaultAction` pipeline body, the Privy EVM provider bridge and the gas
 buffer model were reviewed (2026-08-07) and confirmed deep — leave them whole.
-No automatic buying. Recurring buys are reminders the person signs
-(ADR-0007). Cut, do not build: cross-wrapper best execution, any money
+No automatic buying, and no recurring buys since 2026-10-04 (ADR-0007,
+superseded). Cut, do not build: cross-wrapper best execution, any money
 market supply, a harbour-wide or all-time leaderboard, any ranking on
 returns, agent as wallet. The friends board (ADR-0005) ranks board points:
 this month's XP with order XP capped at 300, plus at most 10 salute points. Agents read and draft, the

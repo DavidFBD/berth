@@ -7,7 +7,7 @@ import { linkWallet } from "@/lib/server/account-wallets";
 import { listLimitOrders } from "@/lib/server/limit-orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import type { IntentResponse } from "@sodax/sdk";
-import { deliver, recurringDailyCap, retryPendingSends, setBackoff, setEmailTransport, type NoticeInput } from "./send";
+import { deliver, retryPendingSends, setBackoff, setEmailTransport, type NoticeInput } from "./send";
 import type { EmailTransport, OutgoingEmail } from "./resend";
 import { claimSend, readPrefs, setPref, suppress } from "./store";
 import { issueUnsubscribeToken } from "./token";
@@ -101,7 +101,10 @@ describe("deliver", () => {
 
   it("follows the person's switch for orders and friends, never for security", async () => {
     const userId = await account();
-    expect(await readPrefs(userId)).toEqual({ orders: true, friends: true, weekly: false, recurring: true });
+    expect(await readPrefs(userId)).toEqual({ orders: true, friends: true, weekly: false });
+    // A switch for a retired kind (recurring, 2026-10-04) stays in the table and is never read back.
+    await sql.query(`insert into email_prefs (user_id, kind, enabled) values ($1, 'recurring', false)`, [userId]);
+    expect(await readPrefs(userId)).toEqual({ orders: true, friends: true, weekly: false });
     await setPref(userId, "orders", false);
     expect(await deliver(filled(userId))).toBe("pref_off");
     expect(
@@ -163,25 +166,6 @@ describe("deliver", () => {
     expect(await deliver({ userId, ref: "m-cap", notice: { type: "accounts_merged" } })).toBe("sent");
     vi.stubEnv("EMAIL_DAILY_CAP", "");
     expect(await deliver(filled(userId, "o3"))).toBe("sent");
-  });
-
-  it("recurring reminders take at most their share of the day, so order notices keep room", async () => {
-    vi.stubEnv("EMAIL_DAILY_CAP", "4");
-    const userId = await account();
-    const reminder = (ref: string): NoticeInput => ({
-      userId,
-      ref,
-      notice: { type: "recurring_due", lead: "Monday", name: "NVIDIA", usd: "$50.00", limitPrice: null, path: "/?open=NVDA" },
-    });
-    expect(recurringDailyCap()).toBe(2);
-    expect(await deliver(reminder("r1"))).toBe("sent");
-    expect(await deliver(reminder("r2"))).toBe("sent");
-    expect(await deliver(reminder("r3"))).toBe("daily_volume");
-    expect(await deliver(filled(userId, "o-share-1"))).toBe("sent");
-    expect(await deliver(filled(userId, "o-share-2"))).toBe("sent");
-    vi.stubEnv("EMAIL_DAILY_CAP", "");
-    // Never into the quarter kept for orders and friends.
-    expect(recurringDailyCap({ EMAIL_DAILY_CAP: "90", EMAIL_RECURRING_DAILY_CAP: "500" } as unknown as NodeJS.ProcessEnv)).toBe(67);
   });
 
   it("waits out a rate limit, then defers a security notice for the next pass instead of failing it", async () => {

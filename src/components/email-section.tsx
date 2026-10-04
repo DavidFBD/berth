@@ -18,7 +18,7 @@ import { focusAddEmail, useDrawerNav } from "@/components/account-drawer-nav";
  * The weekly summary (lib/server/weekly) is the one switch that starts
  * off: it is the only email the person did not cause.
  */
-const SHOWN_KINDS: readonly SwitchableKind[] = ["orders", "recurring", "friends", "weekly"];
+const SHOWN_KINDS: readonly SwitchableKind[] = ["orders", "friends", "weekly"];
 
 export function EmailSection({
   heading = "caps",

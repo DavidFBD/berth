@@ -14,9 +14,9 @@
  * a signed out visit or an old mark never open anything.
  */
 
-export type DrawerView = "main" | "avatar" | "rewards" | "friends" | "recurring" | "money" | "notifications" | "ai" | "settings";
+export type DrawerView = "main" | "avatar" | "rewards" | "friends" | "money" | "notifications" | "ai" | "settings";
 
-export const DRAWER_VIEWS: readonly DrawerView[] = ["main", "avatar", "rewards", "friends", "recurring", "money", "notifications", "ai", "settings"];
+export const DRAWER_VIEWS: readonly DrawerView[] = ["main", "avatar", "rewards", "friends", "money", "notifications", "ai", "settings"];
 
 export function isDrawerView(value: string | null | undefined): value is DrawerView {
   return typeof value === "string" && (DRAWER_VIEWS as readonly string[]).includes(value);

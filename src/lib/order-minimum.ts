@@ -1,6 +1,6 @@
 /**
  * The smallest order Berth takes, in USD, for every way in: the buy and sell
- * drawers, limit orders, recurring plans, and the drafts the Assistant and
+ * drawers, limit orders, and the drafts the Assistant and
  * connected AIs prepare. One number, so no door promises what another refuses.
  *
  * Why $1.50. The solver refuses an order whose swapped input is worth under

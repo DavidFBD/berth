@@ -28,6 +28,10 @@ export async function POST(request: NextRequest) {
   if (!claims) {
     return oneClick ? new NextResponse(null, { status: 400 }) : pageRedirect(request, token);
   }
+  // A kind Berth no longer sends: nothing to switch, and nothing went wrong.
+  if ("retired" in claims) {
+    return oneClick ? new NextResponse(null, { status: 200 }) : pageRedirect(request, token);
+  }
   const enabled = !oneClick && action === "on";
   try {
     await setPref(claims.userId, claims.kind, enabled);

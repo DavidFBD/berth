@@ -66,8 +66,6 @@ export type AnalyticsEvents = {
 
   limit_started: { side: "buy" | "sell" };
   limit_saved: { side: "buy" | "sell" };
-  recurring_started: { via: string; editing: boolean };
-  recurring_saved: { cadence: string; via: string; editing: boolean; dip: boolean };
 
   account_screen_opened: { screen: string };
   news_story_opened: { listing: string; source_kind: string };
@@ -114,8 +112,6 @@ export const EVENT_PROPS = {
 
   limit_started: ["side"],
   limit_saved: ["side"],
-  recurring_started: ["via", "editing"],
-  recurring_saved: ["cadence", "via", "editing", "dip"],
 
   account_screen_opened: ["screen"],
   news_story_opened: ["listing", "source_kind"],

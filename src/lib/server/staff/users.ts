@@ -254,18 +254,6 @@ export type UserDetail = {
   }[];
   ordersTotal: number;
   limitOrders: { id: string; direction: string; symbol: string; limitPrice: number; status: string; placedAt: string; expiresAt: string | null; closedAt: string | null }[];
-  recurring: {
-    id: string;
-    symbol: string;
-    usd: number;
-    cadence: string;
-    weekday: number | null;
-    monthDay: number | null;
-    paused: boolean;
-    orderType: string;
-    nextDueAt: string;
-    runs: { placed: number; skipped: number; open: number };
-  }[];
   portfolio: { latest: { day: string; valueUsd: number; holdings: { symbol: string; quantity: number; price: number | null }[] } | null; history: { day: string; value: number }[] };
   xpEvents: { kind: string; amount: number; at: string }[];
   friends: number;
@@ -304,7 +292,7 @@ export async function userDetail(userId: string): Promise<UserDetail | null> {
   if (!user) return null;
   const id = user.id as string;
 
-  const [identities, merges, audit, orders, ordersCount, limits, plans, runs, latest, history, xp, social, refIn, refOut, sends, suppressed, primary, grants, usage] =
+  const [identities, merges, audit, orders, ordersCount, limits, latest, history, xp, social, refIn, refOut, sends, suppressed, primary, grants, usage] =
     await Promise.all([
       sql.query(
         `select id, kind, value, family, is_primary, is_home, proof, verified_at, unlinked_at, created_at
@@ -327,17 +315,6 @@ export async function userDetail(userId: string): Promise<UserDetail | null> {
       sql.query(
         `select id, direction, listing_symbol, limit_price, status, placed_at, expires_at, closed_at
            from limit_orders where user_id = $1 order by placed_at desc limit 30`,
-        [id],
-      ),
-      sql.query(
-        `select id, listing_symbol, usd, cadence, weekday, month_day, paused, order_type, next_due_at
-           from recurring_plans where user_id = $1 order by created_at`,
-        [id],
-      ),
-      sql.query(
-        `select plan_id, count(*) filter (where status = 'placed')::int as placed, count(*) filter (where status = 'skipped')::int as skipped,
-                count(*) filter (where status in ('due', 'opened'))::int as open
-           from recurring_runs where user_id = $1 group by plan_id`,
         [id],
       ),
       sql.query(`select day, value_usd, holdings from portfolio_days where user_id = $1 order by day desc limit 1`, [id]),
@@ -408,7 +385,6 @@ export async function userDetail(userId: string): Promise<UserDetail | null> {
     identityRows.push({ id: null, kind: "wallet", family: detectFamily(legacyWallet), masked: maskWallet(legacyWallet) ?? "…", primary: false, home: false, proof: "column", verifiedAt: null, unlinkedAt: null, createdAt: null });
   }
 
-  const runsByPlan = new Map((runs as { plan_id: string; placed: number; skipped: number; open: number }[]).map((row) => [row.plan_id, row]));
   const latestRow = (latest as Record<string, unknown>[])[0];
   const xpTotal = Number(user.xp ?? 0);
   const rank = rankForXp(xpTotal);
@@ -467,21 +443,6 @@ export async function userDetail(userId: string): Promise<UserDetail | null> {
       expiresAt: iso(row.expires_at as string | null),
       closedAt: iso(row.closed_at as string | null),
     })),
-    recurring: (plans as Record<string, unknown>[]).map((row) => {
-      const counted = runsByPlan.get(row.id as string);
-      return {
-        id: row.id as string,
-        symbol: row.listing_symbol as string,
-        usd: Number(row.usd),
-        cadence: row.cadence as string,
-        weekday: num(row.weekday),
-        monthDay: num(row.month_day),
-        paused: Boolean(row.paused),
-        orderType: row.order_type as string,
-        nextDueAt: iso(row.next_due_at as string)!,
-        runs: { placed: Number(counted?.placed ?? 0), skipped: Number(counted?.skipped ?? 0), open: Number(counted?.open ?? 0) },
-      };
-    }),
     portfolio: {
       latest: latestRow
         ? {

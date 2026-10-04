@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
 
   const kind = read.caller.body.direction === "out" ? "pour_out" : "pour_in";
   // A buy reported from where Berth is not available (lib/availability) is
-  // still recorded, so the ledger stays true (the order, its marks, the
-  // recurring run it answers), but it pays no XP and judges no hold, then
+  // still recorded, so the ledger stays true (the order and its marks),
+  // but it pays no XP and judges no hold, then
   // or ever: it is marked by intent (lib/server/no-xp), so a report of the
   // same buy from anywhere else pays nothing either. The app does not
   // offer such a buy; this is for one that happened anyway. Availability is
@@ -130,8 +130,7 @@ export async function POST(request: NextRequest) {
       noXp = true;
     }
   }
-  // The claim keeps its listing, so a recurring run it may answer is not
-  // offered again (a second buy) while the evening pass confirms it. A filled
+  // The claim keeps its listing while the evening pass confirms it. A filled
   // pour keeps one too, before the order's reads: should the function be
   // stopped at maxDuration while they wait on a hung endpoint, the evening
   // pass records and pays it (lib/server/pour-claims payClaim). Closed below

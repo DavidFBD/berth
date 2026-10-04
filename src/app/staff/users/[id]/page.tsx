@@ -195,20 +195,6 @@ export default async function StaffUserPage({ params }: { params: Promise<{ id: 
             ]}
           />
         </StaffSection>
-        <StaffSection title={w.recurring}>
-          <Table
-            rows={user.recurring}
-            rowKey={(row) => row.id}
-            empty={words.none}
-            columns={[
-              { key: "name", label: words.overview.listing, render: (row) => listingName(row.symbol) },
-              { key: "usd", label: "", align: "right", mono: true, render: (row) => usd(row.usd) },
-              { key: "when", label: "", render: (row) => w.cadence(row.cadence, row.weekday, row.monthDay) },
-              { key: "next", label: w.nextDue, render: (row) => (row.paused ? <Tag>{w.paused}</Tag> : day(row.nextDueAt)) },
-              { key: "runs", label: "", render: (row) => w.runs(row.runs.placed, row.runs.skipped, row.runs.open) },
-            ]}
-          />
-        </StaffSection>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">

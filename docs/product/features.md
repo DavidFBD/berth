@@ -86,8 +86,7 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
     settings. On Mondays: what the account was worth at the week's last
     close, its change beside the S&P 500 fund over the same days (as the
     chart's one week range tells it), each holding with its price's move,
-    and counts of what filled, recurring buys signed or let pass, new
-    friends and Salutes. A part with nothing sure to say is left out; a
+    and counts of what filled, new friends and Salutes. A part with nothing sure to say is left out; a
     quiet week sends nothing. Always the S&P 500 fund, since the benchmark
     you pick in the app stays in your browser.
 13. **Ranks, XP and avatars.** Earn XP for buying, holding, adding an email
@@ -111,8 +110,7 @@ One headline, one paragraph, four points. The welcome page says it in its lede a
   description, Open Graph and Twitter cards, an X bio, directory and app
   store listings, and the opener of a pitch.
 - **Supporting line (sparingly): "Like Duolingo, but for investing."** Points
-  at the habit side only: a little each week, XP, ranks, recurring buys,
-  learning as you go. Use at most once per surface (one pitch deck slide, one
+  at the habit side only: XP, ranks, friends, learning as you go. Use at most once per surface (one pitch deck slide, one
   social post, one directory long description), never twice on the same
   page. Never in the app UI, never in the site title or meta description,
   never beside a returns figure, a price or any money claim, and never in a

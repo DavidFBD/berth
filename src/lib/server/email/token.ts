@@ -1,6 +1,6 @@
 import { hkdfSync } from "node:crypto";
 import { EncryptJWT, jwtDecrypt } from "jose";
-import { isSwitchableKind, type SwitchableKind } from "@/lib/email-kinds";
+import { isRetiredKind, isSwitchableKind, type RetiredKind, type SwitchableKind } from "@/lib/email-kinds";
 
 /**
  * The unsubscribe token: which account and which kind of email, sealed.
@@ -34,6 +34,8 @@ function tokenKey(env: NodeJS.ProcessEnv): Uint8Array {
 }
 
 export type UnsubscribeClaims = { userId: string; kind: SwitchableKind };
+/** A sound token for a kind Berth no longer sends (lib/email-kinds RETIRED_KINDS): nothing to switch. */
+export type RetiredClaims = { userId: string; retired: RetiredKind };
 
 export async function issueUnsubscribeToken(
   claims: UnsubscribeClaims,
@@ -47,15 +49,21 @@ export async function issueUnsubscribeToken(
     .encrypt(tokenKey(env));
 }
 
-/** The claims, or null for anything expired, altered, foreign or malformed. */
+/**
+ * The claims, or null for anything expired, altered, foreign or malformed.
+ * A sound token for a retired kind reads as RetiredClaims, so its link
+ * still lands calmly instead of saying it is broken.
+ */
 export async function readUnsubscribeToken(
   token: unknown,
   { now = new Date(), env = process.env }: { now?: Date; env?: NodeJS.ProcessEnv } = {},
-): Promise<UnsubscribeClaims | null> {
+): Promise<UnsubscribeClaims | RetiredClaims | null> {
   if (typeof token !== "string" || token.length === 0 || token.length > 1024) return null;
   try {
     const { payload } = await jwtDecrypt(token, tokenKey(env), { currentDate: now });
-    if (payload.p !== "unsub" || typeof payload.u !== "string" || !isSwitchableKind(payload.k)) return null;
+    if (payload.p !== "unsub" || typeof payload.u !== "string") return null;
+    if (isRetiredKind(payload.k)) return { userId: payload.u, retired: payload.k };
+    if (!isSwitchableKind(payload.k)) return null;
     return { userId: payload.u, kind: payload.k };
   } catch {
     return null;

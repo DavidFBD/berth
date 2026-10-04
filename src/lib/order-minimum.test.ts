@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { MIN_ORDER_LABEL, MIN_ORDER_USD, isTooSmallQuoteError } from "./order-minimum";
 import { MIN_POUR_USD } from "./pour-amount";
-import { MIN_PLAN_USD } from "./recurring";
 
 describe("the order minimum", () => {
-  it("is one number for pours and plans", () => {
+  it("is one number for every order", () => {
     expect(MIN_POUR_USD).toBe(MIN_ORDER_USD);
-    expect(MIN_PLAN_USD).toBe(MIN_ORDER_USD);
     expect(MIN_ORDER_LABEL).toBe("$1.50");
   });
 

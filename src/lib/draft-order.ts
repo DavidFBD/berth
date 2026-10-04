@@ -242,11 +242,8 @@ export type DraftParams = {
   limitPrice?: number;
   /** A limit order's last day (`until`), "YYYY-MM-DD". */
   expires?: string;
-  /** The recurring plan's run this draft answers (`run`, lib/recurring runDraftUrl). */
-  runId?: string;
 };
 
-const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function readDraftParams(params: URLSearchParams): DraftParams | null {
   const symbol = params.get("open")?.toUpperCase();
@@ -257,7 +254,6 @@ export function readDraftParams(params: URLSearchParams): DraftParams | null {
   const price = Number(params.get("price"));
   const limitPrice = params.has("price") && Number.isFinite(price) && price > 0 ? price : undefined;
   const until = params.get("until");
-  const run = params.get("run");
   return {
     symbol,
     side,
@@ -267,6 +263,5 @@ export function readDraftParams(params: URLSearchParams): DraftParams | null {
       limitPrice,
       ...(until && /^\d{4}-\d{2}-\d{2}$/.test(until) && { expires: until }),
     }),
-    ...(side === "buy" && run && RUN_ID.test(run) && { runId: run.toLowerCase() }),
   };
 }

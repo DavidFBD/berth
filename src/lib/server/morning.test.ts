@@ -5,9 +5,8 @@ import { runMorning } from "./morning";
 
 const holds = async () => ({}) as never;
 const campaigns = async () => ({ advanced: 0, reserved: 0, expired: 0, judged: 0, qualified: 0, notHeld: 0, retried: 0 });
-const recurring = async () => ({ aged: 0, made: 0, emailed: 0, notEmailed: 0, deferred: 0 });
 const emails = async () => ({ retried: 0, sent: 0, gaveUp: 0 });
-const budgets = { holds: 1_000, recurring: 1_000, emails: 1_000, weekly: 50 };
+const budgets = { holds: 1_000, emails: 1_000, weekly: 50 };
 
 describe("runMorning", () => {
   it("runs the weekly summary after the email retry, never beside it", async () => {
@@ -16,7 +15,6 @@ describe("runMorning", () => {
     await runMorning({
       holds,
       campaigns,
-      recurring,
       emails: async () => {
         order.push("emails:start");
         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -43,7 +41,6 @@ describe("runMorning", () => {
         now += 50_000;
         return {} as never;
       },
-      recurring,
       emails,
       weekly: async (budgetMs) => {
         budget = budgetMs;
@@ -54,7 +51,7 @@ describe("runMorning", () => {
         alertsRan = true;
         return { low: 0, sent: 0, already: 0, failed: 0 };
       },
-      budgets: { holds: 1_000, recurring: 1_000, emails: 1_000, weekly: 10_000, run: 57_000 },
+      budgets: { holds: 1_000, emails: 1_000, weekly: 10_000, run: 57_000 },
       clock: () => now,
     });
     // 7s left: the weekly stage gets it less the budget alerts' 4s, and the alerts the rest.
@@ -72,14 +69,13 @@ describe("runMorning", () => {
         now += 58_000;
         return {} as never;
       },
-      recurring,
       emails,
       weekly: async () => ({ week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 }),
       budgetAlerts: async () => {
         alertsRan = true;
         return { low: 0, sent: 0, already: 0, failed: 0 };
       },
-      budgets: { holds: 1_000, recurring: 1_000, emails: 1_000, weekly: 10_000, run: 57_000 },
+      budgets: { holds: 1_000, emails: 1_000, weekly: 10_000, run: 57_000 },
       clock: () => now,
     });
     expect(alertsRan).toBe(false);
@@ -91,7 +87,6 @@ describe("runMorning", () => {
     const summary = await runMorning({
       holds,
       campaigns,
-      recurring,
       emails,
       weekly: async () => ({ week: "2026-W39", sent: 2, empty: 0, notSent: 0, deferred: 0 }),
       budgets,
@@ -100,14 +95,19 @@ describe("runMorning", () => {
     expect(summary.failed).toBe(false);
   });
 
+  it("has no recurring stage: recurring buys were retired on 2026-10-04", async () => {
+    const summary = await runMorning({ holds, campaigns, emails, weekly: async () => ({ week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 }), budgets });
+    expect(summary).not.toHaveProperty("recurring");
+  });
+
   it("reports a weekly stage that throws or overruns without failing the run", async () => {
     const thrown = await runMorning({ holds,
-      campaigns, recurring, emails, weekly: async () => Promise.reject(new Error("db down")), budgets });
+      campaigns, emails, weekly: async () => Promise.reject(new Error("db down")), budgets });
     expect(thrown.weekly).toEqual({ ok: false, error: "db down" });
     expect(thrown.emails.ok).toBe(true);
     expect(thrown.failed).toBe(false);
     const slow = await runMorning({ holds,
-      campaigns, recurring, emails, weekly: () => new Promise(() => undefined), budgets });
+      campaigns, emails, weekly: () => new Promise(() => undefined), budgets });
     expect(slow.weekly).toEqual({ ok: false, error: "over its 50ms budget" });
     expect(slow.failed).toBe(false);
   });
@@ -123,14 +123,13 @@ describe("the morning's worst case", () => {
         return { checked: 0, paid: 0, forfeited: 0, retried: 0 };
       },
       campaigns: async () => ({}) as never,
-      recurring: async () => ({ aged: 0, made: 0, emailed: 0, notEmailed: 0 }) as never,
       emails: async () => ({ retried: 0, sent: 0, gaveUp: 0 }),
       weekly: async () => {
         weeklyCalled = true;
         return { week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 };
       },
       budgetAlerts: async () => ({ low: 0, sent: 0, already: 0, failed: 0 }),
-      budgets: { holds: 60_000, recurring: 1_000, emails: 1_000, weekly: 10_000, run: 57_000 },
+      budgets: { holds: 60_000, emails: 1_000, weekly: 10_000, run: 57_000 },
       clock: () => now,
     });
     expect(weeklyCalled).toBe(false);

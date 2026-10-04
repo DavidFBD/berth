@@ -17,7 +17,6 @@ import {
   type SpokeChainKey,
 } from "@sodax/sdk";
 import type { LimitOrdersResponse } from "@/app/api/limit-orders/route";
-import { RECURRING_QUERY_KEY } from "@/lib/recurring";
 import type { LimitOrderView } from "@/lib/server/limit-orders";
 import { HOME_CHAIN } from "@/lib/account";
 import { COPY } from "@/lib/copy";
@@ -146,8 +145,6 @@ export function useRecordLimitOrder() {
         if (answer?.ok) {
           removePending(spokeTxHash);
           void queryClient.invalidateQueries({ queryKey: LIMIT_ORDERS_QUERY_KEY });
-          // A limit buy can answer a dip plan's run on the server.
-          void queryClient.invalidateQueries({ queryKey: RECURRING_QUERY_KEY });
           return true;
         }
         await new Promise((resolve) => setTimeout(resolve, 3_000 * (attempt + 1)));

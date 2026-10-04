@@ -37,9 +37,17 @@ describe("the privacy policy", () => {
     const resend = text.split("\n").find((line) => line.startsWith("Resend,"));
     for (const line of [weekly, resend]) {
       expect(line).toBeDefined();
-      for (const part of ["recurring buys", "signed or let pass", "friends", "Salutes", "filled"]) expect(line).toContain(part);
+      for (const part of ["friends", "Salutes", "filled"]) expect(line).toContain(part);
+      // Recurring buys were retired on 2026-10-04: the summary no longer carries them.
+      expect(line).not.toContain("recurring");
     }
-    expect(weekly).toContain("next plan's listing and day");
-    expect(resend).toContain("names, dates");
+  });
+
+  it("describes recurring buys only as retired, with no reminder email left", () => {
+    const text = all(COPY.privacyPolicy as typeof COPY.termsOfUse);
+    const lines = text.split("\n").filter((line) => /recurring/i.test(line));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) expect(line).toMatch(/4 October 2026/);
+    expect(text).not.toContain("Recurring buy reminders:");
   });
 });

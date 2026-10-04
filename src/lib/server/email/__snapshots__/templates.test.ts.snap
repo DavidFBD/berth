@@ -134,23 +134,6 @@ Not you? Write to us at support@berthmarkets.com.
 Berth. Wall Street, in your wallet."
 `;
 
-exports[`notice templates > recurring-due renders HTML and text without personal data 1`] = `
-"Subject: Your Monday S&P 500 ETF buy is ready to sign
-
-Your buy is ready
-
-Your Monday buy of $20.00 in S&P 500 ETF is ready. Nothing is bought until you sign.
-
-Not this time? Let it pass. Nothing happens, and the next one comes as planned.
-
-Open it in Berth: https://www.berthmarkets.com/?open=SPY&side=buy&usd=20&run=sample
-
-You get this because you set a recurring buy and its reminders are on.
-Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
-
-Berth. Wall Street, in your wallet."
-`;
-
 exports[`notice templates > staff-reveals renders HTML and text without personal data 1`] = `
 "Subject: Many reveals in the staff area
 
@@ -219,11 +202,6 @@ Beside each, its price's move over the week.
 Orders
 Filled: 3 buys, of which 1 was a limit order
 Limit orders: 1 expired
-
-Recurring buys
-Signed: 1
-Let pass: 1
-Next: S&P 500 ETF, Monday 5 October
 
 Friends
 New friends: 1

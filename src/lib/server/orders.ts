@@ -14,7 +14,6 @@ import {
   readOrder,
   type OrderRecord,
 } from "@/lib/orders";
-import { placeRunForOrder } from "@/lib/server/recurring";
 import { cachedMultiplierHistories, toTokenPrices, type MultiplierReader } from "@/lib/server/token-multipliers";
 import { LLAMA_SHARE_QUOTES_FROM_MS } from "@/lib/token-multiplier";
 
@@ -291,9 +290,7 @@ export async function buildOrder({
  * Insert or complete, returning the row's id. Known values are never
  * overwritten with unknowns. Every path that records a buy comes through
  * here (the pour route, the evening pass over pour claims, a limit order's
- * fill), so this is where a buy answers its recurring run
- * (lib/server/recurring placeRunForOrder, idempotent and owned by the
- * row's own user_id).
+ * fill).
  */
 export async function saveOrder(userId: string | null, order: OrderRecord): Promise<string | undefined> {
   const rows = (await getSql().query(
@@ -338,9 +335,7 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
       order.srcAddress ?? null,
     ],
   )) as { id: string }[];
-  const id = rows[0]?.id;
-  if (id && order.direction === "buy") await placeRunForOrder(id);
-  return id;
+  return rows[0]?.id;
 }
 
 /**
