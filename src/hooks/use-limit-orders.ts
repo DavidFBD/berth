@@ -19,6 +19,7 @@ import {
 import type { LimitOrdersResponse } from "@/app/api/limit-orders/route";
 import type { LimitOrderView } from "@/lib/server/limit-orders";
 import { HOME_CHAIN } from "@/lib/account";
+import { sdkAddress } from "@/lib/chains";
 import { COPY } from "@/lib/copy";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { isWaiting } from "@/lib/limit-orders";
@@ -219,9 +220,9 @@ export function useCancelWaitingOrder() {
         const payload = encodeContractCalls([EvmSolverService.encodeCancelIntent(intent, sodax.config.solver.intentsContract)]);
         const sent = await sodax.spoke.sendMessage({
           srcChainKey: route.chainKey,
-          srcAddress: address,
+          srcAddress: sdkAddress(route.chainKey, address),
           dstChainKey: HUB_CHAIN_KEY,
-          dstAddress: intent.creator,
+          dstAddress: sdkAddress(HUB_CHAIN_KEY, intent.creator),
           payload,
           raw: false,
           walletProvider,

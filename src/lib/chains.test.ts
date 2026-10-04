@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, type XToken } from "@sodax/sdk";
-import { DEPOSIT_SOURCE_CHAINS, getChainName, getDepositTokens, getNativeGasToken, toBalanceReadToken } from "./chains";
+import { DEPOSIT_SOURCE_CHAINS, getChainName, getDepositTokens, getNativeGasToken, isTypedEvmAddress, sdkAddress, toBalanceReadToken } from "./chains";
 import { priceIdFor } from "./orders";
 
 /**
@@ -161,5 +161,30 @@ describe("getDepositTokens on Sonic", () => {
 
   it("leaves other chains' coins under their own names", () => {
     expect(getDepositTokens(ChainKeys.SOLANA_MAINNET).some((token) => token.symbol === "SOL")).toBe(true);
+  });
+});
+
+describe("addresses handed to the SDK", () => {
+  it("checksums an EVM wallet address, on a spoke and on the hub", async () => {
+    const { getAddress } = await import("viem");
+    const lower = "0x52908400098527886e0f7030069857d2e4169ee7";
+    expect(sdkAddress(ChainKeys.BASE_MAINNET, lower)).toBe(getAddress(lower));
+    expect(sdkAddress(ChainKeys.SONIC_MAINNET, lower.toUpperCase().replace("0X", "0x"))).toBe(getAddress(lower));
+  });
+
+  it("leaves every other family exactly as given", () => {
+    const sol = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+    const btc = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
+    expect(sdkAddress(ChainKeys.SOLANA_MAINNET, sol)).toBe(sol);
+    expect(sdkAddress(ChainKeys.BITCOIN_MAINNET, btc)).toBe(btc);
+    expect(sdkAddress(ChainKeys.SUI_MAINNET, `0x${"ab".repeat(32)}`)).toBe(`0x${"ab".repeat(32)}`);
+  });
+
+  it("accepts a typed address in lower case or with a true checksum, and refuses a broken checksum", () => {
+    expect(isTypedEvmAddress("0x52908400098527886e0f7030069857d2e4169ee7")).toBe(true);
+    expect(isTypedEvmAddress("0x52908400098527886E0F7030069857D2E4169EE7")).toBe(true);
+    expect(isTypedEvmAddress("0x52908400098527886E0F7030069857D2E4169Ee7")).toBe(false);
+    expect(isTypedEvmAddress("0x5290840009852788")).toBe(false);
+    expect(isTypedEvmAddress("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed")).toBe(true);
   });
 });

@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { EASE_LIFT } from "@/lib/motion";
-import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
+import { getChainName, getNativeGasToken, isTypedEvmAddress, toBalanceReadToken } from "@/lib/chains";
 import { floorWarns, orderGasShort } from "@/lib/gas-need";
 import { useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
@@ -216,7 +216,7 @@ export function WithdrawDrawer({
   const dstIsEvm = dstChainKey ? isEvmChainKeyType(dstChainKey) : false;
   const customLooksValid =
     trimmedCustom.length > 0 &&
-    (!dstIsEvm || /^0x[a-fA-F0-9]{40}$/.test(trimmedCustom));
+    (!dstIsEvm || isTypedEvmAddress(trimmedCustom));
   const usingCustom = customRecipient !== null;
   const recipient = usingCustom
     ? customLooksValid

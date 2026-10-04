@@ -129,6 +129,28 @@ export function getNativeGasToken(chainKey: SpokeChainKey): XToken | undefined {
 }
 
 /**
+ * A person's address as the SDK must be handed it: on an EVM chain (Sonic
+ * included), in its EIP-55 checksum. From @sodax/sdk 2.2 encodeAddress
+ * rejects mixed case with a wrong checksum, where 2.0.0 passed it through.
+ * Only for addresses a wallet or the chain gave us; a typed address is
+ * checked strictly first (isTypedEvmAddress), so a typo is refused rather
+ * than mended. Any other family, or anything not hex, is returned as is.
+ */
+export function sdkAddress(chainKey: SpokeChainKey, address: string): string {
+  if (!isEvmChainKeyType(chainKey) || !isAddress(address, { strict: false })) return address;
+  return getAddress(address);
+}
+
+/**
+ * Whether a typed EVM address can be sent to: all lower case, or mixed case
+ * with a correct checksum. A mixed case address with a wrong checksum is
+ * most likely mistyped, so it is refused, as the 2.2 SDK would.
+ */
+export function isTypedEvmAddress(address: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(address) && isAddress(address, { strict: true });
+}
+
+/**
  * The SDK registry ships some EVM addresses with broken EIP-55 casing
  * (Polygon WBTC + LINK as of @sodax/sdk 2.x). viem rejects a bad checksum
  * while ENCODING the multicall, which fails every token in the batch and

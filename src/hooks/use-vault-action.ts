@@ -13,6 +13,7 @@ import {
 } from "@sodax/dapp-kit";
 import {
   DEFAULT_RELAY_TX_TIMEOUT,
+  HUB_CHAIN_KEY,
   getChainType,
   getIntentRelayChainId,
   isBitcoinChainKeyType,
@@ -43,7 +44,7 @@ import {
   rawErrorMessage,
   type GasContext,
 } from "@/lib/error-copy";
-import { getChainName, getNativeGasToken, spokeTxUrl } from "@/lib/chains";
+import { getChainName, getNativeGasToken, sdkAddress, spokeTxUrl } from "@/lib/chains";
 import { COPY } from "@/lib/copy";
 import {
   FILL_WATCH_MS,
@@ -1126,7 +1127,7 @@ export function useVaultAction(options?: {
         const buildArgs = {
           vault: args.vault,
           srcChainKey: args.srcChainKey,
-          srcAddress: args.srcAddress,
+          srcAddress: sdkAddress(args.srcChainKey, args.srcAddress),
           inputToken: args.token.address,
           inputAmount: args.inputAmount,
           minOutputAmount: args.minOutputAmount,
@@ -1242,7 +1243,7 @@ export function useVaultAction(options?: {
         const payload = args.deliverTo
           ? {
               ...built.value,
-              params: { ...built.value.params, dstAddress: args.deliverTo },
+              params: { ...built.value.params, dstAddress: sdkAddress(HUB_CHAIN_KEY, args.deliverTo) },
             }
           : built.value;
         if (slow) {
@@ -1336,12 +1337,12 @@ export function useVaultAction(options?: {
         const built = await buildWithdraw.mutateAsyncSafe({
           vault: args.vault,
           srcChainKey: args.srcChainKey,
-          srcAddress: args.srcAddress,
+          srcAddress: sdkAddress(args.srcChainKey, args.srcAddress),
           dstChainKey: args.dstChainKey,
           outputToken: args.outputToken,
           inputAmount: args.inputAmount,
           minOutputAmount: args.minOutputAmount,
-          recipient: args.recipient,
+          recipient: sdkAddress(args.dstChainKey, args.recipient),
           ...(args.limit && { deadline: args.limit.deadline }),
         });
         if (!built.ok) {
