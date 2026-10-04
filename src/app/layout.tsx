@@ -55,7 +55,7 @@ const moneyFont = localFont({
 const TITLE = "Berth · Wall Street, in your wallet.";
 
 const DESCRIPTION =
-  "Wall Street, in your wallet. Real US stocks, bought from your crypto wallet. Pay with stablecoins, ETH, SOL or Bitcoin on more than 20 networks, sign once, and keep what you buy in your own wallet.";
+  "Wall Street, in your wallet. US stocks and funds as tokens that track a share, bought from your crypto wallet. Pay with stablecoins, ETH, SOL or Bitcoin on more than 20 networks, sign once, and hold what you buy in an account your wallet controls.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.berthmarkets.com"),

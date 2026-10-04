@@ -64,8 +64,10 @@ export function requestAvailability(
  * route answers, sign in included, else null. There, Berth offers nothing
  * beyond its public pages, not even to an account that already exists
  * (decided 2026-09-30, for counsel to confirm): no sign in, no buy, sell,
- * withdraw, limit order, plan or assistant approval. The traveller's
- * exception is for the United States and its territories alone.
+ * withdraw, limit order, plan or assistant approval. The places that are
+ * only not offered (TERMS_AVAILABILITY excluded: the United States and its
+ * territories, Russia and Belarus) keep sell, withdraw, cancel and key
+ * export for an account that already exists; that is not this refusal.
  */
 export function refuseSanctioned(headers: HeaderReader, url?: string): NextResponse | null {
   const availability = requestAvailability(headers, { url });

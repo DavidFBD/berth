@@ -1,5 +1,7 @@
 "use client";
 
+import { acceptedFromAnswer, readAtConfirm, type TermsState } from "@/lib/terms-gate";
+import { TERMS_VERSION } from "@/lib/legal-version";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccountHeaders } from "@/hooks/use-profile";
@@ -350,4 +352,48 @@ export function useSocialAction() {
       }
     },
   });
+}
+
+/**
+ * Whether this account accepted the current terms (lib/server/terms-acceptance),
+ * as lib/terms-gate reads it, and the yes. The read never asks a wallet to
+ * sign: a wallet with no session at hand reads as due, and Accept asks for
+ * one. The answer is kept for the visit once known.
+ */
+export function useTermsAcceptance(): { state: TermsState; accept: () => Promise<boolean>; check: () => Promise<boolean> } {
+  const queryClient = useQueryClient();
+  const quiet = useSocialCall({ prompt: false });
+  const asking = useSocialCall({ prompt: true });
+  const queryKey = ["terms-acceptance", quiet.key, TERMS_VERSION] as const;
+  const readAnswer = async () => {
+    const { status, data } = await quiet.call<{ accepted: boolean }>("terms").catch(() => ({ status: null, data: null }));
+    if (status !== 200 && status !== 401 && status !== 403) console.warn("[terms] acceptance read failed, letting the person through", status);
+    return acceptedFromAnswer(status, data);
+  };
+  const query = useQuery({
+    queryKey,
+    enabled: quiet.key !== null,
+    staleTime: Infinity,
+    retry: 1,
+    // Fails open (lib/terms-gate acceptedFromAnswer), as the server does.
+    queryFn: readAnswer,
+  });
+  // No identity at all: nobody to ask yet, and the order drawer's own sign
+  // in step comes first. Once there is an account, the answer is read and
+  // a buy waits on it (lib/terms-gate).
+  const state: TermsState = quiet.key === null ? "accepted" : query.isPending ? "loading" : query.data ? "accepted" : "due";
+  // Read afresh, for the check when a buy is confirmed (lib/terms-gate
+  // confirmBuy). No identity yet: nothing to ask, the drawer's own sign in
+  // comes first.
+  const check = async () => {
+    if (quiet.key === null) return true;
+    return readAtConfirm(query.data, () => queryClient.fetchQuery({ queryKey, queryFn: readAnswer, staleTime: 0 }));
+  };
+  const accept = async () => {
+    const { status, data } = await asking.call<{ accepted: boolean }>("terms-accept", { version: TERMS_VERSION });
+    const accepted = status === 200 && Boolean(data?.accepted);
+    if (accepted) queryClient.setQueryData(queryKey, true);
+    return accepted;
+  };
+  return { state, accept, check };
 }

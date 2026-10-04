@@ -9,6 +9,11 @@ describe("availabilityFor", () => {
     }
   });
 
+  it("treats Russia and Belarus as the United States is treated, with words of their own", () => {
+    for (const code of ["RU", "BY", "ru"]) expect(availabilityFor(code)).toEqual({ available: false, reason: "not-offered" });
+    for (const region of ["MOW", "SPE", null]) expect(availabilityFor("RU", region)).toEqual({ available: false, reason: "not-offered" });
+  });
+
   it("excludes the comprehensively sanctioned countries", () => {
     for (const code of ["CU", "IR", "KP", "SY"]) {
       expect(availabilityFor(code)).toEqual({ available: false, reason: "sanctions" });
@@ -27,17 +32,15 @@ describe("availabilityFor", () => {
     }
     expect(availabilityFor("UA", "11")).toEqual({ available: false, reason: "sanctions" });
     expect(availabilityFor("UA", "20")).toEqual({ available: false, reason: "sanctions" });
-    // The rest of Russia (SE is North Ossetia in ISO 3166-2, not Sevastopol), and a free oblast whose FIPS code is an ISO one elsewhere, pass.
-    for (const region of ["MOW", "ROS", "SPE", "SE", "RU-SE"]) expect(availabilityFor("RU", region).available).toBe(true);
+    // A free oblast whose FIPS code is an ISO one elsewhere passes.
     expect(availabilityFor("UA", "05").available).toBe(true);
-    expect(availabilityFor("RU", null).available).toBe(true);
   });
 
   it("keeps the rest of Ukraine, and a region code that belongs to another country", () => {
     expect(availabilityFor("UA", "30")).toEqual({ available: true });
     expect(availabilityFor("UA", null)).toEqual({ available: true });
-    expect(availabilityFor("RU", "43")).toEqual({ available: true });
-    expect(availabilityFor("RU", "UA-43")).toEqual({ available: true });
+    expect(availabilityFor("KZ", "43")).toEqual({ available: true });
+    expect(availabilityFor("KZ", "UA-43")).toEqual({ available: true });
   });
 
   it("keeps everywhere else, and never refuses on a guess", () => {
@@ -50,6 +53,12 @@ describe("availabilityFor", () => {
       expect(Object.keys(availabilityFor(country, region)).sort()).toEqual(["available", "reason"]);
       expect(JSON.stringify(availabilityFor(country, region))).not.toContain(country);
     }
+  });
+
+  it("names in the terms exactly the places it refuses", () => {
+    const eligibility = COPY.termsOfUse.sections.find((section) => section.id === "eligibility")!.list!.join("\n");
+    for (const place of [...TERMS_AVAILABILITY.excluded, ...TERMS_AVAILABILITY.sanctionedCountries, ...TERMS_AVAILABILITY.sanctionedRegions])
+      expect(eligibility).toContain(place.name);
   });
 
   it("reads the same list the terms name, so the two cannot disagree", () => {
@@ -69,7 +78,7 @@ describe("the landing's words", () => {
   it("use no dashes as punctuation and no emoji", () => {
     const u = COPY.unavailable;
     const text = [
-      u.title, u.sanctionsTitle, u.fundsStay, u.reason["united-states"], u.reason.sanctions, u.nothingKept, u.accountKept, u.readOn, ...Object.values(u.links),
+      u.title, u.sanctionsTitle, u.fundsStay, u.reason["united-states"], u.reason["not-offered"], u.reason.sanctions, u.nothingKept, u.accountKept, u.readOn, ...Object.values(u.links),
       u.support, u.haveAccount, u.drawerTitle, u.drawerBody, u.close, u.authorizeBody,
       u.noAccountTitle, u.noAccountBody, u.signOut, u.banner, u.draftRefused,
     ].join("\n");

@@ -280,7 +280,7 @@ describe("the words", () => {
     expect(COPY.social.shareHoldingsSub).toMatch(/Off unless you turn it on/);
     expect(COPY.firstPath.usernameSub).not.toMatch(/never shows .*what you own/);
     expect(COPY.social.hideSub).toMatch(/do not see what you hold/);
-    expect(COPY.privacyPolicy.status).toBe("Effective 4 October 2026.");
+    expect(COPY.privacyPolicy.status).toBe("Effective 5 October 2026.");
     expect(COPY.social.shareHoldingsSub).toMatch(/including friends you add later/);
   });
 

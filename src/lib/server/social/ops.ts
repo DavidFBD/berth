@@ -3,6 +3,7 @@ import { isReportReason, listBlocked, report, setBlock } from "@/lib/server/soci
 import { friendsBoard } from "@/lib/server/social/board";
 import { friendsHolding } from "@/lib/server/social-proof";
 import { markNoticeSeen, pendingNotices } from "@/lib/server/notices";
+import { acceptTerms, termsStatus } from "@/lib/server/terms-acceptance";
 import { NOT_FOUND, readCard, SIGN_IN } from "@/lib/server/social/cards";
 import { friendAction, friendLink, listFriends, readLinkCard } from "@/lib/server/social/friends";
 import { checkHandle, mySocial, setHandle, setLinkFace, setShareHoldings, setVisible } from "@/lib/server/social/handles";
@@ -140,6 +141,17 @@ export async function runSocialOp(
     case "notice-seen": {
       if (!(await take("settings"))) return slow;
       return (await markNoticeSeen(viewer.id, body.notice)) ? ok({ ok: true }) : bad("notice");
+    }
+    // The terms this account accepted (lib/server/terms-acceptance), for any signed in account.
+    case "terms":
+      return ok(await termsStatus(viewer.id));
+    case "terms-accept": {
+      if (!(await take("settings"))) return slow;
+      const result = await acceptTerms(viewer.id, body.version);
+      if (result === "refused") return bad("version");
+      // A failed write fails quietly: the person goes on, unrecorded.
+      if (result === "failed") return ok({ version: body.version, accepted: true, acceptedAt: null, failedOpen: true });
+      return ok(await termsStatus(viewer.id));
     }
     case "holding":
       if (!(await take("holding"))) return slow;

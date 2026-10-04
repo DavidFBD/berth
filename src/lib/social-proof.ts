@@ -269,5 +269,7 @@ export function holdsListings(holdings: FriendHoldingsFact["holdings"], listed: 
 
 /** The once per account in-app notice of the two counts and the new switch (lib/server/notices). */
 export const SOCIAL_NOTICE_ID = "social-proof-2026-10";
+/** The once per account in-app notice of the terms and privacy policy effective 5 October 2026, Most held included. */
+export const POLICY_NOTICE_ID = "policy-2026-10-05";
 /** Every notice an account may be told once; the server answers only these. */
-export const ACCOUNT_NOTICES: readonly string[] = [SOCIAL_NOTICE_ID];
+export const ACCOUNT_NOTICES: readonly string[] = [SOCIAL_NOTICE_ID, POLICY_NOTICE_ID];

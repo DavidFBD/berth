@@ -296,6 +296,33 @@ describe("limit orders", () => {
   });
 });
 
+describe("Russia and Belarus, not offered as the United States is not", () => {
+  const NOT_OFFERED: Availability = { available: false, reason: "not-offered" };
+  const verified = () => verifyPourTx.mockResolvedValue({ ok: true, intent: { id: "i" }, sodax: {} });
+
+  it("records a buy there with no XP and no reward, and still records and pays a sell", async () => {
+    availability = NOT_OFFERED;
+    verified();
+    const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    expect((await pour.POST(post("/api/xp/pour", { direction: "in", intentTxHash: TX }))).status).toBe(200);
+    expect(noXp.markNoXp).toHaveBeenCalledWith(TX);
+    expect(claims.awardFilledPour).not.toHaveBeenCalled();
+    log.mockRestore();
+    vi.clearAllMocks();
+    verified();
+    expect((await pour.POST(post("/api/xp/pour", { direction: "out", intentTxHash: TX }))).status).toBe(200);
+    expect(claims.awardFilledPour).toHaveBeenCalledOnce();
+    expect(noXp.markNoXp).not.toHaveBeenCalled();
+  });
+
+  it("refuses a limit buy there, and lets a limit sell be placed and an order be cancelled", async () => {
+    availability = NOT_OFFERED;
+    await expectRefused(await limit.POST(post("/api/limit-orders", { action: "record", intentTxHash: TX, direction: "buy" })));
+    expect((await limit.POST(post("/api/limit-orders", { action: "record", intentTxHash: TX, direction: "sell" }))).status).toBe(200);
+    expect((await limit.POST(post("/api/limit-orders", { action: "cancelAsked", intentTxHash: TX, cancelTxHash: TX }))).status).toBe(200);
+  });
+});
+
 describe("connecting an assistant", () => {
   it("refuses an approval where Berth is not available, and issues no code", async () => {
     availability = AWAY;

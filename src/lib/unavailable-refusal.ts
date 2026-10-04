@@ -26,7 +26,7 @@ export function noteUnavailable(path: string, reason: UnavailableReason = "unite
 /** The reason in a 451's body, read without consuming the response. */
 export async function unavailableReasonOf(response: Response): Promise<UnavailableReason> {
   const body = (await response.clone().json().catch(() => ({}))) as { reason?: unknown };
-  return body.reason === "sanctions" ? "sanctions" : "united-states";
+  return body.reason === "sanctions" || body.reason === "not-offered" ? body.reason : "united-states";
 }
 
 /** Whether a response is the availability refusal. */

@@ -1892,6 +1892,22 @@ create table if not exists account_notices (
   primary key (user_id, notice)
 );
 
+-- The terms each account accepted (lib/server/terms-acceptance): one row
+-- per account and version, written once by the terms sheet's Accept and
+-- never updated. `version` is lib/legal-version TERMS_VERSION, an ISO date;
+-- a new version has no row, so the next buy asks again. Nothing else about
+-- the moment is kept.
+-- A merge of two accounts (merge_accounts) carries no acceptance over, on
+-- purpose: assent is one person's yes on one account, so the survivor is
+-- asked again if only the absorbed account accepted. Do not "fix" this
+-- into a silent transfer.
+create table if not exists terms_acceptances (
+  user_id uuid not null references users(id) on delete cascade,
+  version text not null,
+  accepted_at timestamptz not null default now(),
+  primary key (user_id, version)
+);
+
 -- Most bought on Berth (lib/server/social-proof): one stored answer per
 -- fixed Monday to Sunday UTC week, written once by the first request after
 -- the week is published (insert on conflict do nothing) and served as is

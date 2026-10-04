@@ -110,6 +110,7 @@ export function DepositDrawer({
   prefill,
   devHoldings,
   devLimit,
+  confirmTerms,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -122,6 +123,12 @@ export function DepositDrawer({
   onTopUp?: () => void;
   /** Optional: fired once when the order fills. */
   onPoured?: () => void;
+  /**
+   * Optional: the terms check at the moment the buy is confirmed, before
+   * the wallet is asked (lib/terms-gate confirmBuy). False holds the order
+   * where it is, drawer open, amount kept.
+   */
+  confirmTerms?: () => Promise<boolean>;
   /**
    * Optional: an amount to start from, in dollars, from a draft an
    * assistant made (lib/draft-order). Filled in once the pay token is
@@ -454,6 +461,7 @@ export function DepositDrawer({
     }
   };
 
+  const [checkingTerms, setCheckingTerms] = useState(false);
   const handleDeposit = async () => {
     const minOut = limit.active ? limitMin : quote.minOut;
     if (
@@ -468,6 +476,12 @@ export function DepositDrawer({
     ) {
       limit.setReviewing(false);
       return;
+    }
+    if (confirmTerms) {
+      // A spinner on Buy while the terms are read (at most a few seconds, lib/terms-gate).
+      setCheckingTerms(true);
+      const go = await confirmTerms().finally(() => setCheckingTerms(false));
+      if (!go) return;
     }
     await action.runDeposit({
       vault: listing.address,
@@ -523,7 +537,7 @@ export function DepositDrawer({
     payerLinked: !isBuy || (isEvmChainKeyType(srcChainKey) ? account.signerLinked : payer.state !== "unlinked"),
     gasShort: selectedGasShort,
   });
-  const cta: Cta = (() => {
+  const cta: Cta = checkingTerms ? { label: copy.buy, disabled: true, busy: true } : (() => {
     switch (gate.kind) {
       case "noAccount":
         return {

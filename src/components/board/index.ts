@@ -7,7 +7,7 @@ export { ListingBoard } from "./listing-board";
 export { MarketPreview } from "./market-preview";
 export { NewsFeed } from "./news-feed";
 export { NudgeLine, NudgeLineView } from "./nudge-line";
-export { SocialNoticeLine, SocialNoticeLineView } from "./social-notice-line";
+export { PolicyNoticeLine, PolicyNoticeLineView, SocialNoticeLine, SocialNoticeLineView } from "./social-notice-line";
 export { Sparkline } from "./sparkline";
 export {
   WaitingOrders,

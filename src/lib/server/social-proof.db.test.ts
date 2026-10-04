@@ -6,7 +6,7 @@ import { markNoticeSeen, pendingNotices } from "./notices";
 import { readCard } from "./social/cards";
 import { mySocial, setShareHoldings } from "./social/handles";
 import { runSocialOp } from "./social/ops";
-import { SOCIAL_NOTICE_ID, publishedWeek } from "@/lib/social-proof";
+import { POLICY_NOTICE_ID, SOCIAL_NOTICE_ID, publishedWeek } from "@/lib/social-proof";
 
 /**
  * The two social counts against the real schema (PGlite): which orders
@@ -336,15 +336,17 @@ describe("what friends hold", () => {
   });
 });
 
-describe("the notice said once per account", () => {
-  it("is due until closed, and closing it twice changes nothing", async () => {
+describe("the notices said once per account", () => {
+  it("are due until closed, each on its own, and closing one twice changes nothing", async () => {
     const id = await account();
-    expect(await pendingNotices(id)).toEqual([SOCIAL_NOTICE_ID]);
+    expect(await pendingNotices(id)).toEqual([SOCIAL_NOTICE_ID, POLICY_NOTICE_ID]);
     expect(await markNoticeSeen(id, SOCIAL_NOTICE_ID)).toBe(true);
     expect(await markNoticeSeen(id, SOCIAL_NOTICE_ID)).toBe(true);
+    expect(await pendingNotices(id)).toEqual([POLICY_NOTICE_ID]);
+    expect(await markNoticeSeen(id, POLICY_NOTICE_ID)).toBe(true);
     expect(await pendingNotices(id)).toEqual([]);
     expect(await markNoticeSeen(id, "anything-else")).toBe(false);
     const viaRoute = await runSocialOp("notices", {}, { viewer: { id: await account(), email: null }, anonKey: "k" });
-    expect(viaRoute.body).toEqual({ pending: [SOCIAL_NOTICE_ID] });
+    expect(viaRoute.body).toEqual({ pending: [SOCIAL_NOTICE_ID, POLICY_NOTICE_ID] });
   });
 });

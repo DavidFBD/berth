@@ -12,7 +12,7 @@ import type { OgPerson } from "@/lib/og/card";
 
 const INVITE_TITLE = "A friend invited you to Berth";
 const INVITE_DESCRIPTION =
-  "Wall Street, in your wallet. Buy US stocks with the crypto you hold, on more than 20 networks, and keep them in your own wallet. Your first trade earns you both XP.";
+  "Wall Street, in your wallet. Buy US stocks with the crypto you hold, on more than 20 networks, held in an account your wallet controls. Your first trade earns you both XP.";
 
 /**
  * The invite card picture is app/r/opengraph-image.tsx (lib/og/card). The

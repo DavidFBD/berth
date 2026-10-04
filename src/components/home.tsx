@@ -12,6 +12,7 @@ import {
   AccountTotal,
   CashShelf,
   EmailNudgeLine,
+  PolicyNoticeLine,
   SocialNoticeLine,
   HoldingsList,
   ListingBoard,
@@ -62,6 +63,9 @@ import { ChatButton } from "@/components/chat/chat-button";
 import type { ChatDraft } from "@/components/chat/chat-parts";
 import { draftOpening, type BuyPrefill, type SellPrefill } from "@/lib/draft-open";
 import { useAccountHeaders } from "@/hooks/use-profile";
+import { useTermsAcceptance } from "@/hooks/use-social";
+import { confirmBuy, latchGate, termsGate, type TermsGate } from "@/lib/terms-gate";
+import { TermsSheet } from "@/components/terms-sheet";
 import { NoAccountHere, NotHereBanner, useAvailability } from "@/components/availability/availability";
 import { useUnavailableRefused } from "@/lib/unavailable-refusal";
 import { FirstPathProvider, HomePathCard, pathOnScreen, useLiveFirstPath } from "@/components/first-path";
@@ -371,9 +375,47 @@ function SignedInHome() {
     setBoardReturn(false);
     setBoardOpen(true);
   };
+  // The terms, asked once per version before a buy or a sell (lib/terms-gate):
+  // a buy waits for Accept, a sell may go on without it. Where buying is
+  // not offered the buy drawer says so itself, so it is not asked there.
+  const terms = useTermsAcceptance();
+  const [sellSkippedTerms, setSellSkippedTerms] = useState(false);
+  // Decided once per opening (lib/terms-gate latchGate): what an opening
+  // showed is kept in state, so an answer that lands later never closes an
+  // order drawer that is already open.
+  const [buyLatch, setBuyLatch] = useState<TermsGate | null>(null);
+  const [sellLatch, setSellLatch] = useState<TermsGate | null>(null);
+  const buyGate = buyOpen ? latchGate(buyLatch, pageAvailability.available ? termsGate("buy", terms.state, sellSkippedTerms) : "drawer") : null;
+  const sellGate = sellOpen ? latchGate(sellLatch, termsGate("sell", terms.state, sellSkippedTerms)) : null;
+  if (buyGate !== buyLatch) setBuyLatch(buyGate);
+  if (sellGate !== sellLatch) setSellLatch(sellGate);
+  // A sell opened before the answer came counts as let through for the visit.
+  if (sellGate === "drawer" && sellLatch === null && terms.state === "loading" && !sellSkippedTerms) setSellSkippedTerms(true);
+  const termsSheetFor = buyGate === "sheet" || buyGate === "wait" ? "buy" : sellGate === "sheet" ? "sell" : null;
+  // The last check, when a buy is confirmed inside an open drawer (someone
+  // who signed in there was never asked): the sheet opens over the drawer,
+  // and Accept goes on with the same order. A sell never asks.
+  const [confirmAsk, setConfirmAsk] = useState(false);
+  const confirmAnswer = useRef<((accepted: boolean) => void) | null>(null);
+  const answerConfirm = (accepted: boolean) => {
+    confirmAnswer.current?.(accepted);
+    confirmAnswer.current = null;
+    setConfirmAsk(false);
+  };
+  const confirmTerms = () =>
+    confirmBuy({
+      check: terms.check,
+      ask: () =>
+        new Promise<boolean>((resolve) => {
+          confirmAnswer.current = resolve;
+          setConfirmAsk(true);
+        }),
+    });
   const onBuyOpenChange = (next: boolean) => {
     setBuyOpen(next);
     if (!next) {
+      // A buy closed while the last check asks: the order is not placed.
+      if (confirmAnswer.current) answerConfirm(false);
       returnToChat();
       returnToBoard();
     }
@@ -549,6 +591,8 @@ function SignedInHome() {
                 hidden={waitingOrdersShowing || unlinkedWalletShowing || pathShown}
                 onOpen={openAccountForFriends}
               />
+              {/* Once per account, after the social notice: the new terms and privacy policy. */}
+              <PolicyNoticeLine hidden={waitingOrdersShowing || unlinkedWalletShowing || pathShown} />
               <NudgeLine
                 hide={pathShown || pathWaiting ? NUDGES_SAID_BY_PATH : stage ? NUDGES_SAID_BY_STEP[stage] : undefined}
                 onAddFunds={openAddMoney}
@@ -634,7 +678,8 @@ function SignedInHome() {
         <DepositDrawer
           listing={buyListing}
           prefill={buyPrefill}
-          open={buyOpen}
+          open={buyGate === "drawer"}
+          confirmTerms={pageAvailability.available ? confirmTerms : undefined}
           onOpenChange={onBuyOpenChange}
           onConnectWallet={openWallet}
           onSignIn={privy.enabled ? privy.login : undefined}
@@ -648,9 +693,24 @@ function SignedInHome() {
         <SellHost
           listing={sellListing}
           prefill={sellPrefill}
-          open={sellOpen}
+          open={sellGate === "drawer"}
           onOpenChange={onSellOpenChange}
           onConnectWallet={openWallet}
+        />
+        <TermsSheet
+          open={termsSheetFor !== null || confirmAsk}
+          purpose={confirmAsk ? "buy" : (termsSheetFor ?? "buy")}
+          pending={!confirmAsk && buyGate === "wait"}
+          onAccept={async () => {
+            const saved = await terms.accept();
+            if (saved && confirmAsk) answerConfirm(true);
+            return saved;
+          }}
+          onLeave={() => {
+            if (confirmAsk) answerConfirm(false);
+            else if (termsSheetFor === "sell") setSellSkippedTerms(true);
+            else onBuyOpenChange(false);
+          }}
         />
         <WithdrawHost
           vault={withdrawVault}

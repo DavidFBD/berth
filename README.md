@@ -2,11 +2,11 @@
 
 Wall Street, in your wallet.
 
-Buy US stocks with the crypto you hold, and keep them in your own wallet.
+Buy US stocks with the crypto you hold, held in an account your wallet controls.
 Berth is software, not a broker. Choose what to pay with (stablecoins, ETH,
 SOL or Bitcoin, on more than 20 networks), sign once in your own wallet, and
-independent solvers fill the order through SODAX. What you buy lands with
-you. Each stock is a token that tracks a share, issued by a third party, and
+solvers fill the order through SODAX. What you buy lands in your own Berth
+account on the SODAX hub, designed so that only your wallet's signature moves it. Each stock is a token that tracks a share, issued by a third party, and
 it can be bought and sold any day, weekends included.
 Berth never holds your keys or your funds. Not available in the United States
 or where local law or sanctions forbid it.

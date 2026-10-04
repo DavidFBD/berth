@@ -15,6 +15,7 @@
 import type { Unlock } from "@/lib/unlocks";
 import type { BerthToolName } from "@/lib/berth-tool-names";
 import { REWARD_REASONS } from "@/lib/xp";
+import { LEGAL_EFFECTIVE_DATE } from "@/lib/legal-version";
 import type { ConsentParty } from "@/lib/assistant-party";
 import type { HandleRefusal } from "@/lib/handle";
 import type { Currency } from "@/lib/currencies";
@@ -117,7 +118,7 @@ export type Copy = {
     /** There, instead of "nothing was stored": what someone who holds something needs to hear. */
     fundsStay: string;
     /** Why, in one line, by reason. */
-    reason: { "united-states": string; sanctions: string };
+    reason: { "united-states": string; "not-offered": string; sanctions: string };
     /** Only to a visitor with no account: before any sign in, nothing was kept. */
     nothingKept: string;
     /** To a signed in account instead: its data is kept, as it always is. */
@@ -305,6 +306,27 @@ export type Copy = {
   friendsHoldMore: (more: number) => string;
   /** The once per account notice of the two social counts (components/board/social-notice-line). */
   socialNotice: { text: string; action: string; dismiss: string };
+  /** The once per account notice of the new terms and privacy policy (POLICY_NOTICE_ID). */
+  policyNotice: { text: string; terms: string; privacy: string; dismiss: string };
+  /**
+   * The sheet that asks once for the terms (components/terms-sheet), before
+   * the first buy or sell under a new version. A buy waits for Accept; a
+   * sell may go on without it.
+   */
+  termsSheet: {
+    title: string;
+    lede: string;
+    summary: (feePct: string) => readonly string[];
+    read: string;
+    terms: string;
+    privacy: string;
+    accept: string;
+    notNow: string;
+    buyNote: string;
+    continueSell: string;
+    sellNote: string;
+    failed: string;
+  };
   newsMoreStories: string;
   /** The Ask card's fake field and the phone's docked one. */
   askPlaceholder: string;
@@ -2241,7 +2263,12 @@ export const PRIVACY_OPERATOR = {
   name: "David",
   email: "support@berthmarkets.com",
   country: "the Netherlands",
+  /** How both legal pages name the operator while Berth has no company. */
+  description: "David, an individual based in the Netherlands",
 } as const;
+
+/** The one effective date both legal pages carry, and their "What changed" headings (lib/legal-version). */
+export { LEGAL_EFFECTIVE_DATE };
 
 /**
  * Where Berth may be used, as the terms of use state it, and the one list
@@ -2280,17 +2307,36 @@ export const PRIVACY_OPERATOR = {
  *   nothing here can tell it apart, and it passes.
  */
 export const TERMS_AVAILABILITY = {
-  /** Not offered at all: the stock tokens are issued for people outside it. */
-  excluded: [{ name: "the United States", countries: ["US", "PR", "GU", "VI", "AS", "MP", "UM"] }],
+  /**
+   * Not offered: no new account, buy, limit buy, reward, XP or assistant
+   * connection, while an account that already exists can always see, sell,
+   * withdraw, cancel a limit order, cash out and export its keys.
+   * `reason` picks the landing's words; `persons` also bars the country's
+   * citizens and residents wherever they are, as the terms say.
+   * Russia and Belarus (2026-10-04): under wide EU sanctions on financial
+   * and crypto services to their residents. They were open until then, so
+   * accounts there likely exist, and their holdings sit in a SODAX hub
+   * wallet reachable only through an app like Berth; they get this
+   * treatment, not the sanctioned one, so no one there is cut off from
+   * what they hold.
+   */
+  excluded: [
+    { name: "the United States", countries: ["US", "PR", "GU", "VI", "AS", "MP", "UM"], reason: "united-states", persons: true },
+    { name: "Russia", countries: ["RU"], reason: "not-offered", persons: false },
+    { name: "Belarus", countries: ["BY"], reason: "not-offered", persons: false },
+  ],
   /**
    * Under comprehensive sanctions: whole countries. Here, and in the
    * regions below, Berth serves nothing beyond its public pages, not even
    * an account that already exists: no sign in, buy, sell, withdraw, limit
-   * order, plan or assistant approval (decided 2026-09-30). The traveller's
-   * exception is for the United States and its territories only.
+   * order, plan or assistant approval (decided 2026-09-30). The exception
+   * for an existing account (see, sell, withdraw, cancel, export keys) is
+   * for the places in `excluded` only: the United States and its
+   * territories, Russia and Belarus.
    * TODO(David): confirm with counsel, both the lists and that a person
-   * there must not even withdraw through Berth (their funds stay in their
-   * own wallet either way).
+   * there must not even withdraw through Berth. Their holdings stay in their
+   * Berth account on the SODAX hub, but reaching them needs software that
+   * can instruct SODAX's contracts, and Berth will not serve them there.
    */
   sanctionedCountries: [
     { name: "Cuba", countries: ["CU"] },
@@ -2392,10 +2438,11 @@ export const COPY: Copy = {
   unavailable: {
     title: "Berth isn't available where you are",
     sanctionsTitle: "Berth can't serve this place",
-    fundsStay: "Anything you hold stays in your own wallet. Berth never held it, so nothing of yours is kept here.",
+    fundsStay: "Anything you hold stays in your own wallet, or in your Berth account, which your wallet controls. Berth never held it, so nothing of yours is kept here.",
     reason: {
       "united-states":
         "The stocks on Berth are tokens issued for people outside the United States, so Berth can't open an account or take an order here.",
+      "not-offered": "Berth isn't offered in this country, so it can't open an account or take an order here.",
       sanctions:
         "Berth can't be used from a country or region under sanctions, so it offers nothing here beyond these public pages.",
     },
@@ -2431,7 +2478,7 @@ export const COPY: Copy = {
     askPrompt: (name) => `What has been in the news about ${name} this week?`,
     firstStockTitle: "Your first stock",
     firstStockLine: (name) =>
-      `${name} is in your account as a token that tracks its share price. It is yours, in your own wallet, and you can sell it any day under What you own.`,
+      `${name} is in your account as a token that tracks its share price. It is yours, in an account your wallet controls, and you can sell it any day under What you own.`,
     dismiss: "Got it",
   },
   calmHome: {
@@ -2523,7 +2570,7 @@ export const COPY: Copy = {
     colosseum: { label: "Colosseum 2026 entry", href: "https://colosseum.com/" },
     sections: {
       what: {
-        title: "US stocks and funds, held in your own wallet.",
+        title: "US stocks and funds, in an account your wallet controls.",
         line: "NVIDIA, Apple, Tesla, the S&P 500 ETF, Gold and more, priced live. Each is a token that tracks a share.",
       },
       pay: {
@@ -2595,6 +2642,31 @@ export const COPY: Copy = {
   socialNotice: {
     text: "New: each week, the board shows how many people bought each stock, never who. You can also let friends see which stocks and funds you hold. It is off unless you turn it on.",
     action: "See the switch",
+    dismiss: "Got it",
+  },
+  termsSheet: {
+    title: "Berth's terms",
+    lede: "Before you go on, the short version.",
+    summary: (feePct) => [
+      "Berth is software, not a broker or an adviser. Nothing in it is advice.",
+      "You sign every order yourself. Berth never holds your keys or your money.",
+      "The stocks are tokens issued by others that track a share. They are not the share, and you can lose what you put in.",
+      `Berth takes a ${feePct} fee on every order.`,
+    ],
+    read: "The full text:",
+    terms: "Terms of use",
+    privacy: "Privacy policy",
+    accept: "Accept",
+    notNow: "Not now",
+    buyNote: "Selling and withdrawing never wait on this.",
+    continueSell: "Sell without accepting",
+    sellNote: "You can sell without accepting. Buying waits until you do.",
+    failed: "That did not save. Try again.",
+  },
+  policyNotice: {
+    text: `Our terms and privacy policy are new from ${LEGAL_EFFECTIVE_DATE}. They say more plainly what Berth is and is not, and from the week of 19 October the board shows Most held on Berth: a rounded share of the people who hold each stock or fund, never who.`,
+    terms: "Terms",
+    privacy: "Privacy",
     dismiss: "Got it",
   },
   newsMoreStories: "More stories",
@@ -2931,7 +3003,7 @@ export const COPY: Copy = {
   infoOwnBody:
     "A Robinhood Stock Token is a debt security issued by Robinhood Assets in Jersey that tracks the price of a share and its dividends. It is not the share itself: no voting rights, and the issuer's credit risk sits with you. Cash you park is a token tracking a fund of short US Treasury bills.",
   infoFees: (feePct) =>
-    `Every buy and sell includes a ${feePct} fee, taken from the amount before the order is filled. There are no other charges from Berth.`,
+    `Every order includes a ${feePct} fee, taken from the amount before the order is filled. There are no other charges from Berth.`,
   infoBuiltTitle: "How it was built",
   infoBuiltBody:
     "On the SODAX System, which reaches more than 20 networks, native Bitcoin among them, and written with Claude in the open.",
@@ -3077,7 +3149,7 @@ export const COPY: Copy = {
   nudgeCopiedTitle: "Message copied",
   nudgeCopiedSub: "Send it however you like.",
   nudgeMessage: (amount, link) =>
-    `I have a place for you at Berth. Buy US stocks with the crypto you hold, and keep them in your own wallet. Your first trade earns us both ${amount} XP: ${link}`,
+    `I have a place for you at Berth. Buy US stocks with the crypto you hold, held in an account your wallet controls. Your first trade earns us both ${amount} XP: ${link}`,
   ledgerTitle: "Activity",
   ledgerLoading: "Loading…",
   ledgerEmpty: "Nothing yet. Your first trade will show here.",
@@ -3532,27 +3604,27 @@ export const COPY: Copy = {
   privacyLink: "Privacy",
   privacyPolicy: {
     title: "Privacy policy",
-    status: "Effective 4 October 2026.",
+    status: `Effective ${LEGAL_EFFECTIVE_DATE}.`,
     intro: [
-      "This policy explains what Berth collects when you use www.berthmarkets.com and the Berth connector for your AI, why, who else sees it, how long we keep it, and what you can ask of us.",
-      "Berth is self custodial. We never hold your keys and we never hold your money.",
+      "This policy explains what Berth collects when you use www.berthmarkets.com, the Berth app and the Berth connector for your AI, why, on what legal basis, who else receives it, how long we keep it, and what you can ask of us.",
+      "Berth is self custodial. We never hold your keys and we never hold your money. Our servers hold no key that can sign for you.",
     ],
     sections: [
       {
         id: "who-we-are",
         heading: "Who we are",
         body: [
-          `Berth is operated by ${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country} ("we" or "us"). We are the controller of the personal data described here.`,
+          `Berth is operated by ${PRIVACY_OPERATOR.description} ("we" or "us"). We are the controller of the personal data described here.`,
           `For any question or request about this policy, write to ${PRIVACY_OPERATOR.email}. This includes requests from the European Union and the United Kingdom.`,
         ],
       },
       {
         id: "what-we-collect",
-        heading: "What we collect and why",
+        heading: "What we collect",
         body: ["We keep only what the app needs to work. This is all of it."],
         list: [
           "Your sign in. If you sign in with email, our sign in provider Privy checks the address and gives us an account identifier. We store that identifier and your email address. If you sign in with a wallet, we store its public address, after you sign a free message that proves the wallet is yours.",
-          "Your account. The avatar you pick, your XP and rank, the rewards you earned and when, your invite code, and who invited you, if anyone.",
+          "Your account. The avatar you pick, your XP and rank, the rewards you earned and when, your invite code, who invited you, if anyone, and which version of the terms you accepted and when.",
           "Your orders. For each order: buy or sell, which listing, the quantity, what you paid with and on which network, the fee, the value in dollars, the transaction identifiers, the delivery address, and the time. We also keep the price of each comparison fund at the minute of the order, so your results can be drawn beside it.",
           "Recurring buys you set before Berth retired them on 4 October 2026. For each plan: the listing, the dollar amount, weekly or monthly and on which day, your browser's time zone, and, if you chose it, how far under the price to wait. For each time a plan came due: when it was due, whether you opened it, signed it or let it pass, the order that answered it, and whether its reminder went out. Berth no longer reads or adds to this record.",
           "Your daily value. Once a day, after the New York close, we read your balances from the blockchain and keep that day's holdings and value, so your history can be drawn.",
@@ -3562,13 +3634,33 @@ export const COPY: Copy = {
           "Error reports. When an order fails or does not settle, the app sends a report so we can fix the cause: the step it stopped at, the networks, the token and amount, the transaction hashes, a shortened form of your address, the error text, recent app logs, the page address, your screen size and your browser's user agent. Keys and tokens are removed first, and it never includes your email address.",
           "Usage statistics, only if you allow it. We count page views with Vercel Web Analytics, which uses no cookies, and send it each page's address without anything in it that could name you, under the same Help improve Berth choice as product analytics.",
           "Product analytics, only if you allow it. Which screens you open and which steps you take, and a replay of how you moved through the app with every amount, balance, address and name hidden, through PostHog. See Product analytics below.",
-          "Your country. With each visit and each request to your account, our host Vercel tells us the country your connection comes from, and for some countries its region, so Berth can say where it is not offered and not open an account or take an order there. We use it for that one answer and do not store or log it. This rests on our duty to offer Berth only where it may be offered.",
+          "Your country. With each visit and each request to your account, our host Vercel tells us the country your connection comes from, and for some countries its region, so Berth can say where it is not offered and not open an account or take an order there. We use it for that one answer and do not store or log it.",
           "Emails we send. For each notice: its type, what it was about (an order, a connection), whether it was sent, and the email provider's message identifier. Never the email's text: while a notice waits to be sent again, we keep only what it will name (such as a listing, a price or a shortened wallet address), and delete that once it is sent. Your choices of which emails to get, and whether mail to your address bounced or was reported as spam.",
         ],
         after: [
-          "We use this to run your account, show what you own and how it has done, check an order before a reward is paid for it, pay invite and campaign rewards, keep the service secure, limit abuse, and fix what breaks.",
           "We do not sell personal data. We do not use it for advertising, and we do not build profiles of you for anyone else.",
-          "Where the law asks for a legal basis: running your account and your orders is necessary to provide the service you asked for. Security, abuse limits and error reports rest on our legitimate interest in a service that works and is safe. Usage statistics and product analytics rest on your consent, which you give and take back under Help improve Berth. Most bought on Berth rests on our legitimate interest in showing what people on Berth buy, with the safeguards described under Your profile and friends. Showing your friends what you hold rests on your consent, which you give and take back with its switch. For anything else, we will ask you first.",
+        ],
+      },
+      {
+        id: "legal-bases",
+        heading: "Why we use it, and on what basis",
+        body: ["Each use rests on one legal basis under the General Data Protection Regulation and the laws like it."],
+        list: [
+          "To run your account, show what you own and how it has done, carry out the orders you sign and keep their history: necessary to provide the service you asked for.",
+          "Your profile, friends and Salutes, and the AI apps you connect: necessary to provide the parts of the service you chose to use. You can stop at any time.",
+          "Security, abuse limits, error reports, the check of an order before a reward is paid for it, and the record of what staff at Berth did: our legitimate interest in a service that is safe, works and is used fairly.",
+          "The check of the country your connection comes from: our legal obligations under sanctions law, and our legitimate interest in offering Berth only where we have chosen to offer it.",
+          "Records of orders and the fees they paid: our legal obligations under tax and accounting law.",
+          "Email. Security notices rest on our legitimate interest in telling you when your account changes. Order and friend notices are part of the service you asked for, and you can turn them off. The weekly summary rests on your consent, given when you turn it on.",
+          "Campaign rewards: necessary to pay a reward under the campaign's rules. The checks against abuse rest on our legitimate interest in paying each reward once, to the right person.",
+          "Usage statistics and product analytics: your consent, which you give and take back under Help improve Berth. That one choice also covers what analytics keeps in your browser.",
+          "Showing your friends what you hold: your consent, which you give and take back with its switch.",
+          `Most bought on Berth and Most held on Berth: our legitimate interest in showing what people on Berth buy and hold, in figures that name no one, with the safeguards described under Your profile and friends.`,
+          "Choosing the one news line at the top of the app: our legitimate interest in showing news that is relevant to your account.",
+        ],
+        after: [
+          "Where we rely on legitimate interest, you can object, as described under Your choices and rights. Where we rely on consent, you can take it back at any time, which does not affect what was done before. For any new use, we will tell you first, and ask you where the law requires it.",
+          "No decision with a legal or similarly significant effect on you is made by software alone. Software checks a campaign's rules, and can close a claim that does not meet them; a person at Berth approves every reward, and you can ask for a person to look again at any refusal.",
         ],
       },
       {
@@ -3588,15 +3680,15 @@ export const COPY: Copy = {
         id: "never-collect",
         heading: "What we never collect",
         body: [
-          "We never see or store your seed phrase or private keys. If you sign in with a wallet, the keys stay in your wallet. If you sign in with email, your wallet is created and secured by Privy, and you can export its keys at any time. Berth cannot sign for you and cannot move your money.",
-          "We do not collect identity documents, bank details or card numbers. If you add funds by card inside Berth, the purchase is handled by the provider shown on that screen, under its own terms and privacy policy, and we do not receive your card details.",
+          "We never see or store your seed phrase or private keys. If you sign in with a wallet, the keys stay in your wallet. If you sign in with email, your wallets are created by Privy and their keys are secured in Privy's systems, for you to use when signed in and to export at any time. Berth has not been given any permission to sign for you, cannot sign for you and cannot move your money.",
+          "We do not ask for identity documents, bank details or card numbers. If you add funds by card inside Berth, the purchase is handled by the provider shown on that screen, under its own terms and privacy policy, and we do not receive your card details.",
         ],
       },
       {
         id: "onchain",
         heading: "The blockchain is public",
         body: [
-          "Orders settle on public blockchains. Your addresses, balances and transactions can be seen by anyone, permanently. No one controls that record, and no one, including us, can change or delete it.",
+          "Orders settle on public blockchains. Your addresses, balances and transactions, including your Berth account's address on the Sonic network and what it holds, can be seen by anyone, permanently. No one controls that record, and no one, including us, can change or delete it.",
         ],
       },
       {
@@ -3632,6 +3724,7 @@ export const COPY: Copy = {
           "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. Nobody else can see your friends or who you block. The record of changes is kept for a year.",
           "If you turn on Let my friends see which stocks and funds I hold, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username and avatar, for up to four of the friends who hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
           "Most bought on Berth is public: anyone who opens the board sees it. It counts how many people bought each listing in one week, Monday to Sunday in UTC, from the orders we keep. Each week is counted once, after it ends, and kept as it was published; the first week counted begins on 5 October 2026. It names no one and shows no amount. Two accounts merged into one count as one person. Only buys of at least $10, from accounts at least a week old with a verified email, are counted, and staff accounts and buys that earn no XP are not. A listing bought by fewer than five people is left out, counts above ten are rounded down to a multiple of five, and the list is not shown at all in a week when fewer than ten people bought.",
+          "Most held on Berth is public too. Once a week, published on Tuesday for the week before, Monday to Sunday in UTC, the board shows for each stock or fund a rounded share, such as 1 in 4, of the people who own a stock or fund on Berth who hold that one. It is never a count of people and never an amount, and never anything about one person. The people counted are those with a verified email whose account is at least 7 days old and held at least $10 of stocks and funds at its last daily value of the week; staff accounts are not counted. A listing is shown only when at least 20 people hold it, and nothing is shown in a week when fewer than 50 people hold a stock or fund. Each week is counted once, after it ends, and kept as published. The first week counted is the week of 19 October 2026, published on 27 October 2026.",
         ],
       },
       {
@@ -3652,24 +3745,35 @@ export const COPY: Copy = {
       },
       {
         id: "sharing",
-        heading: "Who we share it with",
-        body: ["We share personal data only with the services that run Berth, each for its own part."],
+        heading: "Who receives it",
+        body: [
+          "We share personal data only with the services that run Berth, each for its own part. The first group below process it for us, under our instructions. The second receive what they need to do their own part and are responsible for it under their own terms.",
+        ],
         list: [
           "Privy, for email sign in and the wallets it creates for email accounts. Privy receives your email address and secures your wallet's keys.",
           "Neon, which hosts our database.",
           "Vercel, which hosts the app and serves every request, and, only if you allow it, counts page views. Like any web host, it processes your IP address and browser details to do so.",
-          "SODAX, whose service, solvers and relayers price, route and fill your orders. They receive the addresses, amounts and transactions needed to fill them.",
-          "Blockchain networks. Your browser reads balances and sends transactions through public network nodes. A Bitcoin order links to mempool.space so you can follow it there.",
           "GitHub, where error reports are kept in a private repository.",
           "OpenAI, if you use the Assistant in Berth, as described above.",
           "PostHog, only if you allow product analytics, as described above. It receives the named events and masked replays, stored in the European Union.",
           "Resend, which delivers our emails. It receives your email address, the notice's content (such as a listing's name, an amount, a price, or a friend's username, and in a weekly summary you turned on, your account's value and holdings, what filled, and how many new friends and Salutes you had) and whether the email was delivered, bounced or reported as spam.",
           "TypeSafe, which provides a news-relevance model that helps choose the one line shown at the top of the app, such as news about something you own. It receives headlines, and which listings your account holds and whether it has cash to spend, never your name, email or address.",
+          "SODAX, the protocol whose service, solvers and relayers price, route and fill your orders. They receive the addresses, amounts and transactions needed to fill them.",
+          "Blockchain networks and the companies that run their nodes, such as PublicNode, dRPC and the networks' own public endpoints. Your browser reads balances and sends transactions through them, so they see your IP address and the addresses it asks about. A Bitcoin order links to mempool.space so you can follow it there.",
+          "WalletConnect, if you connect a wallet through it. It relays the connection between Berth and your wallet.",
           "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
         ],
         after: [
           "We disclose personal data to authorities only when the law requires it.",
-          "Some of these providers process data outside your country, including in the United States. Where the law requires it, we rely on appropriate safeguards, such as standard contractual clauses.",
+          "If Berth comes to be run by a company, for example one we form to run it, your data moves with it, under this policy, and we will tell you.",
+        ],
+      },
+      {
+        id: "transfers",
+        heading: "International transfers",
+        body: [
+          "Some of these services process data outside the European Economic Area, mostly in the United States: among them Privy, Vercel, GitHub, OpenAI, Resend, X and node providers. PostHog keeps analytics in Frankfurt.",
+          "Where data leaves the European Economic Area, it is protected by the European Commission's standard contractual clauses in each provider's data processing terms. You can ask us for a copy.",
         ],
       },
       {
@@ -3697,7 +3801,8 @@ export const COPY: Copy = {
         heading: "How long we keep it",
         body: [],
         list: [
-          "Your account, rewards, orders, daily values and the AI apps you approved: for as long as your account is active, and after that as long as needed for legal, accounting and security purposes.",
+          "Your account, rewards, daily values, the AI apps you approved and the record of the terms you accepted: for as long as your account exists.",
+          "Records of your orders and the fees they paid: for as long as your account exists, and after that for as long as tax and accounting law requires, at most 7 years.",
           "Sign in codes for your AI: they expire after 90 seconds and are deleted within the hour.",
           "Your AI's access tokens last an hour and refresh tokens thirty days. Both are deleted a week after they expire or are revoked.",
           "The log of requests from your AI: 90 days.",
@@ -3715,10 +3820,11 @@ export const COPY: Copy = {
         id: "rights",
         heading: "Your choices and rights",
         body: [
-          "You can disconnect your AI at any time, sign out, and clear the app's storage in your browser.",
+          "You can disconnect your AI at any time, sign out, turn off analytics and any email other than security notices, and clear the app's storage in your browser.",
           `You can ask for a copy of the personal data we hold about you, ask us to correct it, or ask us to delete your account. Write to ${PRIVACY_OPERATOR.email} from the email address on your account, or with proof that you control the wallet. We answer within 30 days.`,
-          "When we delete an account, we delete or anonymise its data within 30 days, except what the law requires us to keep. Records on a blockchain are public and permanent, and no one can delete them. Your money stays in your own wallet either way.",
-          "Depending on where you live, including the European Economic Area and the United Kingdom, you may also have the right to object to or restrict how we use your data, to receive it in a portable form, and to complain to a data protection authority. Our lead supervisory authority is the Dutch Data Protection Authority, the Autoriteit Persoonsgegevens. You may also complain to the authority where you live.",
+          "When we delete an account, we delete or anonymise its data within 30 days, except what the law requires us to keep. Records on a blockchain are public and permanent, and no one can delete them. Your money stays in your own wallet and your Berth account either way.",
+          "If you signed in with email, export your keys before you ask us to delete your account, if your wallet holds anything. Your wallet then stays yours to use in any wallet app.",
+          "Depending on where you live, including the European Economic Area and the United Kingdom, you may also have the right to object to how we use your data where we rely on legitimate interest, to restrict it, to receive it in a portable form, and to complain to a data protection authority. Our lead supervisory authority is the Dutch Data Protection Authority, the Autoriteit Persoonsgegevens. You may also complain to the authority where you live.",
         ],
       },
       {
@@ -3744,27 +3850,40 @@ export const COPY: Copy = {
         id: "children",
         heading: "Age",
         body: [
-          "Berth is a trading product for adults. You must be 18 or older to use it. We do not knowingly collect data from anyone younger, and if you believe a minor has an account, write to us and we will delete it.",
+          "Berth is for adults. You must be 18 or older to use it. We do not knowingly collect data from anyone younger, and if you believe a minor has an account, write to us and we will delete it.",
         ],
       },
       {
         id: "law",
         heading: "Governing law",
         body: [
-          `This policy is governed by the laws of ${PRIVACY_OPERATOR.country}, without taking away any protection the law where you live gives you.`,
+          "This policy is governed by the laws of the Netherlands, where Berth's operator is based. This does not take away any protection the law where you live gives you.",
         ],
       },
       {
         id: "changes",
         heading: "Changes to this policy",
         body: [
-          "When this policy changes, we update the effective date at the top. For a change that matters, we will say so in the app before it applies.",
+          "When this policy changes, we update the effective date at the top and say what changed in the section below. For a change that matters, we will say so in the app before it applies.",
+        ],
+      },
+      {
+        id: "what-changed",
+        heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
+        body: [],
+        list: [
+          "The legal basis for each use of your data is now listed use by use.",
+          "A new section on international transfers.",
+          "The services that receive data now include the companies that run network nodes, and WalletConnect, and are grouped by whether they act for us or on their own.",
+          "Most held on Berth, a weekly rounded share of the people who hold each stock or fund, from the week of 19 October 2026.",
+          "What to do with an email account's wallet before you ask us to delete your account.",
+          "The record of which version of the terms you accepted, and when.",
         ],
       },
       {
         id: "contact",
         heading: "Contact",
-        body: [`${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country}. Email ${PRIVACY_OPERATOR.email}.`],
+        body: [`${PRIVACY_OPERATOR.description}. Email ${PRIVACY_OPERATOR.email}.`],
       },
     ],
     backHome: "Back to Berth",
@@ -3772,57 +3891,104 @@ export const COPY: Copy = {
   termsLink: "Terms",
   termsOfUse: {
     title: "Terms of use",
-    status: "Effective 30 September 2026.",
+    status: `Effective ${LEGAL_EFFECTIVE_DATE}.`,
     intro: [
       "These terms apply when you use www.berthmarkets.com, the Berth app and the Berth connector for your AI. By using Berth you agree to them. If you do not agree, please do not use Berth.",
-      "Berth is software. It never holds your keys or your money, and it does not give investment advice.",
+      "Berth is software. It is not a broker, an exchange, an investment firm or an adviser. It never holds your keys or your money, and it does not give investment advice.",
     ],
     sections: [
       {
         id: "who-we-are",
         heading: "Who we are",
         body: [
-          `Berth is operated by ${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country} ("we" or "us"). You can reach us at ${PRIVACY_OPERATOR.email}.`,
+          `Berth is operated by ${PRIVACY_OPERATOR.description} ("we" or "us"). You can reach us at ${PRIVACY_OPERATOR.email}.`,
         ],
       },
       {
         id: "what-berth-is",
         heading: "What Berth is",
-        body: ["Berth is software that helps you buy and sell tokenised stocks and funds with money you already hold in your own wallet."],
+        body: [
+          "Berth is software that helps you buy and sell tokens that track US stocks and funds, paying with crypto you already hold in your own wallet, and see what you hold.",
+        ],
         list: [
-          "Berth is self custodial. Your wallet and its keys are yours. We never hold your keys or your funds, and we cannot move them.",
-          "You sign every order yourself, in your own wallet. Nothing is bought or sold unless you sign it.",
-          "Orders are filled by independent solvers through SODAX, a protocol run by others. We do not fill orders ourselves.",
-          "A tokenised stock or fund is a token that tracks the price of a share or a fund. It is issued by a third party under its own terms. It is not the share itself, and holding one does not make you a shareholder of the company.",
+          "Berth is not a broker, an exchange, a trading venue, a bank, a payment service, an investment firm or an investment adviser. It does not hold your money, and it does not decide, place or sign orders for you.",
+          "You choose every order and sign it yourself, in your own wallet. The app builds the order from what you chose, shows you what you will pay, the fee and what you should receive, and, once you sign, sends it to SODAX to be filled. Nothing is bought or sold unless you sign it.",
+          "Orders are filled by solvers that work through SODAX, a protocol run by others, from liquidity they find. We do not fill orders, take the other side of them, or set their price.",
+          "Berth does not check whether a token or an order is suitable for you.",
+        ],
+      },
+      {
+        id: "custody",
+        heading: "Who holds your keys and your tokens",
+        body: [],
+        list: [
+          "If you sign in with a wallet you already have, its keys stay in that wallet. Berth never sees them.",
+          "If you sign in with email, Privy, our wallet provider, creates wallets for you and secures their keys in its own systems so that you can use them when signed in. Berth cannot see or use those keys and has not been given any permission to sign for you. You can export the keys at any time under Settings, and we suggest you do, so that you keep access whatever happens to Privy or to Berth.",
+          "The stocks and funds you buy are held at your Berth account: an address on the Sonic network, a wallet contract of the SODAX protocol tied to your own wallet and designed to move funds only on instructions you sign. Reaching it depends on SODAX's contracts and relay working.",
+          "If you pay with Bitcoin, you sign the payment in your own Bitcoin wallet, and it goes to the SODAX protocol's Bitcoin service to be filled. Berth never receives it.",
+          "Berth's servers hold no key that can sign for you or move your funds, and no one at Berth can change your balances.",
+          "If you lose your keys, your sign in or access to your email, or someone else gets them, we cannot recover your wallet or your tokens, or reverse what was done with them.",
+        ],
+      },
+      {
+        id: "tokens",
+        heading: "What the stock tokens are, and are not",
+        body: [
+          "The stocks and funds on Berth are tokens, each tracking the price of a share or a fund. They are issued by third parties under their own terms, today by Robinhood's issuing company, and reach Berth through the SODAX protocol.",
+        ],
+        list: [
+          "A token is not the share or the fund itself. Holding one does not make you a shareholder, and gives you no vote, no claim on the company and no right that the issuer's own terms do not grant.",
+          "Any right you have, to a dividend, a redemption or anything else, is against the issuer, under its terms, only if and as those terms allow. Berth is not the issuer and makes no promise for it.",
+          "On Sonic, the token at your Berth account can be a representation, made through the SODAX protocol, of the issuer's token on another network. Its value then depends on SODAX's contracts as well as on the issuer.",
+          "If the issuer fails, stops, freezes, redeems or changes a token, or a protocol it relies on fails, the token can lose some or all of its value, or stop being tradable.",
+          "Whether you may buy or hold a token where you live, and whether its issuer offers it there, is for you to check. Issuers do not offer their tokens everywhere.",
+          "Words on Berth such as stock, fund and what you own are short for these tokens. Company names and marks are their owners', shown only to say which share a token tracks. The companies do not endorse Berth.",
         ],
       },
       {
         id: "no-advice",
         heading: "No investment advice",
         body: [
-          "Nothing in Berth is investment, financial, legal or tax advice, or a recommendation to buy or sell anything. Prices, history, comparisons, market posts and headlines are facts and reports, shown as they are.",
-          "The same holds for AI apps. When you connect Claude, ChatGPT, Grok or another AI, or use the Assistant inside Berth, what it tells you is information, not advice. Your AI can only read your account and draft an order as a link. It cannot place, sign or send an order. You decide, and you sign.",
+          "Nothing in Berth is investment, financial, legal or tax advice, or a recommendation to buy, sell or hold anything. Prices, history, comparisons, lists such as Most bought on Berth, market posts and headlines are facts and reports, shown as they are.",
           "Past performance tells nothing certain about the future. Make your own decisions, and ask a qualified adviser if you need one.",
+        ],
+      },
+      {
+        id: "ai",
+        heading: "What AI tells you",
+        body: [
+          "The Assistant inside Berth, and Claude, ChatGPT, Grok or another AI you connect, write their answers by machine. An answer can be wrong, out of date or incomplete, about prices, your holdings and the news alike, and it can sound sure when it is wrong. It is information, not advice.",
+          "Your AI can only read your account and draft an order as a link. It cannot place, sign or send an order. A draft is what you asked for, as the AI understood it: check the listing, the amount and the price in Berth before you sign, because what you sign is yours.",
+          "Berth's connector lets the AI you choose read your account and draft orders within what you approve when you connect it. You can disconnect it at any time, in Berth or in your AI. What we keep about requests from your AI is set out in our privacy policy.",
         ],
       },
       {
         id: "risks",
         heading: "Risks",
-        body: ["Buying and holding tokens carries real risk. You can lose some or all of what you put in."],
+        body: ["Buying and holding tokens carries real risk. You can lose some or all of what you put in. Only use money you can afford to lose."],
         list: [
-          "Prices move, sometimes quickly, including outside market hours. A token can lose value, trade at a price different from the share it tracks, or stop trading.",
+          "Prices move, sometimes quickly. A token can lose value or stop trading.",
+          "A token can trade at a price different from the share or fund it tracks, sometimes by a lot, especially when few people trade it.",
+          "Orders fill any day and at any hour, including when the US stock market is closed. Then there is no live price for the share, and the price you get is set by the solvers and the liquidity they find. It can be far from where the share opens next.",
+          "There may be no one to fill an order at a fair price, or at all, and a large order may not fill.",
+          "Berth relies on smart contracts written by others: the issuer's, SODAX's and the networks'. They can have bugs, be exploited, be upgraded or be paused, and funds held through them can be lost.",
+          "A network, a bridge or a relay can halt, slow down, be congested or be attacked. An order can then be delayed, stuck or lost, and network costs can still be charged.",
           "Blockchain transactions are final. An order you sign, or funds sent to a wrong address, cannot be reversed by us or by anyone else.",
-          "Networks can be slow, congested or down, and what they charge can change.",
-          "The issuer of a token, the solvers, SODAX, a blockchain, a wallet or another service Berth relies on can fail, pause, change its terms or be attacked.",
-          "Rules about tokens differ from country to country and can change.",
+          "The issuer of a token, the solvers, SODAX, a blockchain, a wallet provider or another service Berth relies on can fail, pause, change its terms or be attacked.",
+          "What you pay with, such as a stablecoin, ETH, SOL or Bitcoin, carries its own risks.",
+          "Rules about tokens and the services around them differ from country to country and can change. A change can make a token or Berth unavailable to you.",
+          "Buying, selling and holding tokens, and receiving rewards, can have tax consequences. Working them out and paying them is yours to do. Berth does not withhold tax for you.",
         ],
-        after: ["You are responsible for keeping your wallet, your sign in and your recovery details safe."],
+        after: ["You are responsible for keeping your wallet, your keys, your sign in, your email and your recovery details safe."],
       },
       {
         id: "fees",
         heading: "Fees",
         body: [
-          "Berth charges a fee on orders. The fee, and what you will receive, are shown before you sign. Networks, solvers and card providers may charge their own fees, shown where they are known.",
+          "Berth charges a fee of 0.4% on every order: every buy, every sell and every withdrawal from an earlier vault position, taken from the amount you pay with before the order is filled and paid to Berth through the SODAX protocol. It is the only charge from Berth.",
+          "The fee, what you pay and what you should receive are shown before you sign. Networks, solvers, the SODAX protocol and card providers may charge their own costs, which can be part of the price you are quoted. Once you sign, the fee is paid and cannot be refunded by us.",
+          "A market order is carried out as soon as you sign it, at a price that depends on the market, so it cannot be withdrawn afterwards. A limit order can be cancelled until it fills.",
+          "We may change our fee. A new fee applies only to orders you sign after it is shown to you.",
         ],
       },
       {
@@ -3831,22 +3997,24 @@ export const COPY: Copy = {
         body: [],
         list: [
           "You must be 18 or older, and able to enter a binding agreement where you live.",
-          `Berth is not offered in ${orList(TERMS_AVAILABILITY.excluded.map((place) => place.name))}. You may not use it if you live there or are there when you use it.`,
-          `You may not use Berth where the law that applies to you prohibits it, if you are subject to sanctions, or from a country or region under sanctions, including ${andList(TERMS_AVAILABILITY.sanctionedCountries.map((place) => place.name))} and the ${andList(TERMS_AVAILABILITY.sanctionedRegions.map((place) => place.name))} regions of Ukraine.`,
-          "You are responsible for knowing and following the laws that apply to you, including tax rules.",
+          "You use Berth for yourself, with your own wallet, not for someone else or as a service to others.",
+          `Berth is not offered in ${orList(TERMS_AVAILABILITY.excluded.map((place) => place.name))}. You may not use it if you live in one of them or are there when you use it, or if you are a citizen or resident of ${orList(TERMS_AVAILABILITY.excluded.filter((place) => place.persons).map((place) => place.name))}. If you are in one of them with an account that already exists, Berth lets you see, sell and withdraw what you hold, and nothing new.`,
+          `You may not use Berth where the law that applies to you prohibits it, if you are named on a sanctions list of the United Nations, the European Union, the United Kingdom or the United States, or are owned or controlled by or act for someone who is, or from a country or region under sanctions, including ${andList([...TERMS_AVAILABILITY.sanctionedCountries.map((place) => place.name), `the ${andList(TERMS_AVAILABILITY.sanctionedRegions.map((place) => place.name))} regions of Ukraine`])}. There, the Berth app offers nothing beyond its public pages, not even to an account opened elsewhere.`,
+          "Berth checks the country a connection comes from and may refuse service because of it. That check is not a promise that Berth is lawful where you are. Hiding where you are, with a VPN or any other way, to use Berth from a place where it is not offered breaks these terms.",
+          "You are responsible for knowing and following the laws that apply to you, including whether you may buy these tokens where you live, and tax rules.",
+          "We may stop offering Berth in more places at any time, at once where the law requires it.",
         ],
       },
       {
-        id: "acceptable-use",
-        heading: "Using Berth fairly",
-        body: ["Please do not:"],
+        id: "rewards",
+        heading: "XP, ranks and rewards",
+        body: [],
         list: [
-          "Break the law with Berth, or use it to launder money or to fund anything unlawful.",
-          "Try to reach accounts, data or systems that are not yours, or get around a limit or a safeguard.",
-          "Overload, disrupt or reverse engineer Berth, or copy it at a volume that harms it.",
-          "Pretend to be someone else, or use Berth for someone who may not use it.",
+          "XP, ranks, levels, Salutes and the friends board show how you use Berth. Some actions earn XP, buys and sells among them. XP has no cash value, is not property, and cannot be sold, transferred or exchanged for money, tokens or anything else.",
+          "XP and ranks are not a reason to trade, and are not a promise of any return.",
+          "We decide how XP is earned and what a level opens, and we may change those rules, correct a mistake, remove XP earned through abuse, or end XP and ranks.",
+          "A reward in money or tokens exists only where a campaign or another offer we publish says so in writing, and is paid only under its rules.",
         ],
-        after: ["We may limit or end access for anyone who does, and we may refuse or pause service where the law requires it."],
       },
       {
         id: "campaigns",
@@ -3861,54 +4029,128 @@ export const COPY: Copy = {
           "The buy must arrive in your Berth account itself, which lives at an EVM address. An account signed in only with a Solana or Bitcoin wallet, with no email and no EVM wallet of its own, cannot take part.",
           "Each campaign has a budget and a number of places. Once they are taken, or the campaign ends, it is closed.",
           "We review every reward before it is paid. We send it by hand, usually within a few days, in USDC on Base to your Berth account's own address.",
-          "We may refuse a reward where we see abuse, such as several accounts for one person, and we may end or change a campaign at any time.",
+          "We may refuse a reward where we see abuse, such as several accounts for one person. You can ask a person at Berth to look again at a refusal.",
+          "We may end or change a campaign at any time for new claims. A reward we have approved will be paid.",
           "Campaigns are not available where Berth is not available.",
           "A reward is not investment advice, and not a reason to buy any particular stock or fund. You are responsible for any tax on it.",
         ],
       },
       {
-        id: "assistants",
-        heading: "Your AI and other services",
+        id: "acceptable-use",
+        heading: "Using Berth fairly",
+        body: ["Please do not:"],
+        list: [
+          "Break the law with Berth, or use it to launder money, to evade sanctions or to fund anything unlawful.",
+          "Use Berth to manipulate a price, for example by trading with yourself or acting with others to move a price.",
+          "Try to reach accounts, data or systems that are not yours, or get around a limit or a safeguard, including where Berth is offered.",
+          "Use scripts, bots or several accounts to earn XP or rewards.",
+          "Overload, disrupt or reverse engineer Berth, or copy it at a volume that harms it.",
+          "Pretend to be someone else, use Berth for someone who may not use it, or pick a username that harasses, misleads or could be taken for Berth or someone else.",
+        ],
+        after: [
+          "We may refuse or hide a username that breaks these terms, and you can ask us to look again at that decision.",
+          "We may limit, suspend or end access for anyone who breaks these terms, and we may refuse or pause service where the law requires it. Where we do, we will tell you why, unless the law or security prevents it. What you hold stays in your own wallet and your Berth account either way, tied to your own wallet's keys. If you signed in with email, you can export those keys from Settings.",
+        ],
+      },
+      {
+        id: "third-parties",
+        heading: "Services run by others",
         body: [
-          "Berth's connector lets the AI you choose read your account and draft orders as links, within what you approve when you connect it. You can disconnect it at any time, in Berth or in your AI.",
-          "AI apps such as Claude, ChatGPT and Grok, wallets, sign in and card providers, SODAX and token issuers are run by others. Their own terms and privacy policies apply to your use of them, and we are not responsible for what they do or say.",
-          "What we keep about requests from your AI is set out in our privacy policy.",
+          "Berth works only because services run by others work: SODAX and its solvers and relayers, Privy, the issuers of the tokens, the blockchain networks and bridges, wallets, card providers, and AI apps such as Claude, ChatGPT and Grok. Their own terms and privacy policies apply to your use of them.",
+          "We do not control them. If one fails, pauses, changes its terms or is attacked, an order can fail or be delayed, and what you hold can lose value or become hard to reach. To the extent the law allows, we are not responsible for what they do, fail to do or say.",
         ],
       },
       {
         id: "availability",
         heading: "Availability",
         body: [
-          "We work to keep Berth running, but it may at times be unavailable, slow or wrong, and we may change, pause or stop parts of it. Your tokens stay in your own wallet whatever happens to Berth.",
+          "We work to keep Berth running, but it may at times be unavailable, slow or wrong, and we may change, pause or stop parts of it, or all of it. Your tokens stay in your Berth account, tied to your own wallet's keys, whatever happens to Berth. If you signed in with email, you can export those keys from Settings, and we suggest you keep a copy. If we stop Berth, we will say so in advance where we can.",
+        ],
+      },
+      {
+        id: "warranties",
+        heading: "What we promise, and what we do not",
+        body: [
+          "We will provide Berth with reasonable care and skill, as described in these terms.",
+          "Beyond that, and to the extent the law allows, Berth is provided as it is and as available. We do not promise that it will be uninterrupted or free of errors, or that prices, data, news, AI answers and third party content are accurate, complete or current.",
+          "If you use Berth as a consumer, you keep every right the law gives you, including about digital services you pay for, and nothing in these terms takes them away.",
         ],
       },
       {
         id: "liability",
         heading: "Liability",
+        body: [],
+        list: [
+          "We are responsible for loss you suffer that is a foreseeable result of our breaking these terms or of our failing to take reasonable care. Loss is foreseeable if it was obvious it would happen, or if you and we both knew it might when you started using Berth.",
+          "We are not responsible for loss we did not cause, including loss from market prices moving, from your own decisions, from an order you signed, from a token or its issuer, from SODAX, a solver, a network, a bridge, a wallet or another service run by others, or from someone else using your keys or your sign in.",
+          "To the extent the law allows, we are not responsible for loss of profit, business or opportunity, or for loss that is not foreseeable.",
+          "To the extent the law allows, our total liability to you for all claims about Berth in any twelve months is limited to the fees you paid Berth in those twelve months, or 100 euros if that is more.",
+          "Nothing in these terms limits or excludes liability for death or personal injury caused by negligence, for fraud, for harm caused on purpose or by gross negligence, or any other liability the law does not allow to be limited or excluded. Nothing in them affects your rights as a consumer under the law where you live.",
+        ],
+        after: ["Each part of this section applies on its own. If one part cannot apply to you, the others still do."],
+      },
+      {
+        id: "indemnity",
+        heading: "Responsibility for misuse",
         body: [
-          "Berth is provided as it is and as available. To the extent the law allows, we do not promise that it is free of errors, or that prices, data and third party content are accurate or complete.",
-          "To the extent the law allows, we are not liable for losses from price changes, from your own decisions, from transactions you signed, or from the failure of any third party, network or token. Where we are liable, our liability is limited to the fees you paid Berth in the twelve months before the claim.",
-          "Nothing in these terms limits liability that the law does not allow to be limited, or takes away your rights as a consumer.",
+          "If you break these terms or the law, and that causes us loss or a claim from someone else, you are responsible for it, to the extent the law allows. If you use Berth as a consumer, this applies only as far as the law where you live allows, and never to loss you did not cause.",
         ],
       },
       {
-        id: "law",
-        heading: "Governing law",
+        id: "ending",
+        heading: "Ending these terms",
         body: [
-          `These terms are governed by the laws of ${PRIVACY_OPERATOR.country}, and disputes go to the competent courts of ${PRIVACY_OPERATOR.country}. If you are a consumer, this does not take away the protection the law where you live gives you, or your right to go to the courts there.`,
+          "You can stop using Berth at any time, and ask us to delete your account as our privacy policy describes.",
+          "We may end these terms with you, with reasonable notice where we can, if we stop offering Berth or stop offering it where you are, and at once if you break them seriously or the law requires it.",
+          "When these terms end, what you hold stays yours, at your own wallet and account. The parts of these terms that by their nature should continue, such as Liability, continue.",
         ],
       },
       {
         id: "changes",
         heading: "Changes to these terms",
         body: [
-          "When these terms change, we update the effective date at the top. For a change that matters, we will say so in the app before it applies. Using Berth after that means you accept the new terms.",
+          "We may change these terms when Berth changes, when the law does, or to make them clearer. When they change, we update the effective date at the top and say what changed in the section below. For a change that matters, we will say so in the app before it applies.",
+          "If you do not agree with a change, you can stop using Berth before it applies, and your tokens stay yours. Using Berth after that means you accept the new terms. A change never applies to an order you signed before it.",
+        ],
+      },
+      {
+        id: "law",
+        heading: "Governing law and disputes",
+        body: [
+          "These terms are governed by the laws of the Netherlands, where Berth's operator is based. If you are a consumer living in another country, you also keep the protection of the rules of that country's law that cannot be set aside by agreement.",
+          "Disputes go to the competent court in the Netherlands. If you are a consumer, you may also go to the courts where you live, and any claim against you as a consumer will be brought where the law requires.",
+        ],
+      },
+      {
+        id: "general",
+        heading: "General",
+        body: [],
+        list: [
+          "If a court finds part of these terms invalid, the rest still applies.",
+          "If we do not enforce a part of these terms at once, we can still enforce it later.",
+          "We may transfer these terms to a company that takes over running Berth, such as one we form for it. We will tell you, and your rights under them will not be reduced. You may not transfer them without our agreement.",
+          "These terms are written in English. If we provide a translation, the English text applies where they differ, unless the law where you live says otherwise.",
+        ],
+      },
+      {
+        id: "what-changed",
+        heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
+        body: [],
+        list: [
+          "Berth now says plainly that it is not a broker, an exchange, an investment firm or an adviser, and does not check whether an order suits you.",
+          "New sections on who holds your keys and tokens, and on what the stock tokens are and are not.",
+          "More risks are named: prices when the US market is closed, smart contracts, networks and relays, lost keys and tax.",
+          "The fee is stated: 0.4% on every order.",
+          "Berth is no longer offered in Russia and Belarus. Accounts there can still see, sell and withdraw what they hold.",
+          "New sections on XP, ranks and rewards, on what AI tells you, on services run by others, on what we promise, on ending these terms, and general terms.",
+          "Liability is rewritten to keep every right consumer law gives you.",
+          "Governing law and the courts for disputes are stated: the Netherlands, without taking away the protection of the law where you live.",
         ],
       },
       {
         id: "contact",
         heading: "Contact",
-        body: [`${PRIVACY_OPERATOR.name}, established in ${PRIVACY_OPERATOR.country}. Email ${PRIVACY_OPERATOR.email}.`],
+        body: [`${PRIVACY_OPERATOR.description}. Email ${PRIVACY_OPERATOR.email}.`],
       },
     ],
     backHome: "Back to Berth",
@@ -3916,7 +4158,7 @@ export const COPY: Copy = {
   assistantsLink: "How your AI works with Berth",
   notFound: {
     title: "This page isn't here",
-    body: "The link may be old or mistyped. What you own stays in your own wallet.",
+    body: "The link may be old or mistyped. What you own stays in an account your wallet controls.",
     backHome: "Back to Berth",
   },
   assistantsHelp: {
@@ -4173,7 +4415,7 @@ export const COPY: Copy = {
     home: {
       eyebrow: null,
       title: "Wall Street, in your wallet.",
-      line: "Real US stocks, bought from your crypto wallet.",
+      line: "US stocks as tokens, bought from your crypto wallet.",
       alt: "Berth. Wall Street, in your wallet. A row of harbour creatures along the foot of the card, the seal in front.",
     },
     invite: {

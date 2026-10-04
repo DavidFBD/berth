@@ -10,7 +10,8 @@ import { BoardView } from "@/components/social/friends-board";
 import { SocialSection, type SocialDemo } from "@/components/social/social-section";
 import { FindFriend } from "@/components/social/find-friend";
 import type { CardAnswer, FriendsBoard, Relation, Viewer } from "@/lib/social-types";
-import { SocialNoticeLineView } from "@/components/board/social-notice-line";
+import { PolicyNoticeLineView, SocialNoticeLineView } from "@/components/board/social-notice-line";
+import { TermsSheet } from "@/components/terms-sheet";
 import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
 
 /**
@@ -39,6 +40,8 @@ import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
  *   /dev/social?state=section-holding    the drawer section, sharing on, Your friends hold open
  *   /dev/social?state=section-holding-off  the same, sharing off (the default)
  *   /dev/social?state=notice             the once per account notice strip
+ *   /dev/social?state=policy-notice      the once per account notice of the new terms and policy
+ *   /dev/social?state=terms-sheet        the terms sheet before a buy (terms-sheet-sell: before a sell; terms-sheet-pending: while the answer loads)
  *   /dev/social?state=profile-received-sharing  Accept on a card while the viewer shares what they hold
  */
 
@@ -134,6 +137,11 @@ function Gallery() {
       </Panel>
     );
   if (state === "notice") return <SocialNoticeLineView show onOpen={() => {}} onDismiss={() => {}} />;
+  if (state === "policy-notice") return <PolicyNoticeLineView show onDismiss={() => {}} />;
+  if (state === "terms-sheet" || state === "terms-sheet-sell" || state === "terms-sheet-pending")
+    return (
+      <TermsSheet open purpose={state === "terms-sheet-sell" ? "sell" : "buy"} pending={state === "terms-sheet-pending"} onAccept={async () => true} onLeave={() => {}} />
+    );
   if (state === "section-holding" || state === "section-holding-off")
     return (
       <Panel>
