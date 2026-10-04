@@ -152,7 +152,7 @@ export function isTypedEvmAddress(address: string): boolean {
 
 /**
  * The SDK registry ships some EVM addresses with broken EIP-55 casing
- * (Polygon WBTC + LINK as of @sodax/sdk 2.x). viem rejects a bad checksum
+ * (Polygon WBTC + LINK in @sodax/sdk 2.0.0; clean in 2.2.0-rc.8, kept as a guard). viem rejects a bad checksum
  * while ENCODING the multicall, which fails every token in the batch and
  * makes the whole chain read as zero balances. Re-checksum for balance
  * reads only — quote/deposit payloads keep the registry's original casing,
