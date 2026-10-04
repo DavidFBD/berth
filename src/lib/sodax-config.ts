@@ -74,6 +74,19 @@ const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
     rpcUrl: "https://api.avax.network/ext/bc/C/rpc",
   },
   [ChainKeys.SONIC_MAINNET]: { rpcUrl: "https://sonic-rpc.publicnode.com" },
+  /**
+   * Robinhood Chain (4663, added in @sodax/sdk 2.2.0-rc.8). Its own default
+   * RPC, rpc.mainnet.chain.robinhood.com, is Robinhood's documented free
+   * tier and rate limited for production traffic, the same shape of problem
+   * that moved Polygon's pin below. publicnode and dRPC both mirror the
+   * chain (verified 2026-10-04: identical eth_chainId, a receipt served
+   * correctly 200k blocks back, and CORS answered for localhost and the
+   * production origin), so this chain gets the same two-provider pin
+   * Polygon has, with dRPC as the failover just below.
+   */
+  [ChainKeys.ROBINHOOD_MAINNET]: {
+    rpcUrl: "https://robinhood-rpc.publicnode.com",
+  },
 };
 
 /**
@@ -91,6 +104,7 @@ const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
  */
 const EVM_RPC_FAILOVERS: Partial<Record<EvmChainKey, readonly string[]>> = {
   [ChainKeys.POLYGON_MAINNET]: ["https://polygon-bor-rpc.publicnode.com"],
+  [ChainKeys.ROBINHOOD_MAINNET]: ["https://robinhood.drpc.org"],
 };
 
 /** The pin, then its failovers: the chain's RPC list, empty when we pin none. */

@@ -158,3 +158,17 @@ describe("Polygon RPC failover", () => {
     expect(sodaxConfig.chains?.[ChainKeys.BASE_MAINNET]).not.toHaveProperty("rpcUrls");
   });
 });
+
+describe("Robinhood Chain RPC failover", () => {
+  it("lists publicnode first, then dRPC, same two-provider shape as Polygon", () => {
+    const urls = ["https://robinhood-rpc.publicnode.com", "https://robinhood.drpc.org"];
+    expect(getPinnedRpcUrls(ChainKeys.ROBINHOOD_MAINNET)).toEqual(urls);
+  });
+
+  it("gives the core SDK's spoke the pin alone, same reason as Polygon above", () => {
+    expect(sodaxConfig.chains?.[ChainKeys.ROBINHOOD_MAINNET]).toMatchObject({
+      rpcUrl: "https://robinhood-rpc.publicnode.com",
+    });
+    expect(sodaxConfig.chains?.[ChainKeys.ROBINHOOD_MAINNET]).not.toHaveProperty("rpcUrls");
+  });
+});

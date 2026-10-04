@@ -45,4 +45,12 @@ describe("PRIVY_DEFAULT_CHAIN", () => {
     );
     expect(PRIVY_SUPPORTED_CHAINS).toContain(PRIVY_DEFAULT_CHAIN);
   });
+
+  // Robinhood Chain (4663) joined the SDK's EVM spoke list in 2.2.0-rc.8, so
+  // it rides along here automatically (reads go live for everyone; only
+  // delivery is switched). The default stays Sonic regardless.
+  it("carries Robinhood Chain without disturbing the default", () => {
+    expect(PRIVY_SUPPORTED_CHAINS.map((chain) => chain.id)).toContain(4663);
+    expect(PRIVY_DEFAULT_CHAIN.id).not.toBe(4663);
+  });
 });

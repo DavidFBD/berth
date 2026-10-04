@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, type XToken } from "@sodax/sdk";
-import { getChainName, toBalanceReadToken } from "./chains";
+import { DEPOSIT_SOURCE_CHAINS, getChainName, toBalanceReadToken } from "./chains";
 
 /**
  * One representative token per chain family the picker can show (see
@@ -110,5 +110,14 @@ describe("getChainName", () => {
   it("says HyperEVM, the name people know, not the SDK's Hyper", () => {
     expect(getChainName(ChainKeys.HYPEREVM_MAINNET)).toBe("HyperEVM");
     expect(getChainName(ChainKeys.BASE_MAINNET)).toBe("Base");
+  });
+});
+
+describe("DEPOSIT_SOURCE_CHAINS", () => {
+  // Robinhood Chain (4663, @sodax/sdk 2.2.0-rc.8) is a delivery destination
+  // only. It must never appear as a place a deposit can originate, by
+  // omission from this explicit list, not by filtering elsewhere.
+  it("never offers Robinhood Chain as a pay-from chain", () => {
+    expect(DEPOSIT_SOURCE_CHAINS).not.toContain(ChainKeys.ROBINHOOD_MAINNET);
   });
 });
