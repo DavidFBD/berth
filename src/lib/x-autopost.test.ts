@@ -259,7 +259,7 @@ describe("choosing the day's post", () => {
     const news = choosePost({ ...base, campaign: CAMPAIGN, news: NEWS, lastSource: "campaign" })!;
     expect(news.campaignCode).toBe("welcome-oct");
     expect(news.text).toBe(
-      "NVIDIA in the news. Reuters reports: “NVIDIA opens a new research centre in Taipei” New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC is yours, while places last. https://www.berthmarkets.com/c/welcome-oct",
+      "NVIDIA in the news. Reuters reports: “NVIDIA opens a new research centre in Taipei” New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC on Base is yours, while places last. https://www.berthmarkets.com/c/welcome-oct",
     );
     const milestone = choosePost({ ...base, campaign: CAMPAIGN, milestones: MILESTONE, lastSource: "campaign" })!;
     expect(milestone.campaignCode).toBeNull();

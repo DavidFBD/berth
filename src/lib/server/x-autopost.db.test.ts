@@ -364,7 +364,7 @@ describe("the campaign", () => {
     expect(JSON.parse(x.posts()[0].body).text).toContain("https://www.berthmarkets.com/c/welcome-oct");
     const second = await runAutopost({ now: MON + 3 * DAY, env: ENV, fetchImpl: x.fetchImpl });
     expect(second).toMatchObject({ status: "posted", source: "news" });
-    expect(JSON.parse(x.posts()[1].body).text).toContain("New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC is yours");
+    expect(JSON.parse(x.posts()[1].body).text).toContain("New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC on Base is yours");
     expect(JSON.parse(x.posts()[1].body).text).not.toMatch(/invite/i);
   });
 

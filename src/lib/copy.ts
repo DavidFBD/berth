@@ -4697,7 +4697,7 @@ export const COPY: Copy = {
         : ""),
     seeIt: "See it on Berth.",
     campaignCta: (amount, days) =>
-      `New here? Join through this link, set up and still use Berth ${dayCount(days)} later, and ${amount} in USDC is yours, while places last.`,
+      `New here? Join through this link, set up and still use Berth ${dayCount(days)} later, and ${amount} in USDC on Base is yours, while places last.`,
     campaignLink: "How it works:",
   },
   campaign: {
