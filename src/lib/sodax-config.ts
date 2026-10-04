@@ -95,9 +95,9 @@ const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
  * publicnode (slow on 2026-10-04, but answering) is the second. Only the
  * embedded wallet's own clients fail over (pinnedEvmTransport). The core
  * SDK's spoke reads (allowance, gas estimates, the deposit's simulation)
- * use the pin alone: in @sodax/sdk 2.0.0 EvmSpokeService.getPublicClient
- * builds http(rpcUrl) and never reads a spoke's rpcUrls, which only the
- * hub honours. So no list is passed on the spoke config; when the SDK
+ * use the pin alone: EvmSpokeService.getPublicClient builds http(rpcUrl)
+ * and never reads a spoke's rpcUrls, which only the hub honours (true of
+ * 2.0.0 and still of 2.2.0-rc.8, checked in the dist on 2026-10-04). So no list is passed on the spoke config; when the SDK
  * builds spokes with its rpc transport (reported upstream), pass
  * getPinnedRpcUrls there. The wallet SDK's balance clients read the pin
  * alone too.
@@ -136,6 +136,9 @@ export function pinnedEvmTransport(chainKey: EvmChainKey): Transport {
  * 2026-09-15: the proxy answers `symbol() = lsodaSUSDS`, its `asset()` matches
  * the entry below, and the solver quotes both directions. The values here are
  * that response verbatim.
+ *
+ * Since 2.2.0-rc.8 the SDK's registry carries it, byte for byte the same,
+ * so both guards here no-op; they stay until a stable release does too.
  *
  * Self-retiring: the append no-ops the moment the SDK's own registry carries
  * the name, so an upgrade needs no edit here, only a deletion when convenient.
