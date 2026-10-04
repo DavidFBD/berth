@@ -183,11 +183,13 @@ export function LimitSummary({
   putLabel,
   getLabel,
   feeLabel,
+  noGasChain,
   expiryDay,
   onBack,
   onPlace,
   placeLabel,
   busy,
+  held,
 }: {
   side: LimitSide;
   name: string;
@@ -199,12 +201,20 @@ export function LimitSummary({
   /** The least that comes back: shares for a buy, dollars for a sell. */
   getLabel: string;
   feeLabel?: string;
+  /**
+   * The chain's name when Privy pays this order's network fee (an email
+   * user on a sponsored chain, hooks/use-gas-sponsor); the fee line then
+   * says so instead of "plus the network fee".
+   */
+  noGasChain?: string;
   /** The last day, formatted, or undefined for until cancelled. */
   expiryDay?: string;
   onBack: () => void;
   onPlace: () => void;
   placeLabel: string;
   busy?: boolean;
+  /** A sponsored send may still land (lib/gas-sponsor outcome hold): Place stays off. */
+  held?: boolean;
 }) {
   const copy = useCopy();
   const lines = [
@@ -213,7 +223,11 @@ export function LimitSummary({
     copy.limitSummaryLocked,
     expiryDay ? copy.limitSummaryUntilDate(expiryDay) : copy.limitSummaryUntilCancelled,
     copy.limitSummaryWhole,
-    ...(feeLabel ? [copy.limitSummaryFee(feeLabel)] : []),
+    ...(feeLabel
+      ? [noGasChain ? copy.limitSummaryFeeNoGas(feeLabel, noGasChain) : copy.limitSummaryFee(feeLabel)]
+      : noGasChain
+        ? [copy.noNetworkFeeOn(noGasChain)]
+        : []),
   ];
   return (
     <div className="flex flex-col gap-4" data-testid="limit-summary" data-ph-mask>
@@ -230,7 +244,7 @@ export function LimitSummary({
         </ul>
       </div>
       <div className="flex flex-col gap-2">
-        <Button className="h-12 w-full text-base" disabled={busy} onClick={onPlace}>
+        <Button className="h-12 w-full text-base" disabled={busy || held} onClick={onPlace}>
           {busy && <Spinner className="size-4" />}
           {placeLabel}
         </Button>

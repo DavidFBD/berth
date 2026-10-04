@@ -427,6 +427,9 @@ export function useVaultAction(options?: {
       // would be a reporting bug, not an order, so don't guess an attribution.
       const pour = pourRef.current;
       if (!pour || options?.report === false) return;
+      // A sponsored send that may still land is not a failure to file: if
+      // it filled, pnpm orders:recover brings it into the ledger.
+      if (message === COPY.errOutcomeUnknown) return;
       report({
         ...pour.context,
         friendlyMessage: message,

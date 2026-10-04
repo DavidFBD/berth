@@ -282,6 +282,10 @@ export function TokenPicker({
   );
   const gasOf = (key: SpokeChainKey, token: XToken, nativeBalance: bigint | undefined): GasStatus =>
     mode === "source" ? gasGate.statusFor(key, token, nativeBalance) : "ok";
+  // Paying in from a chain where Privy pays the fee for this embedded
+  // wallet (hooks/use-gas-sponsor): a quiet note, and the gate never greys it.
+  const noFeeNote = (key: SpokeChainKey): string | undefined =>
+    mode === "source" && gasGate.sponsored(key) ? copy.noNetworkFeeNote : undefined;
   const gasTipFor = (key: SpokeChainKey, token: XToken): string => {
     const native = getNativeGasToken(key);
     const symbol = native?.symbol ?? token.symbol;
@@ -432,6 +436,7 @@ export function TokenPicker({
                       logo={<TokenLogo symbol={token.symbol} chainKey={key} />}
                       title={token.symbol}
                       subtitle={`on ${getChainName(key)}`}
+                      note={noFeeNote(key)}
                       gasTip={gas === "short" ? gasTipFor(key, token) : undefined}
                       gasHelpLabel={copy.gasHelpLabel}
                       onSelect={() => {
@@ -511,6 +516,7 @@ export function TokenPicker({
                     logo={<TokenLogo symbol={token.symbol} />}
                     title={token.symbol}
                     subtitle={token.name}
+                    note={noFeeNote(chainKey)}
                     gasTip={gas === "short" ? gasTipFor(chainKey, token) : undefined}
                     gasHelpLabel={copy.gasHelpLabel}
                     onSelect={() => {

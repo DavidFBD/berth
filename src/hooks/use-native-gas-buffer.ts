@@ -136,18 +136,21 @@ export function useNativeGasBuffer({
   isNative,
   priceUsd,
   balance,
+  sponsored = false,
 }: {
   chainKey: SpokeChainKey | undefined;
   token: XToken | null;
   isNative: boolean;
   priceUsd: number | undefined;
   balance: bigint | undefined;
+  /** Privy pays the fee here for this embedded wallet (hooks/use-gas-sponsor): Max may spend it all. */
+  sponsored?: boolean;
 }): NativeGasBuffer {
   const isEvm = !!chainKey && isEvmChainKeyType(chainKey);
-  const needsFeePerGas = isNative && isEvm;
+  const needsFeePerGas = isNative && isEvm && !sponsored;
   const feePerGasQuery = useEvmFeePerGas(chainKey, needsFeePerGas);
 
-  if (!isNative || !token || !chainKey) {
+  if (!isNative || !token || !chainKey || sponsored) {
     return { buffer: 0n, isLoading: false };
   }
 

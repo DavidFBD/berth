@@ -28,6 +28,7 @@ import { EASE_LIFT } from "@/lib/motion";
 import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
 import { floorWarns, orderGasShort } from "@/lib/gas-need";
 import { useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
 import { formatTokenAmount, formatUsd, parseAmount, shortenAddress } from "@/lib/format";
@@ -190,6 +191,7 @@ export function WithdrawDrawer({
     nativeBalance: signNativeBalance,
     amount: 0n,
     need: signGas.needFor(srcChainKey, false),
+    sponsored: signGas.sponsored(srcChainKey),
   });
   const signGasFloorWarn = floorWarns({
     chainKey: srcChainKey,
@@ -198,8 +200,11 @@ export function WithdrawDrawer({
     amount: 0n,
     need: signGas.needFor(srcChainKey, false),
     approval: false,
+    sponsored: signGas.sponsored(srcChainKey),
   });
   const gasPreflight = useGasPreflight();
+  // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
+  const outcomeHold = useOutcomeHold();
   // Funds are delivered to the user's wallet ON the destination chain (the
   // SDK would otherwise default to `srcAddress`, the wrong format across
   // chain families) — unless the user typed a custom cash-out address. The
@@ -698,9 +703,11 @@ export function WithdrawDrawer({
                     : undefined
                 }
                 expiryDay={limit.expiry.kind === "date" ? dayLabel(limit.expiry.day) : undefined}
+                noGasChain={signGas.sponsored(srcChainKey) ? getChainName(srcChainKey) : undefined}
                 placeLabel={copy.limitPlace}
                 onBack={() => limit.setReviewing(false)}
                 onPlace={() => void handleWithdraw()}
+                held={outcomeHold}
               />
               {action.step === "error" && action.error && (
                 <ActionError message={action.error} reportState={action.reportState} />
@@ -1001,7 +1008,7 @@ export function WithdrawDrawer({
               <DrawerFooter>
                 <Button
                   className="h-12 w-full text-base"
-                  disabled={cta.disabled}
+                  disabled={cta.disabled || outcomeHold}
                   onClick={cta.onClick}
                 >
                   {cta.busy && <Spinner className="size-4" />}
@@ -1010,6 +1017,11 @@ export function WithdrawDrawer({
                 {signGasFloorWarn && signNative && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground">
                     {copy.gasFloorWarning(signNative.symbol)}
+                  </p>
+                )}
+                {signGas.sponsored(srcChainKey) && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="no-network-fee">
+                    {copy.noNetworkFeeOn(getChainName(srcChainKey))}
                   </p>
                 )}
               </DrawerFooter>

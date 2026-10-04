@@ -78,6 +78,7 @@ import {
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { byGasStatus, floorWarns, orderGasShort } from "@/lib/gas-need";
 import {
   ActionError,
@@ -283,6 +284,8 @@ export function DepositDrawer({
   const gas = useGasGate([srcChainKey], open && !!token);
   const gasNeed = gas.needFor(srcChainKey, false);
   const gasPreflight = useGasPreflight();
+  // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
+  const outcomeHold = useOutcomeHold();
 
   // Money is how people think about an order, so the amount field takes the
   // user's display currency whenever the oracle prices the token, with a
@@ -300,6 +303,8 @@ export function DepositDrawer({
     isNative: !!token && isNativeToken(token),
     priceUsd,
     balance,
+    // Privy pays the fee here for the embedded wallet: Max may spend it all.
+    sponsored: gas.sponsored(srcChainKey),
   });
 
   // A drafted amount goes in once per opening, and only as money: until
@@ -346,6 +351,7 @@ export function DepositDrawer({
       nativeBalance,
       amount: payingNative ? (buildAmount ?? 1n) : 0n,
       need: gasNeed,
+      sponsored: gas.sponsored(srcChainKey),
     });
   // Enough at the chain's price, not at what some wallets attach: say so
   // calmly and let the person sign.
@@ -358,6 +364,7 @@ export function DepositDrawer({
       amount: payingNative ? (buildAmount ?? 0n) : 0n,
       need: gasNeed,
       approval: false,
+      sponsored: gas.sponsored(srcChainKey),
     });
   const balanceWorthUsd =
     token && balance !== undefined && balance > 0n
@@ -765,9 +772,11 @@ export function DepositDrawer({
                     : undefined
                 }
                 expiryDay={limit.expiry.kind === "date" ? dayLabel(limit.expiry.day) : undefined}
+                noGasChain={gas.sponsored(srcChainKey) ? getChainName(srcChainKey) : undefined}
                 placeLabel={copy.limitPlace}
                 onBack={() => limit.setReviewing(false)}
                 onPlace={() => void handleDeposit()}
+                held={outcomeHold}
               />
               {action.step === "error" && action.error && (
                 <ActionError message={action.error} reportState={action.reportState} />
@@ -999,7 +1008,7 @@ export function DepositDrawer({
               <DrawerFooter>
                 <Button
                   className="h-12 w-full text-base"
-                  disabled={cta.disabled}
+                  disabled={cta.disabled || outcomeHold}
                   onClick={cta.onClick}
                 >
                   {cta.busy && <Spinner className="size-4" />}
@@ -1008,6 +1017,11 @@ export function DepositDrawer({
                 {gasFloorWarn && nativeToken && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground">
                     {copy.gasFloorWarning(nativeToken.symbol)}
+                  </p>
+                )}
+                {token && gas.sponsored(srcChainKey) && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="no-network-fee">
+                    {copy.noNetworkFeeOn(getChainName(srcChainKey))}
                   </p>
                 )}
               </DrawerFooter>

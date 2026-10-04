@@ -95,14 +95,21 @@ export const SUI_GATE_MIST = 20_000_000n; // 0.02 SUI
  * Sonic is `evm`: a Sonic order is the person's own transaction on Sonic and
  * pays in S. Nothing in @sodax/sdk 2.0.0 sponsors a spoke or hub transaction
  * (no paymaster, no relayer-paid send); the relayer pays only the delivery
- * leg after the person's transaction lands.
+ * leg after the person's transaction lands. The person never signs on Sonic
+ * to sell, cancel or cash out (those are messages from the home chain);
+ * only paying FROM Sonic is a Sonic transaction.
+ *
+ * `sponsored`: Privy pays this order's fee (lib/gas-sponsor gasSponsored: a
+ * chain on NEXT_PUBLIC_GAS_SPONSOR_CHAINS, signed by the embedded wallet),
+ * so the chain charges the person nothing and is never gated.
  */
 export type GasModel =
   | { kind: "evm" }
   | { kind: "fixed"; units: bigint }
   | { kind: "free" };
 
-export function gasModel(chainKey: SpokeChainKey): GasModel {
+export function gasModel(chainKey: SpokeChainKey, sponsored = false): GasModel {
+  if (sponsored) return { kind: "free" };
   if (isEvmChainKeyType(chainKey)) return { kind: "evm" };
   if (chainKey === ChainKeys.SOLANA_MAINNET) return { kind: "fixed", units: SOLANA_GATE_LAMPORTS };
   if (chainKey === ChainKeys.SUI_MAINNET) return { kind: "fixed", units: SUI_GATE_MIST };
@@ -123,12 +130,14 @@ export function gasNeed({
   chainKey,
   feePerGas,
   approval,
+  sponsored = false,
 }: {
   chainKey: SpokeChainKey;
   feePerGas: bigint | undefined;
   approval: boolean;
+  sponsored?: boolean;
 }): bigint | undefined {
-  const model = gasModel(chainKey);
+  const model = gasModel(chainKey, sponsored);
   switch (model.kind) {
     case "free":
       return 0n;
@@ -144,8 +153,8 @@ export function gasNeed({
  * What a wallet that attaches the floor (WALLET_FEE_FLOOR) would reserve
  * for the same order. Warning only (floorWarns), never a refusal.
  */
-export function floorNeed(chainKey: SpokeChainKey, approval: boolean): bigint | undefined {
-  return gasModel(chainKey).kind === "evm" ? walletFeeFloor(chainKey) * evmGas(approval) : undefined;
+export function floorNeed(chainKey: SpokeChainKey, approval: boolean, sponsored = false): bigint | undefined {
+  return gasModel(chainKey, sponsored).kind === "evm" ? walletFeeFloor(chainKey) * evmGas(approval) : undefined;
 }
 
 /**
@@ -183,13 +192,15 @@ export function payTokenGas({
   isNative,
   nativeBalance: raw,
   need,
+  sponsored = false,
 }: {
   chainKey: SpokeChainKey;
   isNative: boolean;
   nativeBalance: bigint | undefined;
   need: bigint | undefined;
+  sponsored?: boolean;
 }): GasStatus {
-  if (gasModel(chainKey).kind === "free") return "ok";
+  if (gasModel(chainKey, sponsored).kind === "free") return "ok";
   const nativeBalance = trustedNativeBalance(chainKey, raw);
   if (nativeBalance === undefined) return "unknown";
   if (need === undefined) return nativeBalance === 0n ? "short" : "unknown";
@@ -209,14 +220,16 @@ export function orderGasShort({
   nativeBalance: raw,
   amount,
   need,
+  sponsored = false,
 }: {
   chainKey: SpokeChainKey;
   isNative: boolean;
   nativeBalance: bigint | undefined;
   amount: bigint;
   need: bigint | undefined;
+  sponsored?: boolean;
 }): boolean {
-  if (gasModel(chainKey).kind === "free") return false;
+  if (gasModel(chainKey, sponsored).kind === "free") return false;
   const nativeBalance = trustedNativeBalance(chainKey, raw);
   if (nativeBalance === undefined) return false;
   if (need === undefined) return nativeBalance === 0n;
@@ -236,6 +249,7 @@ export function floorWarns({
   amount,
   need,
   approval,
+  sponsored = false,
 }: {
   chainKey: SpokeChainKey;
   isNative: boolean;
@@ -243,8 +257,9 @@ export function floorWarns({
   amount: bigint;
   need: bigint | undefined;
   approval: boolean;
+  sponsored?: boolean;
 }): boolean {
-  const floor = floorNeed(chainKey, approval);
+  const floor = floorNeed(chainKey, approval, sponsored);
   if (floor === undefined || nativeBalance === undefined) return false;
   if (orderGasShort({ chainKey, isNative, nativeBalance, amount, need })) return false;
   if (need !== undefined && need >= floor) return false;

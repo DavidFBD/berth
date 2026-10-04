@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { usePrivy, useSendTransaction, useWallets } from "@privy-io/react-auth";
 import {
   createPublicClient,
   createWalletClient,
@@ -17,6 +17,7 @@ import {
 } from "@sodax/sdk";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { pinnedEvmTransport } from "@/lib/sodax-config";
+import { gasSponsored, markSponsorRefused, sponsoredSendOptions, withGasSponsor } from "@/lib/gas-sponsor";
 
 /** The user's Privy embedded EVM wallet, if signed in via email. */
 export function usePrivyEmbeddedWallet() {
@@ -124,6 +125,14 @@ export function usePrivyEvmWalletProvider(
   useEffect(() => {
     getAccessTokenRef.current = getAccessToken;
   }, [getAccessToken]);
+  // Privy's sponsored send (lib/gas-sponsor): the only way to reach its
+  // paymaster, since the EIP-1193 provider sends unsponsored. Same ref
+  // treatment as the token, for the same reason.
+  const { sendTransaction: privySendTransaction } = useSendTransaction();
+  const sendRef = useRef(privySendTransaction);
+  useEffect(() => {
+    sendRef.current = privySendTransaction;
+  }, [privySendTransaction]);
   // Keyed by (address, chain): a stale provider from a previous key simply
   // stops being returned — no synchronous reset needed inside the effect.
   const [built, setBuilt] = useState<{
@@ -202,11 +211,6 @@ export function usePrivyEvmWalletProvider(
         return "wrong-chain";
       };
 
-      const walletClient = createWalletClient({
-        account: embeddedAddress as `0x${string}`,
-        chain,
-        transport: custom(eip1193),
-      });
       // Explicit RPC: the SDK's viem defaults include dead endpoints
       // (polygon-rpc.com 401s), and this client does the gas estimation and
       // receipt polling for the pour itself.
@@ -214,6 +218,42 @@ export function usePrivyEvmWalletProvider(
         chain,
         transport: pinnedEvmTransport(evmChainKey),
       }) as PublicClient;
+      // On a sponsored chain (NEXT_PUBLIC_GAS_SPONSOR_CHAINS), sends go
+      // through Privy's paymaster first and fall back to an ordinary send,
+      // paid by the person, when Privy refuses. This wallet IS the embedded
+      // one, so the session question is already answered.
+      const signer: Eip1193 = gasSponsored(evmChainKey, true)
+        ? withGasSponsor(eip1193, {
+            chainId: chain.id,
+            address: embeddedAddress,
+            active: () => gasSponsored(evmChainKey, true),
+            // The bundle's own success flag for our call (lib/gas-sponsor
+            // sponsoredCallSucceeded). Short: Privy answers after inclusion.
+            readReceipt: (hash) =>
+              publicClient
+                .waitForTransactionReceipt({ hash, timeout: 30_000 })
+                .catch((error: unknown) => {
+                  console.warn(`[privy-wallet] could not read the sponsored receipt ${hash}; trusting the hash`, error);
+                  return undefined;
+                }),
+            sendSponsored: (tx) =>
+              sendRef.current(tx, sponsoredSendOptions(embeddedAddress)),
+            onFallback: (error, kind) => {
+              // Two 429s in a row pay this once but keep the chain sponsored.
+              if (kind === "refused") markSponsorRefused(chain.id);
+              console.warn(
+                `[privy-wallet] gas sponsorship ${kind} on ${evmChainKey}; sending the ordinary way, paid by the wallet`,
+                error,
+              );
+            },
+          })
+        : eip1193;
+
+      const walletClient = createWalletClient({
+        account: embeddedAddress as `0x${string}`,
+        chain,
+        transport: custom(signer),
+      });
       setBuilt({
         key,
         wallet: {

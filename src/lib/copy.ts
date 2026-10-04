@@ -579,6 +579,18 @@ export type Copy = {
    * some wallets attach on top (lib/gas-need floorWarns). The person may sign.
    */
   gasFloorWarning: (symbol: string) => string;
+  /**
+   * Where the network fee would be mentioned, when Privy pays it for an
+   * email user's embedded wallet on this chain (lib/gas-sponsor). The
+   * trade's own fees still apply, so never "free".
+   */
+  noNetworkFeeOn: (chainName: string) => string;
+  /** The same, as a tiny muted note on a pay token row in the picker. */
+  noNetworkFeeNote: string;
+  /** The first buy step, for email users: the sponsored chains, joined ("Base, Arbitrum and Polygon"). Says "network fee", never "free", and promises no limit on how many buys. */
+  gasCoveredChains: (chainNames: string) => string;
+  /** The last joiner in a list of names: "Base, Arbitrum and Polygon". */
+  listAnd: string;
   /** `amount` arrives pre-formatted: "≈ €130 (142 USDC)" or "142 USDC". */
   walletHolds: (amount: string) => string;
   checkingBalance: string;
@@ -724,6 +736,12 @@ export type Copy = {
   errApprovalFailed: string;
   errAllowanceStillPending: string;
   errOrderFailed: string;
+  /**
+   * A gas-sponsored send whose outcome is unknown (lib/gas-sponsor
+   * SponsoredOutcomeUnknown): it may still land, so retrying now could buy
+   * twice. The retry stays off for a minute (outcome hold).
+   */
+  errOutcomeUnknown: string;
   /**
    * `shortfall` is already formatted with its symbol, e.g. "0.00024 ETH".
    * Said when the wallet cannot cover the network fee, where the generic
@@ -1116,6 +1134,8 @@ export type Copy = {
   limitSummaryUntilCancelled: string;
   limitSummaryUntilDate: (day: string) => string;
   limitSummaryFee: (fee: string) => string;
+  /** The fee line when Privy pays the network fee on this chain (lib/gas-sponsor). */
+  limitSummaryFeeNoGas: (fee: string, chainName: string) => string;
   limitPlace: string;
   limitBack: string;
   limitPlacedTitle: string;
@@ -2814,6 +2834,10 @@ export const COPY: Copy = {
   ctaNeedsGas: (symbol) => `Not enough ${symbol} for the network fee`,
   gasFloorWarning: (symbol) =>
     `Some wallets ask for a higher network fee. If yours refuses, add a little ${symbol}.`,
+  noNetworkFeeOn: (chainName) => `No network fee to pay on ${chainName}.`,
+  noNetworkFeeNote: "no network fee",
+  gasCoveredChains: (chainNames) => `Buying from ${chainNames} has no network fee to pay.`,
+  listAnd: "and",
   walletHolds: (amount) => `You have ${amount}`,
   checkingBalance: "Checking your balance…",
   maxLabel: "Max",
@@ -2958,6 +2982,7 @@ export const COPY: Copy = {
   errAllowanceStillPending:
     "The approval is still confirming. Wait a few seconds and try again.",
   errOrderFailed: "The order did not go through. Try again.",
+  errOutcomeUnknown: "This order may still go through. Check What you own in a minute before trying again.",
   errNeedsGas: (shortfall, network) =>
     `Not enough to cover the network fee. Add about ${shortfall} on ${network} and try again.`,
   errNeedsGasUnknown: (network) =>
@@ -3380,6 +3405,7 @@ export const COPY: Copy = {
   limitSummaryUntilCancelled: "It waits until you cancel it.",
   limitSummaryUntilDate: (day) => `If it has not filled by the end of ${day}, it comes back to you.`,
   limitSummaryFee: (fee) => `Fee ${fee}, plus the network fee.`,
+  limitSummaryFeeNoGas: (fee, chainName) => `Fee ${fee}. No network fee to pay on ${chainName}.`,
   limitPlace: "Place order",
   limitBack: "Back",
   limitPlacedTitle: "Your order is waiting",

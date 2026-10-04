@@ -21,6 +21,7 @@ export function PayTokenRow({
   logo,
   title,
   subtitle,
+  note,
   trailing,
   gasTip,
   gasHelpLabel,
@@ -29,6 +30,8 @@ export function PayTokenRow({
   logo: ReactNode;
   title: string;
   subtitle: string;
+  /** A tiny muted aside after the subtitle: "no network fee" on a sponsored chain. */
+  note?: string;
   trailing?: ReactNode;
   /** Set when the chain cannot pay the fee: the row greys and explains. */
   gasTip?: string;
@@ -42,7 +45,10 @@ export function PayTokenRow({
       {logo}
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium text-foreground">{title}</span>
-        <span className="truncate text-xs text-muted-foreground">{subtitle}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {subtitle}
+          {note && <span className="text-muted-foreground/80" data-testid="no-network-fee-note"> · {note}</span>}
+        </span>
       </div>
       {trailing}
     </>

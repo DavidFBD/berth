@@ -14,6 +14,8 @@ import { PRIMARY, StepCard, type StepFrame } from "@/components/home-next-step";
 import { useFirstPathRecord, useFirstPathWrite, useProfile } from "@/hooks/use-profile";
 import { useMySocial } from "@/hooks/use-social";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
+import { useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
+import { joinNames } from "@/lib/gas-sponsor";
 import {
   finishedStep,
   firstPath,
@@ -290,9 +292,17 @@ export type HomePathSlots = {
  */
 export function HomePathCard({ slots, footnote }: { slots: HomePathSlots; footnote?: ReactNode }) {
   const path = useFirstPath();
-  const copy = useCopy().firstPath;
+  const words = useCopy();
+  const copy = words.firstPath;
+  const sponsoredNames = useSponsoredChainNames();
   if (!path) return null;
   const { view } = path;
+  // Email users only: Privy pays the network fee for the embedded wallet,
+  // never for an external one (lib/gas-sponsor).
+  const gasLine =
+    path.account === "email" && sponsoredNames.length > 0
+      ? words.gasCoveredChains(joinNames(sponsoredNames, words.listAnd))
+      : null;
   return (
     <AnimatedSwap
       id={path.done ? `done:${path.done}` : view.kind === "step" ? view.step : view.kind}
@@ -318,7 +328,14 @@ export function HomePathCard({ slots, footnote }: { slots: HomePathSlots; footno
             const buy = path.buy ?? UNFUNDED;
             // The XP line only beside a buy that will earn it; otherwise none.
             const xp = buy.earnsXp ? stepXp("firstBuy", { referred: path.referred }) : null;
-            return slots.firstBuy(frame, title, xp ? <XpLine>{copy.xpFirstBuy(xp)}</XpLine> : null, buy);
+            const note =
+              xp || gasLine ? (
+                <>
+                  {xp && <XpLine>{copy.xpFirstBuy(xp)}</XpLine>}
+                  {gasLine && <XpLine>{gasLine}</XpLine>}
+                </>
+              ) : null;
+            return slots.firstBuy(frame, title, note, buy);
           }
           return (
             <StepCard title={title} line={stepLine(copy, view.step, path)} frame={frame}>

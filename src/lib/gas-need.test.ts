@@ -211,3 +211,21 @@ describe("byGasStatus", () => {
     ]);
   });
 });
+
+describe("a sponsored order (Privy pays the fee)", () => {
+  const base = ChainKeys.BASE_MAINNET;
+  it("needs no gas and is never gated, even with an empty wallet", () => {
+    expect(gasModel(base, true)).toEqual({ kind: "free" });
+    expect(gasNeed({ chainKey: base, feePerGas: 5n * GWEI, approval: true, sponsored: true })).toBe(0n);
+    expect(payTokenGas({ chainKey: base, isNative: false, nativeBalance: 0n, need: undefined, sponsored: true })).toBe("ok");
+    expect(orderGasShort({ chainKey: base, isNative: false, nativeBalance: 0n, amount: 0n, need: undefined, sponsored: true })).toBe(false);
+    expect(floorNeed(base, true, true)).toBeUndefined();
+    expect(
+      floorWarns({ chainKey: base, isNative: false, nativeBalance: 0n, amount: 0n, need: 0n, approval: false, sponsored: true }),
+    ).toBe(false);
+  });
+  it("leaves the unsponsored gate exactly as it was", () => {
+    expect(payTokenGas({ chainKey: base, isNative: false, nativeBalance: 0n, need: undefined })).toBe("short");
+    expect(orderGasShort({ chainKey: base, isNative: false, nativeBalance: 0n, amount: 0n, need: 1n })).toBe(true);
+  });
+});

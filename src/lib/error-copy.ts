@@ -1,6 +1,7 @@
 import { isUserRejectedError } from "@sodax/dapp-kit";
 import { formatUnits } from "viem";
 import { COPY } from "@/lib/copy";
+import { isSponsoredOutcomeUnknown } from "@/lib/gas-sponsor";
 
 /**
  * Turning SDK failures into plain sentences. Lives in `lib` rather than
@@ -177,6 +178,9 @@ export function friendlyError(
   fallback: string,
   gas?: GasContext,
 ): string {
+  // First: a sponsored send that may have sailed. "Try again" here could
+  // buy twice, so this says to look before retrying (lib/gas-sponsor).
+  if (isSponsoredOutcomeUnknown(error)) return COPY.errOutcomeUnknown;
   if (isUserRejectedError(error)) return CANCELLED_MESSAGE;
   // Ahead of the code switch: the SDK wraps this as INTENT_CREATION_FAILED,
   // so the generic fallback would otherwise blame the network for a lapsed

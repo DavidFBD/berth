@@ -7,6 +7,7 @@ import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chain
 import { gasNeed, orderGasShort, payTokenGas, withinOrUnknown, type GasStatus } from "@/lib/gas-need";
 import { useCopy } from "@/components/settings-provider";
 import { feePerGasQueryOptions } from "@/hooks/use-native-gas-buffer";
+import { useGasSponsored } from "@/hooks/use-gas-sponsor";
 
 export type GasGate = {
   /**
@@ -18,6 +19,11 @@ export type GasGate = {
   statusFor: (chainKey: SpokeChainKey, token: XToken, nativeBalance: bigint | undefined) => GasStatus;
   /** The native fee an order on `chainKey` must find at the chain's own price (lib/gas-need gasNeed). */
   needFor: (chainKey: SpokeChainKey, approval: boolean) => bigint | undefined;
+  /**
+   * Whether Privy pays this person's fee on `chainKey` (hooks/use-gas-sponsor).
+   * Pass it on as `sponsored` to orderGasShort and floorWarns.
+   */
+  sponsored: (chainKey: SpokeChainKey) => boolean;
 };
 
 /** Whether `token` is its chain's native gas token. */
@@ -32,24 +38,29 @@ export function isGasToken(chainKey: SpokeChainKey, token: XToken): boolean {
  */
 export function useGasGate(chains: readonly SpokeChainKey[], enabled = true): GasGate {
   const evmChains = [...new Set(chains)].filter((key): key is EvmChainKey => isEvmChainKeyType(key));
+  const sponsored = useGasSponsored();
+  // A sponsored chain costs the person nothing: no fee to read for it.
+  const pricedChains = evmChains.filter((key) => !sponsored(key));
   const fees = useQueries({
-    queries: evmChains.map((key) => feePerGasQueryOptions(key, enabled)),
+    queries: pricedChains.map((key) => feePerGasQueryOptions(key, enabled)),
   });
   const feeOf = (chainKey: SpokeChainKey): bigint | undefined => {
-    const index = evmChains.indexOf(chainKey as EvmChainKey);
+    const index = pricedChains.indexOf(chainKey as EvmChainKey);
     return index < 0 ? undefined : fees[index]?.data;
   };
   const needFor = (chainKey: SpokeChainKey, approval: boolean) =>
-    gasNeed({ chainKey, feePerGas: feeOf(chainKey), approval });
+    gasNeed({ chainKey, feePerGas: feeOf(chainKey), approval, sponsored: sponsored(chainKey) });
 
   return {
     needFor,
+    sponsored,
     statusFor: (chainKey, token, nativeBalance) =>
       payTokenGas({
         chainKey,
         isNative: isGasToken(chainKey, token),
         nativeBalance,
         need: needFor(chainKey, false),
+        sponsored: sponsored(chainKey),
       }),
   };
 }
@@ -73,7 +84,12 @@ export function useGasPreflight(): (args: {
 }) => Promise<string | null> {
   const queryClient = useQueryClient();
   const copy = useCopy();
+  const sponsored = useGasSponsored();
   return async ({ chainKey, address, token, amount, approval }) => {
+    // Privy pays: nothing to check. If Privy refuses at send time, the send
+    // falls back to an ordinary one (lib/gas-sponsor withGasSponsor), and a
+    // wallet with no gas then hears the calm insufficient-funds sentence.
+    if (sponsored(chainKey)) return null;
     const native = getNativeGasToken(chainKey);
     const chainType = getXChainType(chainKey);
     if (!native || !chainType) return null;
