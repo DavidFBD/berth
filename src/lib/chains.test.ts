@@ -205,11 +205,16 @@ describe("addresses handed to the SDK", () => {
     expect(sdkAddress(ChainKeys.SUI_MAINNET, `0x${"ab".repeat(32)}`)).toBe(`0x${"ab".repeat(32)}`);
   });
 
-  it("accepts a typed address in lower case or with a true checksum, and refuses a broken checksum", () => {
+  it("accepts a typed address in lower case, upper case, or with a true checksum, and refuses a broken checksum", () => {
     expect(isTypedEvmAddress("0x52908400098527886e0f7030069857d2e4169ee7")).toBe(true);
     expect(isTypedEvmAddress("0x52908400098527886E0F7030069857D2E4169EE7")).toBe(true);
     expect(isTypedEvmAddress("0x52908400098527886E0F7030069857D2E4169Ee7")).toBe(false);
     expect(isTypedEvmAddress("0x5290840009852788")).toBe(false);
     expect(isTypedEvmAddress("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed")).toBe(true);
+    // All-uppercase: valid and unchecked under EIP-55, same as all-lowercase,
+    // even though its real checksum (mixed case) is nothing like it.
+    expect(isTypedEvmAddress("0x5AAEB6053F3E94C9B9A09F33669435E7EF1BEAED")).toBe(true);
+    // Mixed case, wrong checksum, happens to be mostly uppercase: still refused.
+    expect(isTypedEvmAddress("0x5AAeb6053F3E94C9b9A09f33669435E7Ef1BeAEd")).toBe(false);
   });
 });

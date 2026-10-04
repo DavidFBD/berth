@@ -154,12 +154,19 @@ export function sdkAddress(chainKey: SpokeChainKey, address: string): string {
 }
 
 /**
- * Whether a typed EVM address can be sent to: all lower case, or mixed case
- * with a correct checksum. A mixed case address with a wrong checksum is
- * most likely mistyped, so it is refused, as the 2.2 SDK would.
+ * Whether a typed EVM address can be sent to: all lower case, all upper
+ * case, or mixed case with a correct checksum. EIP-55 leaves an address
+ * unchecksummed, so unverified, when every letter in it is one case; viem's
+ * own strict check waves through all lower case this way but not all upper
+ * case, which fails its checksum compare unless the address's real checksum
+ * happens to spell every letter capital. A mixed case address with a wrong
+ * checksum is most likely mistyped, so it is refused, as the 2.2 SDK would.
  */
 export function isTypedEvmAddress(address: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(address) && isAddress(address, { strict: true });
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return false;
+  const hex = address.slice(2);
+  if (hex === hex.toUpperCase()) return true;
+  return isAddress(address, { strict: true });
 }
 
 /**
