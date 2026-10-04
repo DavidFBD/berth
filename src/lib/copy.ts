@@ -254,6 +254,10 @@ export type Copy = {
   /* — account total: funds plus holdings plus cash, one figure — */
   accountTotalLabel: string;
   accountTotalSub: string;
+  /** Beside figures drawn from the last reading while the live one arrives (lib/last-known). */
+  lastKnownUpdating: string;
+  /** The (i)'s line while the figure is the last reading: when that was. */
+  lastKnownAsOf: (when: string) => string;
   /* — the signed-in board's own words (components/home, components/board) — */
   /** The first of the three figures under the total: stocks and funds held, not cash. */
   accountSplitHoldings: string;
@@ -306,6 +310,8 @@ export type Copy = {
   fundsReadyTail: (assetCount: number) => string;
   fundsEmpty: string;
   fundsSendAnything: string;
+  /** Networks past their read deadline (lib/read-deadline), still being read. */
+  fundsStillReading: (chains: string) => string;
   fundsSignIn: string;
   fundsWhatsInside: string;
   fundsNeedsGas: string;
@@ -2576,6 +2582,8 @@ export const COPY: Copy = {
 
   accountTotalLabel: "Your account",
   accountTotalSub: "Funds, holdings and cash, in one figure.",
+  lastKnownUpdating: "Updating",
+  lastKnownAsOf: (when) => `Showing what we last read, ${when}, while the latest arrives.`,
   accountSplitHoldings: "Stocks",
   portfolioSameDays: "Same dollars, same days",
   holdingsSubline: "Since you bought, beside the S&P 500 ETF.",
@@ -2621,6 +2629,7 @@ export const COPY: Copy = {
   fundsSendAnything:
     "Send stablecoins or any supported asset to your address on any network. It shows up here.",
   fundsSignIn: "Sign in and your funds appear here.",
+  fundsStillReading: (chains) => `Still reading ${chains}.`,
   fundsWhatsInside: "What is inside",
   fundsNeedsGas: "needs a network fee",
   topUp: "Add money",

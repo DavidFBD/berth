@@ -92,6 +92,7 @@ function fundsFixture(held: boolean, empty = false): EmbeddedHoldingsResult {
     isLoading: false,
     holdings,
     erroredChains: [],
+    slowChains: [],
     gasShortChains: [],
     nativeBalances: {},
     // The hook says undefined, not 0, when nothing is priced.

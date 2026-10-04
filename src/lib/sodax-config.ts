@@ -49,6 +49,12 @@ export const PARTNER_FEE: PartnerFee = {
  * official endpoints. Ethereum, Polygon and Sonic serve receipts correctly
  * at depth and stay.
  *
+ * Polygon's publicnode went the same way on 2026-10-04: state reads
+ * answered 529 or hung past viem's ten second timeout (block numbers stayed
+ * quick), so the funds sweep held the whole Funds row for 20 to 50 seconds.
+ * dRPC's keyless Polygon endpoint answers the same reads in under 0.6 s and
+ * serves receipts at depth.
+ *
  * Every endpoint below is verified for eth_getTransactionReceipt at both
  * recent and 100k-block depth, and for CORS from localhost and the
  * production origin. Chains not listed (HyperEVM, LightLink, Kaia, Redbelly)
@@ -61,9 +67,7 @@ const PINNED_EVM_RPCS: Partial<Record<EvmChainKey, { rpcUrl: string }>> = {
   [ChainKeys.ARBITRUM_MAINNET]: { rpcUrl: "https://arb1.arbitrum.io/rpc" },
   [ChainKeys.BASE_MAINNET]: { rpcUrl: "https://mainnet.base.org" },
   [ChainKeys.OPTIMISM_MAINNET]: { rpcUrl: "https://mainnet.optimism.io" },
-  [ChainKeys.POLYGON_MAINNET]: {
-    rpcUrl: "https://polygon-bor-rpc.publicnode.com",
-  },
+  [ChainKeys.POLYGON_MAINNET]: { rpcUrl: "https://polygon.drpc.org" },
   [ChainKeys.BSC_MAINNET]: { rpcUrl: "https://bsc-dataseed.bnbchain.org" },
   [ChainKeys.AVALANCHE_MAINNET]: {
     rpcUrl: "https://api.avax.network/ext/bc/C/rpc",
@@ -179,6 +183,23 @@ const solverApiEndpoint = (
 ) as HttpUrl;
 
 /**
+ * The hub (Sonic), where every holding lives. The SDK builds its hub client
+ * from its OWN hub config, not from the Sonic spoke pin above, so until
+ * 2026-10-04 every hub read (hub wallet derivation, holdings, reserves,
+ * pour verification on the server) went to rpc.soniclabs.com alone. That
+ * endpoint answered 503 "No backend available" to every call that day, and
+ * the home held its total, its parts and What you own as skeletons until a
+ * retry got lucky. The SDK takes a list (RpcFailoverConfig): viem's
+ * fallback transport tries them in order and moves on at the first error.
+ * All three serve receipts at depth and answer CORS from the app.
+ */
+export const HUB_RPC_URLS = [
+  "https://sonic-rpc.publicnode.com",
+  "https://sonic.drpc.org",
+  "https://rpc.soniclabs.com",
+] as const;
+
+/**
  * SDK config. SodaxOptions is a DeepPartial over the SDK's baked-in mainnet
  * defaults (chains, solver + relayer endpoints), so we only override what we
  * must. Both configs are module constants on purpose: SodaxProvider tracks
@@ -188,6 +209,8 @@ export const sodaxConfig: SodaxOptions = {
   fee: PARTNER_FEE,
   solver: { solverApiEndpoint },
   leverageYield: { vaults: VAULTS },
+  // One failover round, not viem's three: React Query owns the retries above it.
+  hub: { rpcUrls: HUB_RPC_URLS, rpcOptions: { retryCount: 1 } },
   chains: {
     ...PINNED_EVM_RPCS,
     [ChainKeys.SONIC_MAINNET]: {

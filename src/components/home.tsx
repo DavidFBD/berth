@@ -18,6 +18,7 @@ import {
   NewsFeed,
   NudgeLine,
   WaitingOrders,
+  useLiveFigures,
   useWaitingOrdersShowing,
   CampaignLine,
 } from "@/components/board";
@@ -37,9 +38,10 @@ import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { AddMoneyStep, BuyMoreButton, FirstBuyStep, NextStepSkeleton } from "@/components/home-next-step";
 import { HomeMore, SectionDrawer } from "@/components/home-more";
 import { ADDRESS_WAIT_MS, hasMoneyAside, homeStage, parseHomeStage, NUDGES_SAID_BY_STEP, type HomeStage } from "@/lib/home-stage";
+import { decideHomeStage, type LastKnownSnapshot } from "@/lib/last-known";
 import { MIN_ORDER_USD } from "@/lib/order-minimum";
 import { useLimitOrders } from "@/hooks/use-limit-orders";
-import { useAccountWallets, useCloseFirstStock, useFirstStock } from "@/hooks/use-profile";
+import { useAccountWallets, useCloseFirstStock, useFirstStock, useLastKnown, useSaveLastKnown } from "@/hooks/use-profile";
 import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-account-wallets";
 import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
@@ -224,7 +226,27 @@ function SignedInHome() {
   });
   const proven = live.proven ? live.stage : undefined;
   const remembered = parseHomeStage(rememberedStage) ?? (rememberedOwns === "1" ? "owns" : undefined);
-  const decided: HomeStage | undefined = proven ?? remembered ?? live.stage;
+  // The account's last reading (lib/last-known), from the server: the page
+  // opens in the order it had on any device, its figures marked as
+  // updating, while the live reads arrive. A proven live stage always wins.
+  const lastKnown = useLastKnown(Boolean(accountKey));
+  const decided: HomeStage | undefined = decideHomeStage({ live, remembered, lastKnown: lastKnown.data }).stage;
+  // Once every part was read live, keep it as the account's last known.
+  const liveFigures = useLiveFigures();
+  const liveSnapshot: LastKnownSnapshot | undefined =
+    proven && liveFigures.complete && liveFigures.held
+      ? {
+          v: 1,
+          stage: proven,
+          stocks: liveFigures.figures.holdings ?? null,
+          cash: liveFigures.figures.cash ?? null,
+          // Kept only when whole: short of a network, the funds are unknown, not the sum read.
+          funds: liveFigures.fundsWhole ? (liveFigures.figures.funds ?? null) : null,
+          waiting: liveFigures.figures.waiting ?? null,
+          holdings: liveFigures.held,
+        }
+      : undefined;
+  useSaveLastKnown(liveSnapshot);
   useEffect(() => {
     if (proven !== undefined && rememberedStage !== proven) rememberStage(proven);
   }, [proven, rememberedStage, rememberStage]);

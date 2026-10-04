@@ -29,7 +29,9 @@
     "campaign:queue": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/campaign-queue.mjs",
     "orders:recover": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/orders-recover.mjs",
     "referral-friends:backfill": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/referral-friends-backfill.mjs",
-    "avatars:build": "node scripts/avatars/build.mjs"
+    "avatars:build": "node scripts/avatars/build.mjs",
+  "home:timing": "node scripts/home-timing.mjs",
+  "home:reads": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/time-home-reads.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.78",

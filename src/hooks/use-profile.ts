@@ -2,7 +2,7 @@
 
 import { isUnavailableResponse, noteUnavailable, unavailableReasonOf } from "@/lib/unavailable-refusal";
 import { reportWithRetry } from "@/lib/pour-retry";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccountXAccount } from "@/hooks/use-wallet-restore";
@@ -30,6 +30,8 @@ import type { PortfolioHistoryResponse } from "@/app/api/portfolio/history/route
 import type { WalletsResponse } from "@/app/api/account/wallets/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
 import type { FirstStockResponse } from "@/lib/first-stock";
+import type { LastKnownResponse } from "@/app/api/account/last-known/route";
+import { shouldSave, type LastKnown, type LastKnownSnapshot } from "@/lib/last-known";
 import { withSkip, withoutSkip, type FirstPathResponse, type PathStep } from "@/lib/first-path";
 import type { CampaignProgress, CampaignResponse } from "@/lib/campaigns";
 import type { EmailSettingsResponse, SwitchableKind } from "@/lib/email-kinds";
@@ -553,6 +555,51 @@ export function useSetEmailPref() {
 export function useFirstStock(enabled: boolean) {
   // A minute fresh, so another device's "Got it" lands at the next focus.
   return useRewardsQuery<FirstStockResponse>("first-stock", "/api/first-stock", { enabled, staleTime: 60_000 });
+}
+
+/**
+ * The account's last-known home (lib/last-known): read once a visit, so the
+ * home can draw figures while the live reads arrive. Null when there is
+ * none; undefined while it is asked.
+ */
+export function useLastKnown(enabled = true) {
+  return useRewardsQuery<LastKnownResponse, LastKnown | null>("last-known", "/api/account/last-known", {
+    enabled,
+    staleTime: Infinity,
+    // A route not deployed yet reads as no reading at all.
+    notFound: { lastKnown: null },
+    select: (data) => data.lastKnown,
+  });
+}
+
+/** One save attempt per this long at most, so a server that refuses is not asked every render. */
+const LAST_KNOWN_SAVE_GAP_MS = 60_000;
+
+/**
+ * Keeps a fully live reading as the account's last known, when it differs
+ * from the one kept or that one has aged (lib/last-known shouldSave).
+ * `next` is undefined until every part of the home was read live.
+ */
+export function useSaveLastKnown(next: LastKnownSnapshot | undefined) {
+  const queryClient = useQueryClient();
+  const { key, call } = useRewardsCall();
+  const saved = useLastKnown(next !== undefined);
+  const lastTry = useRef(0);
+  const savedData = saved.data;
+  const savedSettled = !saved.isLoading;
+  useEffect(() => {
+    if (!next || !key || !savedSettled) return;
+    const now = Date.now();
+    if (now - lastTry.current < LAST_KNOWN_SAVE_GAP_MS) return;
+    if (!shouldSave(savedData, next, now)) return;
+    lastTry.current = now;
+    void call<LastKnownResponse>("/api/account/last-known", { save: next }).then((data) => {
+      // The query keeps the selected value (useRewardsQuery selects inside its queryFn), not the envelope.
+      if (data) queryClient.setQueryData<LastKnown | null>(["last-known", key], data.lastKnown);
+    });
+    // `call` is a fresh closure each render; the gap above is what bounds this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [next, key, savedData, savedSettled, queryClient]);
 }
 
 /** "Got it": the card closes at once, and the server keeps it closed on every device. */

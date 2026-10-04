@@ -1895,3 +1895,16 @@ create table if not exists most_bought_weeks (
   answer jsonb not null,
   computed_at timestamptz not null default now()
 );
+
+-- What the home last showed an account (lib/last-known): its figure in
+-- parts, the stage and the holdings, saved by the browser only once every
+-- part was read live, so the next visit on any device opens on these,
+-- marked as updating, while the live reads arrive. Display only: nothing
+-- that moves money reads it. One row per account, replaced in place;
+-- `snapshot` is validated by lib/last-known parseSnapshot before it is
+-- stored. Read back only to the same account (app/api/account/last-known).
+create table if not exists home_last_known (
+  user_id uuid primary key references users(id) on delete cascade,
+  snapshot jsonb not null,
+  as_of timestamptz not null default now()
+);

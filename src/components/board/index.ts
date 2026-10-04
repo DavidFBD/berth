@@ -1,4 +1,4 @@
-export { AccountTotal } from "./account-total";
+export { AccountTotal, useLiveFigures } from "./account-total";
 export { CashShelf } from "./cash-shelf";
 export { CampaignLine, CampaignLineView } from "./campaign-line";
 export { EmailNudgeLine, EmailNudgeLineView } from "./email-nudge-line";

@@ -14,6 +14,10 @@ import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useLimitOrders } from "@/hooks/use-limit-orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { accountTotalWith, waitingUsd } from "@/lib/limit-orders";
+import { shownPart } from "@/lib/last-known";
+import { useLastKnown } from "@/hooks/use-profile";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
+import { formatUnits } from "viem";
 
 /** The account's figure in its three parts; undefined while a part loads. */
 export type AccountFigures = {
@@ -31,21 +35,18 @@ export type AccountFigures = {
 };
 
 /**
- * One figure for the whole account: funds the user can spend, plus every
- * stock, fund and cash listing the account holds, valued by the solver
- * oracle. Earlier vault positions are listed in their own section and are
- * not summed here; their value comes from a different oracle and they are
- * not part of what Berth sells. Shown whenever there is an account (an email
- * session or a connected EVM wallet); a browser with neither has no figure.
+ * The account's figure as read live right now, part by part (each part
+ * undefined while it loads), and whether every part is fully read: the
+ * one state in which it may be kept as the account's last known
+ * (lib/last-known). Shared by AccountTotal and the home, which saves it.
  */
-export function AccountTotal() {
+export function useLiveFigures() {
   const funds = useEmbeddedHoldings();
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
   const prices = useListingPrices();
   const limits = useLimitOrders({ poll: false });
 
-  if (!account.spokeAddress) return null;
   const waiting = waitingUsd(limits.waiting, (symbol) => {
     const listing = TOKEN_LISTINGS.find((entry) => entry.symbol === symbol);
     return listing ? prices.priceOf(listing) : undefined;
@@ -63,15 +64,83 @@ export function AccountTotal() {
         )
       : undefined;
 
+  const figures: AccountFigures = {
+    holdings: sum("stock"),
+    cash: sum("cash"),
+    funds: funds.isLoading ? undefined : (funds.totalUsd ?? 0),
+    waiting,
+    holdsAnything: holdings.settled && holdings.held.some((holding) => holding.listing.kind === "stock"),
+  };
+  return {
+    hasAccount: Boolean(account.spokeAddress),
+    figures,
+    /** Some network is past its read deadline and still being read: the Funds part is short of it. */
+    fundsStillReading: funds.slowChains.length > 0,
+    /** Funds were found but none could be priced (the oracle unread): the $0 they add is not their worth. */
+    fundsUnpriced: !funds.isLoading && funds.holdings.length > 0 && funds.totalUsd === undefined,
+    /** Every part read live and the orders known: the reading may be kept (lib/last-known). */
+    complete:
+      figures.holdings !== undefined && figures.cash !== undefined && figures.funds !== undefined && !limits.isLoading,
+    /** Every network answered and every asset priced: the Funds part is the whole of it. */
+    fundsWhole:
+      !funds.isLoading &&
+      funds.erroredChains.length === 0 &&
+      funds.unaddressedChains.length === 0 &&
+      !(funds.holdings.length > 0 && funds.totalUsd === undefined),
+    /** The stocks and funds held, valued, for a last-known reading. */
+    held: holdings.settled
+      ? holdings.held
+          .filter((holding) => holding.listing.kind === "stock")
+          .map((holding) => ({
+            symbol: holding.listing.symbol,
+            quantity: Number(formatUnits(holding.balance, holding.listing.decimals)),
+            worth: prices.usdValue(holding.listing, holding.balance) ?? null,
+          }))
+      : undefined,
+  };
+}
+
+/**
+ * One figure for the whole account: funds the user can spend, plus every
+ * stock, fund and cash listing the account holds, valued by the solver
+ * oracle. Earlier vault positions are listed in their own section and are
+ * not summed here; their value comes from a different oracle and they are
+ * not part of what Berth sells. Shown whenever there is an account (an email
+ * session or a connected EVM wallet); a browser with neither has no figure.
+ *
+ * While a part is still being read live, the account's last-known reading
+ * (lib/last-known) stands in for it, marked as updating, so the figure is
+ * there at once and each part turns live as it arrives.
+ */
+export function AccountTotal() {
+  const live = useLiveFigures();
+  const lastKnown = useLastKnown(live.hasAccount).data;
+
+  if (!live.hasAccount) return null;
+  const known = lastKnown?.snapshot;
+  const holdings = shownPart(live.figures.holdings, known?.stocks);
+  const cash = shownPart(live.figures.cash, known?.cash);
+  // Past its deadline a network is unknown: the live sum is short of it, and says so.
+  const funds = live.fundsStillReading
+    ? { value: live.figures.funds, lastKnown: true }
+    : live.fundsUnpriced && known?.funds != null
+      ? { value: known.funds, lastKnown: true }
+      : shownPart(live.figures.funds, known?.funds);
+
   return (
     <AccountTotalView
       figures={{
-        holdings: sum("stock"),
-        cash: sum("cash"),
-        funds: funds.isLoading ? undefined : (funds.totalUsd ?? 0),
-        waiting,
-        holdsAnything: holdings.settled && holdings.held.some((holding) => holding.listing.kind === "stock"),
+        holdings: holdings.value,
+        cash: cash.value,
+        funds: funds.value,
+        waiting: live.figures.waiting,
+        holdsAnything: live.figures.holdsAnything || (live.figures.holdings === undefined && known?.stage === "owns"),
       }}
+      updating={
+        holdings.lastKnown || cash.lastKnown || funds.lastKnown
+          ? { holdings: holdings.lastKnown, cash: cash.lastKnown, funds: funds.lastKnown, asOf: lastKnown?.asOf }
+          : undefined
+      }
     />
   );
 }
@@ -82,7 +151,14 @@ export function AccountTotal() {
  * desktop, bare on a phone, where the page itself is the card. The dev
  * gallery (/dev/board?home=…) renders this from fixtures.
  */
-export function AccountTotalView({ figures }: { figures: AccountFigures }) {
+export function AccountTotalView({
+  figures,
+  updating,
+}: {
+  figures: AccountFigures;
+  /** Which parts are the last reading rather than live (lib/last-known), and when it was read. */
+  updating?: { holdings?: boolean; cash?: boolean; funds?: boolean; asOf?: number };
+}) {
   const copy = useCopy();
   const money = useMoney();
   const [compareOpen, toggleCompare, compareId] = useDisclosure("compare");
@@ -90,12 +166,16 @@ export function AccountTotalView({ figures }: { figures: AccountFigures }) {
   const waiting = figures.waiting ?? 0;
   // What the person owns plus what waits in orders: the parts below always add up to it.
   const total = accountTotalWith([holdings, cash, funds, waiting]);
-  const parts: { label: string; value: number | undefined }[] = [
-    { label: copy.accountSplitHoldings, value: holdings },
-    { label: copy.cashTitle, value: cash },
-    { label: copy.fundsTitle, value: funds },
+  const parts: { label: string; value: number | undefined; lastKnown?: boolean }[] = [
+    { label: copy.accountSplitHoldings, value: holdings, lastKnown: updating?.holdings },
+    { label: copy.cashTitle, value: cash, lastKnown: updating?.cash },
+    { label: copy.fundsTitle, value: funds, lastKnown: updating?.funds },
     ...(waiting > 0 ? [{ label: copy.limitWaitingPart, value: waiting }] : []),
   ];
+  const when =
+    updating?.asOf !== undefined
+      ? new Date(updating.asOf).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+      : undefined;
 
   return (
     <section data-ph-mask className="rounded-lg border border-border bg-card px-[18px] pt-[18px] pb-4 lg:px-6 lg:pt-[22px] lg:pb-5">
@@ -105,12 +185,26 @@ export function AccountTotalView({ figures }: { figures: AccountFigures }) {
         <InfoTip label={copy.accountTotalLabel}>
           <p>{copy.accountTotalSub}</p>
           {figures.holdsAnything && <p className="mt-1.5 text-muted-foreground">{copy.holdingsBenchmarkNote}</p>}
+          {updating && when && <p className="mt-1.5 text-muted-foreground">{copy.lastKnownAsOf(when)}</p>}
         </InfoTip>
+        {/* The last reading stands in while the live one arrives: said quietly, once. */}
+        {updating && (
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ThinkingOrb state="working" size={20} tone="muted" decorative />
+            {copy.lastKnownUpdating}
+          </span>
+        )}
       </div>
       {total === undefined ? (
         <Skeleton className="mt-1.5 mb-3.5 h-11 w-44 lg:mb-[18px] lg:h-14" />
       ) : (
-        <p className="money mt-1.5 mb-3.5 text-[2.75rem] leading-[1.05] font-normal tracking-[-0.035em]! tabular-nums text-foreground lg:mt-2 lg:mb-[18px] lg:text-[3.5rem]">
+        <p
+          data-last-known={updating ? "" : undefined}
+          className={cn(
+            "money mt-1.5 mb-3.5 text-[2.75rem] leading-[1.05] font-normal tracking-[-0.035em]! tabular-nums lg:mt-2 lg:mb-[18px] lg:text-[3.5rem]",
+            updating ? "text-muted-foreground" : "text-foreground",
+          )}
+        >
           {money.format(total)}
         </p>
       )}
@@ -119,7 +213,13 @@ export function AccountTotalView({ figures }: { figures: AccountFigures }) {
         {parts.map((part) => (
           <div key={part.label} className="flex min-w-0 flex-1 flex-col px-3 py-2 lg:px-3.5 lg:py-2.5">
             <dt className="truncate text-xs text-muted-foreground">{part.label}</dt>
-            <dd className="money text-[15px] leading-[1.4] font-medium tabular-nums text-foreground">
+            <dd
+              data-last-known={part.lastKnown && part.value !== undefined ? "" : undefined}
+              className={cn(
+                "money text-[15px] leading-[1.4] font-medium tabular-nums",
+                part.lastKnown ? "text-muted-foreground" : "text-foreground",
+              )}
+            >
               {part.value === undefined ? <Skeleton className="mt-0.5 h-4 w-12" /> : money.format(part.value)}
             </dd>
           </div>

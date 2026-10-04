@@ -10,6 +10,7 @@ import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useTreasuryRate } from "@/hooks/use-treasury-rate";
+import { useLastKnown } from "@/hooks/use-profile";
 import { formatTokenAmount } from "@/lib/format";
 import { CASH_LISTING } from "@/lib/listings";
 
@@ -31,6 +32,7 @@ export function CashShelf(actions: Actions) {
   const holdings = useHubHoldings(account.hubWallets);
   const prices = useListingPrices();
   const rate = useTreasuryRate();
+  const lastKnown = useLastKnown(Boolean(account.spokeAddress)).data;
 
   const parked = holdings.settled
     ? (holdings.holdings.find(
@@ -46,7 +48,10 @@ export function CashShelf(actions: Actions) {
     <CashShelfView
       parked={parked}
       parkedUsd={parkedUsd}
-      loading={parked === undefined && Boolean(account.hubWallet)}
+      // Unknown until the hub is read, for as long as that takes: never
+      // "nothing parked" while the account's hub wallets are still unknown.
+      loading={parked === undefined && Boolean(account.spokeAddress)}
+      lastKnownUsd={lastKnown?.snapshot.cash ?? undefined}
       ratePct={rate.data?.ratePct ?? null}
       {...actions}
     />
@@ -58,10 +63,13 @@ export function CashShelfView({
   parked,
   parkedUsd,
   loading,
+  lastKnownUsd,
   ratePct,
   onPark,
   onTakeOut,
 }: Actions & {
+  /** While loading: the cash the last reading found (lib/last-known), drawn as updating instead of a skeleton. */
+  lastKnownUsd?: number;
   /** SGOV held, in its smallest unit; undefined while it loads. */
   parked: bigint | undefined;
   parkedUsd: number | undefined;
@@ -72,11 +80,14 @@ export function CashShelfView({
   const money = useMoney();
   const hasCash = parked !== undefined && parked > 0n;
   const rateText = ratePct !== null ? `${ratePct.toFixed(2)}%` : null;
+  const updating = loading && lastKnownUsd !== undefined;
   const figure = hasCash
     ? parkedUsd !== undefined
       ? money.format(parkedUsd)
       : `${formatTokenAmount(parked, CASH_LISTING.decimals, 4)} ${CASH_LISTING.symbol}`
-    : undefined;
+    : updating && lastKnownUsd > 0
+      ? money.format(lastKnownUsd)
+      : undefined;
 
   return (
     // On a phone the actions drop under the words, in line with them.
@@ -94,7 +105,11 @@ export function CashShelfView({
             {rateText && <p className="mt-1.5 text-muted-foreground">{copy.cashYieldLine(rateText)}</p>}
           </InfoTip>
         </div>
-        {loading ? (
+        {updating ? (
+          <p data-last-known="" className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+            {copy.lastKnownUpdating}
+          </p>
+        ) : loading ? (
           <Skeleton className="mt-1 h-3.5 w-36" />
         ) : (
           <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">

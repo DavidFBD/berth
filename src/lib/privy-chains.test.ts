@@ -25,7 +25,7 @@ describe("PRIVY_SUPPORTED_CHAINS", () => {
   it("hands Privy the pinned RPC where we pin one", () => {
     const polygon = PRIVY_SUPPORTED_CHAINS.find((chain) => chain.id === 137);
     expect(polygon?.rpcUrls.privyWalletOverride?.http[0]).toBe(
-      "https://polygon-bor-rpc.publicnode.com",
+      "https://polygon.drpc.org",
     );
   });
 

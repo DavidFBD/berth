@@ -69,6 +69,11 @@ export function useHubHoldings(hubWallet: Address | readonly Address[] | undefin
     queryKey: [...LISTINGS_QUERY_KEY, "holdings", ...(wallets.length <= 1 ? [wallets[0]] : [wallets.join(",")])],
     enabled: wallets.length > 0,
     refetchInterval: HOLDINGS_REFETCH_MS,
+    // Quick retries: the hub client already fails over between endpoints
+    // (lib/sodax-config HUB_RPC_URLS), so a failure here is worth asking
+    // again soon, not after React Query's default seven seconds of backoff.
+    retry: 2,
+    retryDelay: (attempt) => 400 * 2 ** attempt,
     queryFn: async (): Promise<bigint[][]> => {
       if (wallets.length === 0) throw new Error("hub wallet required");
       const results = await sodax.hubProvider.publicClient.multicall({

@@ -11,13 +11,14 @@ import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
 import { shortDate } from "@/components/board/portfolio-summary";
 import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
-import { useOrders } from "@/hooks/use-profile";
+import { useLastKnown, useOrders } from "@/hooks/use-profile";
 import { compareHolding, type HoldingComparison } from "@/lib/benchmark";
 import { formatTokenAmount } from "@/lib/format";
 import { LISTING_MARK_BY_SYMBOL, TOKEN_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
 import { CompanyMark } from "@/components/company-marks";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
-import { formatUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
+import { cn } from "@/lib/utils";
 
 const BENCHMARK = TOKEN_LISTINGS.find((listing) => listing.symbol === "SPY");
 
@@ -93,6 +94,7 @@ export function HoldingsList({
   const performance = useListingPerformance();
   const orders = useOrders(Boolean(account.spokeAddress));
   const moves = useMoves();
+  const lastKnown = useLastKnown(Boolean(account.spokeAddress)).data;
 
   if (!account.spokeAddress) return null;
 
@@ -136,6 +138,29 @@ export function HoldingsList({
     holdings.settled && !prices.isLoading
       ? valued.reduce((sum, holding) => sum + (prices.usdValue(holding.listing, holding.balance) ?? 0), 0)
       : undefined;
+
+  // Still reading the hub: the last reading's rows stand in (lib/last-known),
+  // marked as updating and without Sell, which needs the live balance.
+  const known = lastKnown?.snapshot;
+  if (!holdings.settled && known && known.holdings.length > 0) {
+    const knownRows = known.holdings.flatMap((row): HoldingRow[] => {
+      const listing = TOKEN_LISTINGS.find((entry) => entry.symbol === row.symbol);
+      return listing
+        ? [{ listing, balance: parseUnits(row.quantity.toFixed(listing.decimals), listing.decimals), worth: row.worth ?? undefined }]
+        : [];
+    });
+    return (
+      <HoldingsView
+        rows={knownRows}
+        loading={false}
+        pricesLoading={false}
+        total={known.stocks !== null && known.cash !== null ? known.stocks + known.cash : undefined}
+        includesCash={(known.cash ?? 0) > 0}
+        onSell={onSell}
+        updating
+      />
+    );
+  }
 
   return (
     <HoldingsView
@@ -186,7 +211,10 @@ export function HoldingsView({
   total,
   includesCash,
   onSell,
+  updating = false,
 }: {
+  /** The rows are the last reading (lib/last-known), not live: drawn muted, without Sell. */
+  updating?: boolean;
   rows: readonly HoldingRow[];
   loading: boolean;
   pricesLoading: boolean;
@@ -221,7 +249,12 @@ export function HoldingsView({
             total === undefined ? (
               <Skeleton className="h-5 w-16" />
             ) : (
-              <span className="money text-[17px] font-medium tabular-nums text-foreground">{money.format(total)}</span>
+              <span
+                data-last-known={updating ? "" : undefined}
+                className={cn("money text-[17px] font-medium tabular-nums", updating ? "text-muted-foreground" : "text-foreground")}
+              >
+                {money.format(total)}
+              </span>
             )
           ) : undefined
         }
@@ -239,7 +272,11 @@ export function HoldingsView({
         <>
           <ul id={listId} className="divide-y divide-border border-t border-border">
             {shown.map(({ listing, balance, worth, move, comparison }) => (
-              <li key={listing.address} className="flex items-center gap-3 px-[18px] py-[13px] lg:px-6">
+              <li
+                key={listing.address}
+                data-last-known={updating ? "" : undefined}
+                className="flex items-center gap-3 px-[18px] py-[13px] lg:px-6"
+              >
                 <TickerTile symbol={listing.symbol} />
                 <div className="min-w-0 flex-1">
                   <div title={listing.name} className="truncate text-[14.5px] leading-snug font-medium text-foreground">{rowName(listing)}</div>
@@ -275,7 +312,8 @@ export function HoldingsView({
                     />
                   )}
                 </div>
-                <Button variant="outline" size="xs" onClick={() => onSell(listing)}>
+                {/* A sell spends the live balance: offered once it is read. */}
+                <Button variant="outline" size="xs" disabled={updating} onClick={() => onSell(listing)}>
                   {copy.sell}
                 </Button>
               </li>

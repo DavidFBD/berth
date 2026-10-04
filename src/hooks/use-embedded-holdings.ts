@@ -23,6 +23,13 @@ import { resolveAccount } from "@/lib/account";
 import { useAccountSession } from "@/hooks/use-account";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { isDust } from "@/lib/dust";
+import {
+  CHAIN_READ_DEADLINE_MS,
+  ReadDeadlineError,
+  SLOW_CHAIN_RETRY_MS,
+  retryBoundedRead,
+  withDeadline,
+} from "@/lib/read-deadline";
 
 export type EmbeddedHolding = {
   chainKey: SpokeChainKey;
@@ -60,6 +67,14 @@ const SWEEP_INTERVAL_MS = 60_000;
 
 
 
+/**
+ * How each network's last read ended, while it has not answered since: a
+ * network read again in the background goes back to "pending" in React
+ * Query (no data, error cleared), and must not flip the page back to
+ * loading every SLOW_CHAIN_RETRY_MS. Keyed by network and address.
+ */
+const lastFailure = new Map<string, "slow" | "failed">();
+
 export type EmbeddedHoldingsResult = {
   /** True when the user is signed in via email with an embedded wallet. */
   emailMode: boolean;
@@ -76,8 +91,17 @@ export type EmbeddedHoldingsResult = {
   isLoading: boolean;
   /** What the embedded wallets hold, largest USD value first (unpriced last, in chain order). */
   holdings: EmbeddedHolding[];
-  /** Chains whose balance sweep errored: their holdings are unknown, not zero. */
+  /**
+   * Chains whose balance sweep errored or ran past its deadline
+   * (lib/read-deadline): their holdings are unknown, not zero.
+   */
   erroredChains: SpokeChainKey[];
+  /**
+   * The part of `erroredChains` that ran past its deadline: still being
+   * read in the background, said as "still reading" rather than "did not
+   * answer".
+   */
+  slowChains: SpokeChainKey[];
   /**
    * Chains holding tokens but ZERO native balance: any pour from there dies
    * at the network fee, so the tea is visible but stuck until gas arrives.
@@ -117,28 +141,57 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
   const unaddressedChains = emailMode ? EMBEDDED_CHAINS.filter((chainKey) => !addressFor(chainKey)) : [];
 
   const swept = useQueries({
-    queries: EMBEDDED_CHAINS.map((chainKey) => ({
-      ...getXBalancesQueryOptions({
+    queries: EMBEDDED_CHAINS.map((chainKey) => {
+      const options = getXBalancesQueryOptions({
         xService: getXService(getXChainType(chainKey)!),
         xChainId: chainKey,
         xTokens: getDepositTokens(chainKey).map(toBalanceReadToken),
         address: addressFor(chainKey),
-      }),
-      // Must come AFTER the spread — see SWEEP_INTERVAL_MS.
-      refetchInterval: SWEEP_INTERVAL_MS,
-      staleTime: SWEEP_INTERVAL_MS,
-    })),
+      });
+      const read = options.queryFn as () => Promise<Record<string, bigint>>;
+      const id = `${chainKey}:${addressFor(chainKey) ?? ""}`;
+      return {
+        ...options,
+        // Each network on its own deadline, so the slowest cannot hold the
+        // others (lib/read-deadline). Same key and same answer as dapp-kit's
+        // own, so the cache stays shared with the drawers.
+        queryFn: async () => {
+          try {
+            const balances = await withDeadline(read(), CHAIN_READ_DEADLINE_MS, chainKey);
+            lastFailure.delete(id);
+            return balances;
+          } catch (error) {
+            lastFailure.set(id, error instanceof ReadDeadlineError ? "slow" : "failed");
+            throw error;
+          }
+        },
+        retry: retryBoundedRead,
+        retryDelay: 400,
+        // Must come AFTER the spread — see SWEEP_INTERVAL_MS. A network that
+        // failed or ran late is read again sooner, in the background.
+        refetchInterval: (query: { state: { status: string } }) =>
+          query.state.status === "error" ? SLOW_CHAIN_RETRY_MS : SWEEP_INTERVAL_MS,
+        staleTime: SWEEP_INTERVAL_MS,
+      };
+    }),
     combine: (results) => {
       const holdings: Array<Omit<EmbeddedHolding, "usdValue">> = [];
       const erroredChains: SpokeChainKey[] = [];
+      const slowChains: SpokeChainKey[] = [];
       const gasShortChains: SpokeChainKey[] = [];
       const nativeBalances: Partial<Record<SpokeChainKey, bigint>> = {};
       EMBEDDED_CHAINS.forEach((chainKey, index) => {
-        const data = results[index]?.data;
+        const result = results[index];
+        const data = result?.data;
         if (!data) {
-          // A dead RPC must not read as an empty wallet: dapp-kit's 5s
-          // refetchInterval keeps retrying, so flag the chain as unknown.
-          if (results[index]?.isError) erroredChains.push(chainKey);
+          // A dead or slow RPC must not read as an empty wallet: flag the
+          // chain as unknown, including while it is read again in the
+          // background (pending once more, but it has already failed).
+          if (result && (result.isError || result.errorUpdatedAt > 0)) {
+            erroredChains.push(chainKey);
+            const failure = lastFailure.get(`${chainKey}:${addressFor(chainKey) ?? ""}`);
+            if (failure === "slow" || (failure === undefined && result.error instanceof ReadDeadlineError)) slowChains.push(chainKey);
+          }
           return;
         }
         const nativeToken = getNativeGasToken(chainKey);
@@ -167,9 +220,11 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
         }
       });
       return {
-        isLoading: results.some((query) => query.isLoading),
+        // Loading only until each network has answered or failed once.
+        isLoading: results.some((query) => query.isLoading && query.errorUpdatedAt === 0),
         holdings,
         erroredChains,
+        slowChains,
         gasShortChains,
         nativeBalances,
       };
@@ -207,6 +262,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
     isLoading: swept.isLoading || prices.isLoading,
     holdings,
     erroredChains: swept.erroredChains,
+    slowChains: swept.slowChains,
     gasShortChains: swept.gasShortChains,
     nativeBalances: swept.nativeBalances,
     totalUsd,

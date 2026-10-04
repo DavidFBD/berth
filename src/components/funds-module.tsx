@@ -21,6 +21,7 @@ import {
 import { getChainName, getNativeGasToken } from "@/lib/chains";
 import { formatTokenAmount } from "@/lib/format";
 import { useCopy, useMoney } from "@/components/settings-provider";
+import { useLastKnown } from "@/hooks/use-profile";
 
 /**
  * Funds, as one row of the board's money card: idle money in the user's own
@@ -51,8 +52,11 @@ export function FundsModule({
   const signedIn = demo ? demo.signedIn : privy.enabled && privy.authenticated;
   const swept = useEmbeddedHoldings();
   const embedded = demo?.embedded ?? swept;
-  const { connected, isLoading, holdings, erroredChains, gasShortChains, totalUsd } =
+  const { connected, isLoading, holdings, erroredChains, slowChains, gasShortChains, totalUsd } =
     embedded;
+  // While the networks are read, the last reading's figure stands in (lib/last-known).
+  const lastKnownFunds = useLastKnown(connected && !demo).data?.snapshot.funds ?? undefined;
+  const updating = connected && isLoading && lastKnownFunds !== undefined;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const copy = useCopy();
   const money = useMoney();
@@ -75,11 +79,17 @@ export function FundsModule({
         <h2 className="font-display text-base leading-tight text-foreground">
           {worth ? (
             <MoneyName name={copy.fundsTitle} amount={money.format(totalUsd)} />
+          ) : updating && lastKnownFunds > 0 ? (
+            <MoneyName name={copy.fundsTitle} amount={money.format(lastKnownFunds)} />
           ) : (
             copy.fundsTitle
           )}
         </h2>
-        {connected && isLoading ? (
+        {updating ? (
+          <p data-last-known="" className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+            {copy.lastKnownUpdating}
+          </p>
+        ) : connected && isLoading ? (
           <Skeleton className="mt-1 h-3.5 w-36" />
         ) : (
           <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
@@ -102,6 +112,9 @@ export function FundsModule({
                 >
                   {copy.fundsWhatsInside}
                 </button>
+                {slowChains.length > 0 && (
+                  <span className="ml-1.5">{copy.fundsStillReading(slowChains.map(getChainName).join(", "))}</span>
+                )}
                 {gasShortChains.length > 0 && (
                   <span className="ml-1.5 whitespace-nowrap font-medium text-warn">
                     <GasPump weight="duotone" className="inline size-3.5 align-[-0.2em]" /> {copy.fundsNeedsGas}

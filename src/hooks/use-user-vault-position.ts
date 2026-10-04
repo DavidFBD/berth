@@ -23,7 +23,7 @@ const ONE_SHARE = 10n ** 18n;
  * Every holder row is one `balanceOf` on the Sonic hub, per cup, per tick: an
  * EVM account fans out to twelve source chains, so four cups make 48 reads a
  * tick, and the SDK's hub client neither batches nor multicalls (each read is
- * its own POST to rpc.soniclabs.com). At the hook's 15s default that looked,
+ * its own POST to the hub RPC). At the hook's 15s default that looked,
  * from outside, like the same call ten times over every few seconds (Paul,
  * 2026-09-16). A minute is plenty: the pour machine invalidates
  * `['leverageYield']` the moment a fill lands, so freshness after a pour never
