@@ -1404,6 +1404,8 @@ export type CampaignCopy = {
   landingLede: (amount: string, days: number) => string;
   /** The home line of an account that opened through a campaign's link and has not finished setting up. */
   setUp: (amount: string, days: number) => string;
+  /** Set up, but no place is free for now (all taken, or the campaign paused): it may still free up before `deadline`. */
+  waiting: (amount: string, days: number, deadline: string) => string;
   /** The account is set up and is waiting out the days. */
   staying: (amount: string, eligible: string) => string;
   qualified: string;
@@ -4698,6 +4700,8 @@ export const COPY: Copy = {
       `Open a new Berth account through this link, set it up and still use Berth ${dayCount(days)} later, and ${amount} in USDC on Base is added to your account, while places last.`,
     setUp: (amount, days) =>
       `You joined through a Berth offer. Once your account is set up, with a verified email, a username and a wallet with an address on Base, and you still use Berth ${dayCount(days)} later, ${amount} in USDC on Base is added to your account, while places last.`,
+    waiting: (amount, days, deadline) =>
+      `Your account is set up. Every place in this offer is taken for now. If one frees up before ${deadline}, it is yours, and ${amount} in USDC on Base is added once you still use Berth ${dayCount(days)} after that.`,
     staying: (amount, eligible) => `Your account is set up. If you still use Berth on ${eligible}, ${amount} in USDC on Base is added to your account.`,
     qualified: "You stayed. Your reward is usually paid within a few days.",
     paid: (amount) => `Paid. ${amount} in USDC was added to your account.`,

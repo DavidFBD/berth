@@ -287,6 +287,26 @@ describe("the account's own progress", () => {
     expect(await campaignProgress(signup.user.id)).toBeNull();
   });
 
+  it("says waiting to an account set up while every place is taken, or while the campaign is paused", async () => {
+    const id = await campaign("progress-full", { maxClaims: 1 });
+    const first = await joined({ code: "progress-full" });
+    await username(first.user);
+    expect(await advance(first.claimId)).toBe("holding");
+    const second = await joined({ code: "progress-full" });
+    expect(await campaignProgress(second.user.id)).toMatchObject({ status: "setting_up", deadline: null });
+    await username(second.user);
+    const waiting = await campaignProgress(second.user.id);
+    expect(waiting).toMatchObject({ status: "waiting" });
+    const row = (await sql.query(`select ends_at, hold_days from campaigns where id = $1`, [id])) as { ends_at: Date; hold_days: number }[];
+    expect(waiting!.deadline).toBe(new Date(new Date(row[0].ends_at).getTime() + row[0].hold_days * DAY).toISOString());
+    const paused = await campaign("progress-paused", { active: true });
+    const third = await joined({ code: "progress-paused" });
+    await sql.query(`update campaigns set active = false where id = $1`, [paused]);
+    expect(await campaignProgress(third.user.id)).toMatchObject({ status: "setting_up" });
+    await username(third.user);
+    expect(await campaignProgress(third.user.id)).toMatchObject({ status: "waiting" });
+  });
+
   it("answers nothing to anyone else: an account with no claim, or one whose invitee arrived through the link", async () => {
     await campaign("progress-other");
     const inviter = await person();

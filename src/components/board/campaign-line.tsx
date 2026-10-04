@@ -40,6 +40,9 @@ export function CampaignLineView({ line, bare = false }: { line: Line | null; ba
     case "setUp":
       text = copy.setUp(campaignUsd(line.amountUsd), line.stayDays);
       break;
+    case "waiting":
+      text = copy.waiting(campaignUsd(line.amountUsd), line.stayDays, campaignDay(line.deadline));
+      break;
     case "staying":
       text = copy.staying(campaignUsd(line.amountUsd), campaignDay(line.eligible));
       break;
@@ -63,7 +66,7 @@ export function CampaignLineView({ line, bare = false }: { line: Line | null; ba
     >
       <Icon weight="duotone" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       <span className={bare ? "min-w-0 text-xs text-muted-foreground" : "min-w-0 flex-1 text-sm text-foreground"}>{text}</span>
-      {(line.kind === "setUp" || line.kind === "staying") && (
+      {(line.kind === "setUp" || line.kind === "waiting" || line.kind === "staying") && (
         <Link href="/terms#campaigns" className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline">
           {copy.termsLink}
         </Link>

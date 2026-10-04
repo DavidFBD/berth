@@ -145,12 +145,14 @@ const progress = (over: Partial<CampaignProgress>): CampaignProgress => ({
   status: "setting_up",
   eligibleAt: null,
   paidAt: null,
+  deadline: null,
   ...over,
 });
 
 /** The home lines' fixtures, by scene name (also read by /dev/board?campaign=). */
 export const LINE_FIXTURES: Record<string, CampaignProgress> = {
   setUp: progress({}),
+  waiting: progress({ status: "waiting", deadline: iso(Date.UTC(2026, 10, 14, 14)) }),
   staying: progress({ status: "staying", eligibleAt: iso(Date.UTC(2026, 9, 17, 14)) }),
   qualified: progress({ status: "qualified" }),
   paid: progress({ status: "paid", paidAt: iso(Date.now() - DAY) }),

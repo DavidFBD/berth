@@ -8,6 +8,7 @@ const base: CampaignProgress = {
   status: "setting_up",
   eligibleAt: null,
   paidAt: null,
+  deadline: null,
 };
 
 describe("normalizeCampaignCode", () => {
@@ -32,6 +33,8 @@ describe("campaignLine, the new account's own line", () => {
     const eligible = "2026-10-17T12:00:00.000Z";
     expect(campaignLine({ ...base, status: "staying", eligibleAt: eligible })).toEqual({ kind: "staying", amountUsd: 5, eligible: new Date(eligible) });
     expect(campaignLine({ ...base, status: "qualified", eligibleAt: eligible })).toEqual({ kind: "qualified" });
+    const deadline = "2026-11-14T12:00:00.000Z";
+    expect(campaignLine({ ...base, status: "waiting", deadline })).toEqual({ kind: "waiting", amountUsd: 5, stayDays: 14, deadline: new Date(deadline) });
     const now = new Date("2026-10-20T00:00:00Z");
     expect(campaignLine({ ...base, status: "paid", paidAt: "2026-10-15T00:00:00Z" }, now)).toEqual({ kind: "paid", amountUsd: 5 });
     expect(campaignLine({ ...base, status: "paid", paidAt: "2026-09-01T00:00:00Z" }, now)).toBeNull();
@@ -79,6 +82,7 @@ describe("the words", () => {
       words.landingTitle,
       words.landingLede("$5", 14),
       words.setUp("$5", 14),
+      words.waiting("$5", 14, "14 Nov"),
       words.staying("$5", "17 Oct"),
       words.staff.activateConfirm("Autumn"),
       words.staff.activateCheck,

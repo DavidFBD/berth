@@ -490,10 +490,23 @@ export async function campaignProgress(userId: string, now: Date = new Date()): 
     await advanceClaim(claim, campaign, now);
     claim = (await mine()) ?? claim;
   }
-  const base = { amountUsd: campaign.amount_usd, stayDays: campaign.hold_days, eligibleAt: claim.eligible_at?.toISOString() ?? null, paidAt: null };
+  const base = {
+    amountUsd: campaign.amount_usd,
+    stayDays: campaign.hold_days,
+    eligibleAt: claim.eligible_at?.toISOString() ?? null,
+    paidAt: null,
+    deadline: null,
+  };
   switch (claim.state) {
-    case "attributed":
+    case "attributed": {
+      // Set up, but no place to take: every place is taken for now (waitlisted), or the campaign is paused.
+      const person = await claimPerson(claim);
+      const setUp = person ? await campaignSetUp(person.id) : false;
+      if (setUp && (claim.waitlisted_at !== null || !campaign.active)) {
+        return { ...base, status: "waiting", deadline: claimDeadline(campaign).toISOString() };
+      }
       return { ...base, status: "setting_up" };
+    }
     case "holding":
       return { ...base, status: "staying" };
     case "qualified":
