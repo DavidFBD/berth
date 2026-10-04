@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COPY } from "@/lib/copy";
 import {
+  FRIEND_FACES_SHOWN,
   FRIEND_HOLDINGS_MAX_AGE_DAYS,
   FRIEND_NAMES_SHOWN,
   MOST_BOUGHT_MIN_ACCOUNT_DAYS,
@@ -183,10 +184,48 @@ describe("what friends hold", () => {
       ],
       LISTED,
     );
-    expect(lines).toEqual([
+    expect(lines.map(({ symbol, count, names }) => ({ symbol, count, names }))).toEqual([
       { symbol: "NVDA", count: 3, names: [] },
       { symbol: "AAPL", count: 2, names: ["anchor", "mara"] },
     ]);
+  });
+
+  it("gives each line at most four faces, sorted by username, and the count says the rest", () => {
+    expect(FRIEND_FACES_SHOWN).toBe(4);
+    const six = ["tide", "anchor", "quay", "mara", "juno", "bollard"].map((handle, i) => ({
+      handle,
+      avatarId: `face_${handle}`,
+      level: i + 1,
+      holdings: [{ symbol: "NVDA", quantity: 1, price: 180 }],
+    }));
+    const [nvda] = friendsHoldingByListing(six, LISTED);
+    expect(nvda.count).toBe(6);
+    expect(nvda.names).toEqual([]);
+    expect(nvda.faces).toEqual([
+      { handle: "anchor", avatarId: "face_anchor", level: 2 },
+      { handle: "bollard", avatarId: "face_bollard", level: 6 },
+      { handle: "juno", avatarId: "face_juno", level: 5 },
+      { handle: "mara", avatarId: "face_mara", level: 4 },
+    ]);
+    const [two] = friendsHoldingByListing(six.slice(0, 2), LISTED);
+    expect(two.faces.map((face) => face.handle)).toEqual(["anchor", "tide"]);
+    expect(two.names).toEqual(["anchor", "tide"]);
+  });
+
+  it("puts a face only on a friend counted in that line, with nothing beyond a username, an avatar and a level", () => {
+    const lines = friendsHoldingByListing(
+      [
+        { handle: "mara", avatarId: "ring", level: 6, holdings: [{ symbol: "NVDA", quantity: 2, price: 180 }] },
+        { handle: "dusty", avatarId: "rope", level: 3, holdings: [{ symbol: "NVDA", quantity: 0.0001, price: 180 }, { symbol: "AAPL", quantity: 1, price: 230 }] },
+        { handle: "cashy", avatarId: "compass", level: 2, holdings: [{ symbol: "SGOV", quantity: 10, price: 100 }] },
+      ],
+      LISTED,
+    );
+    expect(lines.find((line) => line.symbol === "NVDA")?.faces.map((face) => face.handle)).toEqual(["mara"]);
+    expect(lines.find((line) => line.symbol === "AAPL")?.faces.map((face) => face.handle)).toEqual(["dusty"]);
+    expect(JSON.stringify(lines)).not.toMatch(/cashy|compass|SGOV/);
+    for (const face of lines.flatMap((line) => line.faces)) expect(Object.keys(face).sort()).toEqual(["avatarId", "handle", "level"]);
+    expect(JSON.stringify(lines)).not.toMatch(/quantity|price|xp|180|230/);
   });
 
   it("never says an amount, and ignores dust, nothing and cash", () => {

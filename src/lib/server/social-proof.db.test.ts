@@ -234,12 +234,22 @@ describe("what friends hold", () => {
     await holds(mara, [{ symbol: "NVDA", quantity: 2, price: 180 }, { symbol: "AAPL", quantity: 1, price: 230 }]);
     await holds(anchor, [{ symbol: "NVDA", quantity: 1, price: 180 }, { symbol: "SGOV", quantity: 5, price: 100 }]);
     await holds(quay, [{ symbol: "NVDA", quantity: 0.5, price: 180 }]);
+    await sql.query(`update users set avatar_id = 'ring', xp = 1500 where id = $1`, [mara]);
     const answer = await friendsHolding(as(me), NOW);
     expect(answer.holding).toEqual([
-      { symbol: "NVDA", count: 3, names: [] },
-      { symbol: "AAPL", count: 1, names: ["mara"] },
+      {
+        symbol: "NVDA",
+        count: 3,
+        names: [],
+        faces: [
+          { handle: "anchor", avatarId: null, level: 1 },
+          { handle: "mara", avatarId: "ring", level: 6 },
+          { handle: "quay", avatarId: null, level: 1 },
+        ],
+      },
+      { symbol: "AAPL", count: 1, names: ["mara"], faces: [{ handle: "mara", avatarId: "ring", level: 6 }] },
     ]);
-    expect(JSON.stringify(answer)).not.toMatch(/quantity|price|180|230/);
+    expect(JSON.stringify(answer)).not.toMatch(/quantity|price|xp|1500|180|230/);
   });
 
   it("leaves out friends who do not share, hidden cards, no email, blocks either way, strangers and days over three old", async () => {
@@ -257,7 +267,9 @@ describe("what friends hold", () => {
     await sql.query(`insert into blocks (blocker_id, blocked_id, handle_snapshot, handle_norm) values ($1, $2, 'viewer_two', 'viewer_two')`, [blocksMe, me]);
     for (const id of [notSharing, hidden, noEmail, blockedByMe, blocksMe, stranger, shown]) await holds(id, [{ symbol: "TSLA", quantity: 1, price: 400 }]);
     await holds(stale, [{ symbol: "TSLA", quantity: 1, price: 400 }], "2026-09-28");
-    expect((await friendsHolding(as(me), NOW)).holding).toEqual([{ symbol: "TSLA", count: 1, names: ["shown_one"] }]);
+    expect((await friendsHolding(as(me), NOW)).holding).toEqual([
+      { symbol: "TSLA", count: 1, names: ["shown_one"], faces: [{ handle: "shown_one", avatarId: null, level: 1 }] },
+    ]);
   });
 
   it("shows nothing to a viewer who does not share, or whose own card is hidden", async () => {
@@ -272,7 +284,9 @@ describe("what friends hold", () => {
     expect(await friendHolds(as(quiet), friend, NOW)).toBeNull();
     // Turning sharing on opens both directions at once.
     await setShareHoldings(as(quiet), true);
-    expect((await friendsHolding(as(quiet), NOW)).holding).toEqual([{ symbol: "GOOGL", count: 1, names: ["open_friend"] }]);
+    expect((await friendsHolding(as(quiet), NOW)).holding).toEqual([
+      { symbol: "GOOGL", count: 1, names: ["open_friend"], faces: [{ handle: "open_friend", avatarId: null, level: 1 }] },
+    ]);
   });
 
   it("reads only the friend's latest day: a sold holding stops counting", async () => {
@@ -314,7 +328,9 @@ describe("what friends hold", () => {
     expect(signedOut.status).toBe(401);
     const signedIn = await runSocialOp("holding", {}, { viewer: as(me), anonKey: "k" });
     expect(signedIn.status).toBe(200);
-    expect((signedIn.body as { holding: unknown[] }).holding).toEqual([{ symbol: "AMZN", count: 1, names: ["friend_four"] }]);
+    expect((signedIn.body as { holding: unknown[] }).holding).toEqual([
+      { symbol: "AMZN", count: 1, names: ["friend_four"], faces: [{ handle: "friend_four", avatarId: null, level: 1 }] },
+    ]);
     const set = await runSocialOp("share-holdings", { on: false }, { viewer: as(me), anonKey: "k" });
     expect((set.body as { shareHoldings: boolean }).shareHoldings).toBe(false);
   });

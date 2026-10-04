@@ -3,6 +3,7 @@ import { isStaff } from "@/lib/server/social/handles";
 import { SHOWN_SQL, type SocialViewer } from "@/lib/server/social/people";
 import { staffRoleFor } from "@/lib/server/staff-session";
 import { CASH_LISTING, STOCK_LISTINGS } from "@/lib/listings";
+import { rankForXp } from "@/lib/xp";
 import {
   FRIEND_HOLDINGS_MAX_AGE_DAYS,
   MOST_BOUGHT_DAYS,
@@ -162,7 +163,7 @@ async function viewerShares(viewerId: string): Promise<boolean> {
   return rows[0]?.ok === true;
 }
 
-type FriendDay = { user_id: string; handle: string; holdings: unknown };
+type FriendDay = { user_id: string; handle: string; avatar_id: string | null; xp: number | string | null; holdings: unknown };
 
 /**
  * The viewer's friends who share, with their last daily value. Retired
@@ -178,7 +179,7 @@ async function sharingFriendDays(viewerId: string, now: Date, onlyId?: string): 
        from friends f
        where f.a_id = $1::uuid or f.b_id = $1::uuid
      )
-     select m.id::text as user_id, h.handle, d.holdings
+     select m.id::text as user_id, h.handle, u.avatar_id, u.xp, d.holdings
      from mine m
      join users u on u.id = m.id and u.retired_into is null
      join handles h on h.user_id = m.id
@@ -204,12 +205,19 @@ async function sharingFriendDays(viewerId: string, now: Date, onlyId?: string): 
  * counts, for the Friends screen. Empty unless the viewer shares too; a
  * friend counts only while they share. What they hold is their last daily
  * value (portfolio_days), read on chain each evening; amounts never leave
- * this function.
+ * this function. Each line carries up to four faces (username, avatar and
+ * rank level, as the friend's card already shows them): XP is read only to
+ * find the level and goes no further.
  */
 export async function friendsHolding(viewer: SocialViewer, now = new Date()): Promise<FriendsHoldingResponse> {
   if (!(await viewerShares(viewer.id))) return { holding: [] };
   const rows = await sharingFriendDays(viewer.id, now);
-  const friends: FriendHoldingsFact[] = rows.map((row) => ({ handle: row.handle, holdings: parseHoldings(row.holdings) }));
+  const friends: FriendHoldingsFact[] = rows.map((row) => ({
+    handle: row.handle,
+    avatarId: row.avatar_id ?? null,
+    level: rankForXp(Number(row.xp) || 0).level,
+    holdings: parseHoldings(row.holdings),
+  }));
   return { holding: friendsHoldingByListing(friends, COUNTED_SYMBOLS) };
 }
 

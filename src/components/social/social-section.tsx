@@ -25,7 +25,7 @@ import {
 } from "@/hooks/use-social";
 import { TickerTile } from "@/components/board/holdings-list";
 import { STOCK_LISTINGS, rowName } from "@/lib/listings";
-import type { FriendsHolding } from "@/lib/social-proof";
+import { FRIEND_FACES_SHOWN, type FriendFace, type FriendsHolding } from "@/lib/social-proof";
 import type { BlockedName, FriendsList, MySocial, Person } from "@/lib/social-types";
 import { SPRING_SHELF } from "@/lib/motion";
 import { rankForXp } from "@/lib/xp";
@@ -369,10 +369,40 @@ function HoldingFold({ sharing, demo }: { sharing: boolean; demo?: SocialDemo })
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-sm text-foreground">{rowName(listing)}</span>
             <span className="truncate text-xs text-muted-foreground">{copy.friendsHold(line.count, line.names)}</span>
+            <FriendFaces faces={line.faces ?? []} count={line.count} />
           </span>
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The faces of the friends behind a "Your friends hold" row, small and
+ * overlapping, each labelled with the friend's username; past
+ * FRIEND_FACES_SHOWN, "+N" for the rest of the count. Still: no motion,
+ * and never a button, so nothing here opens a buy.
+ */
+export function FriendFaces({ faces, count }: { faces: readonly FriendFace[]; count: number }) {
+  const copy = useCopy();
+  const shown = faces.slice(0, FRIEND_FACES_SHOWN);
+  if (shown.length === 0) return null;
+  const more = Math.max(0, count - shown.length);
+  return (
+    <span data-friend-faces className="mt-1 flex items-center">
+      <span className="flex -space-x-1.5">
+        {shown.map((face) => (
+          <span key={face.handle} role="img" aria-label={face.handle} className="rounded-full ring-2 ring-card">
+            <AvatarWithRank avatarId={face.avatarId} level={face.level} size={22} />
+          </span>
+        ))}
+      </span>
+      {more > 0 && (
+        <span aria-hidden className="pl-1.5 font-mono text-xs text-muted-foreground">
+          {copy.friendsHoldMore(more)}
+        </span>
+      )}
+    </span>
   );
 }
 

@@ -288,8 +288,10 @@ export type Copy = {
   mostBoughtTitle: (week: string) => string;
   /** One row of it: a count of people, never an amount; `plus` when rounded down ("15+"). */
   mostBoughtRow: (people: number, plus: boolean) => string;
-  /** A row of "Your friends hold" in the Friends screen: how many friends who share hold it, named when one or two. */
+  /** A row of "Your friends hold" in the Friends screen: how many friends who share hold it, with up to four of their faces. */
   friendsHold: (count: number, names: readonly string[]) => string;
+  /** After the faces under a "Your friends hold" row, the friends beyond them ("+2"). */
+  friendsHoldMore: (more: number) => string;
   /** The once per account notice of the two social counts (components/board/social-notice-line). */
   socialNotice: { text: string; action: string; dismiss: string };
   newsMoreStories: string;
@@ -2532,6 +2534,7 @@ export const COPY: Copy = {
       : names.length === 2
         ? `Held by your friends ${names[0]} and ${names[1]}`
         : `Held by ${count} of your friends`,
+  friendsHoldMore: (more) => `+${more}`,
   socialNotice: {
     text: "New: each week, the board shows how many people bought each stock, never who. You can also let friends see which stocks and funds you hold. It is off unless you turn it on.",
     action: "See the switch",
@@ -3570,7 +3573,7 @@ export const COPY: Copy = {
           "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your avatar, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets or your money, and what you own only to friends, as below.",
           "The preview of a link to your profile or of your invite link, its picture, title and description, names no one unless you turn on Show my avatar, username and rank on links I share. Then a profile link's preview shows your username, your avatar (or your rank mark if you have not picked one) and your rank name, and an invite link's preview shows your username and your avatar or rank mark, to anyone who opens or previews the link, or guesses your username. Never your email, your wallets, your money or what you own. It is off unless you turn it on, and it shows no one while your profile is hidden. When you turn it off or hide your profile, Berth stops serving your preview within ten minutes. Apps where a link was already shared may keep their own copy of its preview for longer, and we cannot remove it from them.",
           "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. Nobody else can see your friends or who you block. The record of changes is kept for a year.",
-          "If you turn on Let my friends see which stocks and funds I hold, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username when one or two of their friends hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
+          "If you turn on Let my friends see which stocks and funds I hold, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username and avatar, for up to four of the friends who hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
           "Most bought on Berth is public: anyone who opens the board sees it. It counts how many people bought each listing in one week, Monday to Sunday in UTC, from the orders we keep. Each week is counted once, after it ends, and kept as it was published; the first week counted begins on 5 October 2026. It names no one and shows no amount. Two accounts merged into one count as one person. Only buys of at least $10, from accounts at least a week old with a verified email, are counted, and staff accounts and buys that earn no XP are not. A listing bought by fewer than five people is left out, counts above ten are rounded down to a multiple of five, and the list is not shown at all in a week when fewer than ten people bought.",
         ],
       },

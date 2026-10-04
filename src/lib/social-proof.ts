@@ -177,14 +177,33 @@ export const FRIEND_HOLDINGS_MAX_AGE_DAYS = 3;
 /** Up to this many friends, the line names them; past it, only the count. */
 export const FRIEND_NAMES_SHOWN = 2;
 
-/** A friend whose card is shown, with what their last daily value held. */
+/** Up to this many friends' faces sit under a line; past it, "+N" with the rest of the count. */
+export const FRIEND_FACES_SHOWN = 4;
+
+/**
+ * A friend whose card is shown, with what their last daily value held.
+ * `avatarId` and `level` are what their card and the viewer's friends list
+ * already show; absent in pure tests that only count.
+ */
 export type FriendHoldingsFact = {
   handle: string;
+  avatarId?: string | null;
+  level?: number;
   holdings: readonly { symbol: string; quantity: number; price?: number | null }[];
 };
 
-/** One listing's line: how many friends hold it, and their usernames when there are few. */
-export type FriendsHolding = { symbol: string; count: number; names: string[] };
+/**
+ * One friend's face beside a line: their username (the face's accessible
+ * label), their avatar and their rank level, exactly as their card shows
+ * them to this viewer. Never XP, never an amount.
+ */
+export type FriendFace = { handle: string; avatarId: string | null; level: number };
+
+/**
+ * One listing's line: how many friends hold it, their usernames when there
+ * are few, and up to FRIEND_FACES_SHOWN of their faces, sorted by username.
+ */
+export type FriendsHolding = { symbol: string; count: number; names: string[]; faces: FriendFace[] };
 
 export type FriendsHoldingResponse = { holding: FriendsHolding[] };
 
@@ -201,23 +220,33 @@ export function holdsSomething(holding: { quantity: number; price?: number | nul
  * quantities are read to decide yes or no and then dropped. Names are
  * returned only while FRIEND_NAMES_SHOWN or fewer friends hold the
  * listing, sorted, so the order says nothing about who holds more.
+ * Faces go to at most FRIEND_FACES_SHOWN friends per line, in the same
+ * sorted order: the friends counted are exactly those whose cards already
+ * tell this viewer what they hold (friendHolds), so a face says nothing
+ * the viewer could not already see.
  */
 export function friendsHoldingByListing(friends: readonly FriendHoldingsFact[], listed: readonly string[]): FriendsHolding[] {
   const allowed = new Set(listed);
-  const bySymbol = new Map<string, Set<string>>();
+  const bySymbol = new Map<string, Map<string, FriendFace>>();
   for (const friend of friends) {
     for (const holding of friend.holdings) {
       if (!allowed.has(holding.symbol) || !holdsSomething(holding)) continue;
-      const names = bySymbol.get(holding.symbol) ?? new Set<string>();
-      names.add(friend.handle);
-      bySymbol.set(holding.symbol, names);
+      const people = bySymbol.get(holding.symbol) ?? new Map<string, FriendFace>();
+      people.set(friend.handle, { handle: friend.handle, avatarId: friend.avatarId ?? null, level: friend.level ?? 1 });
+      bySymbol.set(holding.symbol, people);
     }
   }
   return listed
     .filter((symbol) => bySymbol.has(symbol))
     .map((symbol) => {
-      const names = [...bySymbol.get(symbol)!].sort((a, b) => a.localeCompare(b));
-      return { symbol, count: names.length, names: names.length <= FRIEND_NAMES_SHOWN ? names : [] };
+      const people = [...bySymbol.get(symbol)!.values()].sort((a, b) => a.handle.localeCompare(b.handle));
+      const names = people.map((person) => person.handle);
+      return {
+        symbol,
+        count: names.length,
+        names: names.length <= FRIEND_NAMES_SHOWN ? names : [],
+        faces: people.slice(0, FRIEND_FACES_SHOWN).map(({ handle, avatarId, level }) => ({ handle, avatarId, level })),
+      };
     });
 }
 
