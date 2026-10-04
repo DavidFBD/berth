@@ -5,6 +5,7 @@ import { CLAIM_STATES, SLOT_STATES, type CampaignKind, type ClaimState } from "@
 import { CAMPAIGN_COLUMNS, toCampaign, type CampaignRow } from "@/lib/server/campaigns/store";
 import { PAYOUT_CHAIN } from "@/lib/server/campaigns/usdc";
 import { foldEmail } from "@/lib/server/campaigns/fold-email";
+import { WEBMAIL_DOMAINS } from "@/lib/webmail";
 import { stillEligible, type GuardOutcome } from "@/lib/server/campaigns/eligibility";
 import { claimById } from "@/lib/server/campaigns/store";
 
@@ -22,41 +23,7 @@ export { foldEmail };
 
 export type SignalCode = "email_alias" | "close_signup" | "shared_wallet" | "same_payout" | "same_email_domain";
 
-/**
- * Mail providers anyone can sign up at: many people share them, so two
- * claims there say nothing. Any other domain shared by two or more claims
- * of one campaign (a company's, or one person's own) is worth a look.
- */
-export const WEBMAIL_DOMAINS: ReadonlySet<string> = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "msn.com",
-  "yahoo.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "proton.me",
-  "protonmail.com",
-  "pm.me",
-  "aol.com",
-  "gmx.com",
-  "gmx.net",
-  "gmx.de",
-  "web.de",
-  "mail.com",
-  "yandex.com",
-  "zoho.com",
-  "fastmail.com",
-  "hey.com",
-  "ziggo.nl",
-  "kpnmail.nl",
-  "hotmail.nl",
-  "live.nl",
-  "outlook.nl",
-]);
+export { WEBMAIL_DOMAINS };
 
 /** The domain of a folded email, or null. Pure. */
 const emailDomain = (email: string | null): string | null => {
