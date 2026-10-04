@@ -1,11 +1,14 @@
 # Reward campaigns
 
 > **Superseded 2026-10-05.** Campaigns no longer reward a buy (an
-> inducement to trade). A campaign now rewards an invite that sticks: the
-> inviter earns the USDC when an invited friend opens a new account inside
-> the dates, sets it up and still uses Berth N days later. The rules live
-> in `lib/server/campaigns/eligibility.ts`; the buy campaigns below are
-> retired (kind 'buy', never activated again, rows kept read only). What
+> inducement to trade). Since the same day a campaign (kind 'signup') pays
+> the new account itself: a person who opens a new account through the
+> campaign's own link (/c/<code>) inside its dates, sets it up and still
+> uses Berth N days later earns the USDC, to their own home address on Base.
+> A personal invite (/r/<code>) never earns money. The rules live in
+> `lib/server/campaigns/eligibility.ts`; the buy campaigns below, and the
+> short lived invite campaigns that paid the inviter, are retired (kind
+> 'buy' or 'invite', never activated again, rows kept read only). What
 > follows is the original plan, kept for history.
 
 Built 2026-10-01 on branch `campaigns`. Not deployed; needs `pnpm db:push`
