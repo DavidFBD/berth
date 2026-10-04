@@ -19,10 +19,12 @@ import { PathGallery } from "./path-gallery";
 import { mostHeldFor, socialProofFor } from "./social-proof-fixtures";
 import { LINE_FIXTURES } from "../campaigns/fixtures";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
+import { ActionStepper } from "@/components/flow/action-stepper";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useMounted } from "@/hooks/use-mounted";
+import type { VaultActionStep } from "@/hooks/use-vault-action";
 import { HOME_CHAIN } from "@/lib/account";
 import { getDepositTokens } from "@/lib/chains";
 import type { EmbeddedHoldingsResult } from "@/hooks/use-embedded-holdings";
@@ -77,6 +79,10 @@ import {
  *                                       not available (lib/availability): the
  *                                       buy drawer is the soft landing, the
  *                                       home scenes carry the banner
+ *   /dev/board?stepper=approving        the working stepper on its own, held
+ *                                       on one step (building, approving or
+ *                                       signing) without a wallet; &approve=0
+ *                                       marks Approve skipped
  */
 export default function BoardGalleryPage() {
   if (process.env.NODE_ENV === "production") notFound();
@@ -91,6 +97,19 @@ export default function BoardGalleryPage() {
 
 function Galleries() {
   const params = useSearchParams();
+  const stepperWanted = params.get("stepper");
+  if (stepperWanted === "building" || stepperWanted === "approving" || stepperWanted === "signing") {
+    return (
+      <div className="mx-auto flex min-h-[70vh] w-full max-w-sm items-center justify-center px-4 py-8">
+        <Panel className="w-full">
+          <ActionStepper
+            step={stepperWanted as VaultActionStep}
+            approveNeeded={params.get("approve") !== "0"}
+          />
+        </Panel>
+      </div>
+    );
+  }
   const home = params.get("home");
   if (home === "path") {
     return (

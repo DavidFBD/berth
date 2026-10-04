@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
 import { hubTxUrl } from "@/lib/chains";
 import { LoadingMark } from "@/components/loading-mark";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { CANCELLED_MESSAGE } from "@/lib/error-copy";
 import type { ReportState } from "@/lib/error-report";
 import type { FillPhase } from "@/lib/pour-lifecycle";
@@ -86,15 +87,17 @@ export function ActionStepper({
                       "border-border bg-muted text-muted-foreground",
                   )}
                 >
-                  {done && !skipped ? <Check className="size-4" /> : index + 1}
-                  {active && (
-                    <span
-                      data-step-ring
-                      className="absolute inset-0 rounded-full border-2 border-primary opacity-40"
-                      style={{
-                        animation: "ring-breathe 1.8s var(--ease-tea) infinite",
-                      }}
-                    />
+                  {done && !skipped ? (
+                    <Check className="size-4" />
+                  ) : active ? (
+                    // The one animated status element the brand allows,
+                    // standing in for the number only while this step is
+                    // actually running; the circle itself never resizes, so
+                    // nothing around it jumps when the orb mounts or the
+                    // step moves on.
+                    <ThinkingOrb state="working" size={20} decorative fallback={index + 1} />
+                  ) : (
+                    index + 1
                   )}
                 </div>
                 <span
