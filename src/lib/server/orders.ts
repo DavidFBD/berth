@@ -1,5 +1,6 @@
 import type { Intent, Sodax } from "@sodax/sdk";
 import { BENCHMARKS } from "@/lib/benchmarks";
+import { displayToken } from "@/lib/chains";
 import { getSql } from "@/lib/server/db";
 import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
 import { HUB_RPC_URLS } from "@/lib/sodax-config";
@@ -238,7 +239,7 @@ export async function buildOrder({
   const listing = orderListing(sodax, intent, direction);
   if (!listing) return undefined;
   const other = direction === "buy" ? intent.inputToken : intent.outputToken;
-  const payToken = sodax.config.getXTokenFromHubAsset(other);
+  const payToken = displayToken(sodax.config.getXTokenFromHubAsset(other));
 
   const receipt = await rpc<{ blockNumber: string }>("eth_getTransactionReceipt", [intentTx]);
   const placedAt = receipt ? await blockTime(receipt.blockNumber) : null;

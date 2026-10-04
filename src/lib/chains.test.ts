@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, type XToken } from "@sodax/sdk";
-import { DEPOSIT_SOURCE_CHAINS, getChainName, getDepositTokens, getNativeGasToken, isTypedEvmAddress, sdkAddress, toBalanceReadToken } from "./chains";
+import { DEPOSIT_SOURCE_CHAINS, displayToken, getChainName, getDepositTokens, getNativeGasToken, isTypedEvmAddress, sdkAddress, toBalanceReadToken } from "./chains";
 import { priceIdFor } from "./orders";
 
 /**
@@ -161,6 +161,31 @@ describe("getDepositTokens on Sonic", () => {
 
   it("leaves other chains' coins under their own names", () => {
     expect(getDepositTokens(ChainKeys.SOLANA_MAINNET).some((token) => token.symbol === "SOL")).toBe(true);
+  });
+});
+
+describe("displayToken", () => {
+  // Shaped like what sodax.config.getXTokenFromHubAsset hands server code
+  // from @sodax/sdk 2.2: the hub vault under the coin's own name, where
+  // 2.0.0 gave "sodaBTC". getDepositTokens above covers the client's own
+  // list; server reads (lib/server/orders, lib/server/limit-orders,
+  // scripts/orders-backfill) go through this same function so a stored
+  // pay_symbol matches what the client shows.
+  it("renames a hub vault token to its soda name, same as the client list", () => {
+    const btcFromHub = token(ChainKeys.SONIC_MAINNET, "0x7A1A5555842Ad2D0eD274d09b5c4406a95799D5d");
+    expect(displayToken({ ...btcFromHub, symbol: "BTC", name: "Bitcoin" })).toMatchObject({
+      symbol: "sodaBTC",
+      name: "Soda BTC",
+    });
+  });
+
+  it("leaves a non-vault token exactly as given", () => {
+    const usdc = token(ChainKeys.SONIC_MAINNET, "0x1111111111111111111111111111111111111111");
+    expect(displayToken(usdc)).toEqual(usdc);
+  });
+
+  it("passes undefined through, for a hub asset the SDK does not recognize", () => {
+    expect(displayToken(undefined)).toBeUndefined();
   });
 });
 

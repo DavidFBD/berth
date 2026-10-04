@@ -72,10 +72,22 @@ export function getDepositTokens(chainKey: SpokeChainKey): readonly XToken[] {
       !isTokenListingAddress(token.address),
   );
   if (chainKey !== ChainKeys.SONIC_MAINNET) return tokens;
-  return tokens.map((token) => {
-    const shown = HUB_VAULT_DISPLAY[token.address.toLowerCase()];
-    return shown ? { ...token, ...shown } : token;
-  });
+  return tokens.map(displayToken);
+}
+
+/**
+ * An XToken under the name HUB_VAULT_DISPLAY gives it when it is one of the
+ * hub's own vault wrappers, unchanged otherwise (and undefined stays
+ * undefined). getDepositTokens applies this to every Sonic token the picker
+ * shows; server code that resolves a token through a different SDK call
+ * (`sodax.config.getXTokenFromHubAsset`) must apply the same override, since
+ * 2.2 renamed the vaults to the coin they hold and nothing else re-derives
+ * the stored pay_symbol afterward.
+ */
+export function displayToken<T extends XToken | undefined>(token: T): T {
+  if (!token) return token;
+  const shown = HUB_VAULT_DISPLAY[token.address.toLowerCase()];
+  return (shown ? { ...token, ...shown } : token) as T;
 }
 
 /**

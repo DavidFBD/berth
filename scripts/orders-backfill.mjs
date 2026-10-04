@@ -19,6 +19,7 @@ const { readOrder, pickFill, priceIdFor, isDollarStable, TRANSFER_TOPIC, address
 );
 const { COINGECKO_ID_BY_LOWER_SYMBOL } = await import("../src/lib/coingecko-ids.ts");
 const { listListings } = await import("../src/lib/listings.ts");
+const { displayToken } = await import("../src/lib/chains.ts");
 
 const WRITE = process.argv.includes("--write");
 const RPC = "https://sonic-rpc.publicnode.com";
@@ -77,7 +78,7 @@ for (const pour of pours) {
     console.log("skip, not a listing", pour.ref);
     continue;
   }
-  const pay = sodax.config.getXTokenFromHubAsset(other);
+  const pay = displayToken(sodax.config.getXTokenFromHubAsset(other));
   const receipt = await rpc("eth_getTransactionReceipt", [pour.ref]);
   const placedAt = receipt ? await blockTime(receipt.blockNumber) : null;
   let fill;

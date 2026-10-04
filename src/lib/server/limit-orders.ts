@@ -1,5 +1,6 @@
 import { ChainKeys, getChainKeyFromRelayChainId, getIntentRelayChainId, type Intent, type IntentResponse } from "@sodax/sdk";
 import { HOME_CHAIN } from "@/lib/account";
+import { displayToken } from "@/lib/chains";
 import { formatUnits } from "viem";
 import { getSql } from "@/lib/server/db";
 import { getSodax, holdsIntentCreated, ownsIntent, readReceipt } from "@/lib/server/pour-verify";
@@ -343,7 +344,7 @@ export async function saveVerifiedIntent({
   if (!owned) return { ok: false, reason: "not yours" };
   const { listing } = verdict;
   const other = direction === "buy" ? intent.inputToken : intent.outputToken;
-  const pay = sodax.config.getXTokenFromHubAsset(other);
+  const pay = displayToken(sodax.config.getXTokenFromHubAsset(other));
   if (!pay) return { ok: false, reason: "not a listing" };
   const srcChain = sourceChainOf(BigInt(intent.srcChain as unknown as bigint));
   const inputDecimals = direction === "buy" ? pay.decimals : listing.decimals;
@@ -435,7 +436,7 @@ async function recordFill(row: Row, userId: string, response: IntentResponse, st
     const listing = TOKEN_LISTINGS.find((entry) => entry.address.toLowerCase() === row.listing_address);
     if (!listing) return false;
     const other = row.direction === "buy" ? intent.inputToken : intent.outputToken;
-    const pay = sodax.config.getXTokenFromHubAsset(other);
+    const pay = displayToken(sodax.config.getXTokenFromHubAsset(other));
     const fillEvent = [...(response.events as IntentRecord["events"])].reverse().find((event) => event.eventType === "intent-filled");
     let filledAt: Date | null = null;
     if (fillEvent?.blockNumber) {
