@@ -50,6 +50,7 @@ export type ActionRefusal =
   | "retired"
   | "active"
   | "has_places"
+  | "no_delete_reason"
   | "existing_customer"
   | "staff_ineligible"
   | "no_person"
@@ -405,7 +406,7 @@ export async function markClaimPaid(
  */
 export async function deleteCampaign(staffUserId: string, campaignId: string, rawReason: unknown): Promise<ActionResult> {
   const reason = reasonOf(rawReason);
-  if (!reason) return refused(staffUserId, "campaign.delete", campaignId, "bad_reason");
+  if (!reason) return refused(staffUserId, "campaign.delete", campaignId, "no_delete_reason");
   const campaign = await campaignById(campaignId);
   if (!campaign) return refused(staffUserId, "campaign.delete", campaignId, "not_found", { reason });
   const outcome = (

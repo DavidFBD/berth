@@ -262,139 +262,140 @@ function CampaignCard({
   return (
     <div ref={cardRef} data-testid="campaign-card" data-campaign-code={campaign.code}>
       <Panel className="flex flex-col gap-3 p-4">
-      {justCreated && (
-        <p role="status" className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" data-testid="created-status">
-          {copy.create.createdLine(campaign.title)}
-        </p>
-      )}
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-base text-foreground">{campaign.title}</p>
-          <p className="font-mono text-xs text-muted-foreground">
-            /c/{campaign.code} · {copy.span(when(campaign.startsAt), when(campaign.endsAt))}
+        {justCreated && (
+          <p role="status" className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" data-testid="created-status">
+            {copy.create.createdLine(campaign.title)}
           </p>
-        </div>
-        <span
-          className={cn(
-            "rounded-full border px-2.5 py-0.5 text-xs",
-            campaign.active ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground",
-          )}
-        >
-          {campaign.active ? copy.active : copy.inactive}
-        </span>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        {campaign.kind === "signup" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays) : copy.retired}
-      </p>
-      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
-        <div className="h-full bg-primary" style={{ width: `${paidPct}%` }} />
-        <div className="h-full bg-primary/40" style={{ width: `${reservedPct}%` }} />
-      </div>
-      <p className="text-sm text-foreground" data-testid="budget-meter">
-        {copy.meter(
-          campaignUsd(campaign.reservedUsd),
-          campaignUsd(campaign.paidUsd),
-          campaignUsd(campaign.budgetUsd),
-          campaign.slots,
-          campaign.maxClaims,
         )}
-      </p>
-      <p className="text-xs text-muted-foreground">{copy.waiting(campaign.counts.attributed)}</p>
-      <FundingBlock
-        address={wallet}
-        amountUsd={campaign.amountUsd}
-        budgetUsd={campaign.budgetUsd}
-        paidUsd={campaign.paidUsd}
-        otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
-      />
-      <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
-      {campaign.kind !== "signup" ? null : campaign.active ? (
-        <div>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
-            {copy.deactivate}
-          </Button>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-base text-foreground">{campaign.title}</p>
+            <p className="font-mono text-xs text-muted-foreground">
+              /c/{campaign.code} · {copy.span(when(campaign.startsAt), when(campaign.endsAt))}
+            </p>
+          </div>
+          <span
+            className={cn(
+              "rounded-full border px-2.5 py-0.5 text-xs",
+              campaign.active ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground",
+            )}
+          >
+            {campaign.active ? copy.active : copy.inactive}
+          </span>
         </div>
-      ) : confirming ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="activate-confirm">
-          <p className="text-sm text-foreground">{copy.activateConfirm(campaign.title)}</p>
-          <label className="flex items-start gap-2 text-sm text-foreground">
-            <input type="checkbox" className="mt-0.5" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
-            {copy.activateCheck}
-          </label>
-          {wallet ? (
-            <label className="flex items-start gap-2 text-sm text-foreground" data-testid="funding-check">
-              <input type="checkbox" className="mt-0.5" checked={fundingChecked} onChange={(event) => setFundingChecked(event.target.checked)} />
-              <span>
-                {fundingCopy.fundingCheck}
-                <span className="mt-0.5 block font-mono text-xs break-all text-muted-foreground">
-                  {checksummedOrSame(wallet)}
-                </span>
-              </span>
-            </label>
-          ) : (
-            <p className="text-sm text-muted-foreground">{copy.refusals.no_funding_wallet}</p>
+        <p className="text-sm text-muted-foreground">
+          {campaign.kind === "signup" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays) : copy.retired}
+        </p>
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
+          <div className="h-full bg-primary" style={{ width: `${paidPct}%` }} />
+          <div className="h-full bg-primary/40" style={{ width: `${reservedPct}%` }} />
+        </div>
+        <p className="text-sm text-foreground" data-testid="budget-meter">
+          {copy.meter(
+            campaignUsd(campaign.reservedUsd),
+            campaignUsd(campaign.paidUsd),
+            campaignUsd(campaign.budgetUsd),
+            campaign.slots,
+            campaign.maxClaims,
           )}
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              disabled={busy || gaps.length > 0}
-              onClick={() => {
-                onAction({ action: "activate", campaignId: campaign.id, counselReviewed: true, fundingChecked: true });
-                setConfirming(false);
-                setReviewed(false);
-                setFundingChecked(false);
-              }}
-            >
-              {copy.confirm}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-              {copy.cancel}
+        </p>
+        <p className="text-xs text-muted-foreground">{copy.waiting(campaign.counts.attributed)}</p>
+        <FundingBlock
+          address={wallet}
+          amountUsd={campaign.amountUsd}
+          budgetUsd={campaign.budgetUsd}
+          paidUsd={campaign.paidUsd}
+          otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
+        />
+        <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
+        {campaign.kind !== "signup" ? null : campaign.active ? (
+          <div>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
+              {copy.deactivate}
             </Button>
           </div>
-          {gaps.includes("reviewed") && <p className="text-xs text-muted-foreground">{copy.activateNeedsReviewed}</p>}
-          {gaps.includes("funding") && <p className="text-xs text-muted-foreground">{copy.activateNeedsFunding}</p>}
-        </div>
-      ) : (
-        <div>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
-            {copy.activate}
-          </Button>
-        </div>
-      )}
-      {campaign.deletable && !confirming && (deleting ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="delete-confirm">
-          <p className="text-sm text-foreground">{copy.deleteConfirm(campaign.title, campaign.code)}</p>
-          <Input
-            aria-label={copy.deleteReason}
-            placeholder={copy.deleteReason}
-            value={deleteReason}
-            onChange={(event) => setDeleteReason(event.target.value)}
-          />
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={busy || !deleteReason.trim()}
-              onClick={() => {
-                onAction({ action: "delete", campaignId: campaign.id, reason: deleteReason.trim() });
-                setDeleting(false);
-                setDeleteReason("");
-              }}
-            >
+        ) : confirming ? (
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="activate-confirm">
+            <p className="text-sm text-foreground">{copy.activateConfirm(campaign.title)}</p>
+            <label className="flex items-start gap-2 text-sm text-foreground">
+              <input type="checkbox" className="mt-0.5" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
+              {copy.activateCheck}
+            </label>
+            {wallet ? (
+              <label className="flex items-start gap-2 text-sm text-foreground" data-testid="funding-check">
+                <input type="checkbox" className="mt-0.5" checked={fundingChecked} onChange={(event) => setFundingChecked(event.target.checked)} />
+                <span>
+                  {fundingCopy.fundingCheck}
+                  <span className="mt-0.5 block font-mono text-xs break-all text-muted-foreground">
+                    {checksummedOrSame(wallet)}
+                  </span>
+                </span>
+              </label>
+            ) : (
+              <p className="text-sm text-muted-foreground">{copy.refusals.no_funding_wallet}</p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={busy || gaps.length > 0}
+                onClick={() => {
+                  onAction({ action: "activate", campaignId: campaign.id, counselReviewed: true, fundingChecked: true });
+                  setConfirming(false);
+                  setReviewed(false);
+                  setFundingChecked(false);
+                }}
+              >
+                {copy.confirm}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                {copy.cancel}
+              </Button>
+            </div>
+            {gaps.includes("reviewed") && <p className="text-xs text-muted-foreground">{copy.activateNeedsReviewed}</p>}
+            {gaps.includes("funding") && <p className="text-xs text-muted-foreground">{copy.activateNeedsFunding}</p>}
+          </div>
+        ) : (
+          <div>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
+              {copy.activate}
+            </Button>
+          </div>
+        )}
+        {campaign.deletable && !confirming && deleting && (
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="delete-confirm">
+            <p className="text-sm text-foreground">{copy.deleteConfirm(campaign.title, campaign.code)}</p>
+            <Input
+              aria-label={copy.deleteReason}
+              placeholder={copy.deleteReason}
+              value={deleteReason}
+              onChange={(event) => setDeleteReason(event.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={busy || !deleteReason.trim()}
+                onClick={() => {
+                  onAction({ action: "delete", campaignId: campaign.id, reason: deleteReason.trim() });
+                  setDeleting(false);
+                  setDeleteReason("");
+                }}
+              >
+                {copy.delete}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>
+                {copy.cancel}
+              </Button>
+            </div>
+          </div>
+        )}
+        {campaign.deletable && !confirming && !deleting && (
+          <div>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDeleting(true)}>
               {copy.delete}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>
-              {copy.cancel}
-            </Button>
           </div>
-        </div>
-      ) : (
-        <div>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDeleting(true)}>
-            {copy.delete}
-          </Button>
-        </div>
-      ))}
+        )}
       </Panel>
     </div>
   );

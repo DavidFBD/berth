@@ -135,7 +135,8 @@ export type ActivationGap = "wallet" | "funding" | "reviewed";
 /**
  * The confirm panel's own checks, in the order staff sees them: a payout
  * wallet first (without one there is nothing to fund-check), then the
- * funding check, then counsel review. Mirrors the activate button's own
+ * funding check, then the staff member's own reading of the campaign, its
+ * rules and the terms. Mirrors the activate button's own
  * disabled condition, so the hints and the button never disagree.
  */
 export function activationGaps(input: { wallet: string | null; fundingChecked: boolean; reviewed: boolean }): ActivationGap[] {

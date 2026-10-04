@@ -609,10 +609,10 @@ describe("deleting a campaign", () => {
   it("asks for a reason, audited", async () => {
     const staff = await person();
     const id = await draft("del-why");
-    expect(await deleteCampaign(staff.id, id, "  ")).toMatchObject({ ok: false, refusal: "bad_reason" });
-    expect(await deleteCampaign(staff.id, id, undefined)).toMatchObject({ ok: false, refusal: "bad_reason" });
+    expect(await deleteCampaign(staff.id, id, "  ")).toMatchObject({ ok: false, refusal: "no_delete_reason" });
+    expect(await deleteCampaign(staff.id, id, undefined)).toMatchObject({ ok: false, refusal: "no_delete_reason" });
     expect(await campaignById(id)).toBeDefined();
-    expect((await audits("campaign.delete")).filter((entry) => entry.target === id).map((entry) => entry.detail.outcome)).toEqual(["bad_reason", "bad_reason"]);
+    expect((await audits("campaign.delete")).filter((entry) => entry.target === id).map((entry) => entry.detail.outcome)).toEqual(["no_delete_reason", "no_delete_reason"]);
   });
 
   it("refuses while the campaign is active, and for a retired buy or invite campaign", async () => {

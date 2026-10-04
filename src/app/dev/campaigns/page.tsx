@@ -22,8 +22,9 @@ import { useMounted } from "@/hooks/use-mounted";
  *                               that campaign's card shows the post-create success
  *                               line, as after a real create; open its Activate
  *                               panel too and both activation hints show (it has
- *                               a wallet, so the gap is counsel review and the
- *                               funding check, not a missing wallet)
+ *                               a wallet, so the gap is the staff member's own
+ *                               reading and the funding check, not a missing
+ *                               wallet)
  *
  * The lines in the calm home's own layout: /dev/board?home=new&campaign=setUp
  * (setUp, staying, qualified, paid).

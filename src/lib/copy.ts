@@ -4913,6 +4913,7 @@ export const COPY: Copy = {
         fresh_session: "Sign in again to do this. Staff actions need a sign in from the last fifteen minutes, by email.",
         error: "That did not go through. Nothing was changed. Try again.",
         bad_reason: "Choose a reason.",
+        no_delete_reason: "Write why it is deleted.",
         bad_input: "Check the fields.",
         code_taken: "A campaign with that code already exists. Pick a different code.",
         stay_out_of_range: "The days a new account must still use Berth are 7 at least and 60 at most.",
