@@ -31,7 +31,11 @@ let sql: SqlClient;
 let close: () => Promise<void>;
 
 const HOUR = 60 * 60 * 1000;
-const NOW = Date.now();
+// The clock is pinned, never read: the first look says "in today's news" only
+// for the same New York day, and these stories are an hour or two old, so a
+// real clock inside the first two hours after New York midnight put them on
+// yesterday. A pinned noon in New York keeps every case on one day.
+const NOW = Date.parse("2026-10-02T16:00:00Z");
 const DAY = new Date(NOW).toISOString().slice(0, 10);
 const LISTINGS = TOKEN_LISTINGS.filter((listing) => ["NVDA", "AMD", "AAPL", "MSTR", "TSLA"].includes(listing.symbol));
 
@@ -39,11 +43,13 @@ const SHARED = "Nvidia Expands Partnership With Dell on AI Servers";
 const ONLY = "Apple Signs Record Supply Deal With Foxconn";
 
 beforeAll(async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   ({ sql, close } = await makeTestDb());
   setSqlClient(sql);
 });
 
 afterAll(async () => {
+  vi.useRealTimers();
   setSqlClient(null);
   await close();
 });
