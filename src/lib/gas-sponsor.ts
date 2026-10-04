@@ -31,13 +31,18 @@ export function parseSponsorChains(raw: string | undefined): ReadonlySet<number>
 
 /**
  * The chains Privy sponsors (docs.privy.io/wallets/gas-and-asset-management/gas/overview,
- * read 2026-10-04) that Berth uses: Ethereum, Optimism, BNB Chain, Polygon,
- * Base, Arbitrum and Robinhood Chain. Any other id in the env list is
- * ignored, so a typo or a hopeful 146 can never drop the gas gate or claim
- * "no network fee" on a chain nobody pays for. Robinhood Chain (4663) is
- * not an SDK spoke yet, so it does nothing until one exists.
+ * read 2026-10-04) that Berth uses: Optimism, BNB Chain, Polygon, Base,
+ * Arbitrum and Robinhood Chain. Any other id in the env list is ignored,
+ * so a typo or a hopeful 146 can never drop the gas gate or claim "no
+ * network fee" on a chain nobody pays for. Robinhood Chain (4663) is not
+ * an SDK spoke yet, so it does nothing until one exists.
+ *
+ * Ethereum (1) is left out on purpose although Privy sponsors it: Privy's
+ * client gives up after 20 seconds while it waits for inclusion, and with
+ * 12 second blocks a sponsored send there would often end as an unknown
+ * outcome, held for a minute with the money perhaps on its way.
  */
-export const PRIVY_SPONSORABLE_CHAIN_IDS: ReadonlySet<number> = new Set([1, 10, 56, 137, 8453, 42161, 4663]);
+export const PRIVY_SPONSORABLE_CHAIN_IDS: ReadonlySet<number> = new Set([10, 56, 137, 8453, 42161, 4663]);
 
 /** The env list, kept only where Privy can sponsor; each dropped id is warned about in development. */
 export function sponsorChainsFromEnv(
@@ -217,10 +222,21 @@ function causeChain(error: unknown): Record<string, unknown>[] {
  * How a failed sponsored send ended, which decides whether it may be sent
  * again the ordinary way, paid by the person.
  *
- * - `refused`: Privy said no BEFORE anything was broadcast. Only two kinds
- *   of failure qualify: an answer from Privy's API with a client error
- *   status (400, 401, 402, 403, 404, 422), and the throws react-auth makes
- *   on the client before it calls the API at all. Falls back.
+ * - `refused`: Privy declined to sponsor BEFORE anything was broadcast.
+ *   Only two kinds of failure qualify: an answer from Privy's API with a
+ *   client error status that is about sponsorship (401, 402, 403, 404; a
+ *   400 or 422 only when its code or words say sponsorship was declined,
+ *   see sponsorshipDeclined), and the throws react-auth makes on the
+ *   client before it calls the API at all. Falls back, and the chain is
+ *   dropped for the session.
+ * - `failed`: a 400 or 422 that is not a sponsorship refusal, above all
+ *   Privy's simulation reverting (a stale quote, slippage, execution
+ *   reverted). Nothing was broadcast and the same call would revert paid
+ *   too, so it is an ordinary failed order: rethrown with its own error,
+ *   no paid send, and the chain stays sponsored. When unsure, a 400 or 422
+ *   lands here. A 400 or 422 that speaks of broadcast, a timeout or a
+ *   nonce (transaction_broadcast_failure) is `unknown` instead: the
+ *   operation may already be on its way.
  * - `rate-limited`: a 429, also before broadcast. Retried once after
  *   RATE_LIMIT_RETRY_MS; a second 429 falls back for this order only and
  *   leaves the chain sponsored.
@@ -229,17 +245,45 @@ function causeChain(error: unknown): Record<string, unknown>[] {
  *   transaction" (Privy answered 2xx without a hash), a dropped
  *   connection, anything unrecognised. The operation may still land, so a
  *   second send could move the money twice. Rethrown as
- *   SponsoredOutcomeUnknown, never resent.
+ *   SponsoredOutcomeUnknown, never resent. Privy's own client would
+ *   replay the POST on a 5xx or a dropped connection; Berth's patch of
+ *   js-sdk-core (patches/, guarded by privy-rpc-no-retry.test.ts) sends it
+ *   once, so the failure reaches this classifier instead.
  *
  * The status and code decide first; the message is read only for errors
  * that carry neither, and only to recognise react-auth's known pre-send
  * throws (react-auth 3.35.2 index-wGOlH2Wi.mjs, js-sdk-core 0.68.4
  * wallet-api/rpc.mjs). An unrecognised message is `unknown`, never `refused`.
  */
-export type SponsorErrorKind = "refused" | "rate-limited" | "cancelled" | "unknown";
+export type SponsorErrorKind = "refused" | "failed" | "rate-limited" | "cancelled" | "unknown";
 
-/** Privy API statuses that mean the request was refused before broadcast. */
-const REFUSED_STATUSES = new Set([400, 401, 402, 403, 404, 422]);
+/** Privy API statuses that mean the request was refused before broadcast, whatever it said. */
+const REFUSED_STATUSES = new Set([401, 402, 403, 404]);
+
+/** Privy API statuses that are refusals only when they speak of sponsorship; otherwise ordinary failures. */
+const AMBIGUOUS_STATUSES = new Set([400, 422]);
+
+/**
+ * Privy error codes (api-base PrivyErrorCode) that mean sponsorship itself
+ * was declined: not switched on, not offered for the chain, or over a limit.
+ */
+const SPONSOR_REFUSAL_CODES = new Set(["feature_not_enabled", "not_supported", "transaction_limit_reached"]);
+
+/** Words that tie a 400 or 422 to sponsorship: credits, the paymaster, the sponsor policy. */
+const SPONSOR_WORDS = /sponsor|paymaster|gas credit|credits/;
+
+/** Words of a simulation revert, which outrank any talk of sponsorship. */
+const REVERT_WORDS = /revert|simulat|execution|slippage|stale|quote|transaction_execution_failure/;
+
+/**
+ * Words of a failure at or after broadcast, which outrank everything else
+ * a 400 or 422 says. Broadcast is the one step where the operation can
+ * reach a bundler or the mempool while Privy still answers with an error
+ * (a timed out eth_sendUserOperation, a nonce already used, a replacement
+ * underpriced), so the money may still move: unknown, never failed or
+ * refused, so it is held and never sent again.
+ */
+const AFTER_SUBMIT_WORDS = /broadcast|time[sd]? ?out|already known|nonce|mempool|underpriced|replacement|submitted|pending|in flight|in-flight/;
 
 /** Error codes react-auth and js-sdk-core raise on the client before the API call. */
 const PRE_SEND_CODES = new Set(["embedded_wallet_request_expired", "unsupported_chain_id", "embedded_wallet_not_found", "must_be_authenticated"]);
@@ -256,6 +300,32 @@ const PRE_SEND_MESSAGES = [
   /^unable to connect to wallet$/,
   /^wallet request expired before it could be sent/,
 ];
+
+/** Every message, error text and code down an error's causes, lower case. */
+function chainProse(chain: Record<string, unknown>[]): string {
+  return chain
+    .flatMap((node) => [node.message, node.error, node.code, node.privyErrorCode, node.details, node.shortMessage])
+    .filter((part): part is string => typeof part === "string")
+    .join("\n")
+    .toLowerCase();
+}
+
+/**
+ * Whether a 400 or 422 from Privy declined sponsorship, rather than the
+ * transaction failing its simulation. A revert wins over any mention of
+ * sponsorship; a code or words about sponsorship make it a refusal;
+ * anything else is an ordinary failure.
+ */
+function sponsorshipDeclined(chain: Record<string, unknown>[]): boolean {
+  const prose = chainProse(chain);
+  if (REVERT_WORDS.test(prose)) return false;
+  for (const node of chain) {
+    for (const code of [node.code, node.privyErrorCode]) {
+      if (typeof code === "string" && SPONSOR_REFUSAL_CODES.has(code)) return true;
+    }
+  }
+  return SPONSOR_WORDS.test(prose);
+}
 
 /**
  * The person said no. `mfa_canceled` is js-sdk-core's code for closing the
@@ -277,6 +347,10 @@ export function classifySponsorError(error: unknown): SponsorErrorKind {
   for (const node of chain) {
     if (typeof node.status === "number") {
       if (node.status === 429) return "rate-limited";
+      if (AMBIGUOUS_STATUSES.has(node.status)) {
+        if (AFTER_SUBMIT_WORDS.test(chainProse(chain))) return "unknown";
+        return sponsorshipDeclined(chain) ? "refused" : "failed";
+      }
       return REFUSED_STATUSES.has(node.status) ? "refused" : "unknown";
     }
     // react-auth's api_error with no response (a dropped connection) has
@@ -322,15 +396,34 @@ export class SponsoredOutcomeUnknown extends Error {
 /**
  * After an unknown outcome, the order buttons stay off for a minute
  * (OUTCOME_HOLD_MS), so a second tap cannot send the same money again
- * while the first may still land. In memory only: a refresh clears it,
- * and by then What you own shows whether the order went through.
+ * while the first may still land. Kept in localStorage under one key for
+ * the whole site, so neither a refresh nor another open tab lifts it
+ * early; other tabs hear of it through the storage event. Storage that is
+ * blocked keeps it for this page only.
  */
 export const OUTCOME_HOLD_MS = 60_000;
-let holdUntil = 0;
+const HOLD_KEY = "berth.gasSponsorOutcomeHold";
+let holdUntil = readHold();
 const holdListeners = new Set<() => void>();
+
+function readHold(now = Date.now()): number {
+  try {
+    if (typeof window === "undefined") return 0;
+    const until = Number(window.localStorage.getItem(HOLD_KEY));
+    // A stored end later than a fresh hold would be is not ours to trust.
+    return Number.isFinite(until) && until > now && until <= now + OUTCOME_HOLD_MS ? until : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export function holdAfterUnknownOutcome(now = Date.now()): void {
   holdUntil = now + OUTCOME_HOLD_MS;
+  try {
+    window.localStorage.setItem(HOLD_KEY, String(holdUntil));
+  } catch {
+    // Private mode or blocked storage: held for this page only.
+  }
   for (const listener of holdListeners) listener();
 }
 
@@ -339,14 +432,33 @@ export function outcomeHoldUntil(): number {
   return holdUntil;
 }
 
+/** Another tab set the hold: take it up here too. A hold of our own is never shortened. */
+function onHoldStorage(event: { key: string | null }): void {
+  if (event.key !== HOLD_KEY && event.key !== null) return;
+  const now = Date.now();
+  const next = Math.max(holdUntil > now ? holdUntil : 0, readHold(now));
+  if (next === holdUntil) return;
+  holdUntil = next;
+  for (const listener of holdListeners) listener();
+}
+
 export function subscribeOutcomeHold(listener: () => void): () => void {
+  if (holdListeners.size === 0 && typeof window !== "undefined") window.addEventListener?.("storage", onHoldStorage);
   holdListeners.add(listener);
-  return () => holdListeners.delete(listener);
+  return () => {
+    holdListeners.delete(listener);
+    if (holdListeners.size === 0 && typeof window !== "undefined") window.removeEventListener?.("storage", onHoldStorage);
+  };
 }
 
 /** Test seam. */
 export function resetOutcomeHold(): void {
   holdUntil = 0;
+  try {
+    window.localStorage.removeItem(HOLD_KEY);
+  } catch {
+    // Nothing stored, or nowhere to store it.
+  }
   for (const listener of holdListeners) listener();
 }
 
@@ -466,9 +578,13 @@ export function withGasSponsor(
     request: async (args) => {
       // viem retries a failed eth_sendTransaction as wallet_sendTransaction
       // on some error codes; that path would skip the rules below and could
-      // send a second time, so it is closed while sponsorship is on.
+      // send a second time, so it is closed while sponsorship is on. The
+      // code is -32601 (method not found) on purpose: on that code viem
+      // rethrows the ORIGINAL send's error (actions/wallet/sendTransaction),
+      // so a paid fallback that ran out of gas still reads "Add about X
+      // ETH", where 4200 would have put this error in its place.
       if (args.method === "wallet_sendTransaction" && active()) {
-        throw Object.assign(new Error("wallet_sendTransaction is not used while gas is sponsored"), { code: 4200 });
+        throw Object.assign(new Error("wallet_sendTransaction is not used while gas is sponsored"), { code: -32601 });
       }
       if (args.method !== "eth_sendTransaction" || !active()) return provider.request(args);
       const tx = (Array.isArray(args.params) ? args.params[0] : undefined) as RpcTransaction | undefined;
@@ -486,7 +602,9 @@ export function withGasSponsor(
         }
       } catch (error) {
         const kind = classifySponsorError(error);
-        if (kind === "cancelled") throw error;
+        // A cancel, or an ordinary failure such as a simulation revert:
+        // nothing went out, nothing is resent, the chain stays sponsored.
+        if (kind === "cancelled" || kind === "failed") throw error;
         if (kind === "unknown") {
           holdAfterUnknownOutcome();
           throw new SponsoredOutcomeUnknown(error);
