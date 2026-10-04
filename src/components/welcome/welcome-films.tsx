@@ -8,21 +8,16 @@ import { EASE_LIFT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
- * The two launch films on the welcome page. The vertical one, the habit,
- * stands in the hero (2026-09-30): a flat phone that starts tilted back and
- * turns to face the reader once the page has loaded, with one glare sweep as
- * it settles. The wide one, Wall Street in your wallet, rises in a flat card
- * near the foot of the page.
+ * The launch film on the welcome page: Wall Street in your wallet, in a flat
+ * card near the foot of the page. The vertical habit film that once stood in
+ * the hero is gone with recurring buys (2026-10-04); its files stay in
+ * public/videos, unreferenced.
  *
- * Both play muted and inline while in view and pause when they leave. The
- * hero film counts as in view the moment any of it shows, so on a phone,
- * where only its top clears the first screen, it still plays on load; the
- * wide one waits until half of it shows, and loads nothing before that but
- * its poster. Reduced motion gets no tilt, glare or rise and no autoplay, a
- * play button instead.
+ * It plays muted and inline once half of it is in view and pauses when it
+ * leaves, loading nothing before that but its poster. Reduced motion gets no
+ * rise and no autoplay, a play button instead.
  */
 
-const HABIT = { webm: "/videos/habit.webm", mp4: "/videos/habit.mp4", poster: "/videos/habit.jpg" };
 const WALL_STREET = { webm: "/videos/wall-street.webm", mp4: "/videos/wall-street.mp4", poster: "/videos/wall-street.jpg" };
 
 const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
@@ -110,7 +105,7 @@ function Film({
   preload = "none",
   className,
 }: {
-  sources: typeof HABIT;
+  sources: typeof WALL_STREET;
   preload?: "none" | "metadata" | "auto";
   label: string;
   reduced: boolean;
@@ -166,77 +161,6 @@ function SoundPill({ muted, onToggle }: { muted: boolean; onToggle: () => void }
       <Glyph weight="duotone" className="size-4" aria-hidden />
       {muted ? copy.soundOn : copy.soundOff}
     </button>
-  );
-}
-
-/** Where the phone starts: leaning back and away, a little low. */
-const TILTED = { rotateX: 22, rotateY: -16, rotateZ: 3, y: 36 };
-const UPRIGHT = { rotateX: 0, rotateY: 0, rotateZ: 0, y: 0 };
-
-/**
- * The habit film in a flat phone, for the hero: one hairline, a small
- * island, three side keys, no rendered bezel. It arrives tilted back, turns
- * upright once the page is up, and one glare band crosses the glass as it
- * settles. Its line and sound pill sit underneath.
- */
-export function HeroPhone({ className }: { className?: string }) {
-  const copy = useCopy().welcomePage.films;
-  const reduced = useReducedMotionPreference();
-  const ref = useRef<HTMLVideoElement>(null);
-  const film = useFilm(ref, reduced, 0);
-  const [glare, setGlare] = useState<"waiting" | "sweeping" | "done">("waiting");
-
-  const phoneClass =
-    "relative w-[248px] rounded-[42px] border border-input bg-card p-[7px] lg:w-[288px] lg:rounded-[48px] lg:p-2";
-  const body = (
-    <>
-      {/* Side keys: action and volume on the left, power on the right. */}
-      <i aria-hidden className="absolute top-[88px] -left-[3px] h-6 w-[3px] rounded-l-sm bg-input lg:top-[100px]" />
-      <i aria-hidden className="absolute top-[128px] -left-[3px] h-11 w-[3px] rounded-l-sm bg-input lg:top-[144px]" />
-      <i aria-hidden className="absolute top-[184px] -left-[3px] h-11 w-[3px] rounded-l-sm bg-input lg:top-[204px]" />
-      <i aria-hidden className="absolute top-[148px] -right-[3px] h-16 w-[3px] rounded-r-sm bg-input lg:top-[168px]" />
-      <div className="relative overflow-hidden rounded-[35px] border border-border lg:rounded-[40px]">
-        <Film sources={HABIT} label={copy.habit.label} reduced={reduced} videoRef={ref} playing={film.playing} onPlay={film.play} onTogglePlay={film.togglePlay} preload="metadata" className="aspect-[9/16]" />
-        <i aria-hidden className="pointer-events-none absolute top-2 left-1/2 h-[22px] w-[76px] -translate-x-1/2 rounded-full bg-[#1C1917] lg:h-6 lg:w-[86px]" />
-        {!reduced && glare === "sweeping" && (
-          <motion.i
-            aria-hidden
-            data-film-glare
-            className="pointer-events-none absolute -inset-y-1/4 left-0 w-1/2 bg-[linear-gradient(90deg,transparent,rgb(255_255_255/0.55)_45%,rgb(255_255_255/0.55)_55%,transparent)]"
-            style={{ skewX: -18 }}
-            initial={{ x: "-130%" }}
-            animate={{ x: "260%" }}
-            transition={{ duration: 1.25, ease: [0.45, 0, 0.25, 1] }}
-            onAnimationComplete={() => setGlare("done")}
-          />
-        )}
-      </div>
-    </>
-  );
-
-  return (
-    // The stage clips sideways so the tilt can never widen the page.
-    <div className={cn("flex flex-col items-center overflow-x-clip py-2 [perspective:1100px]", className)}>
-      {reduced ? (
-        <div data-film-phone className={phoneClass}>{body}</div>
-      ) : (
-        <motion.div
-          data-film-phone
-          className={phoneClass}
-          style={{ transformStyle: "preserve-3d" }}
-          initial={TILTED}
-          animate={UPRIGHT}
-          transition={{ duration: 1.5, delay: 0.35, ease: EASE_LIFT }}
-          onAnimationComplete={() => setGlare((g) => (g === "waiting" ? "sweeping" : g))}
-        >
-          {body}
-        </motion.div>
-      )}
-      <div className="mt-5 flex max-w-[288px] flex-col items-center gap-3 text-center">
-        <SoundPill muted={film.muted} onToggle={film.toggleSound} />
-        <p className="text-[13px] leading-snug text-muted-foreground">{copy.habit.line}</p>
-      </div>
-    </div>
   );
 }
 
