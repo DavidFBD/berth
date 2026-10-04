@@ -1409,6 +1409,8 @@ export type CampaignCopy = {
   setUp: (amount: string, days: number) => string;
   /** Set up, but no place is free for now (all taken, or the campaign paused): it may still free up before `deadline`. */
   waiting: (amount: string, days: number, deadline: string) => string;
+  /** The campaign is paused before the account took a place: no promise. */
+  paused: string;
   /** The account is set up and is waiting out the days. */
   staying: (amount: string, eligible: string) => string;
   qualified: string;
@@ -4238,7 +4240,7 @@ export const COPY: Copy = {
           "Open the campaign's link in the same browser you then sign up in, before you sign up. The link is remembered only in that browser, and an account opened anywhere else does not count.",
           `Set up means your account has a verified email, a username and a wallet with an EVM address, which can receive USDC on Base. Still uses Berth means you opened Berth signed in at least once in the last ${ACTIVE_WINDOW_DAYS} days of the stated number of days, on a later day than the one you set up on.`,
           "One reward per person. Accounts that are merged count as one person, and a wallet or an email address that already counted for another reward does not count again.",
-          "Each campaign states a budget and a number of places. Once they are taken, or the campaign ends, it is closed.",
+          "Each campaign states a budget and a number of places. Once they are taken, a new account waits in line, and a place that frees up goes to the next in line until the campaign closes. Once the campaign ends, it is closed.",
           "We review every reward before it is paid. We send it by hand, usually within a few days, in USDC on Base to your Berth account's own address. An account with no EVM address of its own cannot be paid.",
           "We may refuse a reward where we see abuse, such as several accounts for one person. You can ask a person at Berth to look again at a refusal.",
           "We may end or change a campaign at any time for new claims. A reward we have approved will be paid.",
@@ -4710,7 +4712,8 @@ export const COPY: Copy = {
     setUp: (amount, days) =>
       `You joined through a Berth offer. Once your account is set up, with a verified email, a username and a wallet with an address on Base, and you still use Berth ${dayCount(days)} later, ${amount} in USDC on Base is added to your account, while places last.`,
     waiting: (amount, days, deadline) =>
-      `Your account is set up. Every place in this offer is taken for now. If one frees up before ${deadline}, it is yours, and ${amount} in USDC on Base is added once you still use Berth ${dayCount(days)} after that.`,
+      `Your account is set up. Every place in this offer is taken for now. If a place frees up for you before ${deadline}, ${amount} in USDC on Base is added once you still use Berth ${dayCount(days)} after that.`,
+    paused: "The Berth offer you joined through is paused for now.",
     staying: (amount, eligible) => `Your account is set up. If you still use Berth on ${eligible}, ${amount} in USDC on Base is added to your account.`,
     qualified: "You stayed. Your reward is usually paid within a few days.",
     paid: (amount) => `Paid. ${amount} in USDC was added to your account.`,

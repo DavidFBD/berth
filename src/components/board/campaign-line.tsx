@@ -40,6 +40,9 @@ export function CampaignLineView({ line, bare = false }: { line: Line | null; ba
     case "setUp":
       text = copy.setUp(campaignUsd(line.amountUsd), line.stayDays);
       break;
+    case "paused":
+      text = copy.paused;
+      break;
     case "waiting":
       text = copy.waiting(campaignUsd(line.amountUsd), line.stayDays, campaignDay(line.deadline));
       break;

@@ -287,7 +287,7 @@ describe("the account's own progress", () => {
     expect(await campaignProgress(signup.user.id)).toBeNull();
   });
 
-  it("says waiting to an account set up while every place is taken, or while the campaign is paused", async () => {
+  it("says waiting to an account set up while every place is taken, and paused while the campaign is paused", async () => {
     const id = await campaign("progress-full", { maxClaims: 1 });
     const first = await joined({ code: "progress-full" });
     await username(first.user);
@@ -302,9 +302,9 @@ describe("the account's own progress", () => {
     const paused = await campaign("progress-paused", { active: true });
     const third = await joined({ code: "progress-paused" });
     await sql.query(`update campaigns set active = false where id = $1`, [paused]);
-    expect(await campaignProgress(third.user.id)).toMatchObject({ status: "setting_up" });
+    expect(await campaignProgress(third.user.id)).toMatchObject({ status: "paused", deadline: null });
     await username(third.user);
-    expect(await campaignProgress(third.user.id)).toMatchObject({ status: "waiting" });
+    expect(await campaignProgress(third.user.id)).toMatchObject({ status: "paused" });
   });
 
   it("answers nothing to anyone else: an account with no claim, or one whose invitee arrived through the link", async () => {

@@ -34,6 +34,7 @@ describe("campaignLine, the new account's own line", () => {
     expect(campaignLine({ ...base, status: "staying", eligibleAt: eligible })).toEqual({ kind: "staying", amountUsd: 5, eligible: new Date(eligible) });
     expect(campaignLine({ ...base, status: "qualified", eligibleAt: eligible })).toEqual({ kind: "qualified" });
     const deadline = "2026-11-14T12:00:00.000Z";
+    expect(campaignLine({ ...base, status: "paused" })).toEqual({ kind: "paused" });
     expect(campaignLine({ ...base, status: "waiting", deadline })).toEqual({ kind: "waiting", amountUsd: 5, stayDays: 14, deadline: new Date(deadline) });
     const now = new Date("2026-10-20T00:00:00Z");
     expect(campaignLine({ ...base, status: "paid", paidAt: "2026-10-15T00:00:00Z" }, now)).toEqual({ kind: "paid", amountUsd: 5 });
@@ -83,6 +84,7 @@ describe("the words", () => {
       words.landingLede("$5", 14),
       words.setUp("$5", 14),
       words.waiting("$5", 14, "14 Nov"),
+      words.paused,
       words.staying("$5", "17 Oct"),
       words.staff.activateConfirm("Autumn"),
       words.staff.activateCheck,

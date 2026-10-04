@@ -50,15 +50,15 @@ export const SLOT_STATES: readonly ClaimState[] = ["holding", "qualified", "appr
 /**
  * Where the account's own campaign reward stands (app/api/campaign), for
  * the account that opened through a campaign's link: setting up (not set
- * up yet), waiting (set up, but every place is taken for now or the
- * campaign is paused), staying (set up, waiting out the days), qualified
+ * up yet), waiting (set up, but every place is taken for now), paused (the
+ * campaign is paused before a place was taken), staying (set up, waiting out the days), qualified
  * (approved included, not paid yet) or paid. Never anything about a buy,
  * and nothing about anyone else's account.
  */
 export type CampaignProgress = {
   amountUsd: number;
   stayDays: number;
-  status: "setting_up" | "waiting" | "staying" | "qualified" | "paid";
+  status: "setting_up" | "waiting" | "paused" | "staying" | "qualified" | "paid";
   /** ISO; when the stay is judged, once set up. */
   eligibleAt: string | null;
   /** ISO; when it was paid. */
@@ -81,6 +81,7 @@ export const PAID_LINE_DAYS = 14;
 export type CampaignLine =
   | { kind: "setUp"; amountUsd: number; stayDays: number }
   | { kind: "waiting"; amountUsd: number; stayDays: number; deadline: Date }
+  | { kind: "paused" }
   | { kind: "staying"; amountUsd: number; eligible: Date }
   | { kind: "qualified" }
   | { kind: "paid"; amountUsd: number };
@@ -94,6 +95,8 @@ export function campaignLine(progress: CampaignProgress | null | undefined, now:
         : null;
     case "qualified":
       return { kind: "qualified" };
+    case "paused":
+      return { kind: "paused" };
     case "waiting":
       return progress.deadline
         ? { kind: "waiting", amountUsd: progress.amountUsd, stayDays: progress.stayDays, deadline: new Date(progress.deadline) }

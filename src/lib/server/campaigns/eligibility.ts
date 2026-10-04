@@ -499,12 +499,9 @@ export async function campaignProgress(userId: string, now: Date = new Date()): 
   };
   switch (claim.state) {
     case "attributed": {
-      // Set up, but no place to take: every place is taken for now (waitlisted), or the campaign is paused.
-      const person = await claimPerson(claim);
-      const setUp = person ? await campaignSetUp(person.id) : false;
-      if (setUp && (claim.waitlisted_at !== null || !campaign.active)) {
-        return { ...base, status: "waiting", deadline: claimDeadline(campaign).toISOString() };
-      }
+      // A paused campaign promises nothing new; a waitlisted claim found every place taken.
+      if (!campaign.active) return { ...base, status: "paused" };
+      if (claim.waitlisted_at !== null) return { ...base, status: "waiting", deadline: claimDeadline(campaign).toISOString() };
       return { ...base, status: "setting_up" };
     }
     case "holding":
