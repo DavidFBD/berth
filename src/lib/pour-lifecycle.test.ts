@@ -1,14 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChainKeys, SolverIntentStatusCode } from "@sodax/sdk";
 import { fingerprintOf, type ErrorReportContext } from "./error-report";
 import {
   BITCOIN_INTENT_DEADLINE_SECONDS,
   BITCOIN_SLIPPAGE_PCT,
   BITCOIN_RELAY_WAIT_MS,
+  APPROVE_PROBE_MS,
   dueOneShot,
   fillPhase,
   isPipelineStep,
   isPourLocked,
+  probeApprovalTakesTwo,
   releaseTracking,
   resolveTracking,
   settledFollowUp,
@@ -413,5 +415,27 @@ describe("a payment from an EVM chain", () => {
     expect(report.errorCode).toBe("SOLVER_FILL_UNSETTLED");
     expect(report.diagnostics).not.toHaveProperty("relay");
     expect(report.diagnostics).not.toHaveProperty("spokeTx");
+  });
+});
+
+describe("probeApprovalTakesTwo", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("answers what the plan answers, in time", async () => {
+    const build = () => Promise.resolve({ ok: true as const, value: { resetTx: "0x1" } });
+    await expect(probeApprovalTakesTwo(build)).resolves.toBe(true);
+  });
+
+  it("drops a plan that does not answer within the probe's deadline, and counts it as one prompt", async () => {
+    const hung = new Promise<{ ok: boolean; value?: unknown }>(() => {});
+    const result = probeApprovalTakesTwo(() => hung, APPROVE_PROBE_MS);
+    await vi.advanceTimersByTimeAsync(APPROVE_PROBE_MS);
+    await expect(result).resolves.toBe(false);
+  });
+
+  it("drops a plan that throws, the same as one that never answers", async () => {
+    const build = () => Promise.reject(new Error("RPC refused"));
+    await expect(probeApprovalTakesTwo(build)).resolves.toBe(false);
   });
 });

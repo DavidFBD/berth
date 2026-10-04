@@ -5,6 +5,7 @@ import {
 } from "@sodax/sdk";
 import { COPY } from "@/lib/copy";
 import type { ErrorReportContext, PourReportContext } from "@/lib/error-report";
+import { withDeadline } from "@/lib/read-deadline";
 
 /**
  * The pour lifecycle: every step a pour passes through, from first tap to
@@ -384,4 +385,22 @@ export function settledFollowUp(
 export function approvalTakesTwo(plan: { ok: boolean; value?: unknown } | null | undefined): boolean {
   if (!plan?.ok || typeof plan.value !== "object" || plan.value === null) return false;
   return (plan.value as { resetTx?: unknown }).resetTx !== undefined;
+}
+
+/** How long the approve probe may hold "Building" before it is dropped. */
+export const APPROVE_PROBE_MS = 5_000;
+
+/**
+ * approvalTakesTwo, bounded: the probe (buildApproveTxs) reads an allowance
+ * and simulates on the pinned RPC before any wallet opens, so a hung
+ * endpoint must never stall the approve behind it. Past APPROVE_PROBE_MS,
+ * same as a probe that throws, the plan is dropped and counts as one
+ * prompt; the approve step then continues exactly as it would have anyway.
+ */
+export async function probeApprovalTakesTwo(
+  build: () => Promise<{ ok: boolean; value?: unknown } | null | undefined>,
+  ms: number = APPROVE_PROBE_MS,
+): Promise<boolean> {
+  const plan = await withDeadline(build(), ms, "approve probe").catch(() => null);
+  return approvalTakesTwo(plan);
 }

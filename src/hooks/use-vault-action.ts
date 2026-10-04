@@ -53,7 +53,7 @@ import {
   fillPhase,
   isPipelineStep,
   isPourLocked,
-  approvalTakesTwo,
+  probeApprovalTakesTwo,
   releaseTracking,
   resolveTracking,
   settledFollowUp,
@@ -1186,12 +1186,15 @@ export function useVaultAction(options?: {
         // 3. Approve if needed (an on-chain tx on the spoke: assert chain).
         if (!allowance.value) {
           // A read, no prompt: does this approval clear an old allowance
-          // first? If the plan cannot be read the words stay the usual ones;
-          // the SDK makes its own plan when it approves.
-          const plan = await sodax.swaps
-            .buildApproveTxs<SpokeChainKey>({ params: built.value.params, raw: true })
-            .catch(() => null);
-          setApproveTwice(approvalTakesTwo(plan));
+          // first? If the plan cannot be read, or the RPC it reads from is
+          // slow, the words stay the usual ones and this never holds up the
+          // approve; the SDK makes its own plan when it approves.
+          const approveParams = built.value.params;
+          setApproveTwice(
+            await probeApprovalTakesTwo(() =>
+              sodax.swaps.buildApproveTxs<SpokeChainKey>({ params: approveParams, raw: true }),
+            ),
+          );
           advance("approving");
           if (!(await onRightChain())) return false;
           const approved = await approve.mutateAsyncSafe({
