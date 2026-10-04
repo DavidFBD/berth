@@ -36,6 +36,7 @@ import {
   type EmbeddedHoldingsResult,
 } from "@/hooks/use-embedded-holdings";
 import { useAccount } from "@/hooks/use-account";
+import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { isGasToken, useGasGate } from "@/hooks/use-gas-gate";
 import { byGasStatus, type GasStatus } from "@/lib/gas-need";
 import { PayTokenRow } from "./pay-token-row";
@@ -63,6 +64,35 @@ function LetterCircle({
       style={{ width: size, height: size, fontSize: Math.max(9, size * 0.4) }}
     >
       {letter}
+    </div>
+  );
+}
+
+/**
+ * What a holding is worth, the way the deposit drawer's pill shows it: the
+ * value in the display currency on top, the amount and symbol beneath. A
+ * token with no price shows its amount on top and its symbol beneath,
+ * never a blank and never zero, because unknown is not nothing.
+ */
+function HoldingWorth({
+  balance,
+  token,
+  usdValue,
+}: {
+  balance: bigint;
+  token: XToken;
+  usdValue: number | undefined;
+}) {
+  const money = useMoney();
+  const amount = formatTokenAmount(balance, token.decimals);
+  return (
+    <div className="flex shrink-0 flex-col items-end">
+      <span className="money text-sm text-foreground tabular-nums">
+        {usdValue !== undefined ? money.format(usdValue) : amount}
+      </span>
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {usdValue !== undefined ? `${amount} ${token.symbol}` : token.symbol}
+      </span>
     </div>
   );
 }
@@ -193,7 +223,7 @@ export function TokenPicker({
   const [browseAll, setBrowseAll] = useState(false);
 
   const copy = useCopy();
-  const money = useMoney();
+  const prices = useUsdPrices();
   const sweep = useEmbeddedHoldings();
   const {
     emailMode,
@@ -409,16 +439,11 @@ export function TokenPicker({
                         handleOpenChange(false);
                       }}
                       trailing={
-                        <div className="flex flex-col items-end">
-                          <span className="text-sm text-foreground tabular-nums">
-                            {formatTokenAmount(balance, token.decimals)}
-                          </span>
-                          {usdValue !== undefined && (
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {money.format(usdValue)}
-                            </span>
-                          )}
-                        </div>
+                        <HoldingWorth
+                          balance={balance}
+                          token={token}
+                          usdValue={usdValue}
+                        />
                       }
                     />
                   ))
@@ -496,6 +521,12 @@ export function TokenPicker({
                       <div className="text-right">
                         {balancesLoading ? (
                           <Skeleton className="h-4 w-14" />
+                        ) : balance !== undefined && balance > 0n ? (
+                          <HoldingWorth
+                            balance={balance}
+                            token={token}
+                            usdValue={prices.usdValue(token, balance)}
+                          />
                         ) : balance !== undefined ? (
                           <span className="text-sm text-muted-foreground tabular-nums">
                             {formatTokenAmount(balance, token.decimals)}

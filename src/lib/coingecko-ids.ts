@@ -13,8 +13,19 @@
  * Deliberately absent: SODAX's own wrappers (soda*, lsoda*, bnUSD, IbnUSD),
  * which have no independent listing, and mSUI / yapSUI / trevinSUI, which
  * CoinGecko doesn't list at all. Those simply stay unpriced.
+ *
+ * The native gas tokens (ETH, BNB, SOL, S) and SODA are priced by the oracle
+ * too, but are pinned here as well so a failed hub read cannot wipe every
+ * gas token's price at once. Verified against coins.llama.fi on 2026-10-04:
+ * "sonic-3" is Sonic's S (not the old Fantom id) and "sodax" is SODAX's own
+ * SODA (its Sonic contract 0x7c7d…c963).
  */
 export const COINGECKO_IDS: Readonly<Record<string, string>> = {
+  ETH: "ethereum",
+  BNB: "binancecoin",
+  SOL: "solana",
+  S: "sonic-3",
+  SODA: "sodax",
   AAVE: "aave",
   LINK: "chainlink",
   UNI: "uniswap",

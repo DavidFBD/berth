@@ -3,7 +3,7 @@
 import { ArrowsClockwise, Check, Receipt, WarningCircle } from "@phosphor-icons/react";
 import { getToolName, isTextUIPart, isToolUIPart, type UIMessage } from "ai";
 import { Button } from "@/components/ui/button";
-import { useCopy } from "@/components/settings-provider";
+import { useCopy, useMoney } from "@/components/settings-provider";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
 import { ThinkingOrb, type OrbState } from "@/components/ui/thinking-orb";
 import { isBerthToolName } from "@/lib/berth-tool-names";
@@ -199,9 +199,12 @@ function trimQuantity(quantity: number): string {
  */
 export function DraftCard({ draft, onOpen, className }: { draft: ChatDraft; onOpen: () => void; className?: string }) {
   const copy = useCopy();
+  const money = useMoney();
   const amount =
-    draft.side === "sell" && draft.quantity !== undefined ? copy.chatDraftShares(trimQuantity(draft.quantity)) : formatUsd(draft.usd ?? 0);
-  const about = draft.side === "sell" && draft.quantity !== undefined && draft.approxUsd !== undefined ? copy.chatDraftAbout(formatUsd(draft.approxUsd)) : null;
+    draft.side === "sell" && draft.quantity !== undefined ? copy.chatDraftShares(trimQuantity(draft.quantity)) : money.format(draft.usd ?? 0);
+  const about = draft.side === "sell" && draft.quantity !== undefined && draft.approxUsd !== undefined ? copy.chatDraftAbout(money.format(draft.approxUsd)) : null;
+  // A limit price stays in dollars, the currency the order is priced in.
+  const limitAbout = draft.limitPrice !== undefined ? money.aboutAtRate(draft.limitPrice) : null;
   return (
     <div className={cn("flex flex-col gap-3 rounded-xl border border-border bg-card p-3.5", className)} data-testid="chat-draft-card">
       <div className="flex items-start gap-2.5">
@@ -218,6 +221,7 @@ export function DraftCard({ draft, onOpen, className }: { draft: ChatDraft; onOp
               {draft.side === "buy" ? copy.chatDraftAtBuy(formatUsd(draft.limitPrice)) : copy.chatDraftAtSell(formatUsd(draft.limitPrice))}
             </span>
           )}
+          {limitAbout && <span className="self-end text-xs text-muted-foreground tabular-nums">{limitAbout}</span>}
           <span className="text-xs text-muted-foreground">{copy.chatDraftNothingYet}</span>
         </div>
       </div>

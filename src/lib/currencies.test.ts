@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveMoney, type FxRates } from "@/lib/currencies";
+import { fxRateStale, resolveMoney, type FxRates } from "@/lib/currencies";
 
 /** One fixed payload exercises every branch: good, zero, and negative rates. */
 const FX: FxRates = {
@@ -36,5 +36,24 @@ describe("resolveMoney", () => {
       currency: "USD",
       rate: 1,
     });
+  });
+});
+
+describe("fxRateStale", () => {
+  it("calls Friday's rate fresh on Friday evening", () => {
+    expect(fxRateStale("2026-10-02", new Date("2026-10-02T20:00:00Z"))).toBe(false);
+  });
+
+  it("calls yesterday's rate fresh until the next fixing time", () => {
+    expect(fxRateStale("2026-10-01", new Date("2026-10-02T14:00:00Z"))).toBe(false);
+  });
+
+  it("names Friday's rate on Sunday", () => {
+    expect(fxRateStale("2026-10-02", new Date("2026-10-04T10:00:00Z"))).toBe(true);
+  });
+
+  it("never calls an unknown or malformed date stale", () => {
+    expect(fxRateStale(undefined)).toBe(false);
+    expect(fxRateStale("Friday")).toBe(false);
   });
 });

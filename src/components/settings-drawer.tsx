@@ -12,9 +12,10 @@ import {
   useAppearance,
   useCopy,
   useCurrency,
+  useMoney,
 } from "@/components/settings-provider";
 import { APPEARANCE_IDS, type AppearanceId } from "@/lib/appearance";
-import { CURRENCIES } from "@/lib/currencies";
+import { CURRENCIES, type Currency } from "@/lib/currencies";
 import { cn } from "@/lib/utils";
 import { useAwardTheme } from "@/hooks/use-profile";
 import { AdvancedSection } from "@/components/key-export-row";
@@ -69,6 +70,7 @@ export function SettingsBody({ evmAddress }: { evmAddress?: string }) {
   const copy = useCopy();
   const { appearance, setAppearance } = useAppearance();
   const { currency, setCurrency } = useCurrency();
+  const money = useMoney();
   const awardTheme = useAwardTheme();
 
   const appearanceLabel: Record<AppearanceId, string> = {
@@ -154,6 +156,17 @@ export function SettingsBody({ evmAddress }: { evmAddress?: string }) {
                   </button>
                 ))}
               </div>
+              {/* Only once a rate has arrived: until then figures print in
+                  dollars, and there is nothing converted to explain. */}
+              {money.converted && (
+                <div className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground">
+                  <p>{copy.fxNote(copy.currencyNames[money.currency as Currency] ?? money.currency)}</p>
+                  <p>
+                    {copy.fxCredit}
+                    {money.staleDay && ` ${copy.fxRateOf(money.staleDay)}`}
+                  </p>
+                </div>
+              )}
             </section>
 
             {ANALYTICS_CONFIGURED && <AnalyticsSwitch />}

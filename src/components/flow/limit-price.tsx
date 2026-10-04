@@ -3,9 +3,9 @@
 import { CalendarBlank, Hourglass } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { useCopy } from "@/components/settings-provider";
+import { useCopy, useMoney } from "@/components/settings-provider";
 import { cn } from "@/lib/utils";
-import type { LimitExpiry, LimitSide } from "@/lib/limit-orders";
+import { parseLimitPrice, priceNumber, type LimitExpiry, type LimitSide } from "@/lib/limit-orders";
 
 /**
  * The limit order's three faces in the order drawers (lib/limit-orders):
@@ -82,6 +82,11 @@ export function LimitPriceFields({
   noPriceHint?: boolean;
 }) {
   const copy = useCopy();
+  const money = useMoney();
+  // The price is typed and kept in dollars, the currency the order fires
+  // on; in another display currency a quiet line gives it at the rate.
+  const typedPrice = parseLimitPrice(priceText);
+  const priceAbout = typedPrice !== undefined ? money.aboutAtRate(priceNumber(typedPrice)) : null;
   return (
     <div className="flex flex-col gap-2.5" data-testid="limit-fields" data-ph-mask>
       <div className="flex gap-1.5" role="group">
@@ -119,6 +124,11 @@ export function LimitPriceFields({
               <span className="money shrink-0 text-xs text-muted-foreground tabular-nums">{copy.limitPriceNow(marketLabel)}</span>
             )}
           </label>
+          {priceAbout && (
+            <p className="-mt-1.5 pl-[4.25rem] text-xs text-muted-foreground tabular-nums" data-testid="limit-price-about">
+              {priceAbout}
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip selected={expiry.kind === "never"} onClick={() => onExpiry({ kind: "never" })}>
@@ -169,6 +179,7 @@ export function LimitSummary({
   side,
   name,
   priceLabel,
+  priceAbout,
   putLabel,
   getLabel,
   feeLabel,
@@ -181,6 +192,8 @@ export function LimitSummary({
   side: LimitSide;
   name: string;
   priceLabel: string;
+  /** The price in the display currency, "about €184.00 at today's rate", or null in dollars. */
+  priceAbout?: string | null;
   /** What leaves now: dollars for a buy, shares for a sell. */
   putLabel: string;
   /** The least that comes back: shares for a buy, dollars for a sell. */
@@ -209,6 +222,7 @@ export function LimitSummary({
         <p className="font-display text-lg leading-snug text-foreground">
           {side === "buy" ? copy.limitSummaryBuy(name, priceLabel) : copy.limitSummarySell(name, priceLabel)}
         </p>
+        {priceAbout && <p className="-mt-2 text-xs text-muted-foreground tabular-nums">{priceAbout}</p>}
         <ul className="flex flex-col gap-1.5 text-sm leading-snug text-muted-foreground">
           {lines.map((line) => (
             <li key={line}>{line}</li>

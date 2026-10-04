@@ -346,6 +346,8 @@ export function WithdrawDrawer({
         })
       : undefined;
   const limitPriceLabel = limit.price ? formatUsd(priceNumber(limit.price)) : "";
+  // The price stays in dollars; in another display currency, a quiet line gives it at the rate.
+  const limitPriceAbout = limit.price ? money.aboutAtRate(priceNumber(limit.price)) : null;
 
   // The drawer's half of the order funnel (lib/analytics): codes and buckets only.
   useDrawerFunnel({
@@ -687,6 +689,7 @@ export function WithdrawDrawer({
                 side="sell"
                 name={listing.name}
                 priceLabel={limitPriceLabel}
+                priceAbout={limitPriceAbout}
                 putLabel={`${formatTokenAmount(buildAmount, SHARE_DECIMALS, 6)} ${listing.name}`}
                 getLabel={`${formatTokenAmount(limitMin, outputToken.decimals)} ${outputToken.symbol} on ${getChainName(dstChainKey)}`}
                 feeLabel={

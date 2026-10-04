@@ -177,7 +177,7 @@ function Swatch({ dashed }: { dashed?: boolean }) {
 }
 
 /**
- * Under the account's figure: the account's money beside the same dollars
+ * Under the account's figure: the account's money beside the same money
  * in a chosen benchmark, as a legend (the chooser is the benchmark's name),
  * the two lines, and the range. Rendered only while the account holds
  * something; the query is not even asked otherwise. Every number is the
@@ -312,7 +312,11 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
         />
       </div>
       <div className="mt-2.5 flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-        <span className="text-[12.5px] text-muted-foreground">{copy.portfolioSameDays}</span>
+        <span className="text-[12.5px] text-muted-foreground">
+          {copy.portfolioSameDays}
+          {/* The percentages are dollar returns; in another currency, say so. */}
+          {money.converted && `. ${copy.inUsDollars}`}
+        </span>
         <RangeControl
           available={data.available}
           value={range}

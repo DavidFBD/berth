@@ -185,6 +185,7 @@ export function AccountTotalView({
         <InfoTip label={copy.accountTotalLabel}>
           <p>{copy.accountTotalSub}</p>
           {figures.holdsAnything && <p className="mt-1.5 text-muted-foreground">{copy.holdingsBenchmarkNote}</p>}
+          {figures.holdsAnything && money.converted && <p className="mt-1.5 text-muted-foreground">{copy.inUsDollarsNote}</p>}
           {updating && when && <p className="mt-1.5 text-muted-foreground">{copy.lastKnownAsOf(when)}</p>}
         </InfoTip>
         {/* The last reading stands in while the live one arrives: said quietly, once. */}

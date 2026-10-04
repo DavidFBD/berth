@@ -397,6 +397,8 @@ export function DepositDrawer({
         })
       : undefined;
   const limitPriceLabel = limit.price ? formatUsd(priceNumber(limit.price)) : "";
+  // The price stays in dollars; in another display currency, a quiet line gives it at the rate.
+  const limitPriceAbout = limit.price ? money.aboutAtRate(priceNumber(limit.price)) : null;
 
   // The drawer's half of the order funnel (lib/analytics): codes and buckets only.
   useDrawerFunnel({
@@ -744,6 +746,7 @@ export function DepositDrawer({
                 side="buy"
                 name={listing.name}
                 priceLabel={limitPriceLabel}
+                priceAbout={limitPriceAbout}
                 putLabel={
                   worthUsd !== undefined
                     ? `${money.format(worthUsd)} (${formatTokenAmount(buildAmount, token.decimals)} ${token.symbol})`

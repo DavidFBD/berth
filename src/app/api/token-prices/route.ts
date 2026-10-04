@@ -31,6 +31,8 @@ export type TokenPricesResponse = {
   prices: Record<string, number>;
   /** USD → display-currency multipliers, e.g. { EUR: 0.92 }. */
   fx?: FxRates;
+  /** The ECB day the rates are for (YYYY-MM-DD): Friday's over a weekend. */
+  fxDate?: string;
   /** Present only when prices are empty or partial, for the console. */
   reason?: string;
 };
@@ -40,6 +42,7 @@ type LlamaResponse = {
 };
 
 type FrankfurterResponse = {
+  date?: string;
   rates?: Record<string, number | undefined>;
 };
 
@@ -76,7 +79,7 @@ async function fetchPrices(): Promise<{
   }
 }
 
-async function fetchFx(): Promise<FxRates | undefined> {
+async function fetchFx(): Promise<{ fx: FxRates; date?: string } | undefined> {
   const symbols = CURRENCIES.filter((code) => code !== "USD").join(",");
   try {
     const response = await fetch(
@@ -92,7 +95,11 @@ async function fetchFx(): Promise<FxRates | undefined> {
         fx[code] = rate;
       }
     }
-    return fx;
+    const date =
+      typeof data.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data.date)
+        ? data.date
+        : undefined;
+    return { fx, date };
   } catch {
     // No FX is a soft degrade: money simply keeps speaking USD.
     return undefined;
@@ -100,10 +107,11 @@ async function fetchFx(): Promise<FxRates | undefined> {
 }
 
 export async function GET() {
-  const [priceResult, fx] = await Promise.all([fetchPrices(), fetchFx()]);
+  const [priceResult, fxResult] = await Promise.all([fetchPrices(), fetchFx()]);
   return Response.json({
     prices: priceResult.prices,
-    fx,
+    fx: fxResult?.fx,
+    ...(fxResult?.date ? { fxDate: fxResult.date } : {}),
     ...(priceResult.reason ? { reason: priceResult.reason } : {}),
   } satisfies TokenPricesResponse);
 }

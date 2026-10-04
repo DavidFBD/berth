@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { useCopy } from "@/components/settings-provider";
+import { useCopy, useMoney } from "@/components/settings-provider";
 import { HOME_CHAIN } from "@/lib/account";
 import { formatTokenAmount, formatUsd } from "@/lib/format";
 import { TOKEN_LISTINGS } from "@/lib/listings";
@@ -74,6 +74,7 @@ const nameOf = (symbol: string) => TOKEN_LISTINGS.find((listing) => listing.symb
 /** The line: "Waiting orders · NVIDIA at $200.00 · Tesla at $340.00 · 1 partly filled". */
 export function WaitingStripView({ orders, onOpen }: { orders: readonly LimitOrderView[]; onOpen: () => void }) {
   const copy = useCopy();
+  const money = useMoney();
   const prices = useListingPrices();
   const waiting = waitingUsd(orders, (symbol) => {
     const listing = TOKEN_LISTINGS.find((entry) => entry.symbol === symbol);
@@ -93,7 +94,7 @@ export function WaitingStripView({ orders, onOpen }: { orders: readonly LimitOrd
       <Hourglass weight="duotone" className="size-[17px] shrink-0 text-muted-foreground" aria-hidden />
       <span className="min-w-0 flex-1 truncate text-[13.5px] text-secondary-foreground">
         <span className="money font-medium text-foreground tabular-nums">
-          {waiting.usd > 0 ? copy.limitStripLead(formatUsd(waiting.usd)) : copy.limitWaitingTitle}
+          {waiting.usd > 0 ? copy.limitStripLead(money.format(waiting.usd)) : copy.limitWaitingTitle}
         </span>
         {items.map((item) => (
           <span key={item}>
@@ -107,11 +108,12 @@ export function WaitingStripView({ orders, onOpen }: { orders: readonly LimitOrd
   );
 }
 
-function setAsideLabel(order: LimitOrderView): string {
+function setAsideLabel(order: LimitOrderView, format: (usd: number) => string): string {
   const raw = BigInt(order.inputRaw);
   if (order.direction === "buy") {
-    // v1 buys are paid in dollar coins (lib/limit-orders limitTokenOk).
-    return formatUsd(Number(formatUnits(raw, order.inputDecimals)));
+    // v1 buys are paid in dollar coins (lib/limit-orders limitTokenOk),
+    // so the coins' amount is their worth in dollars.
+    return format(Number(formatUnits(raw, order.inputDecimals)));
   }
   return `${formatTokenAmount(raw, order.inputDecimals, 6)} ${nameOf(order.symbol)}`;
 }
@@ -125,8 +127,12 @@ function untilLabel(order: LimitOrderView, copy: ReturnType<typeof useCopy>): st
 /** One waiting order: what, at what price, how much set aside, how far filled, and Cancel. */
 function WaitingRow({ order, onCancel }: { order: LimitOrderView; onCancel: () => void }) {
   const copy = useCopy();
+  const money = useMoney();
   const name = nameOf(order.symbol);
+  // The limit price stays in dollars, the currency the order fires on;
+  // a quiet line beneath gives it in the display currency.
   const price = formatUsd(order.limitPrice);
+  const priceAbout = money.aboutAtRate(order.limitPrice);
   const percent = Math.round(order.progress * 100);
   return (
     <li className="flex flex-col gap-2 px-[18px] lg:px-6 py-3" data-testid="waiting-row">
@@ -138,8 +144,11 @@ function WaitingRow({ order, onCancel }: { order: LimitOrderView; onCancel: () =
           {order.direction === "buy" ? copy.limitRowAtBuy(price) : copy.limitRowAtSell(price)}
         </span>
       </div>
+      {priceAbout && (
+        <p className="-mt-1.5 self-end text-xs text-muted-foreground tabular-nums">{priceAbout}</p>
+      )}
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span className="money tabular-nums">{copy.limitRowSetAside(setAsideLabel(order))}</span>
+        <span className="money tabular-nums">{copy.limitRowSetAside(setAsideLabel(order, money.format))}</span>
         <span>{untilLabel(order, copy)}</span>
       </div>
       <div className="flex items-center gap-2.5">

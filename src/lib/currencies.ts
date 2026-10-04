@@ -35,3 +35,25 @@ export function resolveMoney(
     ? { currency, rate }
     : { currency: "USD", rate: 1 };
 }
+
+/**
+ * Whether an ECB reference rate dated `day` (YYYY-MM-DD, as Frankfurter
+ * gives it) is more than a day old at `now`. The ECB fixes its rates around
+ * 16:00 Frankfurt time, so a day's rate is counted from 15:00 UTC. Over a
+ * weekend or a holiday Friday's rate stays in use, and from Saturday
+ * afternoon on it is old enough to name its date. Unknown or malformed
+ * dates are never called stale: there is nothing honest to show instead.
+ */
+export function fxRateStale(day: string | undefined, now: Date = new Date()): boolean {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const published = Date.parse(`${day}T15:00:00Z`);
+  if (!Number.isFinite(published)) return false;
+  return now.getTime() - published > 24 * 60 * 60 * 1000;
+}
+
+/** "Oct 3" for a rate's date, in English like the sentence around it. */
+export function fxDayLabel(day: string): string {
+  const date = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return day;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { TokenPricesResponse } from "@/app/api/token-prices/route";
 
 /** What consumers see: `reason` is consumed here, at the single fetch. */
-export type TokenPrices = Pick<TokenPricesResponse, "prices" | "fx">;
+export type TokenPrices = Pick<TokenPricesResponse, "prices" | "fx" | "fxDate">;
 
 /** Refetch a little ahead of the route's 5-minute server cache. */
 const TOKEN_PRICES_REFETCH_MS = 4 * 60 * 1000;
@@ -25,7 +25,7 @@ export function useTokenPrices() {
       if (payload.reason) {
         console.warn("[token-prices]", payload.reason);
       }
-      return { prices: payload.prices ?? {}, fx: payload.fx };
+      return { prices: payload.prices ?? {}, fx: payload.fx, fxDate: payload.fxDate };
     },
     staleTime: TOKEN_PRICES_REFETCH_MS,
     refetchInterval: TOKEN_PRICES_REFETCH_MS,

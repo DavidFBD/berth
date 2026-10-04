@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import { AssistantMessage, DraftCard, readAssistantParts } from "./chat-parts";
 import { ChatMarkdown } from "./chat-markdown";
@@ -15,6 +16,13 @@ import { chatErrorCode } from "./use-berth-chat";
  */
 
 const noop = () => {};
+
+/**
+ * Cards print money through useMoney, which reads the shared FX query; a
+ * fresh client with nothing fetched prints dollars, as a first paint does.
+ */
+const renderToStaticMarkup = (element: React.ReactElement) =>
+  renderMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, element));
 
 describe("DraftCard", () => {
   it("renders a buy from the server's values, with one button that opens it", () => {

@@ -50,7 +50,9 @@ import {
  *                                       Polygon. pay=empty settles with
  *                                       nothing, pay=stuck never settles,
  *                                       pay=gas holds USDC on HyperEVM with
- *                                       no HYPE (a greyed picker row)
+ *                                       no HYPE (a greyed picker row),
+ *                                       pay=hold a priced and an unpriced
+ *                                       holding side by side
  *   /dev/board?sell=QQQ&hub=0x…         the sell drawer open on QQQ, with
  *                                       what that hub wallet holds of it
  *   /dev/board?news=NVDA                the news column already filtered, so
@@ -307,6 +309,29 @@ function gasFixture(): DevHoldings {
   };
 }
 
+/**
+ * ?pay=hold: a priced and an unpriced holding side by side, so the picker's
+ * worth-first rows (value on top, amount beneath) and the no-price fallback
+ * (amount on top, symbol beneath) can be seen in one shot.
+ */
+function holdFixture(): DevHoldings {
+  const baseUsdc = getDepositTokens(ChainKeys.BASE_MAINNET).find((token) => token.symbol === "USDC");
+  const baseEth = getDepositTokens(ChainKeys.BASE_MAINNET).find((token) => token.symbol === "ETH");
+  const pol = getDepositTokens(ChainKeys.POLYGON_MAINNET).find((token) => token.symbol === "POL");
+  const holdings = [
+    baseUsdc && { chainKey: ChainKeys.BASE_MAINNET, token: baseUsdc, balance: 25n * 10n ** BigInt(baseUsdc.decimals), usdValue: 25 },
+    baseEth && { chainKey: ChainKeys.BASE_MAINNET, token: baseEth, balance: 6n * 10n ** 15n, usdValue: 16.21 },
+    pol && { chainKey: ChainKeys.POLYGON_MAINNET, token: pol, balance: 10n * 10n ** 18n, usdValue: undefined },
+  ].filter((holding) => !!holding);
+  return {
+    connected: true,
+    holdings,
+    gasShortChains: [],
+    isLoading: false,
+    nativeBalances: { [ChainKeys.BASE_MAINNET]: 6n * 10n ** 15n, [ChainKeys.POLYGON_MAINNET]: 10n * 10n ** 18n },
+  };
+}
+
 /** A stand-in wallet sweep for ?pay=slow|empty|stuck, so the drawer's waiting states can be seen. */
 function useDevHoldings(mode: string | null, delayMs: number): DevHoldings | undefined {
   const [settled, setSettled] = useState(false);
@@ -316,6 +341,7 @@ function useDevHoldings(mode: string | null, delayMs: number): DevHoldings | und
     return () => clearTimeout(timer);
   }, [mode, delayMs]);
   if (mode === "gas") return gasFixture();
+  if (mode === "hold") return holdFixture();
   if (mode !== "slow" && mode !== "empty" && mode !== "stuck") return undefined;
   const pol = getDepositTokens(ChainKeys.POLYGON_MAINNET).find((token) => token.symbol === "POL");
   const holdings =

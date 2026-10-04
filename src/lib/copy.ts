@@ -18,6 +18,7 @@ import { REWARD_REASONS } from "@/lib/xp";
 import { MIN_ORDER_LABEL } from "@/lib/order-minimum";
 import type { ConsentParty } from "@/lib/assistant-party";
 import type { HandleRefusal } from "@/lib/handle";
+import type { Currency } from "@/lib/currencies";
 import type { Relation, ReportReason } from "@/lib/social-types";
 
 export type Copy = {
@@ -359,12 +360,12 @@ export type Copy = {
   /**
    * The portfolio line at the top of "What you own" (lib/portfolio-history).
    * The headline reads "Since Sep 21, 4 market days. You +0.6%, the same
-   * dollars in [the S&P 500 fund] -0.6%." with the name as the chooser.
+   * money in [the S&P 500 fund] -0.6%." with the name as the chooser.
    * `date` arrives formatted: "Sep 21".
    */
   portfolioSince: (date: string, days: number) => string;
   portfolioYou: string;
-  /** Before the benchmark's name, by id: "the same dollars in the" S&P 500 fund, "in" Gold. */
+  /** Before the benchmark's name, by id: "the same money in the" S&P 500 fund, "in" Gold. */
   portfolioSameDollarsIn: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
   /** The chooser's menu heading, and the description its button carries. */
   portfolioCompareWith: string;
@@ -713,6 +714,30 @@ export type Copy = {
   appearanceLight: string;
   appearanceDark: string;
   currencySectionLabel: string;
+  /** The display currency's name as a reader says it of an amount: "euros". */
+  currencyNames: Record<Currency, string>;
+  /**
+   * Under the currency chips when the display currency is not USD: what the
+   * converted figures are, and where the rate comes from.
+   */
+  fxNote: (currencyName: string) => string;
+  fxCredit: string;
+  /** Beside the credit when the ECB rate in use is more than a day old. */
+  fxRateOf: (day: string) => string;
+  /**
+   * Under a figure that stays in US dollars (a limit price), when the display
+   * currency is not USD: "about €184.00 at today's rate", or, once the rate
+   * is more than a day old, "about €184.00 at the rate of Oct 3".
+   */
+  moneyAboutAtTodaysRate: (amount: string) => string;
+  moneyAboutAtRateOf: (amount: string, day: string) => string;
+  /**
+   * On the performance chart and the comparison when the display currency is
+   * not USD: the percentages are the change in US dollars, not in the
+   * reader's own currency, and the (i) says so in full.
+   */
+  inUsDollars: string;
+  inUsDollarsNote: string;
   /** Collapsed, closed by default: the private key export lives here now. */
   advancedSectionLabel: string;
 
@@ -2585,7 +2610,7 @@ export const COPY: Copy = {
   lastKnownUpdating: "Updating",
   lastKnownAsOf: (when) => `Showing what we last read, ${when}, while the latest arrives.`,
   accountSplitHoldings: "Stocks",
-  portfolioSameDays: "Same dollars, same days",
+  portfolioSameDays: "Same money, same days",
   holdingsSubline: "Since you bought, beside the S&P 500 ETF.",
   holdingsCashIncluded: "Includes your parked cash.",
   holdingsWalletsNote: "Money waiting in your wallets is not counted.",
@@ -2657,15 +2682,15 @@ export const COPY: Copy = {
   moveInTheNews: (source) => `In the news: ${source}`,
   moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
-    "The line is your money each day at the close, and today at the live price, beside the same dollars put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
+    "The line is your money each day at the close, and today at the live price, beside the same money put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
   portfolioSince: (date, days) => `Since ${date}, ${marketDays(days)}.`,
   portfolioYou: "You",
   portfolioSameDollarsIn: {
-    SPY: "the same dollars in the",
-    QQQ: "the same dollars in the",
-    PAXG: "the same dollars in",
-    BTC: "the same dollars in",
-    SGOV: "the same dollars in",
+    SPY: "the same money in the",
+    QQQ: "the same money in the",
+    PAXG: "the same money in",
+    BTC: "the same money in",
+    SGOV: "the same money in",
   },
   portfolioCompareWith: "Compare with",
   portfolioChooserHint: "What your money is compared with. Choose another.",
@@ -2723,7 +2748,7 @@ export const COPY: Copy = {
       : `Also posted by ${names[0]}, ${names[1]} and ${names.length - 2} more.`,
 
   cashTitle: "Cash",
-  cashHint: "Idle dollars sit in a token tracking a fund of short Treasury bills, not in a lending pool.",
+  cashHint: "Idle money sits in a token tracking a fund of short Treasury bills, not in a lending pool.",
   cashYieldLine: (rate) =>
     `The 3 month Treasury bill rate is ${rate}. What you earn is the fund's return after its costs, and it moves with that rate.`,
   cashEmpty: "Nothing parked yet.",
@@ -2918,6 +2943,23 @@ export const COPY: Copy = {
   appearanceLight: "Light",
   appearanceDark: "Dark",
   currencySectionLabel: "Currency",
+  currencyNames: {
+    USD: "US dollars",
+    EUR: "euros",
+    GBP: "pounds",
+    JPY: "yen",
+    KRW: "won",
+    AUD: "Australian dollars",
+  },
+  fxNote: (currencyName) =>
+    `Berth's listings are priced in US dollars. Figures in ${currencyName} use the European Central Bank's rate for the day, so they move with the exchange rate as well as the market.`,
+  fxCredit: "Exchange rates: European Central Bank, published once a business day.",
+  fxRateOf: (day) => `Rate of ${day}.`,
+  moneyAboutAtTodaysRate: (amount) => `about ${amount} at today's rate`,
+  moneyAboutAtRateOf: (amount, day) => `about ${amount} at the rate of ${day}`,
+  inUsDollars: "Changes in US dollars",
+  inUsDollarsNote:
+    "The percentages here are the change in US dollars, the currency Berth's listings are priced in. Figures in your own currency use the latest rate for every day, so the line's shape is the dollar line's.",
 
   infoTitle: "How Berth works",
   infoSub: "What an order does, what you own, and what it costs.",
@@ -3117,7 +3159,7 @@ export const COPY: Copy = {
   nudgeFirstBuy: "Your funds have arrived. Choose any name on the board when you are ready.",
   nudgeHeldNews: (name) => `There is news about ${name} today.`,
   nudgeHeldNewsAction: "Read it",
-  nudgeParkCash: "Idle dollars can wait in Cash, a Treasury bill fund, until you need them.",
+  nudgeParkCash: "Idle money can wait in Cash, a Treasury bill fund, until you need it.",
   nudgeParkCashAction: "Park cash",
   nudgeInvite: "Invites are open to you now. Your link is in your account.",
   nudgeInviteAction: "Open account",
@@ -4019,7 +4061,7 @@ export const COPY: Copy = {
     canHeading: "What your AI can do",
     can: [
       "See what you own, what it is worth now, and how it has done over a week, a month, three months or since your first buy.",
-      "Compare your money with the same dollars in the S&P 500 ETF, the Nasdaq 100 ETF, Gold, Bitcoin or Treasury bills.",
+      "Compare your money with the same amount put in the S&P 500 ETF, the Nasdaq 100 ETF, Gold, Bitcoin or Treasury bills.",
       "Read your past orders, what moved on the last trading day, and what companies and the press have been saying, with links.",
       "Read your own card and friends board. Never anyone else's.",
       "Draft a buy or a sell, if you allowed it. A draft is a link to Berth's order screen with the listing and amount filled in.",

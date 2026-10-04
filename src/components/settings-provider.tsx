@@ -20,6 +20,8 @@ import {
 } from "@/lib/appearance";
 import {
   DEFAULT_CURRENCY,
+  fxDayLabel,
+  fxRateStale,
   isCurrency,
   resolveMoney,
   type Currency,
@@ -164,10 +166,18 @@ export function useCurrency(): CurrencyContextValue {
  */
 export function useMoney() {
   const { currency } = useCurrency();
-  const fx = useTokenPrices().data?.fx;
+  const prices = useTokenPrices().data;
+  const fx = prices?.fx;
+  const fxDate = prices?.fxDate;
 
   return useMemo(() => {
     const money = resolveMoney(currency, fx);
+    const converted = money.currency !== "USD";
+    // The ECB day behind the rate, named only once it is more than a day
+    // old (a weekend, a holiday): a fresh rate is simply today's.
+    const staleDay =
+      converted && fxDate && fxRateStale(fxDate) ? fxDayLabel(fxDate) : undefined;
+    const format = (usd: number) => formatMoney(usd, money);
     return {
       /** The currency actually being printed (USD while rates settle). */
       currency: money.currency,
@@ -181,9 +191,23 @@ export function useMoney() {
       symbol: currencySymbol(money.currency),
       /** Conventional fraction digits (2 for EUR, 0 for JPY). */
       fractionDigits: currencyFractionDigits(money.currency),
-      format: (usd: number) => formatMoney(usd, money),
+      /** True when figures are converted from USD at an ECB rate. */
+      converted,
+      /** "Oct 3" when the rate in use is more than a day old, else undefined. */
+      staleDay,
+      format,
+      /**
+       * The quiet line under a figure that stays in dollars (a limit price):
+       * "about €184.00 at today's rate". Null while printing USD.
+       */
+      aboutAtRate: (usd: number): string | null =>
+        !converted
+          ? null
+          : staleDay
+            ? COPY.moneyAboutAtRateOf(format(usd), staleDay)
+            : COPY.moneyAboutAtTodaysRate(format(usd)),
       formatPrecise: (usd: number) => formatMoneyPrecise(usd, money),
       split: (usd: number) => splitAccruingMoney(usd, money),
     };
-  }, [currency, fx]);
+  }, [currency, fx, fxDate]);
 }

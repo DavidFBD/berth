@@ -8,6 +8,7 @@ import { WaitingOrdersDrawer, WaitingStripView } from "@/components/board";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { LimitPlaced, LimitPriceFields, LimitSummary, type OrderMode } from "@/components/flow/limit-price";
 import { useMounted } from "@/hooks/use-mounted";
+import { useMoney } from "@/components/settings-provider";
 import { HOME_CHAIN } from "@/lib/account";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import type { LimitExpiry } from "@/lib/limit-orders";
@@ -102,6 +103,7 @@ function Gallery() {
   const params = useSearchParams();
   const drawer = params.get("drawer");
   const mounted = useMounted();
+  const money = useMoney();
   const [mode, setMode] = useState<OrderMode>("price");
   const [priceText, setPriceText] = useState("200");
   const [expiry, setExpiry] = useState<LimitExpiry>({ kind: "never" });
@@ -131,6 +133,7 @@ function Gallery() {
           side="buy"
           name="NVIDIA"
           priceLabel="$200.00"
+          priceAbout={money.aboutAtRate(200)}
           putLabel="$50.00 (50 USDC)"
           getLabel="0.249 NVIDIA"
           feeLabel="0.2 USDC"
