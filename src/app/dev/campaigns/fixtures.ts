@@ -1,5 +1,5 @@
 import type { CampaignProgress } from "@/lib/campaigns";
-import type { StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
+import type { StaffBalanceResponse, StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
 
 /** Fixtures for /dev/campaigns and /dev/board?campaign=: every account, address and hash is invented. */
 
@@ -220,4 +220,22 @@ export const LINE_FIXTURES: Record<string, CampaignProgress> = {
   qualified: progress("qualified"),
   paid: progress("paid"),
   closed: progress("expired"),
+};
+
+/** USDC on Base held by each fixture wallet, as the balance read answers (lowercase keys). */
+export const BALANCE_FIXTURE: Record<string, StaffBalanceResponse["balance"]> = {
+  "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed": { outcome: "read", raw: "100000000" },
+  "0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359": { outcome: "read", raw: "42500000" },
+};
+
+/** The create form as the gallery opens it: a campaign about to be funded by a sponsor. */
+export const CREATE_PREFILL: Record<string, string> = {
+  code: "sponsor-5",
+  title: "Sponsored first buy",
+  amountUsd: "5",
+  budgetUsd: "100",
+  maxClaims: "20",
+  minBuyUsd: "10",
+  holdDays: "7",
+  payoutAddress: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
 };

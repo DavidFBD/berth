@@ -10,7 +10,9 @@ import { STOCK_LISTINGS } from "@/lib/listings";
 import { attributeCampaign, claimById } from "./store";
 import { advanceClaim, runCampaignStep } from "./eligibility";
 import { campaignById } from "./store";
-import { approveClaim, createCampaign, markClaimPaid, rejectClaim, setCampaignActive } from "./actions";
+import { addPayoutSource, approveClaim, createCampaign, markClaimPaid, rejectClaim, setCampaignActive } from "./actions";
+
+const FUNDING_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 import { deriveSignals, foldEmail, revealClaim, staffQueue } from "./queue";
 import { TRANSFER_TOPIC, USDC_BASE, type Receipt } from "./usdc";
 import { DEPS, hubOf, verifier } from "./test-kit";
@@ -216,14 +218,33 @@ describe("campaigns", () => {
     expect(created.ok).toBe(true);
     const row = ((await sql.query(`select id, active from campaigns where code = 'autumn-5'`)) as { id: string; active: boolean }[])[0];
     expect(row.active).toBe(false);
-    expect(await setCampaignActive(staff.id, row.id, true, undefined)).toEqual({ ok: false, refusal: "counsel_required" });
-    expect(await setCampaignActive(staff.id, row.id, true, "yes")).toEqual({ ok: false, refusal: "counsel_required" });
-    expect((await setCampaignActive(staff.id, row.id, true, true)).ok).toBe(true);
+    expect(await setCampaignActive(staff.id, row.id, true, undefined, true)).toEqual({ ok: false, refusal: "counsel_required" });
+    expect(await setCampaignActive(staff.id, row.id, true, "yes", true)).toEqual({ ok: false, refusal: "counsel_required" });
+    expect(await setCampaignActive(staff.id, row.id, true, true)).toEqual({ ok: false, refusal: "funding_check_required" });
+    expect(await setCampaignActive(staff.id, row.id, true, true, "yes")).toEqual({ ok: false, refusal: "funding_check_required" });
+    // No payout wallet of its own: nowhere a sponsor's USDC could be said to go.
+    expect(await setCampaignActive(staff.id, row.id, true, true, true)).toEqual({ ok: false, refusal: "no_funding_wallet" });
+    expect((await campaignById(row.id))!.active).toBe(false);
+    expect((await addPayoutSource(staff.id, row.id, FUNDING_WALLET, "The sponsor's campaign")).ok).toBe(true);
+    expect((await setCampaignActive(staff.id, row.id, true, true, true)).ok).toBe(true);
     expect((await campaignById(row.id))!.active).toBe(true);
     expect((await setCampaignActive(staff.id, row.id, false, undefined)).ok).toBe(true);
     const activations = await audits("campaign.activate");
-    expect(activations.map((entry) => entry.detail.outcome)).toEqual(["counsel_required", "counsel_required", "done"]);
-    expect(activations[2].detail.counselReviewed).toBe(true);
+    expect(activations.map((entry) => entry.detail.outcome)).toEqual([
+      "counsel_required",
+      "counsel_required",
+      "funding_check_required",
+      "funding_check_required",
+      "no_funding_wallet",
+      "done",
+    ]);
+    expect(activations[5].detail).toMatchObject({
+      counselReviewed: true,
+      fundingChecked: true,
+      fundingWallet: FUNDING_WALLET.toLowerCase(),
+      chain: "base",
+      token: USDC_BASE,
+    });
     expect((await audits("campaign.pause")).at(-1)?.detail.outcome).toBe("done");
   });
 
@@ -248,6 +269,33 @@ describe("campaigns", () => {
     expect(await createCampaign(staff.id, { ...base, code: "ok-code" })).toMatchObject({ ok: false, refusal: "code_taken" });
     expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("code_taken");
     expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("hold_too_long");
+  });
+
+  it("creates a campaign with its funding wallet as its first payout source, and refuses a bad one first", async () => {
+    const staff = await person();
+    const base = {
+      title: "Sponsored",
+      amountUsd: 5,
+      budgetUsd: 100,
+      maxClaims: 20,
+      minBuyUsd: 10,
+      holdDays: 7,
+      startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+    const typo = FUNDING_WALLET.replace("aAeb", "aaEb");
+    expect(await createCampaign(staff.id, { ...base, code: "fund-typo", payoutAddress: typo })).toMatchObject({ ok: false, refusal: "bad_address" });
+    expect(await createCampaign(staff.id, { ...base, code: "fund-zero", payoutAddress: `0x${"0".repeat(40)}` })).toMatchObject({ ok: false, refusal: "zero_address" });
+    expect(await sql.query(`select 1 from campaigns where code in ('fund-typo', 'fund-zero')`)).toHaveLength(0);
+    const created = await createCampaign(staff.id, { ...base, code: "fund-ok", payoutAddress: FUNDING_WALLET });
+    expect(created).toMatchObject({ ok: true, detail: { payoutSource: true } });
+    const id = String(created.detail?.id);
+    const sources = (await sql.query(`select address, added_reason from campaign_payout_sources where campaign_id = $1 and removed_at is null`, [id])) as {
+      address: string;
+      added_reason: string;
+    }[];
+    expect(sources).toEqual([{ address: FUNDING_WALLET.toLowerCase(), added_reason: "Funding wallet, set when the campaign was created" }]);
+    expect(await addPayoutSource(staff.id, id, `0x${"0".repeat(40)}`, "no")).toMatchObject({ ok: false, refusal: "zero_address" });
   });
 });
 

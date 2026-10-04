@@ -11,6 +11,8 @@ import { campaignUsd, REJECT_REASONS } from "@/lib/campaigns";
 import { cn } from "@/lib/utils";
 import type { StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
 import type { CampaignMeter, QueueClaim } from "@/lib/server/campaigns/queue";
+import { judgePayoutAddress } from "@/lib/campaign-funding";
+import { FundingBlock, PayoutAddressField, PayoutAddressNote } from "@/components/staff/campaign-funding";
 
 /**
  * The staff review queue for campaigns (/staff/campaigns). A plain,
@@ -24,7 +26,7 @@ export type StaffAction =
   | { action: "approve"; claimId: string }
   | { action: "reject"; claimId: string; reason: string; note: string }
   | { action: "paid"; claimId: string; txHash: string }
-  | { action: "activate"; campaignId: string; counselReviewed: true }
+  | { action: "activate"; campaignId: string; counselReviewed: true; fundingChecked: true }
   | { action: "pause"; campaignId: string }
   | { action: "create"; campaign: Record<string, string> }
   | { action: "reveal"; claimId: string; field: "email" | "wallets" }
@@ -125,8 +127,11 @@ export function CampaignsQueueView({
   revealed = {},
   onSignInAgain,
   onAction,
+  createPrefill,
 }: {
   queue: StaffCampaignsResponse;
+  /** The dev gallery opens the create form prefilled, to show its Funding block. */
+  createPrefill?: Record<string, string>;
   revealed?: Revealed;
   onSignInAgain?: () => void;
   busy?: boolean;
@@ -165,7 +170,7 @@ export function CampaignsQueueView({
       {queue.campaigns.map((campaign) => (
         <CampaignCard key={campaign.id} campaign={campaign} busy={busy} onAction={onAction} />
       ))}
-      <CreateCampaign busy={busy} onAction={onAction} />
+      <CreateCampaign busy={busy} onAction={onAction} prefill={createPrefill} />
       {(Object.keys(groups) as (keyof typeof groups)[]).map((group) => (
         <div key={group} className="flex flex-col gap-3">
           <h2 className="text-sm font-medium text-foreground">
@@ -186,6 +191,9 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
   const copy = useCopy().campaign.staff;
   const [confirming, setConfirming] = useState(false);
   const [reviewed, setReviewed] = useState(false);
+  const [fundingChecked, setFundingChecked] = useState(false);
+  const fundingCopy = useCopy().campaign.staff.funding;
+  const wallet = campaign.payoutSources[0]?.address ?? null;
   const reservedPct = Math.min(100, (campaign.reservedUsd / campaign.budgetUsd) * 100);
   const paidPct = Math.min(100 - reservedPct, (campaign.paidUsd / campaign.budgetUsd) * 100);
   return (
@@ -223,6 +231,13 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
         )}
       </p>
       <p className="text-xs text-muted-foreground">{copy.waiting(campaign.counts.attributed, campaign.counts.buying)}</p>
+      <FundingBlock
+        address={wallet}
+        amountUsd={campaign.amountUsd}
+        budgetUsd={campaign.budgetUsd}
+        paidUsd={campaign.paidUsd}
+        otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
+      />
       <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
       {campaign.active ? (
         <div>
@@ -237,14 +252,28 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
             <input type="checkbox" className="mt-0.5" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
             {copy.activateCheck}
           </label>
+          {wallet ? (
+            <label className="flex items-start gap-2 text-sm text-foreground" data-testid="funding-check">
+              <input type="checkbox" className="mt-0.5" checked={fundingChecked} onChange={(event) => setFundingChecked(event.target.checked)} />
+              <span>
+                {fundingCopy.fundingCheck}
+                <span className="mt-0.5 block font-mono text-xs break-all text-muted-foreground">
+                  {checksummedOrSame(wallet)}
+                </span>
+              </span>
+            </label>
+          ) : (
+            <p className="text-sm text-muted-foreground">{copy.refusals.no_funding_wallet}</p>
+          )}
           <div className="flex gap-2">
             <Button
               size="sm"
-              disabled={busy || !reviewed}
+              disabled={busy || !reviewed || !fundingChecked || !wallet}
               onClick={() => {
-                onAction({ action: "activate", campaignId: campaign.id, counselReviewed: true });
+                onAction({ action: "activate", campaignId: campaign.id, counselReviewed: true, fundingChecked: true });
                 setConfirming(false);
                 setReviewed(false);
+                setFundingChecked(false);
               }}
             >
               {copy.confirm}
@@ -265,6 +294,11 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
   );
 }
 
+const checksummedOrSame = (address: string) => {
+  const judged = judgePayoutAddress(address);
+  return judged.kind === "ok" ? judged.address : address;
+};
+
 /** The claim with whatever was revealed for it put back in full. */
 function withRevealed(claim: QueueClaim, shown: Revealed[string] | undefined): QueueClaim {
   if (!shown) return claim;
@@ -283,6 +317,7 @@ function PayoutSources({ campaign, busy, onAction }: { campaign: CampaignMeter; 
   const [reason, setReason] = useState("");
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeReason, setRemoveReason] = useState("");
+  const judged = judgePayoutAddress(address);
   return (
     <div className="flex flex-col gap-2 border-t border-border pt-3" data-testid="payout-sources">
       <p className="text-sm text-foreground">{copy.heading}</p>
@@ -292,7 +327,7 @@ function PayoutSources({ campaign, busy, onAction }: { campaign: CampaignMeter; 
         campaign.payoutSources.map((source) => (
           <div key={source.id} className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Mono>{source.address}</Mono>
+              <Mono>{checksummedOrSame(source.address)}</Mono>
               {removing !== source.id && (
                 <Button size="xs" variant="ghost" className="text-muted-foreground" disabled={busy} onClick={() => setRemoving(source.id)}>
                   {copy.remove}
@@ -326,7 +361,7 @@ function PayoutSources({ campaign, busy, onAction }: { campaign: CampaignMeter; 
         <Button
           size="sm"
           variant="outline"
-          disabled={busy || !address.trim() || !reason.trim()}
+          disabled={busy || judged.kind !== "ok" || !reason.trim()}
           onClick={() => {
             onAction({ action: "add_source", campaignId: campaign.id, address: address.trim(), reason: reason.trim() });
             setAddress("");
@@ -336,6 +371,7 @@ function PayoutSources({ campaign, busy, onAction }: { campaign: CampaignMeter; 
           {copy.add}
         </Button>
       </div>
+      {judged.kind !== "empty" && <PayoutAddressNote judged={judged} />}
       <p className="text-xs text-muted-foreground">{copy.fallback}</p>
     </div>
   );
@@ -535,8 +571,9 @@ function ClaimCard({
   );
 }
 
-function CreateCampaign({ busy, onAction }: { busy: boolean; onAction: (action: StaffAction) => void }) {
+function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: (action: StaffAction) => void; prefill?: Record<string, string> }) {
   const copy = useCopy().campaign.staff.create;
+  const fundingCopy = useCopy().campaign.staff.funding;
   const [fields, setFields] = useState<Record<string, string>>({
     code: "",
     title: "",
@@ -547,7 +584,11 @@ function CreateCampaign({ busy, onAction }: { busy: boolean; onAction: (action: 
     holdDays: "7",
     startsAt: "",
     endsAt: "",
+    payoutAddress: "",
+    ...prefill,
   });
+  const judged = judgePayoutAddress(fields.payoutAddress);
+  const number = (value: string) => (Number.isFinite(Number(value)) ? Number(value) : 0);
   const field = (name: string, label: string, type = "text") => (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
       {label}
@@ -555,7 +596,7 @@ function CreateCampaign({ busy, onAction }: { busy: boolean; onAction: (action: 
     </label>
   );
   return (
-    <details className="rounded-lg border border-border bg-card p-4">
+    <details className="rounded-lg border border-border bg-card p-4" open={prefill ? true : undefined}>
       <summary className="cursor-pointer text-sm text-foreground">{copy.heading}</summary>
       <p className="mt-2 text-xs text-muted-foreground">{copy.note}</p>
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -569,16 +610,26 @@ function CreateCampaign({ busy, onAction }: { busy: boolean; onAction: (action: 
         <span />
         {field("startsAt", copy.starts, "datetime-local")}
         {field("endsAt", copy.ends, "datetime-local")}
+        <PayoutAddressField value={fields.payoutAddress} onChange={(payoutAddress) => setFields({ ...fields, payoutAddress })} />
       </div>
+      <div className="mt-3">
+        <FundingBlock
+          address={judged.kind === "ok" ? judged.address : null}
+          amountUsd={number(fields.amountUsd)}
+          budgetUsd={number(fields.budgetUsd)}
+        />
+      </div>
+      {judged.kind !== "ok" && <p className="mt-3 text-xs text-muted-foreground">{fundingCopy.createNeedsWallet}</p>}
       <Button
         size="sm"
         className="mt-3"
-        disabled={busy}
+        disabled={busy || judged.kind !== "ok"}
         onClick={() =>
           onAction({
             action: "create",
             campaign: {
               ...fields,
+              payoutAddress: judged.kind === "ok" ? judged.address : "",
               startsAt: fields.startsAt ? new Date(fields.startsAt).toISOString() : "",
               endsAt: fields.endsAt ? new Date(fields.endsAt).toISOString() : "",
             },

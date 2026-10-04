@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchUsdcTransfers, paysEnough, payoutSenders, readUsdcTransfers, TRANSFER_TOPIC, USDC_BASE, usdcRaw, type Receipt } from "./usdc";
+import { balanceOfCallData, fetchUsdcBalance, parseBalanceResult, fetchUsdcTransfers, paysEnough, payoutSenders, readUsdcTransfers, TRANSFER_TOPIC, USDC_BASE, usdcRaw, type Receipt } from "./usdc";
 
 /** The mark paid check, against receipts shaped as Base's RPC returns them (no network). */
 
@@ -77,5 +77,33 @@ describe("fetchUsdcTransfers", () => {
       throw new Error("rpc http 503");
     });
     expect(out).toEqual({ outcome: "unreachable", error: "rpc http 503" });
+  });
+});
+
+describe("the USDC balance read", () => {
+  const HOLDER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+
+  it("asks the USDC contract for balanceOf the address", async () => {
+    expect(balanceOfCallData(HOLDER)).toBe(`0x70a08231${"0".repeat(24)}5aaeb6053f3e94c9b9a09f33669435e7ef1beaed`);
+    expect(() => balanceOfCallData("0x1234")).toThrow();
+    const calls: [string, string][] = [];
+    const out = await fetchUsdcBalance(HOLDER, async (to, data) => {
+      calls.push([to, data]);
+      return `0x${(42_500_000).toString(16).padStart(64, "0")}`;
+    });
+    expect(calls).toEqual([[USDC_BASE, balanceOfCallData(HOLDER)]]);
+    expect(out).toEqual({ outcome: "read", raw: "42500000" });
+  });
+
+  it("reads an empty wallet as zero", async () => {
+    expect(await fetchUsdcBalance(HOLDER, async () => `0x${"0".repeat(64)}`)).toEqual({ outcome: "read", raw: "0" });
+    expect(parseBalanceResult("0x0")).toBe(0n);
+  });
+
+  it("says unreachable, never zero, when the answer cannot be read", async () => {
+    expect(await fetchUsdcBalance(HOLDER, async () => "0x")).toMatchObject({ outcome: "unreachable" });
+    expect(await fetchUsdcBalance(HOLDER, async () => null)).toMatchObject({ outcome: "unreachable" });
+    expect(await fetchUsdcBalance(HOLDER, async () => `0x${"f".repeat(65)}`)).toMatchObject({ outcome: "unreachable" });
+    expect(await fetchUsdcBalance(HOLDER, async () => Promise.reject(new Error("rpc http 503")))).toEqual({ outcome: "unreachable", error: "rpc http 503" });
   });
 });

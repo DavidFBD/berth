@@ -3,8 +3,10 @@ import { nextNotFound } from "@/lib/server/not-found-response";
 import { requireFreshStaff, requireStaff, staffAudit } from "@/lib/server/staff-auth";
 import { sameOrigin } from "@/lib/server/staff-gate";
 import { revealClaim, staffQueue, type StaffQueue } from "@/lib/server/campaigns/queue";
+import { fetchUsdcBalance, type UsdcBalance } from "@/lib/server/campaigns/usdc";
 import {
   addPayoutSource,
+  checksummedAddress,
   approveClaim,
   createCampaign,
   markClaimPaid,
@@ -19,6 +21,9 @@ export const dynamic = "force-dynamic";
 /** What the staff page reads: the queue, and after an action, how it went. */
 export type StaffCampaignsResponse = StaffQueue & { result?: ActionResult };
 
+/** The answer to `{ action: "balance", address }`: USDC on Base held by that address now, read only. */
+export type StaffBalanceResponse = { balance: UsdcBalance | { outcome: "bad_address" } };
+
 const id = (value: unknown): string | null =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value) ? value.toLowerCase() : null;
 
@@ -29,7 +34,8 @@ const FRESH_ACTIONS = new Set(["activate", "approve", "reject", "paid", "add_sou
  * The staff campaigns endpoint (app/staff/campaigns). To anyone not on
  * STAFF_ADMIN_IDS, and for every method but POST, this is Next's own 404,
  * as for a path that does not exist. `{ action: "queue" }` reads (masked);
- * `reveal` shows one claim's email or wallets, audited; every other action
+ * `reveal` shows one claim's email or wallets, audited; `balance` reads
+ * the USDC on Base an address holds, read only; every other action
  * writes, audited (lib/server/campaigns/actions), and answers the fresh
  * queue with its result. A failure is audited and answered as a refusal,
  * never a 500. Nothing here sends money.
@@ -46,6 +52,13 @@ export async function POST(request: NextRequest) {
     return nextNotFound(request);
   }
   const staff = gate.staff.userId;
+  if (action === "balance") {
+    // Read only, on Base's public RPC: the funding block's live balance. Audited like every staff read.
+    const address = checksummedAddress(body.address);
+    const balance: StaffBalanceResponse["balance"] = address ? await fetchUsdcBalance(address) : { outcome: "bad_address" };
+    await staffAudit({ staffUserId: staff, action: "campaign.balance_read", target: address, detail: { outcome: balance.outcome } }).catch(() => undefined);
+    return NextResponse.json({ balance } satisfies StaffBalanceResponse, { headers: { "cache-control": "no-store" } });
+  }
   let result: ActionResult | undefined;
   try {
     switch (action) {
@@ -71,7 +84,7 @@ export async function POST(request: NextRequest) {
       case "pause": {
         const campaignId = id(body.campaignId);
         result = campaignId
-          ? await setCampaignActive(staff, campaignId, action === "activate", body.counselReviewed)
+          ? await setCampaignActive(staff, campaignId, action === "activate", body.counselReviewed, body.fundingChecked)
           : { ok: false, refusal: "bad_input" };
         break;
       }

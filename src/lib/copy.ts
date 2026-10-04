@@ -1304,6 +1304,44 @@ export type CampaignStaffCopy = {
   /** The confirmation before a campaign goes live. It names counsel review. */
   activateConfirm: (title: string) => string;
   activateCheck: string;
+  /** The Funding block (components/staff/campaign-funding): where a sponsor's USDC goes, on the create form and each campaign card. */
+  funding: {
+    heading: string;
+    network: string;
+    networkValue: string;
+    token: string;
+    tokenValue: string;
+    tokenContract: string;
+    wallet: string;
+    controlledBy: string;
+    instruction: string;
+    berthHolds: string;
+    copy: string;
+    copied: string;
+    basescan: string;
+    qrLabel: string;
+    balance: string;
+    refresh: string;
+    reading: string;
+    unreadable: string;
+    readAt: (time: string) => string;
+    enoughFor: (rewards: number) => string;
+    budgetNeeds: (usd: string, rewards: number) => string;
+    covered: string;
+    short: (usd: string) => string;
+    noWallet: string;
+    moreWallets: (count: number) => string;
+    addressLabel: string;
+    addressHint: string;
+    checksummed: string;
+    judgements: Record<"invalid" | "bad_checksum" | "zero", string>;
+    berthAddress: Record<"usdc_contract" | "fee_wallet" | "intents_contract" | "listing_token", string>;
+    /** The second box before activation, beside counsel review. Recorded in the audit log. */
+    fundingCheck: string;
+    createNeedsWallet: string;
+    /** The reason kept on the payout source a new campaign is created with. */
+    createdReason: string;
+  };
   sources: {
     heading: string;
     none: string;
@@ -4217,6 +4255,53 @@ export const COPY: Copy = {
       activateConfirm: (title) =>
         `Activate ${title}? New accounts arriving through its link will be attributed from now on. Activate only after counsel has reviewed this campaign, its rules and the terms.`,
       activateCheck: "Counsel has reviewed this campaign, its rules and the terms.",
+      funding: {
+        heading: "Funding",
+        network: "Network",
+        networkValue: "Base",
+        token: "Token",
+        tokenValue: "USDC on Base",
+        tokenContract: "USDC contract on Base",
+        wallet: "Payout wallet",
+        controlledBy: "A wallet you control, outside Berth.",
+        instruction:
+          "Ask the sponsor to send USDC on the Base network to this address. USDC sent on any other network, or any other token, will not reach this campaign.",
+        berthHolds: "Berth never holds these funds. You pay each reward by hand from this wallet.",
+        copy: "Copy address",
+        copied: "Copied",
+        basescan: "Open on Basescan",
+        qrLabel: "QR code of the payout wallet address",
+        balance: "USDC on Base in this wallet now",
+        refresh: "Read again",
+        reading: "Reading Base",
+        unreadable: "The balance could not be read on Base just now. Try again in a while.",
+        readAt: (time) => `Read at ${time}.`,
+        enoughFor: (rewards) => (rewards === 1 ? "Enough for 1 reward." : `Enough for ${rewards} rewards.`),
+        budgetNeeds: (usd, rewards) => `The budget still needs ${usd}, ${rewards === 1 ? "1 reward" : `${rewards} rewards`}.`,
+        covered: "That covers it.",
+        short: (usd) => `${usd} more is needed to cover it.`,
+        noWallet:
+          "No payout wallet yet. Add one below before activating, and do not ask a sponsor to send anything until it is here.",
+        moreWallets: (count) =>
+          `${count === 1 ? "1 more payout wallet" : `${count} more payout wallets`} below also count for Mark paid. Funding goes to this one.`,
+        addressLabel: "Payout wallet address on Base",
+        addressHint: "A wallet you control, outside Berth. Paste it from the wallet itself.",
+        checksummed: "Checksummed",
+        judgements: {
+          invalid: "That is not a wallet address. It starts with 0x, then 40 letters and digits.",
+          bad_checksum: "Its mixed case does not match its checksum. Copy it again from the wallet.",
+          zero: "That is the zero address. Nothing sent there can ever be spent.",
+        },
+        berthAddress: {
+          usdc_contract: "This is the USDC contract itself, not a wallet. USDC sent here is lost.",
+          fee_wallet: "This is Berth's fee wallet. Use a wallet you control for this campaign.",
+          intents_contract: "This is a SODAX contract Berth trades through, not a wallet.",
+          listing_token: "This is a listing's token contract, not a wallet.",
+        },
+        fundingCheck: "I've checked the address and the network: USDC on Base, to the payout wallet above.",
+        createNeedsWallet: "Enter the payout wallet first.",
+        createdReason: "Funding wallet, set when the campaign was created",
+      },
       sources: {
         heading: "Payout wallets",
         none: "None yet. Mark paid accepts USDC only from a payout wallet.",
@@ -4333,6 +4418,9 @@ export const COPY: Copy = {
         code_taken: "That code is taken.",
         hold_too_long: "A hold can be 30 days at most. Its window is read every morning, and a longer one does not fit.",
         counsel_required: "Confirm counsel review first.",
+        zero_address: "That is the zero address. Nothing sent there can ever be spent.",
+        funding_check_required: "Confirm the address and the network first.",
+        no_funding_wallet: "This campaign has no payout wallet. Add one on its card before activating.",
       },
       create: {
         heading: "New campaign",

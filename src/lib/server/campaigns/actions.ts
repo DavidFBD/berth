@@ -13,8 +13,10 @@ import {
   PAYOUT_CHAIN,
   payoutSenders,
   TX_HASH_SHAPE,
+  USDC_BASE,
   type ReceiptFetcher,
 } from "@/lib/server/campaigns/usdc";
+import { COPY } from "@/lib/copy";
 
 /**
  * What staff may do to a campaign or a claim (app/api/staff/campaigns).
@@ -51,7 +53,13 @@ export type ActionRefusal =
   | "no_person"
   | "bad_address"
   | "source_exists"
+  | "zero_address"
+  | "funding_check_required"
+  | "no_funding_wallet"
   | "error";
+
+/** Never a wallet: USDC sent there is gone. */
+const ZERO_ADDRESS = `0x${"0".repeat(40)}`;
 
 export type ActionResult = { ok: true; detail?: Record<string, unknown> } | { ok: false; refusal: ActionRefusal; detail?: Record<string, unknown> };
 
@@ -103,6 +111,8 @@ export type CampaignInput = {
   holdDays: unknown;
   startsAt: unknown;
   endsAt: unknown;
+  /** The funding wallet, optional here: when given it must be a wallet, and it becomes the campaign's first payout source. */
+  payoutAddress?: unknown;
 };
 
 const money = (value: unknown, max: number): number | null => {
@@ -143,6 +153,12 @@ export async function createCampaign(staffUserId: string, input: CampaignInput):
   const startsAt = date(input.startsAt);
   const endsAt = date(input.endsAt);
   const shown = { code, title, amount, budget, maxClaims, minBuy, holdDays, startsAt: startsAt?.toISOString(), endsAt: endsAt?.toISOString() };
+  const wantsWallet = typeof input.payoutAddress === "string" && input.payoutAddress.trim() !== "";
+  const wallet = wantsWallet ? checksummedAddress(input.payoutAddress) : null;
+  if (wantsWallet && !wallet) {
+    return refused(staffUserId, "campaign.create", code, "bad_address", { ...shown, address: String(input.payoutAddress).slice(0, 60) });
+  }
+  if (wallet === ZERO_ADDRESS) return refused(staffUserId, "campaign.create", code, "zero_address", shown);
   if (!code || !title || !amount || !budget || !maxClaims || !minBuy || !holdDays || !startsAt || !endsAt || endsAt <= startsAt || amount > budget) {
     return refused(staffUserId, "campaign.create", code, "bad_input", shown);
   }
@@ -157,6 +173,11 @@ export async function createCampaign(staffUserId: string, input: CampaignInput):
       { staffUserId, action: "campaign.create", target: code, detail: shown },
     );
     if (!rows[0]) return refused(staffUserId, "campaign.create", code, "code_taken", shown);
+    if (wallet) {
+      // Its own audited write: the campaign stands either way, inactive, and its card says when it has no wallet.
+      const source = await addPayoutSource(staffUserId, rows[0].id, wallet, COPY.campaign.staff.funding.createdReason);
+      return { ok: true, detail: { id: rows[0].id, payoutSource: source.ok } };
+    }
     return { ok: true, detail: { id: rows[0].id } };
   } catch {
     return refused(staffUserId, "campaign.create", code, "bad_input", shown);
@@ -164,24 +185,38 @@ export async function createCampaign(staffUserId: string, input: CampaignInput):
 }
 
 /**
- * Activate or pause. Activation asks for `counselReviewed: true`, which
- * the page sends only from its confirmation naming counsel review.
+ * Activate or pause. Activation asks for `counselReviewed: true` and
+ * `fundingChecked: true`, which the page sends only from its confirmation
+ * naming counsel review and the funding wallet, network and token. A
+ * campaign activates only with a payout wallet of its own, and the audit
+ * row keeps which wallet, network and token were confirmed.
  */
 export async function setCampaignActive(
   staffUserId: string,
   campaignId: string,
   active: boolean,
   counselReviewed: unknown,
+  fundingChecked?: unknown,
 ): Promise<ActionResult> {
   const action = active ? "campaign.activate" : "campaign.pause";
-  if (active && counselReviewed !== true) return refused(staffUserId, action, campaignId, "counsel_required");
+  let funding: Record<string, unknown> = {};
+  if (active) {
+    if (counselReviewed !== true) return refused(staffUserId, action, campaignId, "counsel_required");
+    if (fundingChecked !== true) return refused(staffUserId, action, campaignId, "funding_check_required");
+    const wallets = (await getSql().query(
+      `select address from campaign_payout_sources where campaign_id = $1 and removed_at is null order by added_at`,
+      [campaignId],
+    )) as { address: string }[];
+    if (wallets.length === 0) return refused(staffUserId, action, campaignId, "no_funding_wallet");
+    funding = { fundingChecked: true, fundingWallet: wallets[0].address, chain: PAYOUT_CHAIN.key, token: USDC_BASE };
+  }
   const rows = await auditedWrite(
     {
       text: `update campaigns set active = $2, activated_at = case when $2 then now() else activated_at end
               where id = $1 returning id`,
       params: [campaignId, active],
     },
-    { staffUserId, action, target: campaignId, detail: active ? { counselReviewed: true } : {} },
+    { staffUserId, action, target: campaignId, detail: active ? { counselReviewed: true, ...funding } : {} },
   );
   if (rows.length === 0) return refused(staffUserId, action, campaignId, "not_found");
   return { ok: true };
@@ -384,6 +419,7 @@ export async function addPayoutSource(staffUserId: string, campaignId: string, r
   const address = checksummedAddress(rawAddress);
   const reason = reasonOf(rawReason);
   if (!address) return refused(staffUserId, "campaign.add_payout_source", campaignId, "bad_address", { address: String(rawAddress ?? "").slice(0, 60) });
+  if (address === ZERO_ADDRESS) return refused(staffUserId, "campaign.add_payout_source", campaignId, "zero_address", { address });
   if (!reason) return refused(staffUserId, "campaign.add_payout_source", campaignId, "bad_reason", { address });
   const campaign = await campaignById(campaignId);
   if (!campaign) return refused(staffUserId, "campaign.add_payout_source", campaignId, "not_found", { address });

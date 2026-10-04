@@ -126,3 +126,49 @@ export async function fetchUsdcTransfers(
   }
   return readUsdcTransfers(receipt, senders);
 }
+
+/**
+ * The funding check on /staff/campaigns: how much USDC on Base an address
+ * holds now, so staff can watch a sponsor's transfer arrive at the payout
+ * wallet. Read only (eth_call balanceOf), nothing signed. The pure halves
+ * build the call and read its answer; the IO half is injected in tests.
+ */
+export type UsdcBalance = { outcome: "read"; raw: string } | { outcome: "unreachable"; error: string };
+
+/** balanceOf(address): the selector 0x70a08231 and the address, padded to a word. */
+export function balanceOfCallData(address: string): string {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("not an address");
+  return `0x70a08231${address.slice(2).toLowerCase().padStart(64, "0")}`;
+}
+
+/** The raw units in an eth_call answer, or null when it is not one word of hex. */
+export function parseBalanceResult(result: unknown): bigint | null {
+  if (typeof result !== "string" || !/^0x[0-9a-fA-F]{1,64}$/.test(result)) return null;
+  return BigInt(result);
+}
+
+export type CallFetcher = (to: string, data: string) => Promise<unknown>;
+
+/** eth_call on Base's public RPC at the latest block; throws when it does not answer. */
+export const fetchBaseCall: CallFetcher = async (to, data) => {
+  const response = await fetch(PAYOUT_CHAIN.rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to, data }, "latest"] }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) throw new Error(`rpc http ${response.status}`);
+  const body = (await response.json()) as { result?: unknown; error?: { message?: string } };
+  if (body.error) throw new Error(`rpc ${body.error.message ?? "error"}`);
+  return body.result;
+};
+
+export async function fetchUsdcBalance(address: string, call: CallFetcher = fetchBaseCall): Promise<UsdcBalance> {
+  try {
+    const raw = parseBalanceResult(await call(USDC_BASE, balanceOfCallData(address)));
+    if (raw === null) return { outcome: "unreachable", error: "unreadable answer" };
+    return { outcome: "read", raw: raw.toString() };
+  } catch (error) {
+    return { outcome: "unreachable", error: error instanceof Error ? error.message.slice(0, 120) : "error" };
+  }
+}

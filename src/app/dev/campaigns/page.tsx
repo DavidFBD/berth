@@ -5,7 +5,8 @@ import { notFound, useSearchParams } from "next/navigation";
 import { CampaignsQueueView } from "@/components/staff/campaigns-queue";
 import { CampaignLineView } from "@/components/board/campaign-line";
 import { campaignLine } from "@/lib/campaigns";
-import { LINE_FIXTURES, QUEUE_FIXTURE } from "./fixtures";
+import { BalanceReaderProvider } from "@/components/staff/campaign-funding";
+import { BALANCE_FIXTURE, CREATE_PREFILL, LINE_FIXTURES, QUEUE_FIXTURE } from "./fixtures";
 import { useMounted } from "@/hooks/use-mounted";
 
 /**
@@ -15,6 +16,8 @@ import { useMounted } from "@/hooks/use-mounted";
  *
  *   /dev/campaigns              the staff review queue
  *   /dev/campaigns?view=lines   every home line, in order
+ *   /dev/campaigns?create=open  the create form open, its Funding block filled
+ *                               (&address=0x... to judge another address)
  *
  * The lines in the calm home's own layout: /dev/board?home=new&campaign=rules
  * (rules, email, holding, qualified, paid, closed).
@@ -43,5 +46,10 @@ function Gallery() {
       </div>
     );
   }
-  return <CampaignsQueueView queue={QUEUE_FIXTURE} onAction={() => undefined} />;
+  const prefill = params.get("create") === "open" ? { ...CREATE_PREFILL, ...(params.has("address") ? { payoutAddress: params.get("address") ?? "" } : {}) } : undefined;
+  return (
+    <BalanceReaderProvider reader={async (address) => BALANCE_FIXTURE[address.toLowerCase()] ?? { outcome: "unreachable", error: "fixture" }}>
+      <CampaignsQueueView queue={QUEUE_FIXTURE} onAction={() => undefined} createPrefill={prefill} />
+    </BalanceReaderProvider>
+  );
 }
