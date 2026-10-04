@@ -543,6 +543,19 @@ describe("signals", () => {
       { ...base, id: "6", userId: "u6", email: null, signupAt: 9e9, payout: "0xpay" },
       { ...base, id: "8", userId: "u8", email: null, signupAt: 5e9, payout: "0xown" },
     ]);
+    const domains = deriveSignals([
+      { ...base, id: "d1", userId: "d1", email: "a@acme-farm.io", signupAt: 0 },
+      { ...base, id: "d2", userId: "d2", email: "b+x@acme-farm.io", signupAt: 9e9 },
+      { ...base, id: "d3", userId: "d3", email: "c@gmail.com", signupAt: 0 },
+      { ...base, id: "d4", userId: "d4", email: "d@gmail.com", signupAt: 9e9 },
+      { ...base, id: "d5", userId: "d5", email: "e@solo.example", signupAt: 5e9 },
+      { ...base, campaignId: "c9", id: "d6", userId: "d6", email: "f@solo.example", signupAt: 5e9 },
+    ]);
+    expect(domains.get("d1")).toContain("same_email_domain");
+    expect(domains.get("d2")).toContain("same_email_domain");
+    // A public mail provider, or a domain shared only across campaigns, says nothing.
+    expect(domains.get("d3")).not.toContain("same_email_domain");
+    expect(domains.get("d5")).not.toContain("same_email_domain");
     // Each claim pays its own account: two people at one address is the signal.
     expect(payouts.get("5")).toEqual(["same_payout"]);
     expect(payouts.get("8")).toEqual([]);

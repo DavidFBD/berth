@@ -1514,7 +1514,7 @@ export type CampaignStaffCopy = {
   unlinked: string;
   noSignals: string;
   noDeviceSignals: string;
-  signals: Record<"email_alias" | "close_signup" | "shared_wallet" | "same_payout", string>;
+  signals: Record<"email_alias" | "close_signup" | "shared_wallet" | "same_payout" | "same_email_domain", string>;
   payTo: (amount: string, chain: string) => string;
   approve: string;
   reject: string;
@@ -4832,6 +4832,7 @@ export const COPY: Copy = {
         email_alias: "Email is an alias of another claim's",
         close_signup: "Signed up within ten minutes of another claim",
         shared_wallet: "Shares a wallet with another claim",
+        same_email_domain: "Its email domain, not a public mail provider, is on another claim of this campaign too",
         same_payout: "Another claim would be paid to the same address",
       },
       payTo: (amount, chain) => `${amount} USDC on ${chain}`,
@@ -4918,7 +4919,7 @@ export const COPY: Copy = {
             "What each new account opened through the campaign's link gets, in USDC on Base to its own address, once it is set up and still uses Berth after the days below. A personal invite earns nothing.",
           budget: "The most this campaign pays in total. Places times the amount must fit in it.",
           maxClaims:
-            "The most new accounts this campaign pays. When all are taken, new accounts wait in line in case one frees up before the campaign closes.",
+            "The most new accounts this campaign pays. Keep it small, 20 to 50, so every claim gets a real look. When all are taken, new accounts wait in line in case one frees up before the campaign closes.",
           stayDays:
             "How long after setting up the account must still be using Berth. It must be opened signed in at least once in the last 7 of these days. 7 to 60.",
           starts: "Only accounts opened through the link from this moment count. Accounts opened before it are ignored.",

@@ -18,7 +18,49 @@ export { foldEmail };
  * device signal exists; the page says so. Read only.
  */
 
-export type SignalCode = "email_alias" | "close_signup" | "shared_wallet" | "same_payout";
+export type SignalCode = "email_alias" | "close_signup" | "shared_wallet" | "same_payout" | "same_email_domain";
+
+/**
+ * Mail providers anyone can sign up at: many people share them, so two
+ * claims there say nothing. Any other domain shared by two or more claims
+ * of one campaign (a company's, or one person's own) is worth a look.
+ */
+export const WEBMAIL_DOMAINS: ReadonlySet<string> = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "yahoo.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "proton.me",
+  "protonmail.com",
+  "pm.me",
+  "aol.com",
+  "gmx.com",
+  "gmx.net",
+  "gmx.de",
+  "web.de",
+  "mail.com",
+  "yandex.com",
+  "zoho.com",
+  "fastmail.com",
+  "hey.com",
+  "ziggo.nl",
+  "kpnmail.nl",
+  "hotmail.nl",
+  "live.nl",
+  "outlook.nl",
+]);
+
+/** The domain of a folded email, or null. Pure. */
+const emailDomain = (email: string | null): string | null => {
+  const folded = foldEmail(email);
+  return folded ? folded.split("@")[1] || null : null;
+};
 
 type Wallet = { address: string; family: string; linked: boolean };
 
@@ -113,6 +155,8 @@ export function deriveSignals(claims: readonly SignalInput[]): Map<string, Signa
     if (others.some(close)) signals.push("close_signup");
     if (others.some((other) => other.wallets.some((wallet) => claim.wallets.includes(wallet)))) signals.push("shared_wallet");
     if (claim.payout && claims.some((other) => other.userId !== claim.userId && other.payout === claim.payout)) signals.push("same_payout");
+    const domain = emailDomain(claim.email);
+    if (domain && !WEBMAIL_DOMAINS.has(domain) && others.some((other) => emailDomain(other.email) === domain)) signals.push("same_email_domain");
     out.set(claim.id, signals);
   }
   return out;
