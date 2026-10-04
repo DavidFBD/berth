@@ -1,8 +1,11 @@
 /**
  * Reward campaigns, the client safe half (the server half is
- * lib/server/campaigns). A campaign is a link, /c/<code>, and one promise:
- * buy at least `minBuyUsd` of any stock or fund, keep it `holdDays` days,
- * and `amountUsd` in USDC is added to the account. Berth never sends the
+ * lib/server/campaigns). Since 5 October 2026 a campaign rewards an invite
+ * that sticks, never a buy: invite a friend new to Berth, and when they
+ * open an account inside the campaign's dates, set it up and still use
+ * Berth `stayDays` days later, `amountUsd` in USDC is added to the
+ * inviter's account, for up to `perInviter` friends, while places last.
+ * Nothing asks for a buy, a holding or a volume. Berth never sends the
  * money itself: David pays each approved claim by hand.
  *
  * The campaign code rulebook lives here, beside the invite code's
@@ -20,8 +23,12 @@ export function normalizeCampaignCode(value: unknown): string | null {
   return CODE_SHAPE.test(trimmed) ? trimmed : null;
 }
 
+/** Which rules a campaign runs. 'buy' is retired: its rows stay, read only. */
+export type CampaignKind = "buy" | "invite";
+
 export const CLAIM_STATES = [
   "attributed",
+  // Retired with the buy campaigns: never entered by an invite claim.
   "buying",
   "holding",
   "qualified",
@@ -32,71 +39,63 @@ export const CLAIM_STATES = [
 ] as const;
 export type ClaimState = (typeof CLAIM_STATES)[number];
 
-/** States that hold one of the campaign's slots (budget and max_claims count these). */
+/** States that hold one of the campaign's places (budget and max_claims count these). */
 export const SLOT_STATES: readonly ClaimState[] = ["holding", "qualified", "approved", "paid"];
 
-/** What the person's home reads (app/api/campaign): their own claim, or nothing. */
+/**
+ * What the inviter's home reads (app/api/campaign): the live invite
+ * campaign's rules, and how their own invited friends are getting on.
+ * Never anything about a buy.
+ */
 export type CampaignProgress = {
-  state: ClaimState;
   amountUsd: number;
-  minBuyUsd: number;
-  holdDays: number;
-  /** ISO; set from holding on. */
-  holdingSince: string | null;
-  /** ISO; when the hold is judged. */
-  eligibleAt: string | null;
-  /** ISO; set once paid. */
+  stayDays: number;
+  perInviter: number;
+  /** An invite campaign is live now: its rules may be said. */
+  open: boolean;
+  /** Friends invited inside a campaign, not set up yet. */
+  invited: number;
+  /** Friends set up, waiting out the days. */
+  staying: number;
+  /** ISO; the first day one of the staying friends may qualify. */
+  nextEligibleAt: string | null;
+  /** Qualified or approved, not yet paid. */
+  qualified: number;
+  /** USD paid to this inviter in the last PAID_LINE_DAYS, and when last. */
+  paidUsd: number;
   paidAt: string | null;
-  /** The buy is in, and every place is taken for now: it waits in line for one to free up. */
-  waitlisted?: boolean;
-  /** ISO; when a rejected or expired claim closed. */
-  closedAt?: string | null;
 };
 
 export type CampaignResponse = { campaign: CampaignProgress | null };
 
-/** How long the "Paid." line, and a closed one, stays on the home. */
+/** How long the "Paid." line stays on the home. */
 export const PAID_LINE_DAYS = 14;
 
 /**
- * Which line the home shows, or none: the rules once (no email yet asks for
- * one first), the dates while holding, then qualified and paid. A rejected
- * or expired claim shows its quiet closing line; a paid one stops showing
- * after PAID_LINE_DAYS.
+ * Which line the inviter's home shows, or none: a recent payment first,
+ * then a friend who qualified, then one waiting out the days, then one
+ * invited and not set up yet, and otherwise, while a campaign is live, its
+ * rules. A refusal says nothing on the home.
  */
 export type CampaignLine =
-  | { kind: "rules"; needsEmail: boolean; minBuyUsd: number; holdDays: number; amountUsd: number }
-  | { kind: "waiting" }
-  | { kind: "holding"; since: Date; eligible: Date }
+  | { kind: "rules"; amountUsd: number; stayDays: number; perInviter: number }
+  | { kind: "invited"; amountUsd: number; stayDays: number }
+  | { kind: "staying"; amountUsd: number; eligible: Date }
   | { kind: "qualified" }
-  | { kind: "paid"; amountUsd: number }
-  | { kind: "closed" };
+  | { kind: "paid"; amountUsd: number };
 
 export function campaignLine(progress: CampaignProgress | null | undefined, now: Date = new Date()): CampaignLine | null {
   if (!progress) return null;
-  const { state } = progress;
-  if (state === "buying" && progress.waitlisted) return { kind: "waiting" };
-  if (state === "attributed" || state === "buying") {
-    return {
-      kind: "rules",
-      needsEmail: state === "attributed",
-      minBuyUsd: progress.minBuyUsd,
-      holdDays: progress.holdDays,
-      amountUsd: progress.amountUsd,
-    };
+  if (progress.paidUsd > 0 && progress.paidAt && now.getTime() - new Date(progress.paidAt).getTime() <= PAID_LINE_DAYS * 86_400_000) {
+    return { kind: "paid", amountUsd: progress.paidUsd };
   }
-  if (state === "holding") {
-    if (!progress.holdingSince || !progress.eligibleAt) return null;
-    return { kind: "holding", since: new Date(progress.holdingSince), eligible: new Date(progress.eligibleAt) };
+  if (progress.qualified > 0) return { kind: "qualified" };
+  if (progress.staying > 0 && progress.nextEligibleAt) {
+    return { kind: "staying", amountUsd: progress.amountUsd, eligible: new Date(progress.nextEligibleAt) };
   }
-  if (state === "qualified" || state === "approved") return { kind: "qualified" };
-  if (state === "paid") {
-    const paidAt = progress.paidAt ? new Date(progress.paidAt).getTime() : now.getTime();
-    if (now.getTime() - paidAt > PAID_LINE_DAYS * 86_400_000) return null;
-    return { kind: "paid", amountUsd: progress.amountUsd };
-  }
-  if (progress.closedAt && now.getTime() - new Date(progress.closedAt).getTime() > PAID_LINE_DAYS * 86_400_000) return null;
-  return { kind: "closed" };
+  if (progress.invited > 0) return { kind: "invited", amountUsd: progress.amountUsd, stayDays: progress.stayDays };
+  if (progress.open) return { kind: "rules", amountUsd: progress.amountUsd, stayDays: progress.stayDays, perInviter: progress.perInviter };
+  return null;
 }
 
 /** A whole dollar amount as "$5", anything else with cents: "$5.50". */
@@ -109,5 +108,5 @@ export function campaignDay(date: Date, timeZone?: string): string {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone }).format(date);
 }
 
-/** Why a claim was refused, as the staff page and the CLI name it. */
-export const REJECT_REASONS = ["not_held", "one_per_person", "wallet_used", "abuse", "other"] as const;
+/** Why staff refused a claim, as the staff page and the CLI name them. */
+export const REJECT_REASONS = ["not_active", "self_invite", "one_per_person", "abuse", "other"] as const;

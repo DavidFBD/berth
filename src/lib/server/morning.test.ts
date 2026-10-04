@@ -4,15 +4,16 @@ import { runMorning } from "./morning";
 /** The morning run's stages with stand-ins: the weekly summary is its own stage and never fails the run. */
 
 const holds = async () => ({}) as never;
-const campaigns = async () => ({ advanced: 0, reserved: 0, expired: 0, judged: 0, qualified: 0, notHeld: 0, retried: 0 });
+const campaigns = async () => ({ advanced: 0, reserved: 0, expired: 0, judged: 0, qualified: 0, notActive: 0 });
 const emails = async () => ({ retried: 0, sent: 0, gaveUp: 0 });
+const inviteXp = async () => ({ recorded: 0, paid: 0, paidBefore: 0, refused: 0, capped: 0, waiting: 0 });
 const budgets = { holds: 1_000, emails: 1_000, weekly: 50 };
 
 describe("runMorning", () => {
   it("runs the weekly summary after the email retry, never beside it", async () => {
     const order: string[] = [];
     let budget = -1;
-    await runMorning({
+    await runMorning({ inviteXp,
       holds,
       campaigns,
       emails: async () => {
@@ -36,7 +37,7 @@ describe("runMorning", () => {
     let now = 0;
     let budget = -1;
     let alertsRan = false;
-    const summary = await runMorning({
+    const summary = await runMorning({ inviteXp,
       holds: async () => {
         now += 50_000;
         return {} as never;
@@ -64,7 +65,7 @@ describe("runMorning", () => {
   it("skips the budget alerts when the run has no time left, never running past it", async () => {
     let now = 0;
     let alertsRan = false;
-    const summary = await runMorning({
+    const summary = await runMorning({ inviteXp,
       holds: async () => {
         now += 58_000;
         return {} as never;
@@ -84,7 +85,7 @@ describe("runMorning", () => {
   });
 
   it("reports the weekly summary's own result", async () => {
-    const summary = await runMorning({
+    const summary = await runMorning({ inviteXp,
       holds,
       campaigns,
       emails,
@@ -95,18 +96,42 @@ describe("runMorning", () => {
     expect(summary.failed).toBe(false);
   });
 
+  it("runs the invite XP step after the campaign step and before the emails, and a failing one fails nothing", async () => {
+    const order: string[] = [];
+    const summary = await runMorning({
+      holds,
+      campaigns: async () => {
+        order.push("campaigns");
+        return campaigns();
+      },
+      inviteXp: async () => {
+        order.push("inviteXp");
+        throw new Error("db down");
+      },
+      emails: async () => {
+        order.push("emails");
+        return emails();
+      },
+      weekly: async () => ({ week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 }),
+      budgets,
+    });
+    expect(order).toEqual(["campaigns", "inviteXp", "emails"]);
+    expect(summary.inviteXp).toEqual({ ok: false, error: "db down" });
+    expect(summary.failed).toBe(false);
+  });
+
   it("has no recurring stage: recurring buys were retired on 2026-10-04", async () => {
-    const summary = await runMorning({ holds, campaigns, emails, weekly: async () => ({ week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 }), budgets });
+    const summary = await runMorning({ inviteXp, holds, campaigns, emails, weekly: async () => ({ week: null, sent: 0, empty: 0, notSent: 0, deferred: 0 }), budgets });
     expect(summary).not.toHaveProperty("recurring");
   });
 
   it("reports a weekly stage that throws or overruns without failing the run", async () => {
-    const thrown = await runMorning({ holds,
+    const thrown = await runMorning({ inviteXp, holds,
       campaigns, emails, weekly: async () => Promise.reject(new Error("db down")), budgets });
     expect(thrown.weekly).toEqual({ ok: false, error: "db down" });
     expect(thrown.emails.ok).toBe(true);
     expect(thrown.failed).toBe(false);
-    const slow = await runMorning({ holds,
+    const slow = await runMorning({ inviteXp, holds,
       campaigns, emails, weekly: () => new Promise(() => undefined), budgets });
     expect(slow.weekly).toEqual({ ok: false, error: "over its 50ms budget" });
     expect(slow.failed).toBe(false);
@@ -117,7 +142,7 @@ describe("the morning's worst case", () => {
   it("does not start the weekly stage at all with no time left", async () => {
     let now = 0;
     let weeklyCalled = false;
-    const summary = await runMorning({
+    const summary = await runMorning({ inviteXp,
       holds: async () => {
         now += 54_000;
         return { checked: 0, paid: 0, forfeited: 0, retried: 0 };

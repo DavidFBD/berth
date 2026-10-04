@@ -97,8 +97,10 @@ export async function fillVerdict({
 
 /**
  * The award itself, for a pour known to have filled: the pour's own XP,
- * and on a referred account the referral pair, all index-deduped, so a
- * replay pays nothing. `announced` false parks it for the next profile
+ * and on a referred account its own first buy XP (invite_accepted), all
+ * index-deduped, so a replay pays nothing. The inviter is never paid for a
+ * buy: since 2026-10-05 they earn friend_stayed for a friend who sets up
+ * and stays (lib/server/invite-xp). `announced` false parks it for the next profile
  * sync (the evening pass pays while nobody is looking).
  */
 export async function awardFilledPour(
@@ -115,7 +117,6 @@ export async function awardFilledPour(
     const accepted = await awardXp(user.id, "invite_accepted", null, { announced });
     xp = accepted.xp;
     if (accepted.awarded > 0) rewards.push({ kind: "invite_accepted", amount: accepted.awarded });
-    await awardXp(user.referred_by, "friend_poured", user.id, { announced: false });
   }
   return { rewards, xp };
 }

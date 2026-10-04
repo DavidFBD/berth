@@ -86,7 +86,7 @@ export type BoardRow = Person & {
   points: number;
   /** XP from orders this month, after the 300 cap. */
   orderXp: number;
-  /** XP from friends joining and trading this month, after the 250 cap. */
+  /** Invite XP this month (friend_stayed, the retired friend_poured, invite_accepted), after the 250 cap. */
   referralXp: number;
   /** Every other kind of XP this month. */
   otherXp: number;

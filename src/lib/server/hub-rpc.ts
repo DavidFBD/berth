@@ -8,9 +8,8 @@ import { HUB_RPC_URLS } from "@/lib/sodax-config";
  * HTTP error, a timeout or a JSON-RPC error, inside one overall deadline.
  * A null result is an answer (the node has no such thing), not a failure.
  *
- * Not for reads that must all come from one backend (the campaign hold
- * window reads logs and a balance at the same block): those keep a single
- * endpoint, lib/server/campaigns/hold-window.
+ * Not for reads that must all come from one backend (logs and a balance
+ * read at the same block): those keep a single endpoint.
  */
 /**
  * The budget for a hub read made inside a request (the pour route, limit

@@ -20,7 +20,7 @@ import { useMounted } from "@/hooks/use-mounted";
  *                               (&address=0x... to judge another address)
  *
  * The lines in the calm home's own layout: /dev/board?home=new&campaign=rules
- * (rules, email, holding, qualified, paid, closed).
+ * (rules, invited, staying, qualified, paid).
  */
 
 export default function CampaignsGalleryPage() {

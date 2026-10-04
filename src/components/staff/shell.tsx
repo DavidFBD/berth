@@ -20,6 +20,7 @@ export const STAFF_SECTIONS = [
   { id: "health", href: "/staff/health" },
   { id: "budgets", href: "/staff/budgets" },
   { id: "campaigns", href: "/staff/campaigns" },
+  { id: "posts", href: "/staff/posts" },
   { id: "audit", href: "/staff/audit" },
 ] as const;
 

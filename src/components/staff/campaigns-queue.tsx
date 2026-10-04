@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { usePrivy } from "@privy-io/react-auth";
-import { campaignUsd, REJECT_REASONS } from "@/lib/campaigns";
+import { campaignUsd, normalizeCampaignCode, REJECT_REASONS } from "@/lib/campaigns";
 import { cn } from "@/lib/utils";
 import type { StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
 import type { CampaignMeter, QueueClaim } from "@/lib/server/campaigns/queue";
@@ -34,7 +34,10 @@ export type StaffAction =
   | { action: "remove_source"; sourceId: string; reason: string };
 
 /** Fields shown in full after an audited reveal, by claim. */
-export type Revealed = Record<string, { email?: string | null; wallets?: QueueClaim["wallets"]; payout?: string | null; payer?: string | null; deliveredTo?: string | null }>;
+export type Revealed = Record<
+  string,
+  { email?: string | null; inviterEmail?: string | null; wallets?: QueueClaim["wallets"]; inviterWallets?: QueueClaim["wallets"]; payout?: string | null }
+>;
 
 type Fetched = { status: "missing" } | { status: "stale" } | { status: "ready"; data: StaffCampaignsResponse };
 
@@ -215,7 +218,7 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
         </span>
       </div>
       <p className="text-sm text-muted-foreground">
-        {copy.terms(campaignUsd(campaign.amountUsd), campaignUsd(campaign.minBuyUsd), campaign.holdDays)}
+        {campaign.kind === "invite" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays, campaign.perInviter) : copy.retired}
       </p>
       <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
         <div className="h-full bg-primary" style={{ width: `${paidPct}%` }} />
@@ -230,7 +233,7 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
           campaign.maxClaims,
         )}
       </p>
-      <p className="text-xs text-muted-foreground">{copy.waiting(campaign.counts.attributed, campaign.counts.buying)}</p>
+      <p className="text-xs text-muted-foreground">{copy.waiting(campaign.counts.attributed)}</p>
       <FundingBlock
         address={wallet}
         amountUsd={campaign.amountUsd}
@@ -239,7 +242,7 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
         otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
       />
       <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
-      {campaign.active ? (
+      {campaign.kind !== "invite" ? null : campaign.active ? (
         <div>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
             {copy.deactivate}
@@ -306,8 +309,14 @@ function withRevealed(claim: QueueClaim, shown: Revealed[string] | undefined): Q
     ...claim,
     email: shown.email !== undefined ? shown.email : claim.email,
     wallets: shown.wallets ?? claim.wallets,
+    inviter: claim.inviter
+      ? {
+          ...claim.inviter,
+          email: shown.inviterEmail !== undefined ? shown.inviterEmail : claim.inviter.email,
+          wallets: shown.inviterWallets ?? claim.inviter.wallets,
+        }
+      : null,
     payout: shown.payout !== undefined ? { ...claim.payout, address: shown.payout } : claim.payout,
-    buy: claim.buy && shown.wallets ? { ...claim.buy, payer: shown.payer ?? null, deliveredTo: shown.deliveredTo ?? null } : claim.buy,
   };
 }
 
@@ -377,6 +386,20 @@ function PayoutSources({ campaign, busy, onAction }: { campaign: CampaignMeter; 
   );
 }
 
+function WalletList({ wallets }: { wallets: QueueClaim["wallets"] }) {
+  const copy = useCopy().campaign.staff;
+  if (wallets.length === 0) return <>{copy.empty}</>;
+  return (
+    <>
+      {wallets.map((wallet) => (
+        <span key={wallet.address} className="block">
+          <Mono>{wallet.address}</Mono> <span className="text-xs text-muted-foreground">{wallet.family}{wallet.linked ? "" : `, ${copy.unlinked}`}</span>
+        </span>
+      ))}
+    </>
+  );
+}
+
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-[9rem_1fr] sm:gap-3">
@@ -427,47 +450,31 @@ function ClaimCard({
         <Fact label={copy.labels.signup}>
           {copy.signupLine(when(claim.signupAt), when(claim.attributedAt))}
         </Fact>
-        {claim.buy && (
-          <Fact label={copy.labels.order}>
-            {copy.buyLine(
-              claim.buy.usd === null ? "?" : campaignUsd(Math.round(claim.buy.usd * 100) / 100),
-              claim.buy.listing,
-              claim.buy.quantity ?? "?",
-              when(claim.buy.filledAt),
-            )}
-            <br />
-            <Mono>{claim.buy.intentTx}</Mono>
-            <br />
-            <span className="text-xs text-muted-foreground">
-              {copy.paidFrom} <Mono>{claim.buy.payer ?? "?"}</Mono>, {copy.deliveredTo} <Mono>{claim.buy.deliveredTo ?? "?"}</Mono>
-            </span>
+        {claim.onboardedAt && (
+          <Fact label={copy.labels.setUp}>
+            {copy.setUpLine(when(claim.onboardedAt), when(claim.eligibleAt))}
           </Fact>
         )}
-        {claim.holdingSince && (
-          <Fact label={copy.labels.holding}>
-            {copy.span(when(claim.holdingSince), when(claim.eligibleAt))}
-          </Fact>
-        )}
-        {claim.unreadableSince && <Fact label={copy.labels.holdCheck}>{copy.unreadableSince(when(claim.unreadableSince))}</Fact>}
-        {claim.hold && (
-          <Fact label={copy.labels.holdCheck}>
-            {when(claim.hold.checkedAt)}. {copy.holdSeen(claim.hold.lowestRaw ?? claim.hold.balanceRaw ?? copy.unread, claim.hold.needed ?? "?", claim.hold.outflows ?? 0)}
-          </Fact>
-        )}
+        <Fact label={copy.labels.lastSeen}>{claim.lastSeenAt ? when(claim.lastSeenAt) : copy.empty}</Fact>
         <Fact label={copy.labels.wallets}>
-          {revealed?.wallets === undefined && claim.wallets.length > 0 && (
+          {revealed?.wallets === undefined && (claim.wallets.length > 0 || (claim.inviter?.wallets.length ?? 0) > 0) && (
             <Button size="xs" variant="ghost" className="mb-1 text-muted-foreground" disabled={busy} onClick={() => onAction({ action: "reveal", claimId: claim.id, field: "wallets" })}>
               {copy.revealWallets}
             </Button>
           )}
-          {claim.wallets.length === 0
-            ? copy.empty
-            : claim.wallets.map((wallet) => (
-                <span key={wallet.address} className="block">
-                  <Mono>{wallet.address}</Mono> <span className="text-xs text-muted-foreground">{wallet.family}{wallet.linked ? "" : `, ${copy.unlinked}`}</span>
-                </span>
-              ))}
+          <WalletList wallets={claim.wallets} />
         </Fact>
+        {claim.inviter && (
+          <>
+            <Fact label={copy.labels.inviter}>
+              {claim.inviter.email ?? <Mono>{claim.inviter.userId}</Mono>}
+              {claim.inviter.email && <span className="block"><Mono>{claim.inviter.userId}</Mono></span>}
+            </Fact>
+            <Fact label={copy.labels.inviterWallets}>
+              <WalletList wallets={claim.inviter.wallets} />
+            </Fact>
+          </>
+        )}
         <Fact label={copy.labels.signals}>
           {claim.signals.length === 0 ? copy.noSignals : claim.signals.map((signal) => <span key={signal} className="block">{copy.signals[signal]}</span>)}
           <span className="block text-xs text-muted-foreground">{copy.noDeviceSignals}</span>
@@ -573,6 +580,7 @@ function ClaimCard({
 
 function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: (action: StaffAction) => void; prefill?: Record<string, string> }) {
   const copy = useCopy().campaign.staff.create;
+  const domain = useCopy().og.domain;
   const fundingCopy = useCopy().campaign.staff.funding;
   const [fields, setFields] = useState<Record<string, string>>({
     code: "",
@@ -580,8 +588,8 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
     amountUsd: "5",
     budgetUsd: "100",
     maxClaims: "20",
-    minBuyUsd: "10",
-    holdDays: "7",
+    stayDays: "14",
+    perInviter: "3",
     startsAt: "",
     endsAt: "",
     payoutAddress: "",
@@ -589,27 +597,49 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
   });
   const judged = judgePayoutAddress(fields.payoutAddress);
   const number = (value: string) => (Number.isFinite(Number(value)) ? Number(value) : 0);
-  const field = (name: string, label: string, type = "text") => (
+  const code = normalizeCampaignCode(fields.code);
+  const places = Math.max(0, Math.floor(number(fields.maxClaims)));
+  const total = Math.round(number(fields.amountUsd) * 100) * places;
+  const overBudget = total > Math.round(number(fields.budgetUsd) * 100);
+  const field = (name: string, label: string, hint: string, type = "text", extra?: ReactNode) => (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-      {label}
+      <span className="text-foreground">{label}</span>
       <Input type={type} value={fields[name]} onChange={(event) => setFields({ ...fields, [name]: event.target.value })} />
+      <span>{hint}</span>
+      {extra}
     </label>
   );
   return (
-    <details className="rounded-lg border border-border bg-card p-4" open={prefill ? true : undefined}>
+    <details className="rounded-lg border border-border bg-card p-4" open={prefill ? true : undefined} data-testid="create-campaign">
       <summary className="cursor-pointer text-sm text-foreground">{copy.heading}</summary>
       <p className="mt-2 text-xs text-muted-foreground">{copy.note}</p>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {field("code", copy.code)}
-        {field("title", copy.title)}
-        {field("amountUsd", copy.amount, "number")}
-        {field("budgetUsd", copy.budget, "number")}
-        {field("maxClaims", copy.maxClaims, "number")}
-        {field("minBuyUsd", copy.minBuy, "number")}
-        {field("holdDays", copy.holdDays, "number")}
+      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {field(
+          "code",
+          copy.code,
+          copy.hints.code,
+          "text",
+          code ? <span className="font-mono text-foreground">{copy.link(`${domain}/c/${code}`)}</span> : null,
+        )}
+        {field("title", copy.title, copy.hints.title)}
+        {field("amountUsd", copy.amount, copy.hints.amount, "number")}
+        {field(
+          "budgetUsd",
+          copy.budget,
+          copy.hints.budget,
+          "number",
+          places > 0 && total > 0 ? (
+            <span className={overBudget ? "text-foreground" : undefined} data-testid="budget-check">
+              {overBudget ? copy.overBudget(campaignUsd(total / 100)) : copy.fits(campaignUsd(total / 100), places)}
+            </span>
+          ) : null,
+        )}
+        {field("maxClaims", copy.maxClaims, copy.hints.maxClaims, "number")}
+        {field("stayDays", copy.stayDays, copy.hints.stayDays, "number")}
+        {field("perInviter", copy.perInviter, copy.hints.perInviter, "number")}
         <span />
-        {field("startsAt", copy.starts, "datetime-local")}
-        {field("endsAt", copy.ends, "datetime-local")}
+        {field("startsAt", copy.starts, copy.hints.starts, "datetime-local")}
+        {field("endsAt", copy.ends, copy.hints.ends, "datetime-local")}
         <PayoutAddressField value={fields.payoutAddress} onChange={(payoutAddress) => setFields({ ...fields, payoutAddress })} />
       </div>
       <div className="mt-3">
@@ -623,7 +653,7 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
       <Button
         size="sm"
         className="mt-3"
-        disabled={busy || judged.kind !== "ok"}
+        disabled={busy || judged.kind !== "ok" || overBudget}
         onClick={() =>
           onAction({
             action: "create",

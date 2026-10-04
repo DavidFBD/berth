@@ -140,6 +140,12 @@ const ADVICE = [
   "Opened a position in $NVDA",
   "$NVDA is the trade of the decade",
   "Shorting $TSLA here",
+  // relayed predictions, from the x-autopost review 2026-10-05
+  "Elon Musk says Tesla will be worth more than Apple and Microsoft combined",
+  "Analyst says Nvidia will hit a $10 trillion market value by 2030",
+  "Palantir will reach a trillion dollars, says fund manager",
+  "Cathie Wood says Tesla will double again",
+  "Apple will overtake Microsoft as the most valuable company, investor says",
 ];
 
 const FACTS = [
@@ -179,6 +185,8 @@ const FACTS = [
   "Nvidia board approves a ten for one stock split",
   "SpaceX Starship lands on its second try",
   "Apple to hold its annual investor meeting in March",
+  "Apple says it will open its first store in Mumbai next month",
+  "Tesla will hold its annual shareholder meeting in November",
 ];
 
 describe("adviceShaped", () => {

@@ -559,6 +559,22 @@ describe("XP that names an account", () => {
     expect(result.moved.survivorXp).toBe(200);
     expect(plan.together.xp).toBe(200);
   });
+
+  it("friend_stayed for inviting the other rests on the retired row too, like friend_poured", async () => {
+    const s = await account({ email: "stay-inviter@example.com" });
+    const a = await account();
+    await q(`update users set referred_by = $2 where id = $1`, [a, s]);
+    await xp(s, "friend_stayed", 250, a);
+    await xp(s, "pour_in", 100, "0xstayinviter");
+    await xp(a, "pour_in", 100, "0xstayinvitee");
+    const plan = (await planMerge(a, s))!;
+    const result = await mergeAccounts({ survivor: s, absorbed: a, reason: "email" });
+    if (!result.ok) throw new Error("merge failed");
+    expect(await events(s)).toEqual(["pour_in:0xstayinvitee", "pour_in:0xstayinviter"]);
+    expect(await events(a)).toEqual([`friend_stayed:${a}`]);
+    expect(result.moved.survivorXp).toBe(200);
+    expect(plan.together.xp).toBe(200);
+  });
 });
 
 describe("the smaller things", () => {

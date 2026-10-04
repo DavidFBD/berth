@@ -6,22 +6,21 @@ import { getOrCreateUser, type UserRow } from "../accounts";
 import { requireFreshStaff, requireStaff, staffAdminIds } from "../staff-auth";
 import { createStaffSession } from "../staff-sessions";
 import { mintStaffCookie, staffCookieName, staffSessionKey } from "../staff-session";
-import { STOCK_LISTINGS } from "@/lib/listings";
-import { attributeCampaign, claimById } from "./store";
-import { advanceClaim, runCampaignStep } from "./eligibility";
+import { claimById } from "./store";
 import { campaignById } from "./store";
 import { addPayoutSource, approveClaim, createCampaign, markClaimPaid, rejectClaim, setCampaignActive } from "./actions";
 
 const FUNDING_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 import { deriveSignals, foldEmail, revealClaim, staffQueue } from "./queue";
 import { TRANSFER_TOPIC, USDC_BASE, type Receipt } from "./usdc";
-import { DEPS, hubOf, verifier } from "./test-kit";
+import { qualifiedClaim } from "./test-kit";
 
 /**
  * The staff side against the real schema: the gate (STAFF_ADMIN_IDS, never
  * the @sodax.com rule), every action audited, activation only with counsel
- * review confirmed, approval fixing the payout address, mark paid checked
- * against a mocked Base RPC, and the queue's evidence, signals and meter.
+ * review confirmed and never for a retired buy campaign, approval fixing
+ * the INVITER's payout address, mark paid checked against a mocked Base
+ * RPC, and the queue's evidence, signals and meter.
  */
 
 vi.mock("@/lib/server/privy", async () => {
@@ -210,8 +209,8 @@ describe("campaigns", () => {
       amountUsd: 5,
       budgetUsd: 100,
       maxClaims: 20,
-      minBuyUsd: 10,
-      holdDays: 7,
+      stayDays: 14,
+      perInviter: 3,
       startsAt: new Date(Date.now() - 1000).toISOString(),
       endsAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     });
@@ -255,20 +254,35 @@ describe("campaigns", () => {
       amountUsd: 5,
       budgetUsd: 100,
       maxClaims: 20,
-      minBuyUsd: 10,
-      holdDays: 7,
+      stayDays: 14,
+      perInviter: 3,
       startsAt: new Date().toISOString(),
       endsAt: new Date(Date.now() + 86_400_000).toISOString(),
     };
     expect(await createCampaign(staff.id, { ...base, code: "x" })).toMatchObject({ ok: false, refusal: "bad_input" });
     expect(await createCampaign(staff.id, { ...base, code: "ok-code", amountUsd: 500 })).toMatchObject({ ok: false, refusal: "bad_input" });
     expect(await createCampaign(staff.id, { ...base, code: "ok-code", endsAt: base.startsAt })).toMatchObject({ ok: false, refusal: "bad_input" });
-    expect(await createCampaign(staff.id, { ...base, code: "long-hold", holdDays: 31 })).toMatchObject({ ok: false, refusal: "hold_too_long" });
-    expect((await createCampaign(staff.id, { ...base, code: "month-hold", holdDays: 30 })).ok).toBe(true);
+    expect(await createCampaign(staff.id, { ...base, code: "long-stay", stayDays: 61 })).toMatchObject({ ok: false, refusal: "stay_out_of_range" });
+    expect(await createCampaign(staff.id, { ...base, code: "short-stay", stayDays: 6 })).toMatchObject({ ok: false, refusal: "stay_out_of_range" });
+    expect((await createCampaign(staff.id, { ...base, code: "month-stay", stayDays: 60 })).ok).toBe(true);
+    expect(await createCampaign(staff.id, { ...base, code: "over-budget", maxClaims: 21 })).toMatchObject({ ok: false, refusal: "places_over_budget" });
+    expect(await createCampaign(staff.id, { ...base, code: "no-cap", perInviter: 0 })).toMatchObject({ ok: false, refusal: "bad_input" });
     expect((await createCampaign(staff.id, { ...base, code: "ok-code" })).ok).toBe(true);
     expect(await createCampaign(staff.id, { ...base, code: "ok-code" })).toMatchObject({ ok: false, refusal: "code_taken" });
     expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("code_taken");
-    expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("hold_too_long");
+    expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("stay_out_of_range");
+    const made = ((await sql.query(`select kind, hold_days, max_per_inviter from campaigns where code = 'month-stay'`)) as Record<string, unknown>[])[0];
+    expect(made).toEqual({ kind: "invite", hold_days: 60, max_per_inviter: 3 });
+  });
+
+  it("never activates a retired buy campaign", async () => {
+    const staff = await person();
+    const rows = (await sql.query(
+      `insert into campaigns (code, title, kind, starts_at, ends_at, active) values ('old-buy', 'Old', 'buy', now(), now() + interval '9 days', false) returning id`,
+    )) as { id: string }[];
+    await addPayoutSource(staff.id, rows[0].id, FUNDING_WALLET, "A wallet");
+    expect(await setCampaignActive(staff.id, rows[0].id, true, true, true)).toEqual({ ok: false, refusal: "retired" });
+    expect((await campaignById(rows[0].id))!.active).toBe(false);
   });
 
   it("creates a campaign with its funding wallet as its first payout source, and refuses a bad one first", async () => {
@@ -278,8 +292,8 @@ describe("campaigns", () => {
       amountUsd: 5,
       budgetUsd: 100,
       maxClaims: 20,
-      minBuyUsd: 10,
-      holdDays: 7,
+      stayDays: 14,
+      perInviter: 3,
       startsAt: new Date().toISOString(),
       endsAt: new Date(Date.now() + 86_400_000).toISOString(),
     };
@@ -300,7 +314,6 @@ describe("campaigns", () => {
 });
 
 describe("a claim from qualified to paid", () => {
-  const STOCK = STOCK_LISTINGS[0];
   const HOUSE = hex(0xc0ffee);
   const ENV = { STAFF_PAYOUT_ADDRESSES: HOUSE };
   const pad = (address: string) => `0x${address.slice(2).padStart(64, "0")}`;
@@ -309,7 +322,6 @@ describe("a claim from qualified to paid", () => {
     blockNumber: "0x1",
     logs: pays.map(([to, raw]) => ({ address: USDC_BASE, topics: [TRANSFER_TOPIC, pad(from), pad(to)], data: `0x${raw.toString(16)}` })),
   });
-  const held = { verifyHold: verifier(() => "held") };
 
   async function qualified(code: string) {
     await sql.query(
@@ -317,76 +329,68 @@ describe("a claim from qualified to paid", () => {
        on conflict (code) do nothing`,
       [code],
     );
-    const user = await person();
-    const claimId = (await attributeCampaign(user.id, code))!;
-    seq += 1;
-    await sql.query(
-      `insert into orders (user_id, wallet_address, intent_tx, direction, listing_symbol, listing_address, quantity, usd_value, delivered_to, filled_at)
-       values ($1, $2, $3, 'buy', $4, $5, '0.05', 12, $6, now() + interval '1 second')`,
-      [user.id, user.wallet_address, `0x${seq.toString(16).padStart(64, "0")}`, STOCK.symbol, STOCK.address, hubOf(user.wallet_address!)],
-    );
-    const claim = (await claimById(claimId))!;
-    expect(await advanceClaim(claim, (await campaignById(claim.campaign_id))!, new Date(Date.now() + 2_000), DEPS)).toBe("holding");
-    await runCampaignStep({ now: new Date(Date.now() + 8 * 86_400_000), verifyHold: verifier(() => "held"), deps: DEPS });
-    expect((await claimById(claimId))!.state).toBe("qualified");
-    return { user, claimId };
+    const { claimId, inviter, friend } = await qualifiedClaim(code);
+    return { claimId, inviter, user: friend };
   }
 
   async function approved(code: string) {
     const staff = await person();
     const arrived = await qualified(code);
-    expect((await approveClaim(staff.id, arrived.claimId, held)).ok).toBe(true);
+    expect((await approveClaim(staff.id, arrived.claimId)).ok).toBe(true);
     return { staff, ...arrived, to: (await claimById(arrived.claimId))!.payout_address! };
   }
 
-  it("approves, fixing the person's own home address on Base, with the audit row in the same write", async () => {
+  it("approves, fixing the inviter's own home address on Base, with the audit row in the same write", async () => {
     const staff = await person();
-    const { user, claimId } = await qualified("pay-me");
-    expect((await approveClaim(staff.id, claimId, held)).ok).toBe(true);
+    const { inviter, claimId } = await qualified("pay-me");
+    expect((await approveClaim(staff.id, claimId)).ok).toBe(true);
     const claim = (await claimById(claimId))!;
-    expect(claim).toMatchObject({ state: "approved", payout_address: user.wallet_address, payout_chain: "base", approved_by: staff.id });
+    expect(claim).toMatchObject({ state: "approved", payout_address: inviter.wallet_address, payout_chain: "base", approved_by: staff.id });
     expect((await audits("claim.approve")).filter((entry) => entry.target === claimId).map((entry) => entry.detail.outcome)).toEqual(["done"]);
-    expect(await approveClaim(staff.id, claimId, held)).toEqual({ ok: false, refusal: "wrong_state" });
+    expect(await approveClaim(staff.id, claimId)).toEqual({ ok: false, refusal: "wrong_state" });
   });
 
-  it("refuses to approve or pay a claim of an account staff marked not eligible", async () => {
+  it("refuses to approve or pay a claim whose friend or inviter staff marked not eligible", async () => {
     const staff = await person();
-    const { user, claimId } = await qualified("marked-later");
+    const { user, inviter, claimId } = await qualified("marked-later");
     await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [user.id]);
-    expect(await approveClaim(staff.id, claimId, held)).toMatchObject({ ok: false, refusal: "staff_ineligible" });
+    expect(await approveClaim(staff.id, claimId)).toMatchObject({ ok: false, refusal: "staff_ineligible" });
     await sql.query(`update users set campaign_ineligible_at = null where id = $1`, [user.id]);
-    expect((await approveClaim(staff.id, claimId, held)).ok).toBe(true);
-    await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [user.id]);
+    expect((await approveClaim(staff.id, claimId)).ok).toBe(true);
+    await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [inviter.id]);
     expect(await markClaimPaid(staff.id, claimId, `0x${"ab".repeat(32)}`)).toMatchObject({ ok: false, refusal: "staff_ineligible" });
     // The queue says so on the approved claim, before anyone pays by hand.
     const flagged = (await staffQueue()).claims.find((claim) => claim.id === claimId)!;
     expect(flagged).toMatchObject({ state: "approved" });
     expect(flagged.staffIneligibleAt).not.toBeNull();
-    await sql.query(`update users set campaign_ineligible_at = null where id = $1`, [user.id]);
+    await sql.query(`update users set campaign_ineligible_at = null where id = $1`, [inviter.id]);
     expect((await staffQueue()).claims.find((claim) => claim.id === claimId)!.staffIneligibleAt).toBeNull();
   });
 
-  it("reads the hold again at approval, and refuses one no longer kept or unreadable", async () => {
+  it("asks the guards again at approval: a friend merged into the inviter since is refused", async () => {
     const staff = await person();
-    const { claimId } = await qualified("approve-recheck");
-    expect(await approveClaim(staff.id, claimId, { verifyHold: verifier(() => "unknown") })).toMatchObject({ ok: false, refusal: "hold_unknown" });
-    expect(await approveClaim(staff.id, claimId, { verifyHold: verifier(() => "not_held") })).toMatchObject({ ok: false, refusal: "not_held" });
-    expect((await claimById(claimId))!.state).toBe("qualified");
+    const { user, inviter, claimId } = await qualified("approve-merged");
+    await sql.query(`update users set retired_into = $1, privy_did = 'merged:' || privy_did, wallet_address = null where id = $2`, [inviter.id, user.id]);
+    expect(await approveClaim(staff.id, claimId)).toEqual({ ok: false, refusal: "self_invite" });
   });
 
-  it("asks one per person again at approval: a claim merged into another claimant since is refused", async () => {
+  it("refuses to approve when the inviter has no home address", async () => {
     const staff = await person();
-    const a = await qualified("approve-merged");
-    const b = await qualified("approve-merged");
-    await sql.query(`update users set retired_into = $1, privy_did = 'merged:' || privy_did, wallet_address = null where id = $2`, [a.user.id, b.user.id]);
-    expect(await approveClaim(staff.id, b.claimId, held)).toEqual({ ok: false, refusal: "one_per_person" });
+    const { inviter, claimId } = await qualified("no-home");
+    await sql.query(`update users set wallet_address = null where id = $1`, [inviter.id]);
+    expect(await approveClaim(staff.id, claimId)).toEqual({ ok: false, refusal: "no_payout_address" });
   });
 
-  it("refuses to approve an account with no home address", async () => {
+  it("never approves a claim of a retired buy campaign", async () => {
     const staff = await person();
-    const { user, claimId } = await qualified("no-home");
-    await sql.query(`update users set wallet_address = null where id = $1`, [user.id]);
-    expect(await approveClaim(staff.id, claimId, held)).toEqual({ ok: false, refusal: "no_payout_address" });
+    const friend = await person();
+    const rows = (await sql.query(
+      `insert into campaigns (code, title, kind, starts_at, ends_at, active) values ('retired-claim', 'Old', 'buy', now() - interval '9 days', now(), false) returning id`,
+    )) as { id: string }[];
+    const claim = (await sql.query(`insert into campaign_claims (campaign_id, user_id, state) values ($1, $2, 'qualified') returning id`, [rows[0].id, friend.id])) as {
+      id: string;
+    }[];
+    expect(await approveClaim(staff.id, claim[0].id)).toEqual({ ok: false, refusal: "retired" });
   });
 
   it("marks paid only after a verified transfer from a house wallet, and refuses everything else", async () => {
@@ -451,23 +455,26 @@ describe("a claim from qualified to paid", () => {
     expect(await rejectClaim(staff.id, claimId, "abuse", "")).toMatchObject({ ok: false, refusal: "wrong_state" });
   });
 
-  it("masks emails and wallets in the queue, and reveals one claim's in full", async () => {
-    const { user, claimId } = await qualified("masked");
+  it("masks emails and wallets of both people in the queue, and reveals one claim's in full", async () => {
+    const { user, inviter, claimId } = await qualified("masked");
     const claim = (await staffQueue()).claims.find((entry) => entry.id === claimId)!;
     expect(claim.email).toBe(`${user.email!.slice(0, 1)}•••@example.com`);
+    expect(claim.inviter!.email).toBe(`${inviter.email!.slice(0, 1)}•••@example.com`);
     expect(claim.payout.address).toMatch(/^0x[0-9a-f]{4}…[0-9a-f]{4}$/);
-    expect(claim.wallets.every((wallet) => wallet.address.includes("…"))).toBe(true);
-    expect(await revealClaim(claimId, "email")).toEqual({ email: user.email });
-    expect(await revealClaim(claimId, "wallets")).toMatchObject({ payout: user.wallet_address });
+    expect([...claim.wallets, ...claim.inviter!.wallets].every((wallet) => wallet.address.includes("…"))).toBe(true);
+    expect(await revealClaim(claimId, "email")).toEqual({ email: user.email, inviterEmail: inviter.email });
+    expect(await revealClaim(claimId, "wallets")).toMatchObject({ payout: inviter.wallet_address });
   });
 
   it("the queue carries the evidence and the meter", async () => {
-    const { user, claimId } = await qualified("evidence");
+    const { user, inviter, claimId } = await qualified("evidence");
     const queue = await staffQueue();
     const claim = queue.claims.find((entry) => entry.id === claimId)!;
-    expect(claim).toMatchObject({ state: "qualified", userId: user.id, campaignCode: "evidence" });
-    expect(claim.buy).toMatchObject({ listing: STOCK.name, usd: 12, quantity: "0.05" });
-    expect(claim.hold).toMatchObject({ needed: "0.05", balanceRaw: "50000000000000000", lowestRaw: "50000000000000000", outflows: 0 });
+    expect(claim).toMatchObject({ state: "qualified", userId: user.id, campaignCode: "evidence", campaignKind: "invite" });
+    expect(claim.inviter!.userId).toBe(inviter.id);
+    const stored = (await claimById(claimId))!;
+    expect(claim.onboardedAt).toBe(stored.onboarded_at!.toISOString());
+    expect(claim.lastSeenAt).toBe(new Date(stored.eligible_at!.getTime() - 86_400_000).toISOString());
     expect(claim.payout).toMatchObject({ chain: "Base", token: "USDC", amountUsd: 5 });
     const meter = queue.campaigns.find((campaign) => campaign.code === "evidence")!;
     expect(meter).toMatchObject({ slots: 1, reservedUsd: 5, paidUsd: 0, budgetUsd: 100, maxClaims: 20 });
@@ -481,21 +488,24 @@ describe("signals", () => {
     expect(foldEmail(null)).toBeNull();
   });
 
-  it("flags shared payers, aliases, close signups, invites and shared wallets within one campaign only", () => {
-    const base = { campaignId: "c1", referredBy: null, deliveredTo: null, wallets: [] as string[] };
+  it("flags aliases, close signups, one inviter's quick friends, chained invites and shared wallets within one campaign only", () => {
+    const base = { campaignId: "c1", inviterId: "i1", wallets: [] as string[] };
     const signals = deriveSignals([
-      { ...base, id: "1", userId: "u1", email: "ann.lee@gmail.com", signupAt: 0, payer: "0xp", wallets: ["0xw"] },
-      { ...base, id: "2", userId: "u2", email: "annlee+2@gmail.com", signupAt: 5 * 60_000, payer: "0xp", referredBy: "u1" },
-      { ...base, id: "3", userId: "u3", email: "bob@example.com", signupAt: 3 * 3_600_000, payer: "0xq", wallets: ["0xw"] },
-      { ...base, campaignId: "c2", id: "4", userId: "u4", email: "ann.lee@gmail.com", signupAt: 0, payer: "0xp" },
+      { ...base, id: "1", userId: "u1", email: "ann.lee@gmail.com", signupAt: 0, wallets: ["0xw"] },
+      { ...base, id: "2", userId: "u2", email: "annlee+2@gmail.com", signupAt: 5 * 60_000 },
+      { ...base, id: "3", userId: "u3", inviterId: "u1", email: "bob@example.com", signupAt: 3 * 3_600_000, wallets: ["0xw"] },
+      { ...base, id: "7", userId: "u7", inviterId: "i9", email: "cy@example.com", signupAt: 6 * 60_000 },
+      { ...base, campaignId: "c2", id: "4", userId: "u4", email: "ann.lee@gmail.com", signupAt: 0 },
     ]);
-    expect(signals.get("2")).toEqual(["same_payer", "email_alias", "close_signup", "referred_by_claimant"]);
-    expect(signals.get("3")).toEqual(["shared_wallet"]);
+    expect(signals.get("2")).toEqual(["email_alias", "close_signup", "same_inviter_close"]);
+    expect(signals.get("3")).toEqual(["inviter_invited", "shared_wallet"]);
     expect(signals.get("4")).toEqual([]);
     const payouts = deriveSignals([
-      { ...base, id: "5", userId: "u5", email: null, signupAt: 0, payer: null, payout: "0xpay" },
-      { ...base, id: "6", userId: "u6", email: null, signupAt: 9e9, payer: null, payout: "0xpay" },
+      { ...base, id: "5", userId: "u5", email: null, signupAt: 0, payout: "0xpay" },
+      { ...base, id: "6", userId: "u6", email: null, signupAt: 9e9, payout: "0xpay" },
+      { ...base, id: "8", userId: "u8", inviterId: "i2", email: null, signupAt: 5e9, payout: "0xpay" },
     ]);
+    // The same inviter's friends are paid to one address by design; another inviter at it is the signal.
     expect(payouts.get("5")).toEqual(["same_payout"]);
   });
 });

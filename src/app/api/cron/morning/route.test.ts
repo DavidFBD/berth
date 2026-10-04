@@ -5,6 +5,7 @@ const runHoldCheck = vi.fn();
 vi.mock("@/lib/server/holds", () => ({ runHoldCheck: () => runHoldCheck() }));
 const runCampaignStep = vi.fn();
 vi.mock("@/lib/server/campaigns/eligibility", () => ({ runCampaignStep: () => runCampaignStep() }));
+vi.mock("@/lib/server/invite-xp", () => ({ runInviteXpStep: async () => ({ recorded: 1, paid: 1, paidBefore: 0, refused: 0, capped: 0, waiting: 0 }) }));
 const runWeeklySummaries = vi.fn();
 vi.mock("@/lib/server/weekly", () => ({ runWeeklySummaries: () => runWeeklySummaries() }));
 vi.mock("@/lib/server/staff/budgets", () => ({ runBudgetAlerts: async () => ({ low: 0, sent: 0, already: 0, failed: 0 }) }));
@@ -28,7 +29,7 @@ describe("GET /api/cron/morning", () => {
     runHoldCheck.mockReset();
     runHoldCheck.mockResolvedValue({ checked: 3, paid: 1, forfeited: 1, retried: 1 });
     runCampaignStep.mockReset();
-    runCampaignStep.mockResolvedValue({ advanced: 2, reserved: 1, expired: 0, judged: 1, qualified: 1, notHeld: 0, retried: 0 });
+    runCampaignStep.mockResolvedValue({ advanced: 2, reserved: 1, expired: 0, judged: 1, qualified: 1, notActive: 0 });
     runWeeklySummaries.mockReset();
     runWeeklySummaries.mockResolvedValue({ week: "2026-W39", sent: 1, empty: 0, notSent: 0, deferred: 0 });
   });
@@ -58,7 +59,8 @@ describe("GET /api/cron/morning", () => {
     // The morning email pass rides along; with no key it does nothing.
     expect(await response.json()).toEqual({
       holds: { ok: true, result: { checked: 3, paid: 1, forfeited: 1, retried: 1 } },
-      campaigns: { ok: true, result: { advanced: 2, reserved: 1, expired: 0, judged: 1, qualified: 1, notHeld: 0, retried: 0 } },
+      campaigns: { ok: true, result: { advanced: 2, reserved: 1, expired: 0, judged: 1, qualified: 1, notActive: 0 } },
+      inviteXp: { ok: true, result: { recorded: 1, paid: 1, paidBefore: 0, refused: 0, capped: 0, waiting: 0 } },
       emails: { ok: true, result: { retried: 0, sent: 0, gaveUp: 0 } },
       weekly: { ok: true, result: { week: "2026-W39", sent: 1, empty: 0, notSent: 0, deferred: 0 } },
       budgets: { ok: true, result: { low: 0, sent: 0, already: 0, failed: 0 } },

@@ -68,7 +68,7 @@ export type UserFilters = {
   referred?: boolean | null;
   hidden?: boolean | null;
   ineligible?: boolean | null;
-  /** Arrived through a campaign link (a campaign_claims row). */
+  /** Holds a campaign claim: invited inside an invite campaign (or arrived through a retired buy campaign's link). */
   campaign?: boolean | null;
   page?: number;
   pageSize?: number;

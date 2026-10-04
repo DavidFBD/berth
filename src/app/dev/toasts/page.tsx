@@ -46,7 +46,7 @@ function play(scenario: Scenario, copy: Copy) {
       return;
     case "salute":
       toast.success(copy.social.saluted);
-      later(400, () => announceRewards([{ kind: "friend_poured", amount: 250 }], 1200));
+      later(400, () => announceRewards([{ kind: "friend_stayed", amount: 250 }], 1200));
       return;
     case "burst":
       toast.success(copy.walletsLinkedToast, { description: "0x12ab…9f3e" });

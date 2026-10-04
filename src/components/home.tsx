@@ -511,8 +511,9 @@ function SignedInHome() {
             waiting: pathWaiting,
             card: (
               <HomePathCard
-                // A campaign's line, under every path card while the path holds the page.
-                footnote={stage !== undefined && holdings.settled ? <CampaignLine enabled={hasAccount} bare /> : null}
+                // No campaign line under the path's cards: the path carries the first buy step, and an
+                // invite campaign's reward never stands beside a buy (lib/campaigns). It shows once the path is done.
+                footnote={null}
                 slots={{
                   money: (frame, title) => (
                     <AddMoneyStep
@@ -599,7 +600,7 @@ function SignedInHome() {
                 onParkCash={() => openBuy(CASH_LISTING)}
                 onOpenAccount={() => openAccount()}
               />
-              {/* Only for an account that arrived through a campaign link (lib/campaigns). Last, and only once the
+              {/* The invite campaign line, for an inviter (lib/campaigns). Last, and only once the
                   step and the holdings are settled, so it never lands above anything and pushes it down. */}
               {stage !== undefined && holdings.settled && !pathShown && !pathWaiting && <CampaignLine enabled={hasAccount} />}
             </>

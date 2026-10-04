@@ -31,18 +31,28 @@ export const XP_ACTIONS = {
    */
   theme_tried: { amount: 10, once: false },
   /**
-   * A friend you invited poured their first cup. Paid to the REFERRER; the
-   * dedup ref is the referred account's id, so each friend pays exactly once
-   * no matter how many pours they go on to make. The trigger is a verified
-   * on-chain pour, not a signup — accounts are free to mint, pours are not,
-   * which is what makes the referral worth anything.
+   * RETIRED 2026-10-05, read only: a friend you invited made their first
+   * buy. Nothing awards it any more; the events already in the ledger stay
+   * as they are, and a friend who paid it never pays friend_stayed too.
+   * Paid to the REFERRER, the dedup ref was the referred account's id.
    */
   friend_poured: { amount: 250, once: false },
   /**
-   * The referred side of the same moment: your first pour, having arrived
-   * via a friend's link. Once per account. Same amount as the referrer on
+   * A friend you invited set up their account (a verified email, a
+   * username and a home wallet, the invite campaign's own definition) and
+   * still opened Berth at least six days after setting up, judged a week on.
+   * Paid to the REFERRER by the morning run (lib/server/invite-xp), parked
+   * unannounced; the dedup ref is the friend's account id, so each friend
+   * pays once, and never for a friend who already paid friend_poured. No
+   * buy is asked: an invite earns for a friend who stays, not one who
+   * trades.
+   */
+  friend_stayed: { amount: 250, once: false },
+  /**
+   * The referred side: your own first buy, having arrived via a friend's
+   * link. Once per account. Same amount as the referrer's friend_stayed on
    * purpose (David's call): an invitation reads better when both chairs at
-   * the table are worth the same.
+   * the table are worth the same. It pays you, never your inviter.
    */
   invite_accepted: { amount: 250, once: true },
   /**
@@ -93,6 +103,7 @@ export const REWARD_REASONS: Record<XpKind, string> = {
   username_set: "for picking a username",
   theme_tried: "for trying another appearance",
   friend_poured: "a friend made their first trade",
+  friend_stayed: "for a friend who set up and stayed",
   invite_accepted: "for joining on a friend's invite",
   held_30_days: "for holding thirty days",
 };

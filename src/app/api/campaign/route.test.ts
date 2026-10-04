@@ -9,7 +9,18 @@ vi.mock("@/lib/server/rewards-route", () => ({
   readRewardsCaller: vi.fn(async () => ({ ok: true, caller: { did: "did:privy:x", wallet: null, body: {}, availability } })),
   resolveRewardsUser: vi.fn(async () => ({ ok: true, created: false, user: { id: "u1" } })),
 }));
-const campaignProgress = vi.fn(async () => ({ state: "buying", amountUsd: 5, minBuyUsd: 10, holdDays: 7, holdingSince: null, eligibleAt: null, paidAt: null }));
+const campaignProgress = vi.fn(async () => ({
+  amountUsd: 5,
+  stayDays: 14,
+  perInviter: 3,
+  open: true,
+  invited: 1,
+  staying: 0,
+  nextEligibleAt: null,
+  qualified: 0,
+  paidUsd: 0,
+  paidAt: null,
+}));
 vi.mock("@/lib/server/campaigns/eligibility", () => ({ campaignProgress: () => campaignProgress() }));
 
 import { POST } from "./route";
@@ -23,7 +34,7 @@ describe("POST /api/campaign", () => {
   });
 
   it("answers the claim where Berth is available", async () => {
-    expect(((await (await ask()).json()) as { campaign: { state: string } }).campaign.state).toBe("buying");
+    expect(((await (await ask()).json()) as { campaign: { invited: number } }).campaign.invited).toBe(1);
   });
 
   it("answers nothing, and advances nothing, where it is not", async () => {

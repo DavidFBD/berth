@@ -6,6 +6,7 @@ import { pruneOAuth, type OAuthPruneSummary } from "@/lib/server/oauth/prune";
 import { retryPendingSends, type RetrySummary } from "@/lib/server/email/send";
 import { syncWaitingOrders, type LimitSyncSummary } from "@/lib/server/limit-orders";
 import { settlePourClaims, type ClaimSummary } from "@/lib/server/pour-claims";
+import { runAutopost, type AutopostSummary } from "@/lib/server/x-autopost";
 
 /**
  * The one evening cron (vercel.json, 22:00 UTC on weekdays; the Hobby plan
@@ -38,6 +39,10 @@ import { settlePourClaims, type ClaimSummary } from "@/lib/server/pour-claims";
  * few accounts whose stored days start after their first order: database
  * reads only, idempotent, never over a stored row.
  *
+ * And beside the marks, Berth's own post on X (lib/server/x-autopost), once
+ * every three days when X_AUTOPOST_ENABLED is "1": it never throws and
+ * never counts as a failure of the run.
+ *
  * A stage that throws or runs out of budget is reported as that and the
  * next one runs. The route answers 500 only when nothing at all was
  * written and something failed.
@@ -45,6 +50,14 @@ import { settlePourClaims, type ClaimSummary } from "@/lib/server/pour-claims";
 
 export const MARKS_BUDGET_MS = 22_000;
 export const ORDER_MARKS_BUDGET_MS = 10_000;
+/**
+ * The reads, a token refresh and one post (each request with a ten second
+ * timeout), and a second refresh and post after a 401 only while
+ * AUTOPOST_RETRY_NEEDS_MS remain (lib/server/x-autopost). Inside the route's
+ * sixty seconds, so the function is never frozen between X rotating the
+ * token and the new one being saved.
+ */
+export const AUTOPOST_BUDGET_MS = 45_000;
 /** The snapshot starts no account after this long from the run's start. */
 export const SNAPSHOT_DEADLINE_MS = 47_000;
 
@@ -64,6 +77,8 @@ export type EveningSummary = {
   histories: Stage<HistoryBackfillSummary>;
   /** Email notices pending more than ten minutes, sent again (lib/server/email). */
   emails: Stage<RetrySummary>;
+  /** Berth's own post on X, when one was due (lib/server/x-autopost). */
+  autopost: Stage<AutopostSummary>;
   /** Marks written or dropped, order prices written, portfolio days written. */
   written: number;
   failed: boolean;
@@ -97,6 +112,7 @@ export async function runEvening({
   rebuilds = () => rebuildMergedPortfolios({ now }),
   histories = (deadline: number) => backfillHistories({ write: true, limit: HISTORY_BACKFILL_PER_RUN, now, deadline }),
   emails = () => retryPendingSends(),
+  autopost = () => runAutopost({ now: now.getTime(), deadline: Date.now() + AUTOPOST_BUDGET_MS }),
   budgets = { marks: MARKS_BUDGET_MS, orderMarks: ORDER_MARKS_BUDGET_MS, snapshotDeadline: SNAPSHOT_DEADLINE_MS },
 }: {
   now?: Date;
@@ -109,9 +125,12 @@ export async function runEvening({
   rebuilds?: () => Promise<RebuildSummary>;
   histories?: (deadline: number) => Promise<HistoryBackfillSummary>;
   emails?: () => Promise<RetrySummary>;
+  autopost?: () => Promise<AutopostSummary>;
   budgets?: { marks: number; orderMarks: number; snapshotDeadline: number };
 } = {}): Promise<EveningSummary> {
   const started = Date.now();
+  // The post runs beside everything else and is awaited only at the end.
+  const autopostRun = stage(autopost, AUTOPOST_BUDGET_MS);
   const [marksStage, pruneStage, limitStage, emailStage] = await Promise.all([
     stage(marks, budgets.marks),
     stage(prune, budgets.marks),
@@ -156,6 +175,8 @@ export async function runEvening({
   if (!rebuildStage.ok) console.warn("[cron/evening] merged history failed:", rebuildStage.error);
   if (!historyStage.ok) console.warn("[cron/evening] history backfill failed:", historyStage.error);
   if (!emailStage.ok) console.warn("[cron/evening] email retry failed:", emailStage.error);
+  const autopostStage = await autopostRun;
+  if (!autopostStage.ok) console.warn("[cron/evening] x autopost failed:", autopostStage.error);
   return {
     marks: marksStage,
     orderMarks: orderStage,
@@ -166,6 +187,7 @@ export async function runEvening({
     rebuilds: rebuildStage,
     histories: historyStage,
     emails: emailStage,
+    autopost: autopostStage,
     written:
       written +
       (rebuildStage.ok ? rebuildStage.result.written : 0) +

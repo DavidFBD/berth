@@ -1,6 +1,6 @@
 /**
  * The campaign review queue, in the terminal (lib/server/campaigns/queue):
- * every campaign's budget meter and every claim past "waiting for a buy",
+ * every campaign's budget meter and every claim past "invited, not set up yet",
  * with the evidence the staff page shows. Emails and wallets are masked
  * unless --reveal.
  *

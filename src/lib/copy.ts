@@ -944,13 +944,15 @@ export type Copy = {
   inviteRowSub: (amount: number) => string;
   inviteTaps: (taps: number) => string;
   friendsTitle: string;
-  friendsTally: (joined: number, traded: number, taps: number) => string;
+  /** `stayed`: friends who set up and stayed, the ones whose invite XP landed. */
+  friendsTally: (joined: number, stayed: number, taps: number) => string;
   xpBankedWord: string;
   xpPendingWord: string;
   copyNudge: string;
   nudgeCopiedTitle: string;
   nudgeCopiedSub: string;
-  nudgeMessage: (amount: number, link: string) => string;
+  /** The clipboard line for a friend yet to set up: an invitation, never a reward. */
+  nudgeMessage: (link: string) => string;
   ledgerTitle: string;
   ledgerLoading: string;
   ledgerEmpty: string;
@@ -1207,6 +1209,19 @@ export type Copy = {
   /* — Berth's own account on X (lib/berth-x): the quiet link in the welcome footer and in Settings — */
   /** The link's label, beside X's mark. */
   xLink: string;
+  /**
+   * Sharing your own invite link on X (lib/x-intent): the button's label,
+   * and the one line X's composer opens with, before the link. Calm, no
+   * buy: nothing is ever given for a post or for the tap.
+   */
+  inviteXShare: string;
+  inviteXText: string;
+  /**
+   * Added to inviteXText while an invite campaign may be live (or Berth
+   * cannot yet tell): the inviter could be paid for a friend who joins, so
+   * the post discloses it.
+   */
+  inviteXDisclosure: string;
 
   /* — the help page for assistants (app/assistants): public, the directories' documentation and support page — */
   /** The small link to /assistants under "Your assistant" in the account drawer. */
@@ -1309,6 +1324,40 @@ export type Copy = {
   staff: StaffCopy;
   /** Reward campaigns (lib/campaigns): the landing, the home line, the staff page. */
   campaign: CampaignCopy;
+  /** Berth's own automatic posts on X (lib/x-autopost). */
+  xAutopost: XAutopostCopy;
+};
+
+/**
+ * Berth's own automatic posts on X (lib/x-autopost, lib/server/x-autopost).
+ * Strict templates filled with facts, never free text: no advice, no
+ * prediction, no price, no performance, never "buy". A headline is quoted
+ * verbatim and attributed. Each post is a body, a call to action and one
+ * link, and must fit X's 280 (a link counts 23).
+ */
+export type XAutopostCopy = {
+  /** A whole day the market is shut: "Thursday 26 November", "Thanksgiving", the next session's day. */
+  holiday: (day: string, name: string, reopens: string) => string;
+  /** A 1pm close. */
+  halfDay: (day: string) => string;
+  /** A headline, quoted as the publisher wrote it. */
+  news: (name: string, publisher: string, headline: string) => string;
+  /** Most held's top row, as the board publishes it (lib/most-held). */
+  mostHeld: (week: string, name: string, oneIn: number) => string;
+  /** Most bought's top row, as the board publishes it (lib/social-proof). */
+  mostBought: (week: string, name: string, people: number, plus: boolean) => string;
+  /**
+   * An invite campaign: the inviter is paid, never for a buy, for up to
+   * `perInviter` friends, while places last. `places` only when known;
+   * `ends` only when set.
+   */
+  campaign: (amount: string, days: number, perInviter: number, places: number | null, ends: string | null) => string;
+  /** The default call to action, beside a link to the home page (never a listing's, which opens the buy drawer). */
+  seeIt: string;
+  /** The invite campaign as a news or calendar post's call to action. */
+  campaignCta: (amount: string, days: number, perInviter: number) => string;
+  /** The campaign post's own call to action. */
+  campaignLink: string;
 };
 
 /**
@@ -1318,18 +1367,15 @@ export type Copy = {
 export type CampaignCopy = {
   /** The /c/<code> landing, under the mark. */
   landingTitle: string;
-  landingLede: (minBuy: string, days: number, amount: string) => string;
-  /** The home line before the qualifying buy. */
-  rules: (minBuy: string, days: number, amount: string) => string;
-  /** The same, for an account with no verified email yet. */
-  rulesNeedsEmail: (minBuy: string, days: number, amount: string) => string;
-  holding: (since: string, eligible: string) => string;
-  /** The buy is in and every place is taken for now. */
-  waiting: string;
+  landingLede: (amount: string, days: number, perInviter: number) => string;
+  /** The inviter's home line while an invite campaign is live and no friend has joined yet. */
+  rules: (amount: string, days: number, perInviter: number) => string;
+  /** A friend joined through the invite and has not finished setting up. */
+  invited: (amount: string, days: number) => string;
+  /** A friend is set up and is waiting out the days. */
+  staying: (amount: string, eligible: string) => string;
   qualified: string;
   paid: (amount: string) => string;
-  /** Rejected or expired: quiet, no reason given here. */
-  closed: string;
   /** The terms link at the end of the line. */
   termsLink: string;
   staff: CampaignStaffCopy;
@@ -1402,37 +1448,32 @@ export type CampaignStaffCopy = {
   cancel: string;
   confirm: string;
   sections: Record<"qualified" | "approved" | "holding" | "paid" | "closed", string>;
-  waiting: (attributed: number, buying: number) => string;
+  waiting: (invited: number) => string;
   empty: string;
   states: Record<"attributed" | "buying" | "holding" | "qualified" | "approved" | "paid" | "rejected" | "expired", string>;
   labels: {
     account: string;
+    inviter: string;
     signup: string;
-    order: string;
-    holding: string;
-    holdCheck: string;
+    setUp: string;
+    lastSeen: string;
     wallets: string;
+    inviterWallets: string;
     signals: string;
     payTo: string;
     paid: string;
     reason: string;
   };
-  holdSeen: (lowest: string, needed: string, outflows: number) => string;
-  terms: (amount: string, minBuy: string, days: number) => string;
+  terms: (amount: string, days: number, perInviter: number) => string;
+  /** A campaign made under the first rules, which rewarded a buy: shown read only. */
+  retired: string;
   span: (from: string, to: string) => string;
-  signupLine: (signup: string, arrived: string) => string;
-  buyLine: (usd: string, listing: string, quantity: string, filled: string) => string;
-  paidFrom: string;
-  deliveredTo: string;
+  signupLine: (signup: string, counted: string) => string;
+  setUpLine: (setUp: string, judged: string) => string;
   unlinked: string;
-  unread: string;
   noSignals: string;
   noDeviceSignals: string;
-  signals: Record<
-    "same_payer" | "email_alias" | "close_signup" | "referred_by_claimant" | "same_delivery" | "shared_wallet" | "same_payout" | "hold_unreadable",
-    string
-  >;
-  unreadableSince: (when: string) => string;
+  signals: Record<"email_alias" | "close_signup" | "same_inviter_close" | "inviter_invited" | "shared_wallet" | "same_payout", string>;
   payTo: (amount: string, chain: string) => string;
   approve: string;
   reject: string;
@@ -1440,9 +1481,10 @@ export type CampaignStaffCopy = {
   /** Show one masked field in full; the reveal is audited. */
   reveal: string;
   revealWallets: string;
-  rejectReasons: Record<"not_held" | "one_per_person" | "wallet_used" | "abuse" | "other", string>;
+  rejectReasons: Record<"not_active" | "self_invite" | "one_per_person" | "abuse" | "other", string>;
   expireReasons: Record<"ended" | "full", string>;
-  systemReasons: Record<"existing_customer" | "staff_ineligible" | "order_missing" | "hold_unreadable", string>;
+  /** Why the rules closed a claim, the retired buy rules' reasons included for old rows. */
+  systemReasons: Record<string, string>;
   rejectNote: string;
   /** Approved claims whose account staff marked not eligible since: said before anyone pays by hand. */
   ineligibleApproved: (count: number) => string;
@@ -1461,12 +1503,19 @@ export type CampaignStaffCopy = {
     amount: string;
     budget: string;
     maxClaims: string;
-    minBuy: string;
-    holdDays: string;
+    stayDays: string;
+    perInviter: string;
     starts: string;
     ends: string;
     submit: string;
     note: string;
+    /** One plain line under each field: what it means and what it does. */
+    hints: Record<"code" | "title" | "amount" | "budget" | "maxClaims" | "stayDays" | "perInviter" | "starts" | "ends", string>;
+    /** The campaign's link, as the code makes it, under the code field. */
+    link: (url: string) => string;
+    /** Places times the amount, against the budget, as the fields stand. */
+    fits: (total: string, places: number) => string;
+    overBudget: (total: string) => string;
   };
 };
 
@@ -1546,6 +1595,11 @@ export type FirstPathCopy = {
   setUpLineSome: string;
   setUpSkipped: string;
   setUpClose: string;
+  /**
+   * The quiet link to Berth's own account on X under "You're set up"
+   * (lib/berth-x). Not a step: it earns nothing and counts toward nothing.
+   */
+  followOnX: string;
   /** An established account's one quiet drawer row (lib/first-path establishedPrompt). */
   quietAvatar: string;
   /** `amount` is the first username's XP (lib/xp username_set). */
@@ -1886,6 +1940,7 @@ export const STAFF_COPY = {
     health: "Health",
     budgets: "Budgets",
     campaigns: "Campaigns",
+    posts: "Posts",
     audit: "Audit",
   },
   signOut: "Leave staff area",
@@ -2003,7 +2058,7 @@ export const STAFF_COPY = {
     referred: "Arrived with an invite",
     hidden: "Profile hidden",
     ineligible: "Not eligible for campaigns",
-    campaignAttributed: "Arrived through a campaign",
+    campaignAttributed: "Invited inside a campaign",
     apply: "Apply",
     clear: "Clear",
     empty: "No accounts match.",
@@ -2258,6 +2313,33 @@ export const STAFF_COPY = {
     staffPlaceholder: "Account id",
     targetPlaceholder: "user:<account id>",
     page: (page: number, pages: number) => `Page ${page} of ${Math.max(pages, 1)}`,
+  },
+  posts: {
+    title: "Posts on X",
+    note: "Every automatic post Berth tried on X, newest first, and how it ended. Read only: nothing here posts.",
+    on: "Automatic posting is on.",
+    off: "Automatic posting is off. It runs only in production with X_AUTOPOST_ENABLED set to 1.",
+    tokenNone: "No token stored yet. The first run seeds it from the environment.",
+    tokenDead: "X refused the stored token. Authorise the account again and set OAUTH_REFRESH_TOKEN to the new refresh token.",
+    tokenUnreadable:
+      "The stored token can no longer be read: its key changed (X_TOKEN_KEY, or X_CLIENT_SECRET when X_TOKEN_KEY is unset). Authorise the account again and set OAUTH_REFRESH_TOKEN to the new refresh token.",
+    tokenRefreshed: (when: string) => `Token last refreshed ${when}.`,
+    tokenError: (error: string) => `Last token problem: ${error}`,
+    at: "When",
+    source: "Source",
+    status: "Result",
+    text: "Post",
+    link: "On X",
+    open: "Open",
+    empty: "Nothing tried yet.",
+    sources: { campaign: "Campaign", calendar: "Calendar", news: "News", milestone: "Milestone" } as Record<string, string>,
+    statuses: {
+      sending: "Sending",
+      posted: "Posted",
+      unknown: "Unknown, may be live",
+      failed: "Failed",
+      skipped: "Skipped",
+    } as Record<string, string>,
   },
 };
 
@@ -2580,6 +2662,7 @@ export const COPY: Copy = {
     setUpLineSome: "Your account is ready.",
     setUpSkipped: "You set these aside. Each is here if you want it now.",
     setUpClose: "Done",
+    followOnX: "Follow Berth on X",
     quietAvatar: "A face beside your name and rank",
     quietUsername: (amount) => `So friends can find you · +${amount} XP`,
   },
@@ -3146,39 +3229,39 @@ export const COPY: Copy = {
     `Reach level ${level} and you can invite friends too.`,
   friendInvitedYou: "A friend invited you",
   inviteFirstTradePaid: (amount) =>
-    `Your first trade paid you both +${amount} XP.`,
+    `Your first trade paid you +${amount} XP.`,
   inviteFirstTradePending: (amount) =>
-    `Make your first trade and +${amount} XP lands for you both.`,
+    `Make your first trade and +${amount} XP lands for you.`,
   inviterLevel: (level) => `Level ${level}`,
   invitedFriendsWith: (name) =>
     name ? `You and ${name} are now friends.` : "You are now friends.",
   claimAskTitle: "Arrived on a friend's invite?",
-  claimAskSub: "Enter their code and your first trade pays you both.",
+  claimAskSub: "Enter their code so the invite counts.",
   claimInputLabel: "Your friend's invite code",
   claimPlaceholder: "eight letters",
   claimCta: "Claim",
   claimMissed:
     "That code did not take. Check it with your friend; codes never use the letters i, l, o or the digits 0 and 1.",
   claimSuccessTitle: "Invite claimed",
-  claimSuccessSub: "Your first trade pays you both.",
+  claimSuccessSub: "You arrived on your friend's invite.",
   inviteRowTitle: "Invite a friend",
   inviteRowCopied: "Link copied",
   inviteRowSub: (amount) =>
-    `+${amount} XP for you both when a friend makes their first trade.`,
+    `+${amount} XP when a friend you invite sets up their account and still uses Berth a week later.`,
   inviteTaps: (taps) =>
     taps === 1
       ? "Your link has been opened once."
       : `Your link has been opened ${taps} times.`,
   friendsTitle: "Friends",
-  friendsTally: (joined, traded, taps) =>
-    `${joined} joined · ${traded} traded${taps > 0 ? ` · ${taps} link opens` : ""}`,
+  friendsTally: (joined, stayed, taps) =>
+    `${joined} joined · ${stayed} stayed${taps > 0 ? ` · ${taps} link opens` : ""}`,
   xpBankedWord: "earned",
   xpPendingWord: "pending",
   copyNudge: "Copy a message to send",
   nudgeCopiedTitle: "Message copied",
   nudgeCopiedSub: "Send it however you like.",
-  nudgeMessage: (amount, link) =>
-    `I have a place for you at Berth. Buy US stocks with the crypto you hold, held in an account your wallet controls. Your first trade earns us both ${amount} XP: ${link}`,
+  nudgeMessage: (link) =>
+    `I have a place for you at Berth. US stocks by name, held in an account your wallet controls: ${link}`,
   ledgerTitle: "Activity",
   ledgerLoading: "Loading…",
   ledgerEmpty: "Nothing yet. Your first trade will show here.",
@@ -3551,7 +3634,7 @@ export const COPY: Copy = {
     campaignPaid: {
       subject: (amount) => `${amount} in USDC was added to your Berth account`,
       heading: "Your offer was paid",
-      body: (amount, chain) => `${amount} in USDC was sent to your Berth account on ${chain}, for keeping your first buy through the offer.`,
+      body: (amount, chain) => `${amount} in USDC was sent to your Berth account on ${chain}, for a friend you invited who joined Berth and stayed.`,
       after: "It is yours to keep, spend or take out, like any other money in your wallet.",
     },
     weeklySummary: {
@@ -3659,7 +3742,7 @@ export const COPY: Copy = {
           "Recurring buys you set before Berth retired them on 4 October 2026. For each plan: the listing, the dollar amount, weekly or monthly and on which day, your browser's time zone, and, if you chose it, how far under the price to wait. For each time a plan came due: when it was due, whether you opened it, signed it or let it pass, the order that answered it, and whether its reminder went out. Berth no longer reads or adds to this record.",
           "Your daily value. Once a day, after the New York close, we read your balances from the blockchain and keep that day's holdings and value, so your history can be drawn.",
           "Invite links. When someone opens an invite link, we count the visit against the invite code. We do not record who opened it.",
-          "Campaigns. If you open your account through a campaign link: which campaign, each step of its rules your account met and when, the order that qualified, the public record of that token at your account from the buy to the end of the holding period, the wallets checked against the one per wallet rule, and the transaction that paid you. To prevent abuse we also compare your claim with the other claims in the same campaign: whether an email address is a variant of another claimant's, whether you signed up within minutes of another claimant or were invited by one, and whether a wallet or a payout address is shared with another claim. A reviewer at Berth sees your claim with your email address and wallets, and records the decision and any note about it. We use all of this to pay each reward once, to the right person, and to refuse abuse.",
+          "Campaigns. If you invite a friend during a campaign, or a friend invites you: which campaign, who invited whom, when the invited account was opened and set up (a verified email, a username and a wallet), whether it was opened signed in on the days the rules look at, and the transaction that paid the inviter. To prevent abuse we compare each invited account with its inviter and with the other claims in the same campaign: whether a wallet or an email address, or a variant of one, is shared, whether accounts signed up within minutes of each other, and whether a payout address is shared. A reviewer at Berth sees the claim with the email addresses and wallets of the inviter and the invited friend, and records the decision and any note about it. We use all of this to pay each reward once, to the right person, and to refuse abuse.",
           "Your AI. If you connect Claude, ChatGPT, Grok or another AI, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what your AI asked or what Berth answered.",
           "Error reports. When an order fails or does not settle, the app sends a report so we can fix the cause: the step it stopped at, the networks, the token and amount, the transaction hashes, a shortened form of your address, the error text, recent app logs, the page address, your screen size and your browser's user agent. Keys and tokens are removed first, and it never includes your email address.",
           "Usage statistics, only if you allow it. We count page views with Vercel Web Analytics, which uses no cookies, and send it each page's address without anything in it that could name you, under the same Help improve Berth choice as product analytics.",
@@ -3863,7 +3946,7 @@ export const COPY: Copy = {
         body: [
           "A few named people who run Berth can open a staff view of the service. Each is on a list we keep by name, and they use it only to give you support, to stop abuse, and to check and pay campaign rewards. Some of them can only look; only those we name as admins can change anything.",
           "It shows, as Berth stores them: your username, avatar, rank and XP and how you earned it, when you joined and how far along your account is, your orders and limit orders, your account's daily value and holdings, how many friends and Salutes you have, who invited you and whom you invited, the AI apps you connected and when they were last used, how many messages you sent the Assistant and what they cost, the record of changes to your account such as wallets added and accounts merged, your email settings, the notices we sent you and whether your address bounced, and whether you are eligible for campaign rewards.",
-          "Your email address and wallet addresses are shown in part only: the first letter of your email, then the domain if it is a common mail provider (otherwise only its first letter and its ending), and the first four and last two characters of a wallet. An admin may reveal one in full only for one of the reasons above, after entering a new email code, with the reason written down, and at most twenty an hour. Staff can also find an account by typing an email address or a wallet address in full; each such search is recorded with the account it found. Reviewing a campaign claim is the one place a reviewer sees a claimant's email address and wallets in full, as the Campaigns section says.",
+          "Your email address and wallet addresses are shown in part only: the first letter of your email, then the domain if it is a common mail provider (otherwise only its first letter and its ending), and the first four and last two characters of a wallet. An admin may reveal one in full only for one of the reasons above, after entering a new email code, with the reason written down, and at most twenty an hour. Staff can also find an account by typing an email address or a wallet address in full; each such search is recorded with the account it found. Reviewing a campaign claim is the one place a reviewer sees the email addresses and wallets of an inviter and the friend they invited in full, as the Campaigns section says.",
           "An admin can make these changes, each with a written reason: stop or restart email to your address (never lifting a block from a bounce or a spam report), hide your profile or show again a profile staff hid (never one you hid yourself), disconnect an AI app, send a stuck notice again, and mark you as not eligible for campaign rewards.",
           "Every view of an account, every search by email or wallet, every reveal and every change made there, and every campaign review, is logged with who did it and why, in one log kept for 24 months. No one at Berth can sign in as you, sign for you or move your money, and no one changes your balance or XP by hand.",
         ],
@@ -3920,6 +4003,9 @@ export const COPY: Copy = {
   },
   termsLink: "Terms",
   xLink: "Berth on X",
+  inviteXShare: "Share on X",
+  inviteXText: "I kept a place for you on Berth. US stocks by name, held in an account your own wallet controls.",
+  inviteXDisclosure: "Berth may pay me a small reward if you join.",
   termsOfUse: {
     title: "Terms of use",
     status: `Effective ${LEGAL_EFFECTIVE_DATE}.`,
@@ -4051,19 +4137,19 @@ export const COPY: Copy = {
         id: "campaigns",
         heading: "Campaigns",
         body: [
-          "From time to time we may run a campaign: a link that offers a stated amount in USDC to a new account that buys at least a stated amount of a stock or fund through it and keeps it for a stated number of days. Each campaign's rules are shown with its link and in the app. These rules apply to every campaign:",
+          "From time to time we may run a campaign that rewards an invite: a stated amount in USDC to you when a friend you invited, who is new to Berth, opens an account, sets it up and still uses Berth a stated number of days later. No campaign asks you or your friend to buy, hold or trade anything. Each campaign's rules are shown with its link and in the app. These rules apply to every campaign:",
         ],
         list: [
-          "Only someone new to Berth can take part: a new account that opens through the campaign's link and has a verified email. An account that existed before, or one merged with it, cannot.",
-          "One reward per person, per account and per wallet. Accounts that are merged count as one person.",
-          "The buy must be a market buy of a stock or fund, not cash, of at least the stated amount, made with your own wallet into your own Berth account after you joined, and kept, without selling or moving it below that amount, for the whole stated number of days.",
-          "The buy must arrive in your Berth account itself, which lives at an EVM address. An account signed in only with a Solana or Bitcoin wallet, with no email and no EVM wallet of its own, cannot take part.",
-          "Each campaign has a budget and a number of places. Once they are taken, or the campaign ends, it is closed.",
-          "We review every reward before it is paid. We send it by hand, usually within a few days, in USDC on Base to your Berth account's own address.",
+          "Your friend must be new to Berth: a new account, opened inside the campaign's dates with your invite link or your invite code. An account that existed before, or one merged with an older account, does not count.",
+          "Set up means your friend's account has a verified email, a username and a wallet. Still uses Berth means your friend opened Berth signed in at least once in the last 7 days of the stated number of days, on a later day than the one they set up on.",
+          "One reward per invited person. Accounts that are merged count as one person, and a wallet or an email address that already counted for another invite does not count again.",
+          "Inviting yourself does not count: a friend who shares a wallet or an email address with you is not a new person.",
+          "Each campaign states how many friends one person can be rewarded for, a budget and a number of places. Once they are taken, or the campaign ends, it is closed.",
+          "We review every reward before it is paid. We send it by hand, usually within a few days, in USDC on Base to your Berth account's own address. An account with no EVM address of its own cannot be paid.",
           "We may refuse a reward where we see abuse, such as several accounts for one person. You can ask a person at Berth to look again at a refusal.",
           "We may end or change a campaign at any time for new claims. A reward we have approved will be paid.",
           "Campaigns are not available where Berth is not available.",
-          "A reward is not investment advice, and not a reason to buy any particular stock or fund. You are responsible for any tax on it.",
+          "A reward is not investment advice, and not a reason to buy, hold or sell anything. You are responsible for any tax on it.",
         ],
       },
       {
@@ -4452,7 +4538,7 @@ export const COPY: Copy = {
     invite: {
       eyebrow: "A friend invited you",
       title: "A seat has been kept for you.",
-      line: "Your first trade earns you both XP.",
+      line: "Sign in and it is yours.",
       alt: "Berth. A seat has been kept for you. A row of harbour creatures with one empty place in the middle.",
     },
     inviteFrom: {
@@ -4500,18 +4586,38 @@ export const COPY: Copy = {
     },
   },
   staff: STAFF_COPY,
+  xAutopost: {
+    holiday: (day, name, reopens) => `US stock markets are closed on ${day} for ${name}. Trading resumes on ${reopens}.`,
+    halfDay: (day) => `US stock markets close early on ${day}, at 1pm New York time.`,
+    news: (name, publisher, headline) => `${name} in the news. ${publisher} reports: \u201c${headline}\u201d`,
+    mostHeld: (week, name, oneIn) =>
+      `Most held on Berth, the week of ${week}: ${name}, held by 1 in ${oneIn} people who own a stock or fund on Berth.`,
+    mostBought: (week, name, people, plus) =>
+      `Most bought on Berth, the week of ${week}: ${name}, bought by ${people}${plus ? "+" : ""} ${people === 1 && !plus ? "person" : "people"}.`,
+    campaign: (amount, days, perInviter, places, ends) =>
+      `Invite a friend who is new to Berth. If they set up their account and still use Berth ${dayCount(days)} later, ${amount} in USDC is added to your account, for up to ${xFriendCount(perInviter)}, while places last.` +
+      (places !== null || ends !== null
+        ? ` ${[places !== null ? `${places} ${places === 1 ? "place" : "places"} left` : null, ends !== null ? `until ${ends}` : null]
+            .filter(Boolean)
+            .join(", ")
+            .replace(/^./, (first) => first.toUpperCase())}.`
+        : ""),
+    seeIt: "See it on Berth.",
+    campaignCta: (amount, days, perInviter) =>
+      `Invite a friend: ${amount} in USDC for you if they set up and still use Berth ${dayCount(days)} later, up to ${xFriendCount(perInviter)}, while places last.`,
+    campaignLink: "How it works:",
+  },
   campaign: {
-    landingTitle: "You arrived through a Berth offer",
-    landingLede: (minBuy, days, amount) =>
-      `Open an account, buy at least ${minBuy} of any stock or fund and keep it ${dayCount(days)}, and ${amount} in USDC is added to your account, while places last.`,
-    rules: (minBuy, days, amount) => `Buy at least ${minBuy} and keep it ${dayCount(days)}, and ${amount} in USDC is added, while places last.`,
-    rulesNeedsEmail: (minBuy, days, amount) =>
-      `Add an email, then buy at least ${minBuy} and keep it ${dayCount(days)}, and ${amount} in USDC is added, while places last.`,
-    holding: (since, eligible) => `Holding since ${since}. Eligible on ${eligible}.`,
-    waiting: "Your buy is in, and every place is taken for now. If one opens before the offer closes, it is yours.",
-    qualified: "Qualified. Usually paid within a few days.",
+    landingTitle: "A Berth invite offer",
+    landingLede: (amount, days, perInviter) =>
+      `Invite a friend who is new to Berth. If they open an account, set it up and still use Berth ${dayCount(days)} later, ${amount} in USDC is added to your account, for up to ${friendCount(perInviter)}, while places last.`,
+    rules: (amount, days, perInviter) =>
+      `Invite a friend who is new to Berth. If they set up their account and still use Berth ${dayCount(days)} later, ${amount} in USDC is added to your account, for up to ${friendCount(perInviter)}, while places last.`,
+    invited: (amount, days) =>
+      `A friend you invited has joined. Once they finish setting up and still use Berth ${dayCount(days)} later, ${amount} in USDC is added to your account.`,
+    staying: (amount, eligible) => `A friend you invited is set up. If they still use Berth on ${eligible}, ${amount} in USDC is added to your account.`,
+    qualified: "A friend you invited stayed. Usually paid within a few days.",
     paid: (amount) => `Paid. ${amount} in USDC was added to your account.`,
-    closed: "This offer has closed for your account.",
     termsLink: "Rules",
     staff: {
       title: "Campaigns",
@@ -4526,7 +4632,7 @@ export const COPY: Copy = {
       activate: "Activate",
       deactivate: "Pause",
       activateConfirm: (title) =>
-        `Activate ${title}? New accounts arriving through its link will be attributed from now on. Activate only after counsel has reviewed this campaign, its rules and the terms.`,
+        `Activate ${title}? From now on, a friend who opens a new account with someone's invite inside its dates counts for the one who invited them. Activate only after counsel has reviewed this campaign, its rules and the terms.`,
       activateCheck: "Counsel has reviewed this campaign, its rules and the terms.",
       funding: {
         heading: "Funding",
@@ -4591,16 +4697,16 @@ export const COPY: Copy = {
       sections: {
         qualified: "Qualified, to review",
         approved: "Approved, to pay",
-        holding: "Holding",
+        holding: "Set up, waiting out the days",
         paid: "Paid",
         closed: "Rejected and expired",
       },
-      waiting: (attributed, buying) => `${attributed} arrived without an email yet, ${buying} waiting for a first buy.`,
+      waiting: (invited) => (invited === 1 ? "1 friend invited, not set up yet." : `${invited} friends invited, not set up yet.`),
       empty: "None.",
       states: {
-        attributed: "Arrived",
-        buying: "Waiting for a buy",
-        holding: "Holding",
+        attributed: "Invited",
+        buying: "Waiting for a buy, retired",
+        holding: "Set up, waiting out the days",
         qualified: "Qualified",
         approved: "Approved",
         paid: "Paid",
@@ -4608,40 +4714,35 @@ export const COPY: Copy = {
         expired: "Expired",
       },
       labels: {
-        account: "Account",
+        account: "Invited friend",
+        inviter: "Inviter, paid",
         signup: "Signed up",
-        order: "Qualifying buy",
-        holding: "Held",
-        holdCheck: "Hold check",
-        wallets: "Wallets",
+        setUp: "Set up",
+        lastSeen: "Last opened Berth",
+        wallets: "Friend's wallets",
+        inviterWallets: "Inviter's wallets",
         signals: "Signals",
         payTo: "Pay to",
         paid: "Payment",
         reason: "Reason",
       },
-      holdSeen: (lowest, needed, outflows) =>
-        `Lowest balance through the hold ${lowest} raw units, needed ${needed}. ${outflows === 1 ? "1 transfer out" : `${outflows} transfers out`} in that time.`,
-      terms: (amount, minBuy, days) => `${amount} each, for a buy of ${minBuy} or more held ${dayCount(days)}.`,
+      terms: (amount, days, perInviter) =>
+        `${amount} to the inviter for each new friend who sets up and still uses Berth ${dayCount(days)} later, up to ${friendCount(perInviter)} per inviter.`,
+      retired: "Made under the first rules, which rewarded a buy. Retired: it cannot be activated again, and its claims are kept read only.",
       span: (from, to) => `${from} to ${to}`,
-      signupLine: (signup, arrived) => `${signup}. Arrived through the link ${arrived}.`,
-      buyLine: (usd, listing, quantity, filled) => `${usd} of ${listing}, ${quantity} units, filled ${filled}.`,
-      paidFrom: "Paid from",
-      deliveredTo: "delivered to",
+      signupLine: (signup, counted) => `${signup}. Counted for the invite ${counted}.`,
+      setUpLine: (setUp, judged) => `${setUp}. Judged on ${judged}.`,
       unlinked: "unlinked",
-      unread: "unread",
       noSignals: "None found.",
       noDeviceSignals: "Berth keeps no device data, so no device signal is shown.",
       signals: {
-        same_payer: "Paid from the same wallet as another claim",
-        email_alias: "Email is an alias of another claimant's",
-        close_signup: "Signed up within ten minutes of another claimant",
-        referred_by_claimant: "Invited by another claimant",
-        same_delivery: "Delivered to the same wallet as another claim",
-        shared_wallet: "Shares a wallet with another claimant",
-        same_payout: "Would be paid to the same address as another claim",
-        hold_unreadable: "The hold could not be read for three days or more. Look at it; after seven it is rejected and its place freed.",
+        email_alias: "Email is an alias of another invited friend's",
+        close_signup: "Signed up within ten minutes of another invited friend",
+        same_inviter_close: "The same inviter brought another friend within ten minutes",
+        inviter_invited: "The inviter was invited in this campaign too",
+        shared_wallet: "Shares a wallet with another invited friend",
+        same_payout: "Another inviter would be paid to the same address",
       },
-      unreadableSince: (when) => `Could not be read on Sonic since ${when}.`,
       payTo: (amount, chain) => `${amount} USDC on ${chain}`,
       approve: "Approve",
       reject: "Reject",
@@ -4649,14 +4750,27 @@ export const COPY: Copy = {
       reveal: "Show",
       revealWallets: "Show wallets and where to pay",
       rejectReasons: {
-        not_held: "Not held",
+        not_active: "Did not use Berth again",
+        self_invite: "Invited themselves",
         one_per_person: "One per person",
-        wallet_used: "Wallet already used",
         abuse: "Abuse",
         other: "Other",
       },
       expireReasons: { ended: "The campaign ended first", full: "The campaign was full" },
-      systemReasons: { existing_customer: "Was a customer before", staff_ineligible: "Marked not eligible by staff", order_missing: "The order is gone", hold_unreadable: "The hold could not be read for a week" },
+      systemReasons: {
+        existing_customer: "Was on Berth before",
+        staff_ineligible: "Marked not eligible by staff",
+        wallet_used: "A wallet already counted for another invite",
+        email_used: "The email already counted for another invite",
+        inviter_cap: "The inviter already has the most friends this campaign pays for",
+        self_invite: "Shares a wallet or an email with the inviter",
+        not_active: "Did not open Berth in the last days before the check",
+        inviter_gone: "The inviter's account is gone",
+        retired: "The campaign was retired",
+        not_held: "Not held, under the retired rules",
+        order_missing: "The order is gone, under the retired rules",
+        hold_unreadable: "The hold could not be read, under the retired rules",
+      },
       rejectNote: "Note, kept in the audit log",
       ineligibleApproved: (count) =>
         `Do not pay ${count === 1 ? "1 approved claim" : `${count} approved claims`}: the account was marked not eligible after approval. Mark paid will refuse it. Reject it instead.`,
@@ -4670,18 +4784,21 @@ export const COPY: Copy = {
       refusals: {
         not_found: "No such claim.",
         wrong_state: "This claim has moved on. The queue is refreshed.",
-        no_payout_address: "This account has no home address on Base to pay.",
+        no_payout_address: "The inviter has no home address on Base to pay.",
         bad_hash: "That is not a transaction hash.",
         tx_failed: "That transaction failed on Base.",
         mismatch: "That transaction does not pay this address enough USDC on Base from a house payout wallet.",
         no_payout_senders: "This campaign has no payout wallet. Add one on its card first.",
         bad_address: "That is not a wallet address, or its mixed case does not match its checksum. Copy it again from the wallet.",
         source_exists: "That wallet is already a payout wallet of this campaign.",
-        not_held: "The hold no longer reads as kept. Look again before approving.",
-        hold_unknown: "The hold could not be read on Sonic just now. Try again in a while.",
         one_per_person: "This person already holds another claim.",
-        wallet_used: "A wallet of this person already stood on another claim.",
-        existing_customer: "This person was a customer before the claim.",
+        wallet_used: "A wallet of the invited friend already counted for another invite.",
+        email_used: "The invited friend's email already counted for another invite.",
+        self_invite: "The invited friend shares a wallet or an email with the inviter.",
+        inviter_cap: "The inviter already has the most friends this campaign pays for.",
+        inviter_gone: "The inviter's account is gone.",
+        retired: "This campaign was made under the first rules, which rewarded a buy. It cannot be activated or approved.",
+        existing_customer: "The invited friend was on Berth before the invite.",
         staff_ineligible: "This account is marked not eligible for campaigns. See its page under Users.",
         no_person: "This account is no longer there.",
         fresh_session: "Sign in again to do this. Staff actions need a sign in from the last fifteen minutes, by email.",
@@ -4689,7 +4806,8 @@ export const COPY: Copy = {
         bad_reason: "Choose a reason.",
         bad_input: "Check the fields.",
         code_taken: "That code is taken.",
-        hold_too_long: "A hold can be 30 days at most. Its window is read every morning, and a longer one does not fit.",
+        stay_out_of_range: "The days a friend must still use Berth are 7 at least and 60 at most.",
+        places_over_budget: "Places times the amount is more than the budget. Lower the places or raise the budget.",
         counsel_required: "Confirm counsel review first.",
         zero_address: "That is the zero address. Nothing sent there can ever be spent.",
         funding_check_required: "Confirm the address and the network first.",
@@ -4697,23 +4815,51 @@ export const COPY: Copy = {
       },
       create: {
         heading: "New campaign",
-        code: "Code, as in /c/code",
+        code: "Code",
         title: "Title",
-        amount: "Amount per person, USD",
+        amount: "Amount per friend who stays, USD, paid to the inviter",
         budget: "Budget, USD",
         maxClaims: "Places",
-        minBuy: "Minimum buy, USD",
-        holdDays: "Days to hold, 30 at most",
+        stayDays: "Days the friend must still use Berth, 7 to 60",
+        perInviter: "Friends one inviter can be paid for",
         starts: "Starts",
         ends: "Ends",
         submit: "Create, inactive",
-        note: "A new campaign is created inactive. It attributes nobody until it is activated.",
+        hints: {
+          code: "The short word in the campaign's link. Lowercase letters, numbers and hyphens, 3 to 32 of them.",
+          title: "The campaign's name on this page. Only staff see it.",
+          amount:
+            "What the inviter gets, in USDC on Base, for each friend who joins, sets up and still uses Berth after the days below. The friend gets nothing from the campaign.",
+          budget: "The most this campaign pays in total. Places times the amount must fit in it.",
+          maxClaims:
+            "The most friends this campaign pays for, across every inviter. When all are taken, new friends wait in line in case one frees up before the campaign closes.",
+          stayDays:
+            "How long after setting up the friend must still be using Berth. They must open it signed in at least once in the last 7 of these days. 7 to 60.",
+          perInviter: "The most friends one inviter can be paid for in this campaign. Friends beyond that count for nothing.",
+          starts: "Only friends who open their account from this moment count. Accounts opened before it are ignored.",
+          ends:
+            "Accounts opened after this moment do not count. Friends who joined in time can still finish setting up until the end plus the days above.",
+        },
+        link: (url) => `The link: ${url}`,
+        fits: (total, places) => `${places === 1 ? "1 place" : `${places} places`} at this amount come to ${total}, within the budget.`,
+        overBudget: (total) => `Places times the amount come to ${total}, more than the budget. Lower the places or raise the budget.`,
+        note: "A new campaign rewards an invite that sticks, never a buy. It is created inactive, and counts nobody until it is activated.",
       },
     },
   },
 };
 
+/** "3 friends", "1 friend". */
+function xFriendCount(count: number): string {
+  return `${count} ${count === 1 ? "friend" : "friends"}`;
+}
+
 /** "7 days", "1 day". */
 function dayCount(days: number): string {
   return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** "3 friends", "1 friend". */
+function friendCount(friends: number): string {
+  return `${friends} ${friends === 1 ? "friend" : "friends"}`;
 }

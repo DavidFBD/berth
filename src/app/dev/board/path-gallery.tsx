@@ -52,7 +52,7 @@ export type PathGalleryProps = {
   skipped: string | null;
   drawer: boolean;
   done: string | null;
-  /** `&campaign=rules` (or holding, qualified, paid): the campaign line under the path's card, from /dev/campaigns' fixtures. */
+  /** `&campaign=rules` (or invited, staying, qualified, paid): the campaign line under the path's card, from /dev/campaigns' fixtures. */
   campaign?: CampaignProgress;
 };
 

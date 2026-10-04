@@ -5,10 +5,9 @@ import { setSqlClient, type SqlClient } from "../db";
 import { makeTestDb } from "../pglite-test-db";
 import { addPayoutSource, approveClaim, checksummedAddress, markClaimPaid, removePayoutSource } from "./actions";
 import { claimById } from "./store";
-import { runCampaignStep } from "./eligibility";
 import { staffQueue } from "./queue";
 import { TRANSFER_TOPIC, USDC_BASE, type Receipt } from "./usdc";
-import { advance, arrival, buy, campaign, DAY, DEPS, hex, verifier } from "./test-kit";
+import { campaign, hex, person, qualifiedClaim } from "./test-kit";
 
 /**
  * Per campaign payout sources (campaign_payout_sources): added and removed
@@ -53,18 +52,15 @@ const usdc = (to: string, raw: bigint, from: string): Receipt => ({
 });
 
 async function staff() {
-  return (await arrival("staff-home", { email: true })).user;
+  return person();
 }
 
 async function approvedClaim(code: string) {
   const existing = (await sql.query(`select id from campaigns where code = $1`, [code])) as { id: string }[];
   const id = existing[0]?.id ?? (await campaign(code));
-  const arrived = await arrival(code);
-  await buy(arrived.user);
-  expect(await advance(arrived.claimId)).toBe("holding");
-  await runCampaignStep({ now: new Date(Date.now() + 8 * DAY), verifyHold: verifier(() => "held"), deps: DEPS });
+  const arrived = await qualifiedClaim(code);
   const admin = (await sql.query(`select id from users order by created_at limit 1`)) as { id: string }[];
-  expect((await approveClaim(admin[0].id, arrived.claimId, { verifyHold: verifier(() => "held") })).ok).toBe(true);
+  expect((await approveClaim(admin[0].id, arrived.claimId)).ok).toBe(true);
   return { campaignId: id, claimId: arrived.claimId, to: (await claimById(arrived.claimId))!.payout_address! };
 }
 

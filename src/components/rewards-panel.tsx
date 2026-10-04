@@ -20,6 +20,7 @@ import { HOME_CHAIN } from "@/lib/account";
 import { useAccount } from "@/hooks/use-account";
 import { useLinkEmail } from "@/hooks/use-link-email";
 import { MergeCardView } from "@/components/account-merge";
+import { ShareInviteOnX } from "@/components/share-on-x";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -600,8 +601,9 @@ export function InviteCorner({ xp, code }: { xp: number; code: string | null }) 
 
 /**
  * The referred side's welcome: who invited you (avatar and rank only, no
- * names) and, crucially, when the shared reward actually lands, so a fresh
- * account knows its +250 is pending, not missing.
+ * names) and, crucially, when their own first trade XP (invite_accepted)
+ * lands, so a fresh account knows its +250 is pending, not missing. The
+ * inviter's XP is theirs, for a stay, and is not promised here.
  */
 function ThankYouRow({
   invitedBy,
@@ -728,46 +730,51 @@ function ClaimRow() {
 
 /**
  * The full-size invite row, shown until the first friend joins. The reward
- * fires when the invited friend makes a first verified trade, not at
- * signup, so the promise line names the trade, and the payout arrives on a
- * later sync. Taps count quietly once the link starts traveling.
+ * fires when the invited friend has set up and still uses Berth a week
+ * later (lib/server/invite-xp), never for a buy, so the promise line names
+ * the stay, and the payout arrives on a later sync. Taps count quietly once
+ * the link starts traveling. Share on X beneath it earns nothing.
  */
 function InviteRow({ code, taps }: { code: string; taps: number }) {
   const { copied, copyText } = useCopiedFlag();
   const copy = useCopy();
 
   return (
-    <button
-      type="button"
-      data-ph-mask
-      onClick={() => {
-        copyText(inviteLink(code));
-        track("invite_link_copied", { surface: "invite_row" });
-      }}
-      className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
-    >
-      {copied ? (
-        <Check className="size-5 shrink-0 text-primary" />
-      ) : (
-        <UserPlus className="size-5 shrink-0 text-primary" />
-      )}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium text-foreground">
-          {copied ? copy.inviteRowCopied : copy.inviteRowTitle}
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        data-ph-mask
+        onClick={() => {
+          copyText(inviteLink(code));
+          track("invite_link_copied", { surface: "invite_row" });
+        }}
+        className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
+      >
+        {copied ? (
+          <Check className="size-5 shrink-0 text-primary" />
+        ) : (
+          <UserPlus className="size-5 shrink-0 text-primary" />
+        )}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground">
+            {copied ? copy.inviteRowCopied : copy.inviteRowTitle}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {copy.inviteRowSub(XP_ACTIONS.friend_stayed.amount)}
+            {taps > 0 && ` ${copy.inviteTaps(taps)}`}
+          </span>
         </span>
-        <span className="text-xs text-muted-foreground">
-          {copy.inviteRowSub(XP_ACTIONS.friend_poured.amount)}
-          {taps > 0 && ` ${copy.inviteTaps(taps)}`}
-        </span>
-      </span>
-    </button>
+      </button>
+      <ShareInviteOnX code={code} surface="invite_row_x" className="self-end px-1" />
+    </div>
   );
 }
 
 /**
  * Once a friend has joined the big button has done its teaching job, it
  * shrinks to a corner glyph and the space shows the running numbers: joined,
- * traded, banked XP, and the XP still pending on friends yet to trade. The
+ * stayed, banked XP, and the XP still pending on friends yet to set up and
+ * stay. The
  * nudge is a clipboard line, not a message sent on the user's behalf; the
  * referrer stays the messenger.
  */
@@ -785,7 +792,7 @@ function ProgressRow({
     track("invite_link_copied", { surface: "invite_nudge" });
     void navigator.clipboard
       .writeText(
-        copy.nudgeMessage(XP_ACTIONS.friend_poured.amount, inviteLink(code)),
+        copy.nudgeMessage(inviteLink(code)),
       )
       .then(() =>
         toast.success(copy.nudgeCopiedTitle, {
@@ -803,7 +810,7 @@ function ProgressRow({
             {copy.friendsTitle}
           </span>
           <span className="text-xs text-muted-foreground">
-            {copy.friendsTally(stats.seated, stats.poured, stats.taps)}
+            {copy.friendsTally(stats.seated, stats.settled, stats.taps)}
           </span>
         </span>
         <button
@@ -818,7 +825,7 @@ function ProgressRow({
           {copied ? <Check className="size-4.5" /> : <UserPlus className="size-4.5" />}
         </button>
       </div>
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <span className="text-xs text-muted-foreground">
           <span className="money font-medium text-foreground">
             +{stats.earnedXp.toLocaleString()} XP
@@ -834,15 +841,18 @@ function ProgressRow({
             </>
           )}
         </span>
-        {stats.steepingXp > 0 && (
-          <button
-            type="button"
-            onClick={nudge}
-            className="shrink-0 text-xs font-medium text-primary underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary"
-          >
-            {copy.copyNudge}
-          </button>
-        )}
+        <span className="flex shrink-0 items-center gap-3">
+          <ShareInviteOnX code={code} surface="invite_progress_x" />
+          {stats.steepingXp > 0 && (
+            <button
+              type="button"
+              onClick={nudge}
+              className="shrink-0 text-xs font-medium text-primary underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary"
+            >
+              {copy.copyNudge}
+            </button>
+          )}
+        </span>
       </div>
     </div>
   );

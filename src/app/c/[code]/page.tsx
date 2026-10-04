@@ -14,12 +14,12 @@ export const metadata: Metadata = {
 };
 
 /**
- * A campaign link, /c/<code> (lib/campaigns, lib/server/campaigns). Only a
- * campaign that is active and inside its dates is pocketed; anything else,
+ * A campaign link, /c/<code> (lib/campaigns, lib/server/campaigns). Only an
+ * invite campaign that is active and inside its dates is pocketed; anything else,
  * and any visit from where Berth is not available, steps straight through
  * to the front door with nothing pocketed, so no promise is made that the
- * server would not keep. The code is bound later, on the new account's
- * first sync, exactly as an invite code is.
+ * server would not keep. The pocketed code only chooses which live invite
+ * campaign an invited new account counts in, on its first sync.
  */
 type Params = { params: Promise<{ code: string }> };
 
@@ -32,9 +32,9 @@ export default async function CampaignPage({ params }: Params) {
   return (
     <CampaignLanding
       code={campaign.code}
-      minBuy={campaignUsd(campaign.minBuyUsd)}
-      holdDays={campaign.holdDays}
       amount={campaignUsd(campaign.amountUsd)}
+      stayDays={campaign.stayDays}
+      perInviter={campaign.perInviter}
     />
   );
 }

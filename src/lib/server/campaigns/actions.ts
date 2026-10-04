@@ -4,9 +4,16 @@ import { staffAdminIds, staffAudit } from "@/lib/server/staff-auth";
 import { sendNotice } from "@/lib/server/email/send";
 import { normalizeCampaignCode, REJECT_REASONS, campaignUsd } from "@/lib/campaigns";
 import { claimById, campaignById } from "@/lib/server/campaigns/store";
-import { claimPerson, personStillEligible, recheckHold, staffIneligible } from "@/lib/server/campaigns/eligibility";
+import {
+  claimInviter,
+  claimPerson,
+  DEFAULT_PER_INVITER,
+  inviteStillEligible,
+  MAX_STAY_DAYS,
+  MIN_STAY_DAYS,
+  staffIneligible,
+} from "@/lib/server/campaigns/eligibility";
 import { personAccounts } from "@/lib/server/campaigns/store";
-import type { HoldVerifier } from "@/lib/server/campaigns/hold-window";
 import {
   fetchBaseReceipt,
   fetchUsdcTransfers,
@@ -41,13 +48,17 @@ export type ActionRefusal =
   | "bad_reason"
   | "bad_input"
   | "code_taken"
-  | "hold_too_long"
+  | "stay_out_of_range"
+  | "places_over_budget"
   | "counsel_required"
   | "no_payout_senders"
-  | "not_held"
-  | "hold_unknown"
   | "one_per_person"
   | "wallet_used"
+  | "email_used"
+  | "self_invite"
+  | "inviter_cap"
+  | "inviter_gone"
+  | "retired"
   | "existing_customer"
   | "staff_ineligible"
   | "no_person"
@@ -107,8 +118,10 @@ export type CampaignInput = {
   amountUsd: unknown;
   budgetUsd: unknown;
   maxClaims: unknown;
-  minBuyUsd: unknown;
-  holdDays: unknown;
+  /** Days after setting up that the friend must still be using Berth (campaigns.hold_days). */
+  stayDays: unknown;
+  /** Friends one inviter can be paid for (campaigns.max_per_inviter). */
+  perInviter: unknown;
   startsAt: unknown;
   endsAt: unknown;
   /** The funding wallet, optional here: when given it must be a wallet, and it becomes the campaign's first payout source. */
@@ -123,52 +136,50 @@ const whole = (value: unknown, min: number, max: number): number | null => {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 };
-/**
- * The longest hold a new campaign may ask for. A hold is read every morning
- * inside the campaign stage's few seconds, chunk by chunk from the buy to
- * now (lib/server/campaigns/hold-window), and a window much past a month
- * does not fit; it would be retried for ever. Campaigns made before the cap
- * keep their days.
- */
-export const MAX_HOLD_DAYS = 30;
-
 const date = (value: unknown): Date | null => {
   if (typeof value !== "string" || !value.trim()) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-/** A campaign, always created inactive: it attributes nobody until activated with counsel's review confirmed. */
+/**
+ * An invite campaign (the only kind made since 5 October 2026), always
+ * created inactive: it counts nobody until activated with counsel's review
+ * confirmed. Places times the amount must fit in the budget, so the places
+ * are a promise the budget can keep.
+ */
 export async function createCampaign(staffUserId: string, input: CampaignInput): Promise<ActionResult> {
   const code = normalizeCampaignCode(input.code);
   const title = typeof input.title === "string" ? input.title.trim().slice(0, 80) : "";
   const amount = money(input.amountUsd, 1_000);
   const budget = money(input.budgetUsd, 100_000);
   const maxClaims = whole(input.maxClaims, 1, 10_000);
-  const minBuy = money(input.minBuyUsd, 100_000);
-  const holdDays = whole(input.holdDays, 1, 90);
-  if (holdDays !== null && holdDays > MAX_HOLD_DAYS) {
-    return refused(staffUserId, "campaign.create", code, "hold_too_long", { code, holdDays });
-  }
+  const stayRaw = whole(input.stayDays, 1, 365);
+  const perInviter = input.perInviter === undefined || input.perInviter === "" ? DEFAULT_PER_INVITER : whole(input.perInviter, 1, 100);
   const startsAt = date(input.startsAt);
   const endsAt = date(input.endsAt);
-  const shown = { code, title, amount, budget, maxClaims, minBuy, holdDays, startsAt: startsAt?.toISOString(), endsAt: endsAt?.toISOString() };
+  const shown = { code, title, amount, budget, maxClaims, stayDays: stayRaw, perInviter, startsAt: startsAt?.toISOString(), endsAt: endsAt?.toISOString() };
+  if (stayRaw !== null && (stayRaw < MIN_STAY_DAYS || stayRaw > MAX_STAY_DAYS)) {
+    return refused(staffUserId, "campaign.create", code, "stay_out_of_range", shown);
+  }
+  const stayDays = stayRaw;
   const wantsWallet = typeof input.payoutAddress === "string" && input.payoutAddress.trim() !== "";
   const wallet = wantsWallet ? checksummedAddress(input.payoutAddress) : null;
   if (wantsWallet && !wallet) {
     return refused(staffUserId, "campaign.create", code, "bad_address", { ...shown, address: String(input.payoutAddress).slice(0, 60) });
   }
   if (wallet === ZERO_ADDRESS) return refused(staffUserId, "campaign.create", code, "zero_address", shown);
-  if (!code || !title || !amount || !budget || !maxClaims || !minBuy || !holdDays || !startsAt || !endsAt || endsAt <= startsAt || amount > budget) {
+  if (!code || !title || !amount || !budget || !maxClaims || !stayDays || !perInviter || !startsAt || !endsAt || endsAt <= startsAt || amount > budget) {
     return refused(staffUserId, "campaign.create", code, "bad_input", shown);
   }
+  if (Math.round(amount * 100) * maxClaims > Math.round(budget * 100)) return refused(staffUserId, "campaign.create", code, "places_over_budget", shown);
   try {
     const rows = await auditedWrite<{ id: string }>(
       {
-        text: `insert into campaigns (code, title, amount_usd, budget_usd, max_claims, min_buy_usd, hold_days, starts_at, ends_at, active)
-               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
+        text: `insert into campaigns (code, title, kind, amount_usd, budget_usd, max_claims, hold_days, max_per_inviter, starts_at, ends_at, active)
+               values ($1, $2, 'invite', $3, $4, $5, $6, $7, $8, $9, false)
                on conflict (code) do nothing returning id`,
-        params: [code, title, amount, budget, maxClaims, minBuy, holdDays, startsAt.toISOString(), endsAt.toISOString()],
+        params: [code, title, amount, budget, maxClaims, stayDays, perInviter, startsAt.toISOString(), endsAt.toISOString()],
       },
       { staffUserId, action: "campaign.create", target: code, detail: shown },
     );
@@ -201,6 +212,10 @@ export async function setCampaignActive(
   const action = active ? "campaign.activate" : "campaign.pause";
   let funding: Record<string, unknown> = {};
   if (active) {
+    const campaign = await campaignById(campaignId);
+    if (!campaign) return refused(staffUserId, action, campaignId, "not_found");
+    // The first campaigns rewarded a buy. They stay retired.
+    if (campaign.kind !== "invite") return refused(staffUserId, action, campaignId, "retired");
     if (counselReviewed !== true) return refused(staffUserId, action, campaignId, "counsel_required");
     if (fundingChecked !== true) return refused(staffUserId, action, campaignId, "funding_check_required");
     const wallets = (await getSql().query(
@@ -222,35 +237,34 @@ export async function setCampaignActive(
   return { ok: true };
 }
 
-export type ApproveDeps = { verifyHold?: HoldVerifier };
-
 /**
- * Qualified to approved, fixing where the USDC goes: the person's own home
- * address, on Base. Before it, the rules are asked again of the person as
- * they are now (a merge or a wallet linked since can make them somebody
- * who already claimed), and the hold window is read again.
+ * Qualified to approved, fixing where the USDC goes: the INVITER's own
+ * home address (their live account, after any merge), on Base. Before it,
+ * the guards and the one payout per person are asked again of both people
+ * as they are now (a merge or a wallet linked since can make them one
+ * person, or someone who already counted). A retired buy claim is not
+ * approved.
  */
-export async function approveClaim(staffUserId: string, claimId: string, deps: ApproveDeps = {}): Promise<ActionResult> {
+export async function approveClaim(staffUserId: string, claimId: string): Promise<ActionResult> {
   const claim = await claimById(claimId);
   if (!claim) return refused(staffUserId, "claim.approve", claimId, "not_found");
   if (claim.state !== "qualified") return refused(staffUserId, "claim.approve", claimId, "wrong_state");
-  const still = await personStillEligible(claim);
-  if (still) return refused(staffUserId, "claim.approve", claimId, still);
-  const hold = await recheckHold(claim, deps.verifyHold);
-  if (hold.verdict === "unknown") return refused(staffUserId, "claim.approve", claimId, "hold_unknown", { error: hold.error });
-  if (hold.verdict === "not_held") return refused(staffUserId, "claim.approve", claimId, "not_held", { lowestRaw: hold.lowestRaw });
+  const campaign = await campaignById(claim.campaign_id);
+  if (!campaign || campaign.kind !== "invite" || !claim.inviter_id) return refused(staffUserId, "claim.approve", claimId, "retired");
+  const still = await inviteStillEligible(claim);
+  if (still) return refused(staffUserId, "claim.approve", claimId, still === "no_person" ? "no_person" : still);
   const rows = await auditedWrite<{ payout_address: string }>(
     {
       text: `update campaign_claims cl
                 set state = 'approved', approved_at = now(), approved_by = $2,
                     payout_address = p.wallet_address, payout_chain = $3, updated_at = now()
-               from users u join users p on p.id = coalesce(u.retired_into, u.id)
-              where cl.id = $1 and u.id = cl.user_id and cl.state = 'qualified'
+               from users i join users p on p.id = coalesce(i.retired_into, i.id)
+              where cl.id = $1 and i.id = cl.inviter_id and cl.state = 'qualified'
                 and p.wallet_address ~ '^0x[0-9a-f]{40}$'
               returning cl.payout_address`,
       params: [claimId, staffUserId, PAYOUT_CHAIN.key],
     },
-    { staffUserId, action: "claim.approve", target: claimId, detail: { chain: PAYOUT_CHAIN.key, holdLowestRaw: hold.lowestRaw } },
+    { staffUserId, action: "claim.approve", target: claimId, detail: { chain: PAYOUT_CHAIN.key, paidTo: "inviter" } },
   );
   if (rows[0]) return { ok: true, detail: { payoutAddress: rows[0].payout_address, chain: PAYOUT_CHAIN.key } };
   const now = await claimById(claimId);
@@ -277,12 +291,12 @@ export async function rejectClaim(staffUserId: string, claimId: string, reason: 
 }
 
 /**
- * Records the payment David sent by hand. The hash is read on Base, read
+ * Records the payment David sent by hand, to the inviter. The hash is read on Base, read
  * only, and counts only USDC from an active payout source of the claim's
  * campaign (campaign_payout_sources), or from STAFF_PAYOUT_ADDRESSES, the
  * optional global fallback. One transaction may pay several claims: it
  * must pay this claim's address at least the sum of every claim recorded
- * against it there. Then the claim is paid, and the person is emailed.
+ * against it there. Then the claim is paid, and the inviter is emailed.
  *
  * A hash that cannot be read (not mined yet, a typo, the RPC down) keeps
  * the claim approved with the hash pending: no "Paid" line, no email. It
@@ -303,8 +317,12 @@ export async function markClaimPaid(
   if (!claim) return refused(staffUserId, "claim.mark_paid", claimId, "not_found", { txHash });
   if (claim.state !== "approved") return refused(staffUserId, "claim.mark_paid", claimId, "wrong_state", { txHash });
   if (!claim.payout_address) return refused(staffUserId, "claim.mark_paid", claimId, "no_payout_address", { txHash });
-  const claimant = await claimPerson(claim);
-  if (claimant && (await staffIneligible(await personAccounts(claimant.id)))) return refused(staffUserId, "claim.mark_paid", claimId, "staff_ineligible", { txHash });
+  // The one paid (the inviter; on a retired buy claim, the claimant) and the invited friend: neither may be marked not eligible.
+  const payee = claim.inviter_id ? await claimInviter(claim) : await claimPerson(claim);
+  const friend = await claimPerson(claim);
+  for (const person of [payee, friend]) {
+    if (person && (await staffIneligible(await personAccounts(person.id)))) return refused(staffUserId, "claim.mark_paid", claimId, "staff_ineligible", { txHash });
+  }
   const campaign = await campaignById(claim.campaign_id);
   if (!campaign) return refused(staffUserId, "claim.mark_paid", claimId, "not_found", { txHash });
   const senders = await claimPayoutSenders(claim.campaign_id, env);
@@ -358,11 +376,11 @@ export async function markClaimPaid(
   )[0]?.outcome;
   if (outcome === "short") return clearPending("mismatch", { ...base, paid: paidRaw });
   if (outcome !== "paid") return refused(staffUserId, action, claimId, "wrong_state", base);
-  const rows = [{ user_id: claim.user_id }];
-  // After the commit: the person is told once, deduped on the claim.
-  const person = (await getSql().query(`select coalesce(retired_into, id) as id from users where id = $1`, [rows[0].user_id])) as { id: string }[];
+  // After the commit: the one paid (the inviter) is told once, deduped on the claim.
+  const paidUser = claim.inviter_id ?? claim.user_id;
+  const person = (await getSql().query(`select coalesce(retired_into, id) as id from users where id = $1`, [paidUser])) as { id: string }[];
   sendNotice({
-    userId: person[0]?.id ?? rows[0].user_id,
+    userId: person[0]?.id ?? paidUser,
     ref: claimId,
     notice: { type: "campaign_paid", amount: campaignUsd(campaign.amount_usd), chain: PAYOUT_CHAIN.name },
   });

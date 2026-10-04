@@ -90,8 +90,8 @@ export function seedDrawer(client: QueryClient, scene: DrawerScene): void {
       : { avatarId: "capstan", level: 4, firstPourPaid: false, friends: true, name: "harbourfan" },
     canClaim: false,
     stats: established
-      ? { taps: 6, seated: 2, poured: 1, earnedXp: 250, steepingXp: 250 }
-      : { taps: 0, seated: 0, poured: 0, earnedXp: 0, steepingXp: 0 },
+      ? { taps: 6, seated: 2, settled: 1, earnedXp: 250, steepingXp: 250 }
+      : { taps: 0, seated: 0, settled: 0, earnedXp: 0, steepingXp: 0 },
   };
   const me: MySocial = {
     hasEmail: true,

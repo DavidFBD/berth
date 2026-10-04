@@ -11,7 +11,7 @@ import {
 } from "@/lib/server/accounts";
 import { fetchPrivyEmail } from "@/lib/server/privy";
 import { AVAILABLE } from "@/lib/server/availability";
-import { attributeCampaign } from "@/lib/server/campaigns/store";
+import { attributeInvite } from "@/lib/server/campaigns/store";
 import {
   readRewardsCaller,
   resolveRewardsUser,
@@ -39,21 +39,24 @@ export async function POST(request: NextRequest) {
   // certificate, not a coupon. New means this account's first sync (the
   // welcome below has not been paid), whichever request created the row:
   // a wallet sign in fires several rewards calls at once, and any of them
-  // may create it (bindReferral). The XP moment comes later, at the
-  // referred account's first verified pour (see xp/pour).
+  // may create it (bindReferral). The XP moments come later: the referred
+  // account's own at its first verified pour (see xp/pour), the inviter's
+  // once the friend has set up and stayed a week (lib/server/invite-xp).
   const inviteCode = normalizeInviteCode(read.caller.body.referralCode);
   if (inviteCode && !user.referred_by) {
     const referrerId = await bindReferral(user.id, inviteCode);
     if (referrerId) user = { ...user, referred_by: referrerId };
   }
 
-  // Campaign attribution (lib/server/campaigns): the same birth certificate
-  // rule, for an account that arrived through a /c/<code> link, and never
-  // where Berth is not available. Its own pocket, its own table: an invite
-  // and a campaign may both bind. A failure here never fails the sync.
-  if (typeof read.caller.body.campaignCode === "string" && (read.caller.availability ?? AVAILABLE).available) {
+  // Invite campaigns (lib/server/campaigns): an account carrying someone's
+  // invite, young and opened inside a live invite campaign's dates, gets
+  // its claim, which pays the one who invited it once it is set up and
+  // still in use some days later. Never where Berth is not available. A
+  // pocketed /c/<code> only chooses between live campaigns. A failure here
+  // never fails the sync.
+  if (user.referred_by && (read.caller.availability ?? AVAILABLE).available) {
     try {
-      await attributeCampaign(user.id, read.caller.body.campaignCode);
+      await attributeInvite(user.id, read.caller.body.campaignCode);
     } catch (error) {
       console.warn("[campaigns] attribution failed", error instanceof Error ? error.message : error);
     }
