@@ -4227,7 +4227,7 @@ export const COPY: Copy = {
         ],
         list: [
           "You must be new to Berth: a new account, opened inside the campaign's dates through the campaign's link. An account that existed before, or one merged with an older account, does not count.",
-          "Set up means your account has a verified email, a username and a wallet. Still uses Berth means you opened Berth signed in at least once in the last 7 days of the stated number of days, on a later day than the one you set up on.",
+          "Set up means your account has a verified email, a username and a wallet with an EVM address, which can receive USDC on Base. Still uses Berth means you opened Berth signed in at least once in the last 7 days of the stated number of days, on a later day than the one you set up on.",
           "One reward per person. Accounts that are merged count as one person, and a wallet or an email address that already counted for another reward does not count again.",
           "Each campaign states a budget and a number of places. Once they are taken, or the campaign ends, it is closed.",
           "We review every reward before it is paid. We send it by hand, usually within a few days, in USDC on Base to your Berth account's own address. An account with no EVM address of its own cannot be paid.",
@@ -4697,7 +4697,7 @@ export const COPY: Copy = {
     landingLede: (amount, days) =>
       `Open a new Berth account through this link, set it up and still use Berth ${dayCount(days)} later, and ${amount} in USDC on Base is added to your account, while places last.`,
     setUp: (amount, days) =>
-      `You joined through a Berth offer. Once your account is set up, with a verified email, a username and a wallet, and you still use Berth ${dayCount(days)} later, ${amount} in USDC on Base is added to your account.`,
+      `You joined through a Berth offer. Once your account is set up, with a verified email, a username and a wallet with an address on Base, and you still use Berth ${dayCount(days)} later, ${amount} in USDC on Base is added to your account, while places last.`,
     staying: (amount, eligible) => `Your account is set up. If you still use Berth on ${eligible}, ${amount} in USDC on Base is added to your account.`,
     qualified: "You stayed. Your reward is usually paid within a few days.",
     paid: (amount) => `Paid. ${amount} in USDC was added to your account.`,

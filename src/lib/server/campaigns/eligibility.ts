@@ -38,10 +38,12 @@ import { foldEmail } from "@/lib/server/campaigns/fold-email";
  *    - email_used: another account outside the person has their folded
  *      email (plus tag dropped, Gmail's dots too): the same person
  *      already on Berth.
- * 3. Set up (SET_UP_SQL), all three on the person's live account: a
- *    verified email (users.email, written only from Privy's verified
- *    record), a username (a handles row) and a wallet (a home address,
- *    users.wallet_address). Until then the claim stays `attributed`. The
+ * 3. Set up (CAMPAIGN_SET_UP_SQL), all three on the person's live
+ *    account: a verified email (users.email, written only from Privy's
+ *    verified record), a username (a handles row) and an EVM home wallet
+ *    (users.wallet_address, 0x and 40 hex: the USDC is paid there on Base;
+ *    a Solana or Bitcoin home cannot be paid). Until then the claim stays
+ *    `attributed`. The
  *    terms are not asked: Berth asks for them only before a first buy, and
  *    a buy is never a condition.
  * 4. A place, reserved atomically (db/schema.sql campaign_reserve_signup):
@@ -175,7 +177,20 @@ export async function emailElsewhere(emails: readonly string[], insiders: readon
 export const SET_UP_SQL = (alias: string) =>
   `(${alias}.email is not null and ${alias}.wallet_address is not null and exists (select 1 from handles h where h.user_id = ${alias}.id))`;
 
-/** Rule 3, on the live account: a verified email, a username and a wallet. */
+/**
+ * Rule 3 for a campaign, on a users row aliased `alias`: SET_UP_SQL, and
+ * the home wallet an EVM address, so the reward can be paid on Base.
+ * Invite XP keeps SET_UP_SQL as it is.
+ */
+export const CAMPAIGN_SET_UP_SQL = (alias: string) => `(${SET_UP_SQL(alias)} and ${alias}.wallet_address ~ '^0x[0-9a-f]{40}$')`;
+
+/** Rule 3, on the live account: set up, with an EVM home wallet to pay on Base. */
+export async function campaignSetUp(personId: string): Promise<boolean> {
+  const rows = (await getSql().query(`select ${CAMPAIGN_SET_UP_SQL("u")} as done from users u where u.id = $1`, [personId])) as { done: boolean }[];
+  return rows[0]?.done === true;
+}
+
+/** Set up as invite XP defines it (lib/server/invite-xp): a verified email, a username and any wallet. */
 export async function onboarded(personId: string): Promise<boolean> {
   const rows = (await getSql().query(
     `select ${SET_UP_SQL("u")} as done
@@ -299,7 +314,7 @@ export async function advanceClaim(claim: ClaimRow, campaign: CampaignRow, now: 
     return checked.refusal;
   }
   const { person, self } = checked.people;
-  if (!(await onboarded(person.id))) return "attributed";
+  if (!(await campaignSetUp(person.id))) return "attributed";
   const rows = (await getSql().query(`select campaign_reserve_signup($1, $2::text[], $3::timestamptz) as outcome`, [
     claim.id,
     personMarks(self),

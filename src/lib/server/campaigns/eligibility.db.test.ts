@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setSqlClient, type SqlClient } from "../db";
 import { makeTestDb } from "../pglite-test-db";
 import { claimById } from "./store";
-import { activeFrom, campaignProgress, runCampaignStep, sameHands, stillActive, stillEligible } from "./eligibility";
+import { activeFrom, campaignProgress, campaignSetUp, onboarded, runCampaignStep, sameHands, stillActive, stillEligible } from "./eligibility";
 import { advance, campaign, DAY, heldWallet, joined, person, qualifiedClaim, seen, state, username } from "./test-kit";
 
 /**
@@ -54,6 +54,19 @@ describe("set up", () => {
     await username(user);
     await sql.query(`update users set wallet_address = null, privy_did = coalesce(privy_did, 'did:privy:nowallet') where id = $1`, [user.id]);
     expect(await advance(claimId)).toBe("attributed");
+  });
+
+  it("needs an EVM home wallet, to be paid on Base: a Solana home stays attributed", async () => {
+    await campaign("evm-rule");
+    const { user, claimId } = await joined();
+    await username(user);
+    await sql.query(`update users set wallet_address = '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV' where id = $1`, [user.id]);
+    expect(await advance(claimId)).toBe("attributed");
+    // Invite XP's own set up rule is unchanged: any wallet counts there.
+    expect(await onboarded(user.id)).toBe(true);
+    expect(await campaignSetUp(user.id)).toBe(false);
+    await sql.query(`update users set wallet_address = $2 where id = $1`, [user.id, user.home]);
+    expect(await advance(claimId)).toBe("holding");
   });
 
   it("never asks for a buy: an account with no order at all reaches qualified", async () => {
