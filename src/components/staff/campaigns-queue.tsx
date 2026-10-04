@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { usePrivy } from "@privy-io/react-auth";
-import { campaignUsd, normalizeCampaignCode, REJECT_REASONS } from "@/lib/campaigns";
-import { cn } from "@/lib/utils";
+import { activationGaps, campaignUsd, normalizeCampaignCode, REJECT_REASONS } from "@/lib/campaigns";
+import { cn, scrollIntoViewGently } from "@/lib/utils";
 import type { StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
 import type { CampaignMeter, QueueClaim } from "@/lib/server/campaigns/queue";
 import { judgePayoutAddress } from "@/lib/campaign-funding";
@@ -49,6 +49,10 @@ export function StaffCampaigns() {
   const [message, setMessage] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [revealed, setRevealed] = useState<Revealed>({});
+  /** The campaign a create just made, so its own card can say so instead of a message out of view. */
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
+  /** Bumped after a successful create to remount the form closed and empty. */
+  const [createFormKey, setCreateFormKey] = useState(0);
   const privy = usePrivy();
 
   const post = async (body: Record<string, unknown>): Promise<Fetched> => {
@@ -70,7 +74,7 @@ export function StaffCampaigns() {
   });
   const act = useMutation({
     mutationFn: (action: StaffAction) => post(action),
-    onSuccess: (answer) => {
+    onSuccess: (answer, action) => {
       if (answer.status === "stale") {
         setStale(true);
         setMessage(copy.refusals.fresh_session);
@@ -82,6 +86,14 @@ export function StaffCampaigns() {
       if (result?.ok && result.detail?.field) {
         const { claimId, values } = result.detail as { claimId: string; values: Revealed[string] };
         setRevealed((previous) => ({ ...previous, [claimId]: { ...previous[claimId], ...values } }));
+      }
+      // A created campaign says so on its own card, scrolled into view, rather
+      // than in a message at the top of a long page the person has scrolled past.
+      if (action.action === "create" && result?.ok) {
+        setJustCreatedId(typeof result.detail?.id === "string" ? (result.detail.id as string) : null);
+        setCreateFormKey((value) => value + 1);
+        setMessage(null);
+        return;
       }
       setMessage(result && !result.ok ? (copy.refusals[result.refusal] ?? result.refusal) : null);
     },
@@ -97,6 +109,8 @@ export function StaffCampaigns() {
       busy={act.isPending}
       message={message}
       revealed={revealed}
+      justCreatedId={justCreatedId}
+      createFormResetKey={createFormKey}
       onSignInAgain={
         stale
           ? () => {
@@ -131,6 +145,8 @@ export function CampaignsQueueView({
   onSignInAgain,
   onAction,
   createPrefill,
+  justCreatedId = null,
+  createFormResetKey = 0,
 }: {
   queue: StaffCampaignsResponse;
   /** The dev gallery opens the create form prefilled, to show its Funding block. */
@@ -140,8 +156,20 @@ export function CampaignsQueueView({
   busy?: boolean;
   message?: string | null;
   onAction: (action: StaffAction) => void;
+  /** The campaign to show the "just created" line on. The real page tracks this itself; the dev gallery can force it with ?created=. */
+  justCreatedId?: string | null;
+  /** Bumped by the caller after a successful create, to remount the create form closed and empty. */
+  createFormResetKey?: number;
 }) {
   const copy = useCopy().campaign.staff;
+  const messageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Any message (success or refusal) says something where the person is,
+    // not only at the top of a page they may have scrolled away from.
+    if (!message) return;
+    scrollIntoViewGently(messageRef.current);
+    messageRef.current?.focus({ preventScroll: true });
+  }, [message]);
   const groups = {
     qualified: queue.claims.filter((claim) => claim.state === "qualified"),
     approved: queue.claims.filter((claim) => claim.state === "approved"),
@@ -156,7 +184,12 @@ export function CampaignsQueueView({
         <p className="mt-1 text-sm text-muted-foreground">{copy.lede}</p>
       </header>
       {message && (
-        <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-foreground">
+        <div
+          ref={messageRef}
+          role="status"
+          tabIndex={-1}
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-foreground outline-none"
+        >
           <span className="min-w-0 flex-1">{message}</span>
           {onSignInAgain && (
             <Button size="xs" onClick={onSignInAgain}>
@@ -171,9 +204,9 @@ export function CampaignsQueueView({
         </div>
       )}
       {queue.campaigns.map((campaign) => (
-        <CampaignCard key={campaign.id} campaign={campaign} busy={busy} onAction={onAction} />
+        <CampaignCard key={campaign.id} campaign={campaign} busy={busy} onAction={onAction} justCreated={campaign.id === justCreatedId} />
       ))}
-      <CreateCampaign busy={busy} onAction={onAction} prefill={createPrefill} />
+      <CreateCampaign key={createFormResetKey} busy={busy} onAction={onAction} prefill={createPrefill} />
       {(Object.keys(groups) as (keyof typeof groups)[]).map((group) => (
         <div key={group} className="flex flex-col gap-3">
           <h2 className="text-sm font-medium text-foreground">
@@ -190,7 +223,18 @@ export function CampaignsQueueView({
   );
 }
 
-function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; busy: boolean; onAction: (action: StaffAction) => void }) {
+function CampaignCard({
+  campaign,
+  busy,
+  onAction,
+  justCreated = false,
+}: {
+  campaign: CampaignMeter;
+  busy: boolean;
+  onAction: (action: StaffAction) => void;
+  /** This campaign is the one a create just made this session. */
+  justCreated?: boolean;
+}) {
   const copy = useCopy().campaign.staff;
   const [confirming, setConfirming] = useState(false);
   const [reviewed, setReviewed] = useState(false);
@@ -199,8 +243,21 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
   const wallet = campaign.payoutSources[0]?.address ?? null;
   const reservedPct = Math.min(100, (campaign.reservedUsd / campaign.budgetUsd) * 100);
   const paidPct = Math.min(100 - reservedPct, (campaign.paidUsd / campaign.budgetUsd) * 100);
+  const gaps = activationGaps({ wallet, fundingChecked, reviewed });
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Bring the new campaign's own card to the person, rather than leaving
+    // them to find it in a list they have already scrolled past.
+    if (justCreated) scrollIntoViewGently(cardRef.current);
+  }, [justCreated]);
   return (
-    <Panel className="flex flex-col gap-3 p-4">
+    <div ref={cardRef} data-testid="campaign-card" data-campaign-code={campaign.code}>
+      <Panel className="flex flex-col gap-3 p-4">
+      {justCreated && (
+        <p role="status" className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" data-testid="created-status">
+          {copy.create.createdLine(campaign.title)}
+        </p>
+      )}
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="min-w-0">
           <p className="text-base text-foreground">{campaign.title}</p>
@@ -271,7 +328,7 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
           <div className="flex gap-2">
             <Button
               size="sm"
-              disabled={busy || !reviewed || !fundingChecked || !wallet}
+              disabled={busy || gaps.length > 0}
               onClick={() => {
                 onAction({ action: "activate", campaignId: campaign.id, counselReviewed: true, fundingChecked: true });
                 setConfirming(false);
@@ -285,6 +342,8 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
               {copy.cancel}
             </Button>
           </div>
+          {gaps.includes("reviewed") && <p className="text-xs text-muted-foreground">{copy.activateNeedsReviewed}</p>}
+          {gaps.includes("funding") && <p className="text-xs text-muted-foreground">{copy.activateNeedsFunding}</p>}
         </div>
       ) : (
         <div>
@@ -293,7 +352,8 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
           </Button>
         </div>
       )}
-    </Panel>
+      </Panel>
+    </div>
   );
 }
 
@@ -668,6 +728,7 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
       >
         {copy.submit}
       </Button>
+      <p className="mt-1.5 text-xs text-muted-foreground">{copy.submitHint}</p>
     </details>
   );
 }

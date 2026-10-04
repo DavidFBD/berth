@@ -1432,9 +1432,12 @@ export type CampaignStaffCopy = {
   inactive: string;
   activate: string;
   deactivate: string;
-  /** The confirmation before a campaign goes live. It names counsel review. */
+  /** The confirmation before a campaign goes live: the staff member's own reading (no counsel yet, 2026-10-05). */
   activateConfirm: (title: string) => string;
   activateCheck: string;
+  /** Shown beside the confirm panel's own checks when the check in question is still unticked. */
+  activateNeedsReviewed: string;
+  activateNeedsFunding: string;
   /** The Funding block (components/staff/campaign-funding): where a sponsor's USDC goes, on the create form and each campaign card. */
   funding: {
     heading: string;
@@ -1467,7 +1470,7 @@ export type CampaignStaffCopy = {
     checksummed: string;
     judgements: Record<"invalid" | "bad_checksum" | "zero", string>;
     berthAddress: Record<"usdc_contract" | "fee_wallet" | "intents_contract" | "listing_token", string>;
-    /** The second box before activation, beside counsel review. Recorded in the audit log. */
+    /** The second box before activation, beside the reading check. Recorded in the audit log. */
     fundingCheck: string;
     createNeedsWallet: string;
     /** The reason kept on the payout source a new campaign is created with. */
@@ -1547,6 +1550,8 @@ export type CampaignStaffCopy = {
     starts: string;
     ends: string;
     submit: string;
+    /** Under the submit button: what pressing it does, in place of the vague old label. */
+    submitHint: string;
     note: string;
     /** One plain line under each field: what it means and what it does. */
     hints: Record<"code" | "title" | "amount" | "budget" | "maxClaims" | "stayDays" | "perInviter" | "starts" | "ends", string>;
@@ -1555,6 +1560,8 @@ export type CampaignStaffCopy = {
     /** Places times the amount, against the budget, as the fields stand. */
     fits: (total: string, places: number) => string;
     overBudget: (total: string) => string;
+    /** The success line shown on the new campaign's own card after a create. */
+    createdLine: (title: string) => string;
   };
 };
 
@@ -3693,7 +3700,7 @@ export const COPY: Copy = {
       heading: (change) => (change === "added" ? "A payout wallet was added" : "A payout wallet was removed"),
       body: (change, campaign, address) =>
         change === "added"
-          ? `${address} may now pay claims of ${campaign}. Mark paid accepts USDC from it from now on.`
+          ? `${address} can now pay rewards for ${campaign}. When you record a reward as paid, Berth accepts USDC sent from this wallet.`
           : `${address} may no longer pay claims of ${campaign}. Claims it already paid stay paid.`,
       reasonLabel: "Reason given",
       button: "Open the campaigns",
@@ -4716,8 +4723,10 @@ export const COPY: Copy = {
       activate: "Activate",
       deactivate: "Pause",
       activateConfirm: (title) =>
-        `Activate ${title}? From now on, a friend who opens a new account with someone's invite inside its dates counts for the one who invited them. Activate only after counsel has reviewed this campaign, its rules and the terms.`,
-      activateCheck: "Counsel has reviewed this campaign, its rules and the terms.",
+        `Activate ${title}? From now on, a friend who opens a new account with someone's invite inside its dates counts for the one who invited them. Activate only once you have read this campaign, its rules and the terms yourself, and they say exactly what will happen.`,
+      activateCheck: "I have read this campaign, its rules and the terms, and they match what Berth will do.",
+      activateNeedsReviewed: "Still needed: tick that you have read this campaign, its rules and the terms.",
+      activateNeedsFunding: "Still needed: tick the funding check above, once the address and the network are right.",
       funding: {
         heading: "Funding",
         network: "Network",
@@ -4767,7 +4776,7 @@ export const COPY: Copy = {
       },
       sources: {
         heading: "Payout wallets",
-        none: "None yet. Mark paid accepts USDC only from a payout wallet.",
+        none: "None yet. A reward can be recorded as paid only when the USDC came from a payout wallet.",
         fallback: "Wallets in STAFF_PAYOUT_ADDRESSES also count, for every campaign.",
         address: "Wallet address",
         reason: "Reason, kept in the audit log",
@@ -4889,10 +4898,10 @@ export const COPY: Copy = {
         error: "That did not go through. Nothing was changed. Try again.",
         bad_reason: "Choose a reason.",
         bad_input: "Check the fields.",
-        code_taken: "That code is taken.",
+        code_taken: "A campaign with that code already exists. Pick a different code.",
         stay_out_of_range: "The days a friend must still use Berth are 7 at least and 60 at most.",
         places_over_budget: "Places times the amount is more than the budget. Lower the places or raise the budget.",
-        counsel_required: "Confirm counsel review first.",
+        counsel_required: "Tick that you have read the campaign, its rules and the terms first.",
         zero_address: "That is the zero address. Nothing sent there can ever be spent.",
         funding_check_required: "Confirm the address and the network first.",
         no_funding_wallet: "This campaign has no payout wallet. Add one on its card before activating.",
@@ -4908,7 +4917,8 @@ export const COPY: Copy = {
         perInviter: "Friends one inviter can be paid for",
         starts: "Starts",
         ends: "Ends",
-        submit: "Create, inactive",
+        submit: "Create campaign",
+        submitHint: "It starts switched off. You switch it on from the list above once it looks right.",
         hints: {
           code: "The short word in the campaign's link. Lowercase letters, numbers and hyphens, 3 to 32 of them.",
           title: "The campaign's name on this page. Only staff see it.",
@@ -4928,6 +4938,7 @@ export const COPY: Copy = {
         fits: (total, places) => `${places === 1 ? "1 place" : `${places} places`} at this amount come to ${total}, within the budget.`,
         overBudget: (total) => `Places times the amount come to ${total}, more than the budget. Lower the places or raise the budget.`,
         note: "A new campaign rewards an invite that sticks, never a buy. It is created inactive, and counts nobody until it is activated.",
+        createdLine: (title) => `Campaign ${title} is created and switched off. Check it, then switch it on.`,
       },
     },
   },
