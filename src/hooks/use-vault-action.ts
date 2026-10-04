@@ -52,6 +52,7 @@ import {
   fillPhase,
   isPipelineStep,
   isPourLocked,
+  approvalTakesTwo,
   releaseTracking,
   resolveTracking,
   settledFollowUp,
@@ -229,6 +230,12 @@ export interface UseVaultActionResult {
    * skipped approval isn't rendered as a completed one.
    */
   approveRequired: boolean | null;
+  /**
+   * The approval takes two wallet prompts: since @sodax/sdk 2.2 a token that
+   * refuses a change between two non-zero allowances (USDT's lineage) is
+   * first set to zero, then approved. Still one step; only its words change.
+   */
+  approveTwice: boolean;
   /** Solver fill progress for the settling screen; null before handoff. */
   fillPhase: FillPhase | null;
   /** The fill's spoke-side tx hash, once the solver reports one. */
@@ -359,6 +366,7 @@ export function useVaultAction(options?: {
   /** The slow order still travelling, if any, whatever the screen shows. */
   const inFlightRef = useRef<InFlight | null>(null);
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
+  const [approveTwice, setApproveTwice] = useState(false);
   const runningRef = useRef(false);
   const { reportState, report, resetReport } = useErrorReporter();
   /** Read by slow orders, which outlive the render that started them. */
@@ -1055,6 +1063,7 @@ export function useVaultAction(options?: {
       resetReport();
       setSent(null);
       setApproveRequired(null);
+      setApproveTwice(false);
       firedRef.current = null;
       unsettledSentRef.current = null;
       lastStatusRef.current = undefined;
@@ -1175,6 +1184,13 @@ export function useVaultAction(options?: {
 
         // 3. Approve if needed (an on-chain tx on the spoke: assert chain).
         if (!allowance.value) {
+          // A read, no prompt: does this approval clear an old allowance
+          // first? If the plan cannot be read the words stay the usual ones;
+          // the SDK makes its own plan when it approves.
+          const plan = await sodax.swaps
+            .buildApproveTxs<SpokeChainKey>({ params: built.value.params, raw: true })
+            .catch(() => null);
+          setApproveTwice(approvalTakesTwo(plan));
           advance("approving");
           if (!(await onRightChain())) return false;
           const approved = await approve.mutateAsyncSafe({
@@ -1424,6 +1440,7 @@ export function useVaultAction(options?: {
     resetReport();
     setSent(null);
     setApproveRequired(null);
+    setApproveTwice(false);
     firedRef.current = null;
     unsettledSentRef.current = null;
     lastStatusRef.current = undefined;
@@ -1436,6 +1453,7 @@ export function useVaultAction(options?: {
     error,
     reportState,
     approveRequired,
+    approveTwice,
     fillPhase: fillPhase(step, statusCode, sent?.hubTxHash !== undefined),
     fillTxHash,
     hubTxHash: sent?.hubTxHash,

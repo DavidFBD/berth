@@ -375,3 +375,13 @@ export function settledFollowUp(
     }.`,
   };
 }
+
+/**
+ * Whether an approval plan (SwapService.buildApproveTxs) holds a reset
+ * before the approve, which means two wallet prompts. Anything unreadable
+ * counts as one.
+ */
+export function approvalTakesTwo(plan: { ok: boolean; value?: unknown } | null | undefined): boolean {
+  if (!plan?.ok || typeof plan.value !== "object" || plan.value === null) return false;
+  return (plan.value as { resetTx?: unknown }).resetTx !== undefined;
+}

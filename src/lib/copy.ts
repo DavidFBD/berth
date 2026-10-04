@@ -688,6 +688,8 @@ export type Copy = {
   stepSkipped: string;
   stepMsgBuilding: string;
   stepMsgApproving: string;
+  /** The approve step when the token must first clear an old allowance (two wallet prompts). */
+  stepMsgApprovingTwice: string;
   stepMsgSigning: string;
   keepThisOpen: string;
   settling: string;
@@ -2929,6 +2931,7 @@ export const COPY: Copy = {
   stepSkipped: "skipped",
   stepMsgBuilding: "Preparing your order…",
   stepMsgApproving: "Approve the spend in your wallet…",
+  stepMsgApprovingTwice: "Your wallet will ask twice, first to clear an old approval, then to approve this spend…",
   stepMsgSigning: "Confirm in your wallet…",
   keepThisOpen: "Keep this open. It usually takes under a minute.",
   settling: "Settling your order…",

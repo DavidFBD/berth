@@ -751,6 +751,7 @@ export function DepositDrawer({
               <ActionStepper
                 step={action.step}
                 approveNeeded={action.approveRequired ?? true}
+                approveTwice={action.approveTwice}
               />
             </div>
           ) : listing && limit.reviewing && token && buildAmount && limitMin ? (

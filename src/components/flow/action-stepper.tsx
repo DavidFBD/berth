@@ -33,17 +33,29 @@ const STEP_MESSAGE: Record<StepKey, (copy: Copy) => string> = {
 };
 
 /**
+ * The line under the dots. Approving is still one step when the wallet asks
+ * twice (a token like USDT clearing an old allowance first): the message
+ * says so, the dots do not double.
+ */
+export function stepMessage(step: StepKey, copy: Copy, approveTwice = false): string {
+  if (step === "approving" && approveTwice) return copy.stepMsgApprovingTwice;
+  return STEP_MESSAGE[step](copy);
+}
+
+/**
  * The order stepper: Build → Approve → Sign. `approveNeeded={false}`
  * (withdrawals, native tokens) keeps the Approve dot visible but marks it as
- * skipped.
+ * skipped. `approveTwice` only changes the approve step's message.
  */
 export function ActionStepper({
   step,
   approveNeeded = true,
+  approveTwice = false,
   className,
 }: {
   step: VaultActionStep;
   approveNeeded?: boolean;
+  approveTwice?: boolean;
   className?: string;
 }) {
   const copy = useCopy();
@@ -119,7 +131,7 @@ export function ActionStepper({
       </div>
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-sm font-medium text-foreground">
-          {STEP_MESSAGE[STEP_KEYS[activeIndex]](copy)}
+          {stepMessage(STEP_KEYS[activeIndex], copy, approveTwice)}
         </p>
         <p className="text-xs text-muted-foreground">{copy.keepThisOpen}</p>
       </div>
