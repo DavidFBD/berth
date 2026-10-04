@@ -33,24 +33,25 @@ import { CampaignLineView } from "@/components/board/campaign-line";
 import { campaignLine, type CampaignProgress } from "@/lib/campaigns";
 
 /**
- * The first look's fixture (lib/first-look): NVIDIA in today's news, Tesla
- * read with nothing passing and a large move, the S&P 500 fund read with
- * nothing, Apple not read (no box). `&look=quiet` is a day when Jev read all
- * four and nothing passed.
+ * The first look's fixture (lib/first-look): NVIDIA in today's news, Apple in
+ * the news this past week, Tesla with no news line and a large move, the S&P
+ * 500 fund with no news line (no box). `&look=quiet` is a week where nothing
+ * passed for any of the four: no news line anywhere.
  */
 function firstLookFixture(look: "fixture" | "quiet"): FirstLookResponse {
   const asOf = Date.now();
+  const silent = { looked: false, inNews: false, inNewsWeek: false };
   if (look === "quiet") {
-    return { judged: true, asOf, looks: Object.fromEntries(FIRST_LOOK_SYMBOLS.map((symbol) => [symbol, { looked: true, inNews: false }])) };
+    return { judged: true, asOf, looks: Object.fromEntries(FIRST_LOOK_SYMBOLS.map((symbol) => [symbol, silent])) };
   }
   return {
     judged: true,
     asOf,
     looks: {
-      NVDA: { looked: true, inNews: true },
-      TSLA: { looked: true, inNews: false, movePct: -3.6 },
-      SPY: { looked: true, inNews: false },
-      AAPL: { looked: false, inNews: false },
+      NVDA: { looked: true, inNews: true, inNewsWeek: true },
+      AAPL: { looked: false, inNews: false, inNewsWeek: true },
+      TSLA: { ...silent, movePct: -3.6 },
+      SPY: silent,
     },
   };
 }

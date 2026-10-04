@@ -80,7 +80,13 @@ function firstLookFixture(): FirstLookResponse {
     judged: true,
     asOf: Date.now(),
     looks: Object.fromEntries(
-      FIRST_LOOK_SYMBOLS.map((symbol) => [symbol, symbol === "NVDA" ? { looked: true, inNews: true } : { looked: true, inNews: false }]),
+      // NVIDIA in today's news, Apple in the news this past week, the others with no news line.
+      FIRST_LOOK_SYMBOLS.map((symbol) => [
+        symbol,
+        symbol === "NVDA"
+          ? { looked: true, inNews: true, inNewsWeek: true }
+          : { looked: false, inNews: false, inNewsWeek: symbol === "AAPL" },
+      ]),
     ),
   };
 }

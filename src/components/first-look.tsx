@@ -15,12 +15,11 @@ import { cn } from "@/lib/utils";
 
 /**
  * The first look at one stock (lib/first-look). Only Berth's fixed lines:
- * whether it is in today's news, a large move in code's numbers, and a quiet
+ * whether it is in the recent news, a large move in code's numbers, and a quiet
  * way to the news drawer, where the column's own rules apply. No headline or
  * post text, ever, beside Buy. Jev only decided which line is true.
  *
- * "Nothing in today's news" is said only when Jev read every one of today's
- * headlines. While the answer comes the place is held; when there is
+ * When nothing passed there is no news line, never "nothing in the news". While the answer comes the place is held; when there is
  * nothing true to say there is no box at all.
  */
 export function FirstLookReadingView({
@@ -40,7 +39,7 @@ export function FirstLookReadingView({
   const name = rowName(listing);
   // Shown once a page session per listing (lib/analytics): which lines were true, never the words.
   const said = look.kind === "hidden" || look.kind === "loading" ? null : look.look;
-  const inNewsShown = Boolean(said?.looked && said.inNews);
+  const inNewsShown = Boolean((said?.looked && said.inNews) || said?.inNewsWeek);
   const movedShown = said?.movePct !== undefined;
   useEffect(() => {
     if (said) trackOnce(`first-look:${listing.symbol}`, "first_look_shown", { listing: listing.symbol, in_news: inNewsShown, moved: movedShown });
@@ -54,20 +53,24 @@ export function FirstLookReadingView({
       </div>
     );
   }
-  const { looked, inNews, movePct } = look.look;
+  const { movePct } = look.look;
+  // Today's line, else the week's, else no news line (lib/first-look judgeRecent).
+  const today = look.look.looked && look.look.inNews;
+  const week = !today && look.look.inNewsWeek === true;
+  const inNews = today || week;
 
   return (
     <div className="rounded-2xl border border-border px-4 py-3.5 text-[14.5px] leading-snug text-foreground">
-      {looked && <p>{inNews ? words.inNews(name) : words.nothingToday(name)}</p>}
+      {inNews && <p>{today ? words.inNews(name) : words.inNewsWeek(name)}</p>}
       {movePct !== undefined && (
-        <p className={cn(looked && "mt-1.5")}>
+        <p className={cn(inNews && "mt-1.5")}>
           {words.move(name, movePct >= 0 ? "rose" : "fell", `${Math.abs(movePct).toFixed(1)}%`)}
         </p>
       )}
-      {looked && inNews && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{words.newsNote}</p>}
-      {((looked && inNews && onReadNews) || onAsk) && (
+      {inNews && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{words.newsNote}</p>}
+      {((inNews && onReadNews) || onAsk) && (
         <div className="mt-1.5 -ml-1 flex flex-wrap gap-x-4">
-          {looked && inNews && onReadNews && (
+          {inNews && onReadNews && (
             <button
               type="button"
               onClick={onReadNews}
@@ -95,7 +98,7 @@ export function FirstLookReadingView({
 
 /**
  * (c) The first stock, the first days after it lands: what it is in one
- * plain line, today's reading, and one "Got it" that closes it for good.
+ * plain line, the recent reading, and one "Got it" that closes it for good.
  */
 export function FirstStockCard({
   listing,

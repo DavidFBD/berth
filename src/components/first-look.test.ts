@@ -36,9 +36,17 @@ describe("FirstLookReadingView", () => {
     expect(html).not.toContain("x.com");
   });
 
-  it("says nothing in today's news only when it was looked at, with no credit and no advice note", () => {
-    const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: true, inNews: false } }, onReadNews: noop });
-    expect(html).toContain("Nothing in today&#x27;s news about NVIDIA.");
+  it("says the week's news, never today, when what passed is older than today", () => {
+    const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: false, inNews: false, inNewsWeek: true } }, onReadNews: noop });
+    expect(html).toContain("NVIDIA was in the news this past week.");
+    expect(html).not.toContain("today");
+    expect(html).toContain("Read the news");
+  });
+
+  it("never says nothing in the news, with no credit and no advice note", () => {
+    const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: false, inNews: false, movePct: 1 } }, onReadNews: noop });
+    expect(html).not.toContain("Nothing");
+    expect(html).not.toContain("news about");
     expect(html).not.toContain("Jev");
     expect(html).not.toContain("TypeSafe");
     expect(html).not.toContain("Read the news");
@@ -48,7 +56,7 @@ describe("FirstLookReadingView", () => {
   it("says a large move in code's numbers, with no cause and no post", () => {
     const html = view({ listing: tesla, look: { kind: "shown", look: { looked: false, inNews: false, movePct: -3.6 } }, onAsk: noop });
     expect(html).toContain("Tesla fell 3.6% on the last trading day, more than it usually moves.");
-    expect(html).not.toContain("today&#x27;s news");
+    expect(html).not.toContain("news about");
     expect(html).not.toContain("Jev");
     expect(html).toContain("Ask about Tesla");
   });
@@ -77,25 +85,25 @@ function card(listing: typeof nvidia, seed?: { key: readonly unknown[]; data: Fi
   );
 }
 
-const looked = Object.fromEntries(FIRST_LOOK_SYMBOLS.map((symbol) => [symbol, { looked: true, inNews: false }]));
+const looked = Object.fromEntries(FIRST_LOOK_SYMBOLS.map((symbol) => [symbol, { looked: true, inNews: true, inNewsWeek: true }]));
 
 describe("FirstStockCard", () => {
   it("says what the stock is and the look's fixed line", () => {
     const html = card(nvidia, { key: FIRST_LOOK_QUERY_KEY, data: { judged: true, asOf: Date.now(), looks: looked } });
     expect(html).toContain("Your first stock");
     expect(html).toContain("NVIDIA is in your account as a token that tracks its share price.");
-    expect(html).toContain("Nothing in today&#x27;s news about NVIDIA.");
+    expect(html).toContain("NVIDIA is in today&#x27;s news.");
     expect(html).toContain("Got it");
   });
 
   it("asks about a stock outside the examples on its own, and says nothing of it where it was not read", () => {
     const html = card(amazon, { key: [...FIRST_LOOK_QUERY_KEY, "AMZN"], data: { judged: true, asOf: Date.now(), looks: looked } });
     expect(html).toContain("Your first stock");
-    expect(html).not.toContain("today&#x27;s news");
+    expect(html).not.toContain("news about");
   });
 
   it("says nothing of the news while Jev is not configured", () => {
     const html = card(nvidia, { key: FIRST_LOOK_QUERY_KEY, data: { judged: false, asOf: Date.now(), looks: {} } });
-    expect(html).not.toContain("today&#x27;s news");
+    expect(html).not.toContain("news about");
   });
 });

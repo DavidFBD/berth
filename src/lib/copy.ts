@@ -150,14 +150,16 @@ export type Copy = {
    * ever sits beside Buy. Jev only decides which line is true.
    */
   firstLook: {
-    /** After the ticker in the pick list, when Jev read today's headlines and one passed. */
+    /** After the ticker in the pick list, when one of today's headlines (New York) passed. */
     rowInNews: string;
-    /** Berth's own fixed line: never a headline, never a post (lib/first-look). */
+    /** After the ticker, when one passed in the past seven days but none today. */
+    rowInNewsWeek: string;
+    /** Berth's own fixed line: never a headline, never a post (lib/first-look). Today, in New York. */
     inNews: (name: string) => string;
+    /** The same line when what passed is from the past seven days, not today. */
+    inNewsWeek: (name: string) => string;
     /** Opens the news drawer on the listing, where the news column's own rules apply. */
     readNews: string;
-    /** Only when Jev read every one of today's headlines about it and none passed. */
-    nothingToday: (name: string) => string;
     /** The last trading day's move, only when it was large for the listing. Code's numbers, no cause. */
     move: (name: string, direction: "rose" | "fell", pct: string) => string;
     /** Under the news line when news is linked. */
@@ -2368,9 +2370,10 @@ export const COPY: Copy = {
     "Stock tokens track a share; they are not the share. Read what you own before you buy.",
   firstLook: {
     rowInNews: ", in today's news",
+    rowInNewsWeek: ", in recent news",
     inNews: (name) => `${name} is in today's news.`,
+    inNewsWeek: (name) => `${name} was in the news this past week.`,
     readNews: "Read the news",
-    nothingToday: (name) => `Nothing in today's news about ${name}.`,
     move: (name, direction, pct) => `${name} ${direction} ${pct} on the last trading day, more than it usually moves.`,
     newsNote: "News to read, not advice.",
     ask: (name) => `Ask about ${name}`,

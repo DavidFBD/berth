@@ -232,7 +232,9 @@ export function FirstBuyStep({
                   <span className="money">{listing.symbol}</span>
                   {(() => {
                     const look = lookOf(listing.symbol);
-                    return look.kind === "shown" && look.look.looked && look.look.inNews ? copy.firstLook.rowInNews : null;
+                    if (look.kind !== "shown") return null;
+                    if (look.look.looked && look.look.inNews) return copy.firstLook.rowInNews;
+                    return look.look.inNewsWeek ? copy.firstLook.rowInNewsWeek : null;
                   })()}
                 </span>
               </span>

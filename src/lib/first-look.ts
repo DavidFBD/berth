@@ -1,5 +1,6 @@
 import { adviceShaped } from "@/lib/advice-shaped";
 import { STOCK_LISTINGS } from "@/lib/listings";
+import { newYorkDate, newYorkInstant, shiftDate } from "@/lib/market-calendar";
 import type { NewsItem } from "@/lib/news";
 
 export { adviceShaped };
@@ -13,18 +14,26 @@ export { adviceShaped };
  * spot (the delta red team, 2026-10-01, got 44 of 60 new advice headlines
  * past one). So the look says only Berth's own fixed lines:
  *
- *   "NVIDIA is in today's news."   Jev read today's headlines about it and
- *                                  at least one is about the company, reports
- *                                  something, and is not shaped like advice.
- *                                  A quiet link opens the news drawer, which
- *                                  keeps its own rules.
- *   "Nothing in today's news about NVIDIA."
- *                                  Jev read today's headlines and none passed.
+ *   "NVIDIA is in today's news."   a headline from today (in New York) about
+ *                                  it passed: Jev read it as about the
+ *                                  company, reporting something, and it is
+ *                                  not shaped like advice. A quiet link opens
+ *                                  the news drawer, which keeps its own rules.
+ *   "NVIDIA was in the news this past week."
+ *                                  none today, but one from the six New York
+ *                                  days before today passed. The window rolls: it does not
+ *                                  empty at midnight or over a weekend, and
+ *                                  the line names the week, never "today".
  *   a move, in code's numbers      when the last trading day's move was large
  *                                  for the listing. No post, no cause.
  *
- * And nothing at all when Jev did not read a listing's headlines: "nothing in
- * the news" is said only of news that was actually looked at.
+ * When nothing passed, no news line at all: never "nothing in the news". A
+ * week of opinion pieces is not nothing, and an empty week is more likely a
+ * stalled feed than a quiet company (the review, 2026-10-04).
+ *
+ * Until 2026-10-04 the window was the New York calendar day, so from
+ * midnight, and all weekend, every example said "Nothing in today's news"
+ * while Friday's stories sat in the store.
  */
 
 /** How surely Jev must read a headline as mainly about the company (the column keeps a named one from 0.35). */
@@ -33,18 +42,40 @@ export const FIRST_LOOK_ABOUT_FLOOR = 0.8;
 /** The examples the first buy offers (components/home-next-step); fixed, never chosen by the news. */
 export const FIRST_LOOK_SYMBOLS = ["SPY", "NVDA", "AAPL", "TSLA"] as const;
 
+/** How many New York calendar days the look reads: today and the six before it. */
+export const FIRST_LOOK_DAYS = 7;
+
+/**
+ * Where the look's window starts: midnight in New York six calendar days
+ * before today, so "this past week" is today and the six days before it,
+ * whatever daylight saving does to the length of a day. It rolls with the
+ * date, so a weekend or a quiet morning is never "nothing".
+ */
+export function windowStart(now: number): number {
+  return newYorkInstant(shiftDate(newYorkDate(new Date(now)), -(FIRST_LOOK_DAYS - 1)), 0, 0).getTime();
+}
+
 /** Whether two moments fall on the same calendar day in New York. */
 export function sameNewYorkDay(a: number, b: number): boolean {
   const day = (at: number) => new Date(at).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   return day(a) === day(b);
 }
 
-/** What one listing's look found. */
+/**
+ * What one listing's look found. `looked` and `inNews` keep the meaning an
+ * answer had before the rolling week, because a page loaded before this
+ * deploy still reads them: it says "in today's news" for both, and "Nothing
+ * in today's news" for `looked` alone. So both are true together, of today
+ * only, or both false. The week lives in its own field, which only a page
+ * that knows the week line reads.
+ */
 export type FirstLook = {
-  /** Jev read every one of today's headlines about it, so "in" or "nothing" may be said. */
+  /** One of today's headlines passed (always equal to `inNews`, for an older page). */
   looked: boolean;
-  /** At least one of today's headlines passed (only meaningful when `looked`). */
+  /** One of today's headlines (New York) passed. */
   inNews: boolean;
+  /** One of the week's headlines passed, today's included. Absent on an older answer. */
+  inNewsWeek?: boolean;
   /** The last trading day's change, percent, when it was large for this listing; from the marks, never Jev. */
   movePct?: number;
 };
@@ -58,35 +89,40 @@ export type FirstLookResponse = {
   looks: Record<string, FirstLook>;
 };
 
+/** Whether one headline lets the look say "in the news": read by Jev, about the company, reporting something, not advice. */
+export function passes(item: NewsItem): boolean {
+  return (
+    (item.verdict === "material" || item.verdict === "fact") &&
+    item.about !== undefined &&
+    item.about >= FIRST_LOOK_ABOUT_FLOOR &&
+    !adviceShaped(item.title)
+  );
+}
+
 /**
- * Whether today's headlines about `symbol` let the look speak, and what it
- * may say. `items` are what the news column's reader returned for it, after
- * Jev (a kept headline carries `verdict` and `about`; one Jev did not read
- * carries neither). `read` is how many headlines Jev answered for in that
- * read.
+ * Whether the past week's headlines about `symbol` let the look speak, and
+ * what it may say. `items` are the headlines the news store keeps for it in
+ * the window, after Jev (a judged one carries `verdict` and `about`; one Jev
+ * did not read carries neither, and so never passes). Only a passing
+ * headline makes a line, so a headline not yet read cannot make one false.
  */
-export function judgeToday({
+export function judgeRecent({
   symbol,
   items,
-  read,
   now = Date.now(),
 }: {
   symbol: string;
   items: readonly NewsItem[];
-  read: number;
   now?: number;
-}): { looked: boolean; inNews: boolean } {
-  const today = items.filter((item) => item.symbol === symbol && item.publishedAt <= now && sameNewYorkDay(item.publishedAt, now));
-  // Any of today's headlines unread, or nothing read at all: Jev did not look.
-  if (read === 0 || today.some((item) => item.verdict === undefined)) return { looked: false, inNews: false };
-  const inNews = today.some(
-    (item) =>
-      (item.verdict === "material" || item.verdict === "fact") &&
-      item.about !== undefined &&
-      item.about >= FIRST_LOOK_ABOUT_FLOOR &&
-      !adviceShaped(item.title),
+}): Pick<FirstLook, "looked" | "inNews" | "inNewsWeek"> {
+  const since = windowStart(now);
+  const passed = items.filter(
+    (item) => item.symbol === symbol && item.publishedAt <= now && item.publishedAt >= since && passes(item),
   );
-  return { looked: true, inNews };
+  if (passed.length === 0) return { looked: false, inNews: false, inNewsWeek: false };
+  const today = passed.some((item) => sameNewYorkDay(item.publishedAt, now));
+  // Week only: `looked` and `inNews` stay false, so a page from before the week line says nothing at all.
+  return { looked: today, inNews: today, inNewsWeek: true };
 }
 
 /**
@@ -115,7 +151,8 @@ export function lookStateFor({
   if (!data) return loading ? { kind: "loading" } : { kind: "hidden" };
   if (!data.judged || !sameNewYorkDay(data.asOf, now)) return { kind: "hidden" };
   const look = data.looks?.[symbol];
-  if (!look || (!look.looked && look.movePct === undefined)) return { kind: "hidden" };
+  // An answer cached from before the week line can carry looked without inNews: it says nothing now.
+  if (!look || (!(look.looked && look.inNews) && !look.inNewsWeek && look.movePct === undefined)) return { kind: "hidden" };
   return { kind: "shown", look };
 }
 
@@ -125,8 +162,24 @@ export function lookStateFor({
  * is not a stock on Berth is ignored.
  */
 export function firstLookSymbols(also?: string | null): string[] {
-  const symbols: string[] = [...FIRST_LOOK_SYMBOLS];
+  const extra = firstLookExtra(also);
+  return extra ? [...FIRST_LOOK_SYMBOLS, extra] : [...FIRST_LOOK_SYMBOLS];
+}
+
+/** The one stock a look may add beyond the examples, in its registry spelling, or undefined. */
+export function firstLookExtra(also?: string | null): string | undefined {
   const extra = also?.trim().toUpperCase();
-  if (extra && !symbols.includes(extra) && STOCK_LISTINGS.some((listing) => listing.symbol === extra)) symbols.push(extra);
-  return symbols;
+  if (!extra || (FIRST_LOOK_SYMBOLS as readonly string[]).includes(extra)) return undefined;
+  return STOCK_LISTINGS.some((listing) => listing.symbol === extra) ? extra : undefined;
+}
+
+/**
+ * The one query string an answer is served under: none, or `?also=` a stock
+ * outside the examples. Anything else (an unknown parameter, a symbol that is
+ * not a stock, another spelling) is sent there first, so a random query
+ * string cannot make the edge miss and read the store again.
+ */
+export function canonicalFirstLookSearch(params: URLSearchParams): string {
+  const extra = firstLookExtra(params.get("also"));
+  return extra ? `?also=${extra}` : "";
 }

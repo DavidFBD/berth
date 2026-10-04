@@ -72,6 +72,8 @@ const FEEDS: Record<string, string> = {
   TSLA: rss([{ title: "Goldman Adds Tesla to Conviction List", hoursAgo: 1 }]),
   // Only loosely about Apple (about 0.5): the column keeps it, the look does not.
   AAPL: rss([{ title: "Chip makers rally as Apple supplier reports strong quarter", hoursAgo: 2 }]),
+  // Yesterday in New York (30 hours before noon): the week's news, not today's.
+  META: rss([{ title: "Meta agrees to buy a chip designer for $4 billion", hoursAgo: 30 }]),
 };
 
 const jevCalls = vi.fn();
@@ -126,13 +128,13 @@ async function columnReads(...symbols: string[]) {
 }
 
 describe("GET /api/first-look", () => {
-  it("never asks Jev, and a cold cache is no look at all, never a quiet one", async () => {
+  it("never asks Jev, and a cold cache is no news line at all", async () => {
     const body = await look();
     expect(jevCalls).not.toHaveBeenCalled();
     expect(body.judged).toBe(true);
-    for (const symbol of ["SPY", "NVDA", "AAPL"]) expect(body.looks[symbol]).toEqual({ looked: false, inNews: false });
+    for (const symbol of ["SPY", "NVDA", "AAPL"]) expect(body.looks[symbol]).toEqual({ looked: false, inNews: false, inNewsWeek: false });
     // Tesla is not looked at either; only its move, from the marks, is there.
-    expect(body.looks.TSLA).toEqual({ looked: false, inNews: false, movePct: -5 });
+    expect(body.looks.TSLA).toEqual({ looked: false, inNews: false, inNewsWeek: false, movePct: -5 });
   });
 
   it("says in today's news only for a headline about the company that is not advice, and asks Jev nothing", async () => {
@@ -142,18 +144,27 @@ describe("GET /api/first-look", () => {
 
     const body = await look();
     expect(jevCalls).toHaveBeenCalledTimes(paid);
-    expect(body.looks.NVDA).toEqual({ looked: true, inNews: true });
-    expect(body.looks.TSLA).toEqual({ looked: true, inNews: false, movePct: -5 });
-    expect(body.looks.AAPL).toEqual({ looked: true, inNews: false });
+    expect(body.looks.NVDA).toEqual({ looked: true, inNews: true, inNewsWeek: true });
+    expect(body.looks.TSLA).toEqual({ looked: false, inNews: false, inNewsWeek: false, movePct: -5 });
+    // Only loosely about Apple, and no story about the fund at all: no news line, never "nothing".
+    expect(body.looks.AAPL).toEqual({ looked: false, inNews: false, inNewsWeek: false });
+    expect(body.looks.SPY).toEqual({ looked: false, inNews: false, inNewsWeek: false });
     // No headline, source or link leaves the route.
     expect(JSON.stringify(body)).not.toMatch(/Nvidia agrees|Conviction|Reuters|nasdaq\.com/);
+  });
+
+  it("says the week of yesterday's story in its own field, and leaves an older page's today fields silent", async () => {
+    await columnReads("META");
+    const body = await look("?also=META");
+    expect(body.looks.META).toEqual({ looked: false, inNews: false, inNewsWeek: true });
+    expect(JSON.stringify(body)).not.toMatch(/Meta agrees|chip designer/);
   });
 
   it("reads the first stock card's stock when asked, and a feed that failed is no look", async () => {
     expect(Object.keys((await look("?also=AMZN")).looks)).toEqual(["SPY", "NVDA", "AAPL", "TSLA", "AMZN"]);
     await columnReads("MSFT");
     const body = await look("?also=MSFT");
-    expect(body.looks.MSFT).toEqual({ looked: false, inNews: false });
+    expect(body.looks.MSFT).toEqual({ looked: false, inNews: false, inNewsWeek: false });
   });
 
   it("leaves out every listing when the store cannot be read", async () => {
@@ -178,6 +189,29 @@ describe("GET /api/first-look", () => {
     const body = await look();
     expect(body).toMatchObject({ judged: false, looks: {} });
     expect(jevCalls).not.toHaveBeenCalled();
+  });
+
+  it("sends any other query string to its one canonical form before reading the store", async () => {
+    const reads = vi.fn();
+    setSqlClient({ query: async (...args: Parameters<SqlClient["query"]>) => (reads(), sql.query(...args)) } as SqlClient);
+    try {
+      for (const [query, location] of [
+        ["?also=amd", "/api/first-look?also=AMD"],
+        ["?also=AMD&x=1", "/api/first-look?also=AMD"],
+        ["?x=1", "/api/first-look"],
+        ["?also=NVDA", "/api/first-look"],
+        ["?also=SGOV", "/api/first-look"],
+        ["?also=DROP%20TABLE", "/api/first-look"],
+      ]) {
+        const response = await GET(new Request(`http://localhost/api/first-look${query}`));
+        expect(response.status, query).toBe(308);
+        expect(response.headers.get("location"), query).toBe(location);
+      }
+      expect(reads).not.toHaveBeenCalled();
+      expect((await GET(new Request("http://localhost/api/first-look?also=AMD"))).status).toBe(200);
+    } finally {
+      setSqlClient(sql);
+    }
   });
 
   it("is cached briefly at the edge", async () => {
