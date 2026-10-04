@@ -6,6 +6,7 @@ import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
 import { AccountButton, AddMoneyDrawer, useAssistantReachable, useEmailSession } from "@/components/account-button";
 import { BerthMark } from "@/components/berth-mark";
+import { BetaPill } from "@/components/ui/beta-pill";
 import { InfoDrawer } from "@/components/info-drawer";
 import { useCopy } from "@/components/settings-provider";
 import {
@@ -845,6 +846,7 @@ export function HomeHeader({ onOpenChat, children }: { onOpenChat?: () => void; 
       <div className="flex shrink-0 items-center gap-2">
         <BerthMark className="size-[22px]" />
         <h1 className="font-wordmark text-[19px] leading-none text-foreground">{copy.brand}</h1>
+        <BetaPill />
       </div>
       <div className="flex min-w-0 items-center gap-2">
         {onOpenChat && <ChatButton onOpen={onOpenChat} />}

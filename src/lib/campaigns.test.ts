@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { campaignDay, campaignLine, campaignUsd, normalizeCampaignCode, type CampaignProgress } from "./campaigns";
+import { activationGaps, campaignDay, campaignLine, campaignUsd, normalizeCampaignCode, type CampaignProgress } from "./campaigns";
 import { COPY } from "./copy";
 
 const base: CampaignProgress = {
@@ -38,6 +38,26 @@ describe("campaignLine, the new account's own line", () => {
   });
 });
 
+describe("activationGaps, what the confirm panel still needs", () => {
+  it("names nothing once a wallet, the funding check and counsel review are all in", () => {
+    expect(activationGaps({ wallet: "0xabc", fundingChecked: true, reviewed: true })).toEqual([]);
+  });
+
+  it("asks for the wallet first, before the funding check it has nothing to check", () => {
+    expect(activationGaps({ wallet: null, fundingChecked: false, reviewed: true })).toEqual(["wallet"]);
+    expect(activationGaps({ wallet: null, fundingChecked: true, reviewed: true })).toEqual(["wallet"]);
+  });
+
+  it("asks for the funding check once a wallet exists but it is unticked", () => {
+    expect(activationGaps({ wallet: "0xabc", fundingChecked: false, reviewed: true })).toEqual(["funding"]);
+  });
+
+  it("asks for counsel review independently of the wallet and the funding check", () => {
+    expect(activationGaps({ wallet: "0xabc", fundingChecked: true, reviewed: false })).toEqual(["reviewed"]);
+    expect(activationGaps({ wallet: null, fundingChecked: false, reviewed: false })).toEqual(["wallet", "reviewed"]);
+  });
+});
+
 describe("the words", () => {
   const words = COPY.campaign;
 
@@ -64,6 +84,8 @@ describe("the words", () => {
       words.staff.activateCheck,
       words.staff.deleteConfirm("Autumn", "autumn"),
       words.staff.deleted("autumn"),
+      words.staff.activateNeedsReviewed,
+      words.staff.activateNeedsFunding,
       words.staff.lede,
       words.staff.terms("$5", 14),
       words.staff.retired,
@@ -73,6 +95,8 @@ describe("the words", () => {
       ...Object.values(create.hints),
       create.fits("$100", 20),
       create.overBudget("$105"),
+      create.submitHint,
+      create.createdLine("Autumn invites"),
     ];
     for (const line of all) expect(line).not.toMatch(/ [-–—] |—|–/);
   });
@@ -127,9 +151,10 @@ describe("the words", () => {
     expect(everything).not.toMatch(/inviter|a friend you invited|for each new friend|per inviter/i);
   });
 
-  it("names counsel review in the activation confirmation", () => {
-    expect(COPY.campaign.staff.activateConfirm("Autumn")).toMatch(/counsel/);
-    expect(COPY.campaign.staff.activateCheck).toMatch(/[Cc]ounsel/);
+  it("asks for the staff member's own reading, never a counsel review there is none of", () => {
+    expect(COPY.campaign.staff.activateConfirm("Autumn")).toMatch(/read this campaign/);
+    expect(COPY.campaign.staff.activateCheck).toMatch(/I have read/);
+    expect(COPY.campaign.staff.activateCheck).not.toMatch(/[Cc]ounsel/);
   });
 
   it("formats whole dollars without cents", () => {

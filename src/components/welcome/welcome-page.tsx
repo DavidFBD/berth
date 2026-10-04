@@ -4,7 +4,9 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { HandHeart, PencilSimpleLine, Trophy } from "@phosphor-icons/react";
 import { BerthMark } from "@/components/berth-mark";
+import { BetaPill } from "@/components/ui/beta-pill";
 import { XMark } from "@/components/x-mark";
+import { SuperteamMark } from "@/components/superteam-mark";
 import { BERTH_X_URL } from "@/lib/berth-x";
 import { MarketPreview } from "@/components/board";
 import { HeroPhone, WallStreetFilm } from "@/components/welcome/welcome-films";
@@ -53,6 +55,7 @@ export function WelcomePage({
         <span className="flex items-center gap-2">
           <BerthMark className="size-[22px]" />
           <span className="font-wordmark text-[19px] leading-none text-foreground">{copy.brand}</span>
+          <BetaPill />
         </span>
         {onSignIn && (
           <button type="button" onClick={onSignIn} className={cn(PILL, "h-8 px-3.5 text-[13px] font-normal")}>
@@ -91,16 +94,29 @@ export function WelcomePage({
           )}
           {/* After the way in, not before the headline (2026-10-01): the
               first read is the line, then the one button. */}
-          <div>
-          <a
-            href={page.colosseum.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[12px] font-medium text-muted-foreground transition-colors duration-150 ease-lift hover:text-foreground"
-          >
-            <Trophy weight="duotone" className="size-3.5 shrink-0" aria-hidden />
-            {page.colosseum.label}
-          </a>
+          <div className="mt-5 flex items-center gap-3">
+            <a
+              href={page.colosseum.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[12px] font-medium text-muted-foreground transition-colors duration-150 ease-lift hover:text-foreground"
+            >
+              <Trophy weight="duotone" className="size-3.5 shrink-0" aria-hidden />
+              {page.colosseum.label}
+            </a>
+            {/* Superteam Netherlands, by its mark alone (2026-10-05): a
+                hairline apart from the badge, in the badge's muted ink. */}
+            <span className="h-4 w-px bg-border" aria-hidden />
+            <a
+              href={page.superteam.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={page.superteam.label}
+              title={page.superteam.label}
+              className="inline-flex items-center py-1 text-muted-foreground transition-colors duration-150 ease-lift hover:text-foreground"
+            >
+              <SuperteamMark className="h-[17px] w-auto" />
+            </a>
           </div>
         </div>
         <HeroPhone />

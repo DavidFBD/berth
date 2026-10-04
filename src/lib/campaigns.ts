@@ -109,3 +109,20 @@ export function campaignDay(date: Date, timeZone?: string): string {
 
 /** Why staff refused a claim, as the staff page and the CLI name them. */
 export const REJECT_REASONS = ["not_active", "one_per_person", "abuse", "other"] as const;
+
+/** What still stands between a campaign card and activation, named plainly rather than left as a disabled button. */
+export type ActivationGap = "wallet" | "funding" | "reviewed";
+
+/**
+ * The confirm panel's own checks, in the order staff sees them: a payout
+ * wallet first (without one there is nothing to fund-check), then the
+ * funding check, then counsel review. Mirrors the activate button's own
+ * disabled condition, so the hints and the button never disagree.
+ */
+export function activationGaps(input: { wallet: string | null; fundingChecked: boolean; reviewed: boolean }): ActivationGap[] {
+  const gaps: ActivationGap[] = [];
+  if (!input.wallet) gaps.push("wallet");
+  else if (!input.fundingChecked) gaps.push("funding");
+  if (!input.reviewed) gaps.push("reviewed");
+  return gaps;
+}

@@ -18,6 +18,12 @@ import { useMounted } from "@/hooks/use-mounted";
  *   /dev/campaigns?view=lines   every home line, in order
  *   /dev/campaigns?create=open  the create form open, its Funding block filled
  *                               (&address=0x... to judge another address)
+ *   /dev/campaigns?created=spring-invite
+ *                               that campaign's card shows the post-create success
+ *                               line, as after a real create; open its Activate
+ *                               panel too and both activation hints show (it has
+ *                               a wallet, so the gap is counsel review and the
+ *                               funding check, not a missing wallet)
  *
  * The lines in the calm home's own layout: /dev/board?home=new&campaign=setUp
  * (setUp, staying, qualified, paid).
@@ -47,9 +53,12 @@ function Gallery() {
     );
   }
   const prefill = params.get("create") === "open" ? { ...CREATE_PREFILL, ...(params.has("address") ? { payoutAddress: params.get("address") ?? "" } : {}) } : undefined;
+  // A code or an id both work, so the URL can read as a name: ?created=spring-invite.
+  const createdParam = params.get("created");
+  const justCreatedId = createdParam ? QUEUE_FIXTURE.campaigns.find((campaign) => campaign.code === createdParam)?.id ?? createdParam : null;
   return (
     <BalanceReaderProvider reader={async (address) => BALANCE_FIXTURE[address.toLowerCase()] ?? { outcome: "unreachable", error: "fixture" }}>
-      <CampaignsQueueView queue={QUEUE_FIXTURE} onAction={() => undefined} createPrefill={prefill} />
+      <CampaignsQueueView queue={QUEUE_FIXTURE} onAction={() => undefined} createPrefill={prefill} justCreatedId={justCreatedId} />
     </BalanceReaderProvider>
   );
 }

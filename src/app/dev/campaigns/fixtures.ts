@@ -82,6 +82,26 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       payoutSources: [],
     },
     {
+      id: "00000000-0000-4000-8000-00000000c003",
+      code: "spring-invite",
+      title: "Spring welcome",
+      kind: "signup",
+      active: false,
+      draft: true,
+      deletable: true,
+      startsAt: iso(now + 100 * DAY),
+      endsAt: iso(now + 130 * DAY),
+      ...campaignBase,
+      counts: { attributed: 0, buying: 0, holding: 0, qualified: 0, approved: 0, paid: 0, rejected: 0, expired: 0 },
+      reservedUsd: 0,
+      paidUsd: 0,
+      slots: 0,
+      // A wallet is already here (as a sponsor's campaign might arrive), so its
+      // confirm panel shows the funding check still unticked, not the no-wallet
+      // message: /dev/campaigns?created=spring-invite shows both new hints.
+      payoutSources: [{ id: "00000000-0000-4000-8000-0000000000f3", address: addr(0xf3), addedAt: iso(now - DAY), reason: "Fixture wallet" }],
+    },
+    {
       id: "00000000-0000-4000-8000-00000000c000",
       code: "first-buy",
       title: "First buy, retired",
