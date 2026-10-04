@@ -1430,6 +1430,8 @@ export type CampaignStaffCopy = {
   activateCheck: string;
   /** Deleting a campaign that never took on money: the one confirm line naming it, the button, and what it says after. */
   deleteConfirm: (title: string, code: string) => string;
+  /** The reason a delete asks for, kept in the audit log. */
+  deleteReason: string;
   delete: string;
   deleted: (code: string) => string;
   /** Shown beside the confirm panel's own checks when the check in question is still unticked. */
@@ -4719,6 +4721,7 @@ export const COPY: Copy = {
       activateNeedsFunding: "Still needed: tick the funding check above, once the address and the network are right.",
       deleteConfirm: (title, code) =>
         `Delete ${title}? It is removed with its claims that never held a place and its payout wallets, and /c/${code} can be used again for a new campaign. This cannot be undone.`,
+      deleteReason: "Why it is deleted, kept in the audit log",
       delete: "Delete",
       deleted: (code) => `Deleted. The code ${code} is free again.`,
       funding: {
@@ -4877,7 +4880,7 @@ export const COPY: Copy = {
         retired: "This campaign was made under retired rules. It cannot be activated or approved.",
         existing_customer: "This account was on Berth before the campaign link.",
         active: "Pause the campaign before deleting it.",
-        has_places: "A claim of this campaign holds a place or was paid, so the campaign is kept. Pause it instead.",
+        has_places: "A claim of this campaign holds or once held a place, or was paid, so the campaign is kept. Pause it instead.",
         staff_ineligible: "This account is marked not eligible for campaigns. See its page under Users.",
         no_person: "This account is no longer there.",
         fresh_session: "Sign in again to do this. Staff actions need a sign in from the last fifteen minutes, by email.",

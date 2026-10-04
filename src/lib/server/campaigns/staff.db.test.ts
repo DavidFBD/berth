@@ -181,13 +181,13 @@ describe("requireStaff", () => {
     expect(await stale.json()).toEqual({ error: "stale" });
     // Deleting a campaign is a fresh sign in act too.
     const draft = (await sql.query(
-      `insert into campaigns (code, title, starts_at, ends_at) values ('route-del', 'x', now(), now() + interval '9 days') returning id`,
+      `insert into campaigns (code, title, kind, starts_at, ends_at) values ('route-del', 'x', 'signup', now(), now() + interval '9 days') returning id`,
     )) as { id: string }[];
-    const staleDelete = await POST(request(cookie, { action: "delete", campaignId: draft[0].id }));
+    const staleDelete = await POST(request(cookie, { action: "delete", campaignId: draft[0].id, reason: "Test" }));
     expect(staleDelete.status).toBe(401);
     expect(await campaignById(draft[0].id)).toBeDefined();
     const fresh = await sessionCookie(staff.id, 1);
-    const deleted = await POST(request(fresh, { action: "delete", campaignId: draft[0].id }));
+    const deleted = await POST(request(fresh, { action: "delete", campaignId: draft[0].id, reason: "Test" }));
     expect(((await deleted.json()) as { result: unknown }).result).toEqual({ ok: true, detail: { code: "route-del" } });
     expect(await campaignById(draft[0].id)).toBeUndefined();
   });
@@ -527,23 +527,24 @@ describe("signals", () => {
 });
 
 describe("deleting a campaign", () => {
-  async function draft(code: string, { active = false } = {}) {
+  async function draft(code: string, { active = false, kind = "signup" } = {}) {
     const rows = (await sql.query(
-      `insert into campaigns (code, title, starts_at, ends_at, active) values ($1, $1, now() - interval '1 day', now() + interval '30 days', $2) returning id`,
-      [code, active],
+      `insert into campaigns (code, title, kind, starts_at, ends_at, active) values ($1, $1, $3, now() - interval '1 day', now() + interval '30 days', $2) returning id`,
+      [code, active, kind],
     )) as { id: string }[];
     return rows[0].id;
   }
+  const WHY = "Set up again with the right dates";
 
-  it("deletes a draft with its payout wallets, audited in the same transaction, and frees its code", async () => {
+  it("deletes a draft with its payout wallets, audited with the reason in the same transaction, and frees its code", async () => {
     const staff = await person();
     const id = await draft("del-draft");
     expect((await addPayoutSource(staff.id, id, FUNDING_WALLET, "The sponsor")).ok).toBe(true);
-    expect(await deleteCampaign(staff.id, id)).toEqual({ ok: true, detail: { code: "del-draft" } });
+    expect(await deleteCampaign(staff.id, id, WHY)).toEqual({ ok: true, detail: { code: "del-draft" } });
     expect(await campaignById(id)).toBeUndefined();
     expect(await sql.query(`select 1 from campaign_payout_sources where campaign_id = $1`, [id])).toHaveLength(0);
     const audit = (await audits("campaign.delete")).find((entry) => entry.target === id)!;
-    expect(audit.detail).toMatchObject({ code: "del-draft", title: "del-draft", neverActivated: true, sourcesRemoved: 1, claimsRemoved: 0, outcome: "done" });
+    expect(audit.detail).toMatchObject({ code: "del-draft", title: "del-draft", reason: WHY, neverActivated: true, sourcesRemoved: 1, claimsRemoved: 0, outcome: "done" });
     // The code is free: a new campaign takes it.
     const again = await createCampaign(staff.id, {
       code: "del-draft",
@@ -558,30 +559,43 @@ describe("deleting a campaign", () => {
     expect(again.ok).toBe(true);
   });
 
-  it("refuses while the campaign is active, audited", async () => {
+  it("asks for a reason, audited", async () => {
     const staff = await person();
-    const id = await draft("del-active", { active: true });
-    expect(await deleteCampaign(staff.id, id)).toMatchObject({ ok: false, refusal: "active" });
+    const id = await draft("del-why");
+    expect(await deleteCampaign(staff.id, id, "  ")).toMatchObject({ ok: false, refusal: "bad_reason" });
+    expect(await deleteCampaign(staff.id, id, undefined)).toMatchObject({ ok: false, refusal: "bad_reason" });
     expect(await campaignById(id)).toBeDefined();
-    expect((await audits("campaign.delete")).find((entry) => entry.target === id)?.detail.outcome).toBe("active");
+    expect((await audits("campaign.delete")).filter((entry) => entry.target === id).map((entry) => entry.detail.outcome)).toEqual(["bad_reason", "bad_reason"]);
   });
 
-  it("deletes a paused campaign whose claims never held a place, with those claims and their marks", async () => {
+  it("refuses while the campaign is active, and for a retired buy or invite campaign", async () => {
+    const staff = await person();
+    const id = await draft("del-active", { active: true });
+    expect(await deleteCampaign(staff.id, id, WHY)).toMatchObject({ ok: false, refusal: "active" });
+    expect(await campaignById(id)).toBeDefined();
+    expect((await audits("campaign.delete")).find((entry) => entry.target === id)?.detail.outcome).toBe("active");
+    for (const kind of ["buy", "invite"]) {
+      const old = await draft(`del-${kind}`, { kind });
+      expect(await deleteCampaign(staff.id, old, WHY)).toMatchObject({ ok: false, refusal: "retired" });
+      expect(await campaignById(old)).toBeDefined();
+      expect((await staffQueue()).campaigns.find((campaign) => campaign.id === old)).toMatchObject({ deletable: false });
+    }
+  });
+
+  it("deletes a paused campaign whose claims never held a place, with those claims", async () => {
     const staff = await person();
     const id = await draft("del-open", { active: true });
     const open = await joined({ code: "del-open" });
     const gone = await joined({ code: "del-open" });
     await sql.query(`update campaign_claims set state = 'rejected', reject_reason = 'abuse' where id = $1`, [gone.claimId]);
-    await sql.query(`insert into campaign_invitee_marks (mark, claim_id) values ('email:gone@example.com', $1)`, [gone.claimId]);
     await setCampaignActive(staff.id, id, false, undefined);
     expect((await staffQueue()).campaigns.find((campaign) => campaign.id === id)).toMatchObject({ deletable: true, draft: true });
-    expect((await deleteCampaign(staff.id, id)).ok).toBe(true);
+    expect((await deleteCampaign(staff.id, id, WHY)).ok).toBe(true);
     expect(await claimById(open.claimId)).toBeUndefined();
     expect(await claimById(gone.claimId)).toBeUndefined();
-    expect(await sql.query(`select 1 from campaign_invitee_marks where claim_id = $1`, [gone.claimId])).toHaveLength(0);
   });
 
-  it("refuses once any claim holds a place, or was paid: money history is never erased", async () => {
+  it("refuses once any claim holds or ever held a place, was paid, or stands on marks: money history is never erased", async () => {
     const staff = await person();
     const holding = await draft("del-holding", { active: true });
     const signup = await joined({ code: "del-holding" });
@@ -589,17 +603,28 @@ describe("deleting a campaign", () => {
     expect(await advance(signup.claimId)).toBe("holding");
     await setCampaignActive(staff.id, holding, false, undefined);
     expect((await staffQueue()).campaigns.find((campaign) => campaign.id === holding)).toMatchObject({ deletable: false });
-    expect(await deleteCampaign(staff.id, holding)).toMatchObject({ ok: false, refusal: "has_places" });
+    expect(await deleteCampaign(staff.id, holding, WHY)).toMatchObject({ ok: false, refusal: "has_places" });
     for (const state of ["qualified", "approved", "paid"]) {
       await sql.query(`update campaign_claims set state = $2 where id = $1`, [signup.claimId, state]);
-      expect(await deleteCampaign(staff.id, holding)).toMatchObject({ ok: false, refusal: "has_places" });
+      expect(await deleteCampaign(staff.id, holding, WHY)).toMatchObject({ ok: false, refusal: "has_places" });
     }
+    // Rejected after it held a place: the place it once held still keeps the campaign.
+    await sql.query(`update campaign_claims set state = 'rejected', reject_reason = 'not_active' where id = $1`, [signup.claimId]);
+    expect(await deleteCampaign(staff.id, holding, WHY)).toMatchObject({ ok: false, refusal: "has_places" });
+    expect((await staffQueue()).campaigns.find((campaign) => campaign.id === holding)).toMatchObject({ deletable: false });
     expect(await claimById(signup.claimId)).toBeDefined();
     expect(await campaignById(holding)).toBeDefined();
+    // A claim that never held a place but stands on a mark keeps it too.
+    const marked = await draft("del-marked");
+    const other = await person();
+    const claim = (await sql.query(`insert into campaign_claims (campaign_id, user_id, state) values ($1, $2, 'rejected') returning id`, [marked, other.id])) as { id: string }[];
+    await sql.query(`insert into campaign_invitee_marks (mark, claim_id) values ('email:marked@example.com', $1)`, [claim[0].id]);
+    expect((await staffQueue()).campaigns.find((campaign) => campaign.id === marked)).toMatchObject({ deletable: false });
+    expect(await deleteCampaign(staff.id, marked, WHY)).toMatchObject({ ok: false, refusal: "has_places" });
   });
 
   it("answers not found for a campaign that is not there", async () => {
     const staff = await person();
-    expect(await deleteCampaign(staff.id, "00000000-0000-4000-8000-000000000000")).toMatchObject({ ok: false, refusal: "not_found" });
+    expect(await deleteCampaign(staff.id, "00000000-0000-4000-8000-000000000000", WHY)).toMatchObject({ ok: false, refusal: "not_found" });
   });
 });

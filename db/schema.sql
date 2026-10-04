@@ -1806,15 +1806,18 @@ declare
 
 -- Deleting a campaign (lib/server/campaigns actions deleteCampaign), in one
 -- transaction: the campaign row is locked first, so no claim can take a
--- place while it is judged. Allowed only while the campaign is inactive and
--- no claim of it holds a place or was ever paid (holding, qualified,
--- approved, paid): money history is never erased. Its own rows go with it:
--- its open, rejected and expired claims (their marks cascade), the retired
--- buy rules' claim wallets, and its payout sources. The audit row commits
--- with the delete, and the code is free for a new campaign. Answers
--- 'deleted', or why not: 'not_found', 'active', 'has_places'. Its
--- statements begin with their semicolon, so that db:push, which splits at a
--- semicolon ending a line, keeps it whole.
+-- place while it is judged. Allowed only for a signup campaign that is
+-- inactive and that never took on money or a person's marks: no claim of
+-- it holds or ever held a place (holding, qualified, approved, paid, or
+-- onboarded_at or holding_since set), none has a payment hash, and none
+-- stands on a campaign_invitee_marks row. Money history and the one payout
+-- per person record are never erased. What goes with it: its open,
+-- rejected and expired claims that never held a place, and its payout
+-- sources. The audit row (with the staff member's reason, in p_detail)
+-- commits with the delete, and the code is free for a new campaign.
+-- Answers 'deleted', or why not: 'not_found', 'retired', 'active',
+-- 'has_places'. Its statements begin with their semicolon, so that db:push,
+-- which splits at a semicolon ending a line, keeps it whole.
 create or replace function campaign_delete(p_campaign uuid, p_staff uuid, p_detail jsonb) returns text language plpgsql as $$
 declare
   c record
@@ -1824,11 +1827,18 @@ declare
   select * into c from campaigns where id = p_campaign for update
   ; if not found then return 'not_found'
   ; end if
+  ; if c.kind <> 'signup' then return 'retired'
+  ; end if
   ; if c.active then return 'active'
   ; end if
   ; if exists (
       select 1 from campaign_claims
-       where campaign_id = c.id and (state in ('holding', 'qualified', 'approved', 'paid') or paid_tx is not null or paid_at is not null)
+       where campaign_id = c.id
+         and (state in ('holding', 'qualified', 'approved', 'paid')
+              or onboarded_at is not null or holding_since is not null
+              or paid_tx is not null or paid_at is not null)
+    ) or exists (
+      select 1 from campaign_invitee_marks m join campaign_claims cl on cl.id = m.claim_id where cl.campaign_id = c.id
     ) then return 'has_places'
   ; end if
   ; delete from campaign_claim_wallets where campaign_id = c.id

@@ -373,27 +373,32 @@ export async function markClaimPaid(
 }
 
 /**
- * Deletes a campaign that never took on money: allowed while it is
- * inactive and no claim of it holds a place or was ever paid (a draft never
- * activated always qualifies). Refused while active, or once any claim
- * holds a place (holding, qualified, approved) or was paid: money history
- * is never erased. Its open, rejected and expired claims, their marks, and
- * its payout wallets go with it, the audit row in the same transaction
- * (db/schema.sql campaign_delete), and its code is free for a new campaign.
+ * Deletes a signup campaign that never took on money, with a reason:
+ * allowed while it is inactive and no claim of it holds or ever held a
+ * place, was paid, or stands on a person's marks (a draft never activated
+ * always qualifies). Refused while active, for a retired campaign, or once
+ * any of that happened: money history and the one payout per person
+ * record are never erased. Its open, rejected and expired claims and its
+ * payout wallets go with it, the audit row with the reason in the same
+ * transaction (db/schema.sql campaign_delete), and its code is free for a
+ * new campaign.
  */
-export async function deleteCampaign(staffUserId: string, campaignId: string): Promise<ActionResult> {
+export async function deleteCampaign(staffUserId: string, campaignId: string, rawReason: unknown): Promise<ActionResult> {
+  const reason = reasonOf(rawReason);
+  if (!reason) return refused(staffUserId, "campaign.delete", campaignId, "bad_reason");
   const campaign = await campaignById(campaignId);
-  if (!campaign) return refused(staffUserId, "campaign.delete", campaignId, "not_found");
+  if (!campaign) return refused(staffUserId, "campaign.delete", campaignId, "not_found", { reason });
   const outcome = (
     (await getSql().query(`select campaign_delete($1, $2, $3::jsonb) as outcome`, [
       campaignId,
       staffUserId,
-      JSON.stringify({ neverActivated: campaign.activated_at === null }),
-    ])) as { outcome: "deleted" | "not_found" | "active" | "has_places" }[]
+      JSON.stringify({ reason, neverActivated: campaign.activated_at === null }),
+    ])) as { outcome: "deleted" | "not_found" | "retired" | "active" | "has_places" }[]
   )[0]?.outcome;
   if (outcome === "deleted") return { ok: true, detail: { code: campaign.code } };
-  const refusal: ActionRefusal = outcome === "active" || outcome === "has_places" || outcome === "not_found" ? outcome : "error";
-  return refused(staffUserId, "campaign.delete", campaignId, refusal, { code: campaign.code });
+  const refusal: ActionRefusal =
+    outcome === "active" || outcome === "has_places" || outcome === "not_found" || outcome === "retired" ? outcome : "error";
+  return refused(staffUserId, "campaign.delete", campaignId, refusal, { code: campaign.code, reason });
 }
 
 /**

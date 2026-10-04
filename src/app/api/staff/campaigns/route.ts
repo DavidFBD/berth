@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       }
       case "delete": {
         const campaignId = id(body.campaignId);
-        result = campaignId ? await deleteCampaign(staff, campaignId) : { ok: false, refusal: "bad_input" };
+        result = campaignId ? await deleteCampaign(staff, campaignId, body.reason) : { ok: false, refusal: "bad_input" };
         break;
       }
       case "add_source": {

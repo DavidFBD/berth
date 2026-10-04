@@ -28,7 +28,7 @@ export type StaffAction =
   | { action: "paid"; claimId: string; txHash: string }
   | { action: "activate"; campaignId: string; counselReviewed: true; fundingChecked: true }
   | { action: "pause"; campaignId: string }
-  | { action: "delete"; campaignId: string }
+  | { action: "delete"; campaignId: string; reason: string }
   | { action: "create"; campaign: Record<string, string> }
   | { action: "reveal"; claimId: string; field: "email" | "wallets" }
   | { action: "add_source"; campaignId: string; address: string; reason: string }
@@ -245,6 +245,7 @@ function CampaignCard({
   const copy = useCopy().campaign.staff;
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
   const [reviewed, setReviewed] = useState(false);
   const [fundingChecked, setFundingChecked] = useState(false);
   const fundingCopy = useCopy().campaign.staff.funding;
@@ -363,14 +364,21 @@ function CampaignCard({
       {campaign.deletable && !confirming && (deleting ? (
         <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="delete-confirm">
           <p className="text-sm text-foreground">{copy.deleteConfirm(campaign.title, campaign.code)}</p>
+          <Input
+            aria-label={copy.deleteReason}
+            placeholder={copy.deleteReason}
+            value={deleteReason}
+            onChange={(event) => setDeleteReason(event.target.value)}
+          />
           <div className="flex gap-2">
             <Button
               size="sm"
               variant="destructive"
-              disabled={busy}
+              disabled={busy || !deleteReason.trim()}
               onClick={() => {
-                onAction({ action: "delete", campaignId: campaign.id });
+                onAction({ action: "delete", campaignId: campaign.id, reason: deleteReason.trim() });
                 setDeleting(false);
+                setDeleteReason("");
               }}
             >
               {copy.delete}

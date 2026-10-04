@@ -68,7 +68,11 @@ export type CampaignMeter = {
   stayDays: number;
   /** Never activated: a draft. */
   draft: boolean;
-  /** Staff may delete it now: inactive, and no claim holds a place or was paid. */
+  /**
+   * Staff may delete it now: a signup campaign, inactive, and no claim of it
+   * holds or ever held a place, was paid, or stands on a person's marks
+   * (db/schema.sql campaign_delete asks the same).
+   */
   deletable: boolean;
   counts: Record<ClaimState, number>;
   /** Holding, qualified and approved, in dollars. */
@@ -176,6 +180,13 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
        join users p on p.id = coalesce(u.retired_into, u.id)
       order by cl.updated_at desc, cl.id`,
   )) as Record<string, unknown>[];
+  const keptRows = (await sql.query(
+    `select distinct cl.campaign_id from campaign_claims cl
+      where cl.state in ('holding', 'qualified', 'approved', 'paid')
+         or cl.onboarded_at is not null or cl.holding_since is not null or cl.paid_tx is not null or cl.paid_at is not null
+         or exists (select 1 from campaign_invitee_marks m where m.claim_id = cl.id)`,
+  )) as { campaign_id: string }[];
+  const kept = new Set(keptRows.map((row) => String(row.campaign_id)));
   const sourceRows = (await sql.query(
     `select id, campaign_id, address, added_at, added_reason from campaign_payout_sources where removed_at is null order by added_at`,
   )) as { id: string; campaign_id: string; address: string; added_at: string | Date; added_reason: string }[];
@@ -282,7 +293,7 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
         maxClaims: campaign.max_claims,
         stayDays: campaign.hold_days,
         draft: campaign.activated_at === null,
-        deletable: !campaign.active && SLOT_STATES.every((state) => record[state] === 0),
+        deletable: campaign.kind === "signup" && !campaign.active && !kept.has(campaign.id),
         counts: record,
         reservedUsd: reserved * campaign.amount_usd,
         paidUsd: record.paid * campaign.amount_usd,
