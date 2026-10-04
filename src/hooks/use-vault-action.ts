@@ -5,7 +5,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import {
   useLeverageYieldDeposit,
-  useLeverageYieldVaultSwap,
   useLeverageYieldWithdraw,
   useSodaxContext,
   useStatus,
@@ -17,11 +16,14 @@ import {
   getIntentRelayChainId,
   isBitcoinChainKeyType,
   isHubChainKeyType,
+  mapRelayFailure,
   relayTxAndWaitPacket,
   submitTransaction,
+  verifyFailed,
   waitUntilIntentExecuted,
   type Address,
   type CreateIntentParams,
+  type CreateVaultIntentResult,
   type GetWalletProviderType,
   type LeverageYieldSwapPayload,
   type SpokeChainKey,
@@ -67,6 +69,16 @@ import {
   type FillStatus,
   type SlowOrderEvent,
 } from "@/lib/slow-order";
+import {
+  notifyWithin,
+  notifyWithRetries,
+  reachHub,
+  renotifyDue,
+  unlessStalled,
+  type NotifyOutcome,
+  type RenotifyState,
+} from "@/lib/market-send";
+import { subscribeSponsoredStall } from "@/lib/gas-sponsor";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 import type { PourReadiness } from "@/hooks/use-privy-evm-wallet";
@@ -322,6 +334,21 @@ function errorLine(error: unknown): string {
   return rawErrorMessage(error) ?? String(error);
 }
 
+/** The intent as createVaultIntent hands it back once it has been sent. */
+type SentIntent = CreateVaultIntentResult<SpokeChainKey, boolean>;
+
+/**
+ * Resolves when a sponsored send passes its deadline (lib/gas-sponsor), so
+ * the order waiting on it can let its screen go while the send carries on.
+ */
+function sponsoredStall(): { promise: Promise<void>; cancel: () => void } {
+  let off = () => {};
+  const promise = new Promise<void>((resolve) => {
+    off = subscribeSponsoredStall(() => resolve());
+  });
+  return { promise, cancel: () => off() };
+}
+
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -343,7 +370,6 @@ export function useVaultAction(options?: {
 
   const buildDeposit = useLeverageYieldDeposit();
   const buildWithdraw = useLeverageYieldWithdraw();
-  const vaultSwap = useLeverageYieldVaultSwap();
   const approve = useSwapApprove();
   const { mutate: awardPour } = useAwardPour();
   const recordLimitOrder = useRecordLimitOrder();
@@ -612,6 +638,38 @@ export function useVaultAction(options?: {
     return () => clearTimeout(timer);
   }, [step, slow]);
 
+  /** Tells the solver about an intent on the hub, once, as one line on failure. */
+  const tellSolver = useCallback(
+    async (hubTxHash: string): Promise<NotifyOutcome> => {
+      const told = await sodax.leverageYield.notifySolver({ intent_tx_hash: hubTxHash as `0x${string}` });
+      return told.ok ? { ok: true, intentHash: told.value.intent_hash } : { ok: false, error: errorLine(told.error) };
+    },
+    [sodax],
+  );
+
+  /**
+   * The market order whose solver notify is being kept up (sendMarket):
+   * while its fill watch still reads NOT_FOUND, the solver is told again,
+   * a few times at most and never two at once (lib/market-send renotifyDue).
+   * Telling the solver posts the hub hash; it never sends the order again.
+   */
+  const renotifyRef = useRef<RenotifyState | null>(null);
+  useEffect(() => {
+    const state = renotifyRef.current;
+    if (!state || slow || sent?.limit || sent?.hubTxHash !== state.hubTxHash) return;
+    if (step !== "tracking" && step !== "unsettled") return;
+    if (!renotifyDue(statusCode, state, Date.now())) return;
+    state.busy = true;
+    state.renotifies += 1;
+    const hubTxHash = state.hubTxHash;
+    void notifyWithin(() => tellSolver(hubTxHash)).then((told) => {
+      state.busy = false;
+      state.lastAt = Date.now();
+      if (!told.ok) return console.warn("[vault-action] notify solver again", told.error);
+      setSent((prev) => (prev?.hubTxHash === hubTxHash && !prev.intentHash ? { ...prev, intentHash: told.intentHash } : prev));
+    });
+  }, [step, slow, sent, statusCode, statusQuery.dataUpdatedAt, tellSolver]);
+
   /**
    * Approvals return once the tx is submitted; poll the allowance until the
    * chain reflects it (native tokens / non-EVM report valid immediately).
@@ -660,12 +718,18 @@ export function useVaultAction(options?: {
       walletProvider: AnyWalletProvider;
       srcChainKey: SpokeChainKey;
       relayWaitMs: number;
+      /**
+       * A market or limit-free order whose sponsored send answered after its
+       * deadline (sendMarket): already sent, so it is never created again;
+       * it carries on from here for the run and the order it belongs to.
+       */
+      late?: { created: SentIntent; run: number; pour: ActivePour };
     }): Promise<boolean> => {
-      const { payload, walletProvider, srcChainKey } = input;
+      const { payload, walletProvider, srcChainKey, late } = input;
       const { params } = payload;
-      const run = runRef.current;
+      const run = late?.run ?? runRef.current;
       const current = () => runRef.current === run;
-      const pour = pourRef.current;
+      const pour = late?.pour ?? pourRef.current;
       if (!pour) return false;
       /** File with the screen's reporter while it shows this order, else directly. */
       const file = (context: ErrorReportContext) => {
@@ -673,23 +737,28 @@ export function useVaultAction(options?: {
         else void submitErrorReport(context);
       };
       const analytics = sodax.config.analytics;
-      analytics.emit("leverageYield", "vaultSwap", "start", () => ({
-        srcChainKey,
-        dstChainKey: params.dstChainKey,
-        srcAddress: params.srcAddress,
-        dstAddress: params.dstAddress,
-        inputToken: params.inputToken,
-        outputToken: params.outputToken,
-        inputAmount: params.inputAmount,
-      }));
+      if (!late) {
+        analytics.emit("leverageYield", "vaultSwap", "start", () => ({
+          srcChainKey,
+          dstChainKey: params.dstChainKey,
+          srcAddress: params.srcAddress,
+          dstAddress: params.dstAddress,
+          inputToken: params.inputToken,
+          outputToken: params.outputToken,
+          inputAmount: params.inputAmount,
+        }));
+      }
 
       // Signs, and for a deposit broadcasts. Nothing has left the wallet if
-      // this fails, so it stays an ordinary, retryable failure.
-      const created = await sodax.leverageYield.createVaultIntent({
-        ...payload,
-        walletProvider,
-        raw: false,
-      });
+      // this fails, so it stays an ordinary, retryable failure. A late
+      // order was sent already and is never created a second time.
+      const created = late
+        ? { ok: true as const, value: late.created }
+        : await sodax.leverageYield.createVaultIntent({
+            ...payload,
+            walletProvider,
+            raw: false,
+          });
       if (!created.ok) {
         analytics.emit("leverageYield", "vaultSwap", "failure", () => ({
           code: created.error.code,
@@ -726,6 +795,8 @@ export function useVaultAction(options?: {
         closable: !onDemand,
       };
       if (current()) {
+        // A late order's screen said it may still go through; now it is.
+        if (late) setError(null);
         setSent(order);
         setSlowStatus({});
         if (!onDemand) advance("confirming");
@@ -885,14 +956,15 @@ export function useVaultAction(options?: {
       const done = runSlowOrder(
         {
           relay,
-          notify: async (hubTxHash) => {
-            const notified = await sodax.leverageYield.notifySolver({
-              intent_tx_hash: hubTxHash as `0x${string}`,
-            });
-            return notified.ok
-              ? { ok: true, intentHash: notified.value.intent_hash }
-              : { ok: false, error: errorLine(notified.error) };
-          },
+          notify: (hubTxHash) =>
+            notifyWithin(async () => {
+              const notified = await sodax.leverageYield.notifySolver({
+                intent_tx_hash: hubTxHash as `0x${string}`,
+              });
+              return notified.ok
+                ? { ok: true, intentHash: notified.value.intent_hash }
+                : { ok: false, error: errorLine(notified.error) };
+            }),
           status: async (hubTxHash) => {
             try {
               const answer = await sodax.swaps.getStatus({
@@ -932,7 +1004,9 @@ export function useVaultAction(options?: {
   /**
    * A limit order reached the hub: it rests there until its price, so the
    * machine records it (hooks/use-limit-orders) and stops at "resting".
-   * The balance that paid, and a sell's holding, moved now.
+   * The balance that paid, and a sell's holding, moved now. `onScreen`
+   * false: a late order whose screen has moved on is recorded all the
+   * same, and the screen is left alone.
    */
   const restLimit = useCallback(
     (
@@ -944,20 +1018,24 @@ export function useVaultAction(options?: {
         intentDeliveryInfo: { srcTxHash: string; dstTxHash: string };
         solverExecutionResponse: { intent_hash?: string };
       },
+      run: number,
     ) => {
+      const onScreen = () => runRef.current === run;
       const hubTxHash = swapped.intentDeliveryInfo.dstTxHash;
-      setSent({
-        spokeTxHash: swapped.intentDeliveryInfo.srcTxHash,
-        intentId: swapped.intent.intentId.toString(),
-        hubTxHash,
-        intentHash: swapped.solverExecutionResponse.intent_hash,
-        limit: true,
-        closable: true,
-      });
-      advance("resting");
+      if (onScreen()) {
+        setError(null);
+        setSent({
+          spokeTxHash: swapped.intentDeliveryInfo.srcTxHash,
+          intentId: swapped.intent.intentId.toString(),
+          hubTxHash,
+          intentHash: swapped.solverExecutionResponse.intent_hash,
+          limit: true,
+          closable: true,
+        });
+        advance("resting");
+        setLimitUnsaved(false);
+      }
       void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
-      const run = runRef.current;
-      setLimitUnsaved(false);
       void recordLimitOrder({
         intentTxHash: hubTxHash,
         spokeTxHash: swapped.intentDeliveryInfo.srcTxHash,
@@ -967,10 +1045,97 @@ export function useVaultAction(options?: {
         srcChain: srcChainKey,
       }).then((saved) => {
         // Said plainly on the placed screen rather than promising the list.
-        if (!saved && runRef.current === run) setLimitUnsaved(true);
+        if (!saved && onScreen()) setLimitUnsaved(true);
       });
     },
     [advance, queryClient, recordLimitOrder],
+  );
+
+  /**
+   * The order screen when a sponsored send passed its deadline: it may
+   * still go through, the buttons are held (lib/gas-sponsor), and the drawer
+   * is free. Not reported: `fail` files nothing for this message.
+   */
+  const failStalled = useCallback(() => {
+    fail(COPY.errOutcomeUnknown, new Error("The sponsored send passed its deadline; waiting for Privy in the background."));
+  }, [fail]);
+
+  /**
+   * What a limit order does once its intent is sent: verify, relay, tell
+   * the solver, rest. Screen writes only while `run` still owns the screen;
+   * the record and the reports happen either way.
+   */
+  const finishLimit = useCallback(
+    async (input: {
+      created: SentIntent;
+      srcChainKey: SpokeChainKey;
+      direction: "buy" | "sell";
+      limit: LimitRun;
+      run: number;
+      pour: ActivePour | null;
+    }): Promise<boolean> => {
+      const { created, srcChainKey, run, pour } = input;
+      const onScreen = () => runRef.current === run;
+      const file = (context: ErrorReportContext) => {
+        if (onScreen()) reportRef.current(context);
+        else void submitErrorReport(context);
+      };
+      const tx = String(created.tx);
+      const intentId = created.intent.intentId.toString();
+      void queryClient.invalidateQueries({ queryKey: ["shared", "xBalances", srcChainKey] });
+      const notArrived = (why: unknown) => {
+        console.error("[vault-action] limit order not on the hub", why);
+        // It may still arrive and rest: kept in this browser until the
+        // sweep (lib/server/limit-orders sweepMissing) records it.
+        addPending({ spokeTxHash: tx, direction: input.direction, limitPrice: input.limit.limitPrice, srcChain: srcChainKey, at: Date.now() });
+        if (onScreen()) {
+          setError(null);
+          setSent({ spokeTxHash: tx, spokeTxUrl: spokeTxUrl(srcChainKey, tx), intentId, limit: true, closable: true });
+          advance("unsettled");
+        }
+        return true;
+      };
+      const verified = await sodax.spoke.verifyTxHash({ txHash: tx, chainKey: srcChainKey });
+      if (!verified.ok) return notArrived(verified.error);
+      let hubTxHash = tx;
+      if (!isHubChainKeyType(srcChainKey)) {
+        const packet = await relayTxAndWaitPacket({
+          srcTxHash: tx,
+          data: created.relayData,
+          chainKey: srcChainKey,
+          relayerApiEndpoint: sodax.swaps.relayerApiEndpoint,
+          timeout: undefined,
+        });
+        if (!packet.ok) return notArrived(packet.error);
+        hubTxHash = packet.value.dst_tx_hash;
+      }
+      // Bounded: the order rests whatever the solver says, or does not say;
+      // the solver reads the orderbook too.
+      const notified = await notifyWithRetries(() => tellSolver(hubTxHash));
+      if (!notified.ok && pour) {
+        file(
+          solverNotNotifiedReport(pour.context, {
+            intentId,
+            spokeTxHash: tx,
+            hubTxHash,
+            notifyError: notified.error,
+          }),
+        );
+      }
+      restLimit(
+        input.direction,
+        srcChainKey,
+        input.limit,
+        {
+          intent: { intentId: created.intent.intentId },
+          intentDeliveryInfo: { srcTxHash: tx, dstTxHash: hubTxHash },
+          solverExecutionResponse: { intent_hash: notified.ok ? notified.intentHash : undefined },
+        },
+        run,
+      );
+      return true;
+    },
+    [advance, queryClient, restLimit, sodax, tellSolver],
   );
 
   /**
@@ -983,7 +1148,9 @@ export function useVaultAction(options?: {
    * the order is recorded and rests, whatever the solver notify says (a
    * failed notify is reported, and the solver still reads the orderbook);
    * a payment that left the wallet but never reached the hub is shown as
-   * sent and not arrived, with its hash, reported, and never retried.
+   * sent and not arrived, with its hash, reported, and never retried. A
+   * sponsored send past its deadline lets the screen go and, should Privy
+   * answer late with a hash, finishes the order in the background.
    */
   const sendLimit = useCallback(
     async (input: {
@@ -994,56 +1161,174 @@ export function useVaultAction(options?: {
       limit: LimitRun;
     }): Promise<boolean> => {
       const { payload, walletProvider, srcChainKey } = input;
-      const created = await sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false });
+      const run = runRef.current;
+      const pour = pourRef.current;
+      const stall = sponsoredStall();
+      let raced;
+      try {
+        raced = await unlessStalled(
+          sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false }),
+          stall.promise,
+        );
+      } finally {
+        stall.cancel();
+      }
+      const finish = (created: SentIntent) =>
+        finishLimit({ created, srcChainKey, direction: input.direction, limit: input.limit, run, pour });
+      if (raced.stalled) {
+        failStalled();
+        void raced.later
+          .then(async (created): Promise<void> => {
+            if (!created.ok) return console.warn("[vault-action] late limit order did not go out", created.error);
+            console.warn("[vault-action] late limit order went out", String(created.value.tx));
+            await finish(created.value);
+          })
+          .catch((e: unknown) => console.error("[vault-action] late limit order", e));
+        return false;
+      }
+      const created = raced.value;
       if (!created.ok) {
         fail(friendlyError(created.error, COPY.errOrderFailed, gasContextFor(srcChainKey)), created.error);
         return false;
       }
-      const tx = String(created.value.tx);
-      const intentId = created.value.intent.intentId.toString();
-      void queryClient.invalidateQueries({ queryKey: ["shared", "xBalances", srcChainKey] });
-      const notArrived = (why: unknown) => {
-        console.error("[vault-action] limit order not on the hub", why);
-        // It may still arrive and rest: kept in this browser until the
-        // sweep (lib/server/limit-orders sweepMissing) records it.
-        addPending({ spokeTxHash: tx, direction: input.direction, limitPrice: input.limit.limitPrice, srcChain: srcChainKey, at: Date.now() });
-        setSent({ spokeTxHash: tx, spokeTxUrl: spokeTxUrl(srcChainKey, tx), intentId, limit: true, closable: true });
-        advance("unsettled");
-        return true;
+      return finish(created.value);
+    },
+    [fail, failStalled, finishLimit, sodax],
+  );
+
+  /**
+   * Send a market order (lib/market-send): vaultSwap's own steps, each run
+   * once. The moment the hub transaction is known the order moves to its
+   * fill watch, so a refresh from there keeps what a refresh keeps for any
+   * tracked order; the solver is told in the background (three bounded
+   * tries, then again from the fill watch while it reads NOT_FOUND, see
+   * the renotify effect). A sponsored send past its deadline lets the
+   * screen go; a late hash then carries on as a sent order (sendSlow's
+   * relay, fill watch and record), never sent a second time.
+   */
+  const sendMarket = useCallback(
+    async (input: {
+      payload: LeverageYieldSwapPayload;
+      walletProvider: AnyWalletProvider;
+      srcChainKey: SpokeChainKey;
+    }): Promise<boolean> => {
+      const { payload, walletProvider, srcChainKey } = input;
+      const { params } = payload;
+      const run = runRef.current;
+      const pour = pourRef.current;
+      const analytics = sodax.config.analytics;
+      const ctx = { srcChainKey, dstChainKey: params.dstChainKey, action: "vaultSwap" };
+      analytics.emit("leverageYield", "vaultSwap", "start", () => ({
+        srcChainKey,
+        dstChainKey: params.dstChainKey,
+        srcAddress: params.srcAddress,
+        dstAddress: params.dstAddress,
+        inputToken: params.inputToken,
+        outputToken: params.outputToken,
+        inputAmount: params.inputAmount,
+      }));
+      const failed = (error: unknown) => {
+        const code = (error as { code?: unknown } | null)?.code;
+        analytics.emit("leverageYield", "vaultSwap", "failure", () => ({ code: typeof code === "string" ? code : "UNKNOWN" }));
+        fail(friendlyError(error, COPY.errOrderFailed, gasContextFor(srcChainKey)), error);
+        return false;
       };
-      const verified = await sodax.spoke.verifyTxHash({ txHash: tx, chainKey: srcChainKey });
-      if (!verified.ok) return notArrived(verified.error);
-      let hubTxHash = tx;
-      if (!isHubChainKeyType(srcChainKey)) {
-        const packet = await relayTxAndWaitPacket({
-          srcTxHash: tx,
-          data: created.value.relayData,
-          chainKey: srcChainKey,
-          relayerApiEndpoint: sodax.swaps.relayerApiEndpoint,
-          timeout: undefined,
-        });
-        if (!packet.ok) return notArrived(packet.error);
-        hubTxHash = packet.value.dst_tx_hash;
-      }
-      const notified = await sodax.leverageYield.notifySolver({ intent_tx_hash: hubTxHash as `0x${string}` });
-      if (!notified.ok && pourRef.current) {
-        report(
-          solverNotNotifiedReport(pourRef.current.context, {
-            intentId,
-            spokeTxHash: tx,
-            hubTxHash,
-            notifyError: errorLine(notified.error),
-          }),
+
+      const stall = sponsoredStall();
+      let raced;
+      try {
+        raced = await unlessStalled(
+          sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false }),
+          stall.promise,
         );
+      } catch (error) {
+        return failed(error);
+      } finally {
+        stall.cancel();
       }
-      restLimit(input.direction, srcChainKey, input.limit, {
-        intent: { intentId: created.value.intent.intentId },
-        intentDeliveryInfo: { srcTxHash: tx, dstTxHash: hubTxHash },
-        solverExecutionResponse: { intent_hash: notified.ok ? notified.value.intent_hash : undefined },
+      if (raced.stalled) {
+        failStalled();
+        void raced.later
+          .then(async (created): Promise<void> => {
+            if (!created.ok) return console.warn("[vault-action] late order did not go out", created.error);
+            console.warn("[vault-action] late order went out", String(created.value.tx));
+            if (!pour) return;
+            await sendSlow({
+              payload,
+              walletProvider,
+              srcChainKey,
+              relayWaitMs: DEFAULT_RELAY_TX_TIMEOUT,
+              late: { created: created.value, run, pour },
+            });
+          })
+          .catch((e: unknown) => console.error("[vault-action] late order", e));
+        return false;
+      }
+
+      let onHub;
+      try {
+        const created = raced.value;
+        onHub = await reachHub<SentIntent["intent"]>({
+          created: created.ok
+            ? { ok: true, value: { tx: String(created.value.tx), intent: created.value.intent, relayData: created.value.relayData } }
+            : created,
+          verify: (tx) => sodax.spoke.verifyTxHash({ txHash: tx, chainKey: srcChainKey }),
+          relay: isHubChainKeyType(srcChainKey)
+            ? undefined
+            : (tx, relayData) =>
+                relayTxAndWaitPacket({
+                  srcTxHash: tx,
+                  data: relayData as SentIntent["relayData"],
+                  chainKey: srcChainKey,
+                  relayerApiEndpoint: sodax.swaps.relayerApiEndpoint,
+                  timeout: undefined,
+                }),
+          mapVerifyError: (error) => verifyFailed("leverageYield", error, ctx),
+          mapRelayError: (error) => mapRelayFailure(error, { feature: "leverageYield", ...ctx }),
+        });
+      } catch (error) {
+        return failed(error);
+      }
+      if (!onHub.ok) return failed(onHub.error);
+
+      const { spokeTxHash, hubTxHash } = onHub;
+      const intentId = onHub.intent.intentId.toString();
+      analytics.emit("leverageYield", "vaultSwap", "success", () => ({
+        intentId: onHub.intent.intentId,
+        srcTxHash: spokeTxHash,
+        dstTxHash: hubTxHash,
+      }));
+      // What dapp-kit's vaultSwap hook refreshes.
+      void queryClient.invalidateQueries({ queryKey: ["shared", "xBalances", srcChainKey] });
+      void queryClient.invalidateQueries({ queryKey: ["shared", "xBalances", params.dstChainKey] });
+      // On the hub: the fill watch starts now, before the solver is told.
+      const notifying: RenotifyState = { hubTxHash, busy: true, renotifies: 0, lastAt: 0 };
+      renotifyRef.current = notifying;
+      setSent({ spokeTxHash, intentId, hubTxHash });
+      advance("tracking");
+      void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
+      void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
+
+      void notifyWithRetries(() => tellSolver(hubTxHash)).then((told) => {
+        notifying.busy = false;
+        notifying.lastAt = Date.now();
+        if (told.ok) {
+          if (runRef.current === run) {
+            setSent((prev) => (prev?.hubTxHash === hubTxHash ? { ...prev, intentHash: told.intentHash } : prev));
+          }
+          return;
+        }
+        console.error("[vault-action] notify solver", told.error);
+        if (!pour) return;
+        // The fill watch tells the solver again while it reads NOT_FOUND;
+        // the team knows now rather than never.
+        const context = solverNotNotifiedReport(pour.context, { intentId, spokeTxHash, hubTxHash, notifyError: told.error });
+        if (runRef.current === run) reportRef.current(context);
+        else void submitErrorReport(context);
       });
       return true;
     },
-    [advance, fail, queryClient, report, restLimit, sodax],
+    [advance, fail, failStalled, queryClient, sendSlow, sodax, tellSolver],
   );
 
   const runDeposit = useCallback(
@@ -1177,10 +1462,26 @@ export function useVaultAction(options?: {
         if (!allowance.value) {
           advance("approving");
           if (!(await onRightChain())) return false;
-          const approved = await approve.mutateAsyncSafe({
-            params: built.value.params,
-            walletProvider: args.walletProvider,
-          });
+          // A sponsored approval past its deadline lets the screen go; the
+          // approval landing later spends nothing by itself.
+          const stall = sponsoredStall();
+          let approving;
+          try {
+            approving = await unlessStalled(
+              approve.mutateAsyncSafe({
+                params: built.value.params,
+                walletProvider: args.walletProvider,
+              }),
+              stall.promise,
+            );
+          } finally {
+            stall.cancel();
+          }
+          if (approving.stalled) {
+            failStalled();
+            return false;
+          }
+          const approved = approving.value;
           if (!approved.ok) {
             fail(
               friendlyError(
@@ -1246,33 +1547,16 @@ export function useVaultAction(options?: {
             limit: args.limit,
           });
         }
-        const swapped = await vaultSwap.mutateAsyncSafe({
-          ...payload,
+        return await sendMarket({
+          payload,
           walletProvider: args.walletProvider,
+          srcChainKey: args.srcChainKey,
         });
-        if (!swapped.ok) {
-          fail(
-            friendlyError(swapped.error, COPY.errOrderFailed, gasContextFor(args.srcChainKey)),
-            swapped.error,
-          );
-          return false;
-        }
-
-        setSent({
-          spokeTxHash: swapped.value.intentDeliveryInfo.srcTxHash,
-          intentId: swapped.value.intent.intentId.toString(),
-          hubTxHash: swapped.value.intentDeliveryInfo.dstTxHash,
-          intentHash: swapped.value.solverExecutionResponse.intent_hash,
-        });
-        advance("tracking");
-        void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
-        void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
-        return true;
       } finally {
         runningRef.current = false;
       }
     },
-    [advance, approve, buildDeposit, fail, queryClient, resetReport, sendLimit, sendSlow, sodax, vaultSwap, waitForAllowance],
+    [advance, approve, buildDeposit, fail, failStalled, resetReport, sendLimit, sendMarket, sendSlow, sodax, waitForAllowance],
   );
 
   const runWithdraw = useCallback(
@@ -1376,37 +1660,16 @@ export function useVaultAction(options?: {
             limit: args.limit,
           });
         }
-        const swapped = await vaultSwap.mutateAsyncSafe({
-          ...built.value,
+        return await sendMarket({
+          payload: built.value,
           walletProvider: args.walletProvider,
+          srcChainKey: args.srcChainKey,
         });
-        if (!swapped.ok) {
-          fail(
-            friendlyError(
-              swapped.error,
-              COPY.errOrderFailed,
-              gasContextFor(args.srcChainKey),
-            ),
-            swapped.error,
-          );
-          return false;
-        }
-
-        setSent({
-          spokeTxHash: swapped.value.intentDeliveryInfo.srcTxHash,
-          intentId: swapped.value.intent.intentId.toString(),
-          hubTxHash: swapped.value.intentDeliveryInfo.dstTxHash,
-          intentHash: swapped.value.solverExecutionResponse.intent_hash,
-        });
-        advance("tracking");
-        void queryClient.invalidateQueries({ queryKey: ["leverageYield"] });
-        void queryClient.invalidateQueries({ queryKey: LISTINGS_QUERY_KEY });
-        return true;
       } finally {
         runningRef.current = false;
       }
     },
-    [advance, buildWithdraw, fail, queryClient, resetReport, sendLimit, sendSlow, vaultSwap],
+    [advance, buildWithdraw, fail, resetReport, sendLimit, sendMarket, sendSlow],
   );
 
   const reset = useCallback(() => {

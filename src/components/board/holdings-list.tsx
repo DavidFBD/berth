@@ -11,7 +11,8 @@ import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
 import { shortDate } from "@/components/board/portfolio-summary";
 import { DisclosureRow, useDisclosure } from "@/components/board/disclosure";
-import { useLastKnown, useOrders } from "@/hooks/use-profile";
+import { useLastKnown, useOrders, useProfile } from "@/hooks/use-profile";
+import { ShareHoldingsOnX } from "@/components/share-holdings-on-x";
 import { compareHolding, type HoldingComparison } from "@/lib/benchmark";
 import { formatTokenAmount } from "@/lib/format";
 import { LISTING_MARK_BY_SYMBOL, TOKEN_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
@@ -95,6 +96,7 @@ export function HoldingsList({
   const orders = useOrders(Boolean(account.spokeAddress));
   const moves = useMoves();
   const lastKnown = useLastKnown(Boolean(account.spokeAddress)).data;
+  const profile = useProfile();
 
   if (!account.spokeAddress) return null;
 
@@ -170,6 +172,7 @@ export function HoldingsList({
       total={total}
       includesCash={holdings.held.some((holding) => holding.listing.kind === "cash" && holding.balance > 0n)}
       onSell={onSell}
+      inviteCode={profile.data?.referralCode ?? null}
     />
   );
 }
@@ -212,7 +215,13 @@ export function HoldingsView({
   includesCash,
   onSell,
   updating = false,
+  inviteCode = null,
+  shareOpen = false,
 }: {
+  /** The person's invite code: with it, and something held, the quiet "Share what you hold on X" link shows. */
+  inviteCode?: string | null;
+  /** Dev gallery only: that link's sheet open on arrival. */
+  shareOpen?: boolean;
   /** The rows are the last reading (lib/last-known), not live: drawn muted, without Sell. */
   updating?: boolean;
   rows: readonly HoldingRow[];
@@ -326,6 +335,11 @@ export function HoldingsView({
               controls={listId}
               label={copy.holdingsAll(rows.length)}
             />
+          )}
+          {inviteCode && !updating && (
+            <div className="flex justify-end border-t border-border px-[18px] lg:px-6">
+              <ShareHoldingsOnX names={rows.map((row) => rowName(row.listing))} code={inviteCode} defaultOpen={shareOpen} />
+            </div>
           )}
         </>
       )}

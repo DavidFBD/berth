@@ -10,7 +10,7 @@ import type { ConsentRequest } from "@/lib/server/oauth/authorize";
 import { resolveScope, scopeList } from "@/lib/server/oauth/validation";
 import { assistantForGrantName, describeParty, type AssistantId } from "@/lib/assistant-party";
 import { COPY } from "@/lib/copy";
-import { sendNotice } from "@/lib/server/email/send";
+import { sendNotice } from "@/lib/server/email/notify";
 
 /**
  * Codes, grants and tokens: the stateful half of the authorization server.

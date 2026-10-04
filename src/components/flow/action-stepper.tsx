@@ -13,6 +13,7 @@ import type { FillPhase } from "@/lib/pour-lifecycle";
 import type { VaultActionStep } from "@/hooks/use-vault-action";
 import { useCopy } from "@/components/settings-provider";
 import type { Copy } from "@/lib/copy";
+import { stepMessage } from "@/lib/step-message";
 
 /* Step keys are the machine's; every label and message comes from useCopy.
    Failure copy shown here is presentation only — the REPORTED message stays
@@ -27,24 +28,22 @@ const STEP_LABEL: Record<StepKey, (copy: Copy) => string> = {
   signing: (copy) => copy.stepSign,
 };
 
-const STEP_MESSAGE: Record<StepKey, (copy: Copy) => string> = {
-  building: (copy) => copy.stepMsgBuilding,
-  approving: (copy) => copy.stepMsgApproving,
-  signing: (copy) => copy.stepMsgSigning,
-};
-
 /**
  * The order stepper: Build → Approve → Sign. `approveNeeded={false}`
  * (withdrawals, native tokens) keeps the Approve dot visible but marks it as
- * skipped.
+ * skipped. `headless`: the embedded wallet sends with Privy paying the fee
+ * and no wallet screen (lib/gas-sponsor), so the steps say what Berth is
+ * doing instead of asking for a confirmation nobody can give.
  */
 export function ActionStepper({
   step,
   approveNeeded = true,
+  headless = false,
   className,
 }: {
   step: VaultActionStep;
   approveNeeded?: boolean;
+  headless?: boolean;
   className?: string;
 }) {
   const copy = useCopy();
@@ -122,7 +121,7 @@ export function ActionStepper({
       </div>
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-sm font-medium text-foreground">
-          {STEP_MESSAGE[STEP_KEYS[activeIndex]](copy)}
+          {stepMessage(STEP_KEYS[activeIndex], copy, headless)}
         </p>
         <p className="text-xs text-muted-foreground">{copy.keepThisOpen}</p>
       </div>

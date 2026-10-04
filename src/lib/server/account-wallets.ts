@@ -1,5 +1,5 @@
 import { getSql } from "@/lib/server/db";
-import { sendNotice } from "@/lib/server/email/send";
+import { sendNotice } from "@/lib/server/email/notify";
 import { toCaip10, type WalletFamily } from "@/lib/identity/caip";
 import {
   UNLINK_COOLDOWN_DAYS,

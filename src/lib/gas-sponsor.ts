@@ -417,12 +417,38 @@ function readHold(now = Date.now()): number {
   }
 }
 
+/** The end of the last hold set by holdAfterUnknownOutcome, not by a late send's renewal. */
+let plainHoldUntil = 0;
+
 export function holdAfterUnknownOutcome(now = Date.now()): void {
+  setHold(now);
+  plainHoldUntil = holdUntil;
+}
+
+/** Sets (or renews) the minute's hold, here and for every other tab. */
+function setHold(now: number): void {
   holdUntil = now + OUTCOME_HOLD_MS;
   try {
     window.localStorage.setItem(HOLD_KEY, String(holdUntil));
   } catch {
     // Private mode or blocked storage: held for this page only.
+  }
+  for (const listener of holdListeners) listener();
+}
+
+/**
+ * Lifts a hold kept up for a late send that Privy then refused: nothing
+ * of that send sailed. An ordinary hold set by another unknown outcome
+ * meanwhile is kept to its minute.
+ */
+function releaseOutcomeHold(now = Date.now()): void {
+  const plain = plainHoldUntil > now ? plainHoldUntil : 0;
+  holdUntil = plain;
+  try {
+    if (plain) window.localStorage.setItem(HOLD_KEY, String(plain));
+    else window.localStorage.removeItem(HOLD_KEY);
+  } catch {
+    // Nowhere stored.
   }
   for (const listener of holdListeners) listener();
 }
@@ -454,6 +480,10 @@ export function subscribeOutcomeHold(listener: () => void): () => void {
 /** Test seam. */
 export function resetOutcomeHold(): void {
   holdUntil = 0;
+  plainHoldUntil = 0;
+  lateSends = 0;
+  renewUntil = 0;
+  stopRenewing();
   try {
     window.localStorage.removeItem(HOLD_KEY);
   } catch {
@@ -523,6 +553,136 @@ export class SponsoredCallFailed extends Error {
   }
 }
 
+/**
+ * How long one sponsored send may take before the order screen stops
+ * waiting on it. Privy normally answers within its own 20 second inclusion
+ * wait; a promise that has not settled by now is what this is for. Past
+ * it the outcome is unknown: Privy may still broadcast. Nothing is resent
+ * and nothing is paid for instead. The send keeps waiting for Privy's own
+ * answer underneath, the order buttons stay held until it comes (on every
+ * tab), and the order screen is let go through `subscribeSponsoredStall`,
+ * saying the order may still go through. A late hash carries on as any
+ * sent order does (relay, fill watch, record); a late refusal lifts the hold.
+ */
+export const SPONSORED_SEND_DEADLINE_MS = 90_000;
+
+/**
+ * However long Privy stays silent, the hold is kept up this long at most
+ * past the deadline, so a promise that never settles cannot hold the order
+ * buttons for the rest of the session. A hold kept up ends a minute after.
+ */
+export const LATE_HOLD_CAP_MS = 10 * 60_000;
+
+/** How often a held send renews the hold, well inside OUTCOME_HOLD_MS. */
+const HOLD_RENEW_MS = 20_000;
+
+/** Kept for its name in logs and reports: the sponsored send passed its deadline. */
+export class SponsoredSendTimedOut extends Error {
+  constructor(ms: number) {
+    super(`The sponsored send gave no answer within ${Math.round(ms / 1000)} seconds.`);
+    this.name = "SponsoredSendTimedOut";
+  }
+}
+
+/** Privy refused a send after its deadline had passed: never a reason to send again. */
+class SponsoredLateFailure extends Error {
+  constructor(cause: unknown) {
+    super("The sponsored send failed after its deadline.", { cause });
+    this.name = "SponsoredLateFailure";
+  }
+}
+
+const stallListeners = new Set<() => void>();
+
+/**
+ * Told when a sponsored send passes SPONSORED_SEND_DEADLINE_MS, so the
+ * order that is waiting on it can let its screen go. The send itself
+ * carries on underneath.
+ */
+export function subscribeSponsoredStall(listener: () => void): () => void {
+  stallListeners.add(listener);
+  return () => {
+    stallListeners.delete(listener);
+  };
+}
+
+/** Sends past their deadline that Privy has not answered yet. */
+let lateSends = 0;
+let renewTimer: ReturnType<typeof setInterval> | undefined;
+let renewUntil = 0;
+
+/** Whether any sponsored send is past its deadline and still unanswered. */
+export function lateSponsoredSends(): number {
+  return lateSends;
+}
+
+function stopRenewing(): void {
+  if (renewTimer !== undefined) clearInterval(renewTimer);
+  renewTimer = undefined;
+}
+
+/**
+ * Holds the order buttons until `pending` settles (capped by
+ * LATE_HOLD_CAP_MS): renewed every HOLD_RENEW_MS, so every tab hears of it
+ * through the storage event. A late answer restarts the ordinary minute;
+ * a late refusal lifts the hold once no other send is still out.
+ */
+function holdUntilSettled(pending: Promise<unknown>, now = Date.now()): void {
+  lateSends += 1;
+  renewUntil = Math.max(renewUntil, now + LATE_HOLD_CAP_MS);
+  setHold(now);
+  if (renewTimer === undefined) {
+    renewTimer = setInterval(() => {
+      if (Date.now() > renewUntil) return stopRenewing();
+      setHold(Date.now());
+    }, HOLD_RENEW_MS);
+  }
+  pending.then(
+    () => {
+      lateSends -= 1;
+      if (lateSends === 0) stopRenewing();
+      holdAfterUnknownOutcome();
+    },
+    (error: unknown) => {
+      lateSends -= 1;
+      if (lateSends === 0) stopRenewing();
+      // A late answer that does not prove nothing sailed (a timeout, a 5xx,
+      // a nonce word) may still land: hold as before the deadline.
+      if (classifySponsorError(error) === "unknown") holdAfterUnknownOutcome();
+      else if (lateSends === 0) releaseOutcomeHold();
+    },
+  );
+}
+
+/**
+ * The sponsored send, waited on: Privy's answer as it comes, before the
+ * deadline or after it. Past the deadline the stall is announced and the
+ * hold kept until the answer; a late rejection is a SponsoredLateFailure.
+ */
+async function awaitSponsored<T extends { hash: string }>(pending: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"stalled">((resolve) => {
+    timer = setTimeout(() => resolve("stalled"), ms);
+  });
+  try {
+    const first = await Promise.race([pending, deadline]);
+    if (first !== "stalled") return first;
+  } finally {
+    clearTimeout(timer);
+  }
+  console.warn(`[gas-sponsor] ${new SponsoredSendTimedOut(ms).message} Holding orders until Privy answers.`);
+  holdUntilSettled(pending);
+  for (const listener of stallListeners) listener();
+  try {
+    const late = await pending;
+    console.warn(`[gas-sponsor] late answer from Privy: ${String(late.hash)}`);
+    return late;
+  } catch (error) {
+    console.warn("[gas-sponsor] late refusal from Privy; the hold is lifted", error);
+    throw new SponsoredLateFailure(error);
+  }
+}
+
 /** How long to wait before the one retry after a 429. */
 export const RATE_LIMIT_RETRY_MS = 2_000;
 
@@ -552,6 +712,7 @@ export function withGasSponsor(
     readReceipt,
     onFallback,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    sendDeadlineMs = SPONSORED_SEND_DEADLINE_MS,
   }: {
     chainId: number;
     /** The embedded wallet's address: the user operation's sender. */
@@ -572,6 +733,8 @@ export function withGasSponsor(
     onFallback?: (error: unknown, kind: "refused" | "rate-limited") => void;
     /** Test seam for the 429 wait. */
     sleep?: (ms: number) => Promise<void>;
+    /** Test seam for SPONSORED_SEND_DEADLINE_MS, per send. */
+    sendDeadlineMs?: number;
   },
 ): Eip1193 {
   return {
@@ -593,14 +756,17 @@ export function withGasSponsor(
       let hash: string;
       try {
         try {
-          ({ hash } = await sendSponsored(sponsoredTx));
+          ({ hash } = await awaitSponsored(sendSponsored(sponsoredTx), sendDeadlineMs));
         } catch (first) {
           // One 429 is a busy moment, not a refusal: wait and ask once more.
           if (classifySponsorError(first) !== "rate-limited") throw first;
           await sleep(RATE_LIMIT_RETRY_MS);
-          ({ hash } = await sendSponsored(sponsoredTx));
+          ({ hash } = await awaitSponsored(sendSponsored(sponsoredTx), sendDeadlineMs));
         }
       } catch (error) {
+        // Refused after the deadline: the hold already lifted, and after that
+        // long nothing is sent again, sponsored or paid.
+        if (error instanceof SponsoredLateFailure) throw new SponsoredOutcomeUnknown(error.cause);
         const kind = classifySponsorError(error);
         // A cancel, or an ordinary failure such as a simulation revert:
         // nothing went out, nothing is resent, the chain stays sponsored.

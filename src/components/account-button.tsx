@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AssistantId } from "@/lib/assistant-party";
 import { toast } from "@/lib/toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
+import { useStaffSignInRunning } from "@/components/staff/entry";
 import { AnimatePresence, motion } from "motion/react";
 import { useAddFunds } from "@privy-io/react-auth";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
@@ -64,6 +65,7 @@ export function AccountButton({
 } = {}) {
   const privy = usePrivyEmbeddedWallet();
   const linking = useLinkInProgress();
+  const staffSignIn = useStaffSignInRunning();
   const mounted = useMounted();
   const signOut = useSignOut();
   const copy = useCopy();
@@ -85,7 +87,8 @@ export function AccountButton({
   // A wallet account stays a wallet account while it borrows a Privy
   // session to add an email, and after: the email drawer below assumes an
   // embedded wallet this person does not have. See hooks/use-link-email.
-  if (!privy.authenticated || linking || privy.walletAccountSession) {
+  // So does a wallet sign in while its Staff entry signs in by email on the way to /staff (components/staff/entry).
+  if (!privy.authenticated || linking || staffSignIn || privy.walletAccountSession) {
     return <ExternalAccountEntry open={accountOpen} onOpenChange={setAccountOpen} assistant={assistant} start={start} focusEmail={focusEmail} />;
   }
 

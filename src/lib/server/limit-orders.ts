@@ -9,7 +9,7 @@ import { forgoHold, isNoXp, markNoXp } from "@/lib/server/no-xp";
 import { readOrder } from "@/lib/orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { formatTokenAmount, formatUsdPrecise } from "@/lib/format";
-import { sendNotice } from "@/lib/server/email/send";
+import { sendNotice } from "@/lib/server/email/notify";
 import type { Notice } from "@/lib/server/email/compose";
 import {
   effectivePrice,

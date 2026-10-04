@@ -751,6 +751,7 @@ export function DepositDrawer({
               <ActionStepper
                 step={action.step}
                 approveNeeded={action.approveRequired ?? true}
+                headless={mode === "email" && gas.sponsored(srcChainKey)}
               />
             </div>
           ) : listing && limit.reviewing && token && buildAmount && limitMin ? (

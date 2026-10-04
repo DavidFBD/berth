@@ -110,7 +110,10 @@ export function HomeGallery({
   firstStock = false,
   campaign,
   proof = null,
+  share = null,
 }: {
+  /** `&share=1`: the "Share what you hold on X" link with a fixture invite code; `&share=open` with its sheet open. */
+  share?: string | null;
   /** `&proof=1` (or 0): the social counts on the board drawer from fixtures (social-proof-fixtures.ts). */
   proof?: string | null;
   /** `&campaign=rules` (invited, staying, qualified, paid): the campaign line, from /dev/campaigns' fixtures. */
@@ -165,6 +168,8 @@ export function HomeGallery({
         total={holdingsUsd + (cashUsd ?? 0)}
         includesCash={cash > 0n}
         onSell={noop}
+        inviteCode={share ? "harbour7" : null}
+        shareOpen={share === "open"}
       />
     </Panel>
   );

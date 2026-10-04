@@ -29,6 +29,7 @@ import { WalletsSection } from "@/components/account-wallets";
 import { EmailSection } from "@/components/email-section";
 import { AssistantSection } from "@/components/assistant/assistant-section";
 import { SettingsBody } from "@/components/settings-drawer";
+import { StaffEntry } from "@/components/staff/entry";
 import {
   DRAWER_RETURN_KEY,
   DRAWER_RETURN_PARAM,
@@ -245,6 +246,9 @@ function MainScreen({
         )}
         {onOpenSettings && <Row icon={GearSix} title={copy.settingsTitle} sub={copy.settingsSub} onClick={() => nav.show("settings")} />}
       </Panel>
+
+      {/* Only for an account on a staff list, by the server's word (components/staff/entry). */}
+      <StaffEntry session={kind} />
 
       {onSignOut && (
         <Button variant="ghost" className="justify-start gap-3 px-3 text-muted-foreground" onClick={onSignOut}>

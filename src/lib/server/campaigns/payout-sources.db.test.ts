@@ -18,7 +18,7 @@ import { campaign, hex, person, qualifiedClaim } from "./test-kit";
  */
 
 const sent: { userId: string; ref: string; notice: { type: string; change?: string } }[] = [];
-vi.mock("@/lib/server/email/send", () => ({
+vi.mock("@/lib/server/email/notify", () => ({
   sendNotice: (input: { userId: string; ref: string; notice: { type: string } }) => void sent.push(input),
 }));
 vi.mock("@/lib/server/privy", () => ({

@@ -1,7 +1,7 @@
 import { getAddress } from "viem";
 import { getSql } from "@/lib/server/db";
 import { staffAdminIds, staffAudit } from "@/lib/server/staff-auth";
-import { sendNotice } from "@/lib/server/email/send";
+import { sendNotice } from "@/lib/server/email/notify";
 import { normalizeCampaignCode, REJECT_REASONS, campaignUsd } from "@/lib/campaigns";
 import { claimById, campaignById } from "@/lib/server/campaigns/store";
 import {

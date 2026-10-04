@@ -689,6 +689,10 @@ export type Copy = {
   stepMsgBuilding: string;
   stepMsgApproving: string;
   stepMsgSigning: string;
+  /** The approve step when Berth sends it for the person (an email account, fee paid): nothing to confirm. */
+  stepMsgApprovingHeadless: string;
+  /** The sign step when Berth sends it for the person (an email account, fee paid): nothing to confirm. */
+  stepMsgSending: string;
   keepThisOpen: string;
   settling: string;
   settlingNote: string;
@@ -1222,6 +1226,30 @@ export type Copy = {
    * the post discloses it.
    */
   inviteXDisclosure: string;
+  /**
+   * "Share what you hold on X" (components/share-holdings-on-x): a quiet
+   * link under What you own, only while something is held, and the small
+   * sheet it opens to choose which holdings to name. Never prompted, never
+   * rewarded. The post names holdings by name and nothing else: no amount,
+   * value, price, return or advice.
+   */
+  holdingsXShare: string;
+  holdingsXSheet: {
+    title: string;
+    lede: string;
+    /** Above the list of holdings to tick. */
+    choose: string;
+    /** Above the exact words X will open with. */
+    preview: string;
+    /** Shown in the preview while nothing is ticked. */
+    none: string;
+    open: string;
+    notNow: string;
+  };
+  /** The post's one line: the joined list, and how many holdings it stands for (one reads "a token"). */
+  holdingsXText: (list: string, count: number) => string;
+  /** "NVIDIA, Apple and Tesla", or "NVIDIA, Apple and three more" when `more` are counted, not named. */
+  holdingsXList: (names: readonly string[], more: number) => string;
 
   /* — the help page for assistants (app/assistants): public, the directories' documentation and support page — */
   /** The small link to /assistants under "Your assistant" in the account drawer. */
@@ -1944,6 +1972,16 @@ export const STAFF_COPY = {
     audit: "Audit",
   },
   signOut: "Leave staff area",
+  /** The account drawer's quiet entry, shown only to an account on a staff list (lib/staff/entry). */
+  entry: {
+    label: "Staff",
+    walletTitle: "The staff area opens with your email",
+    walletBody: "It opens only after you sign in with a code sent to this account's email. A wallet sign in never opens it.",
+    walletAction: "Sign in with email",
+    working: "Signing in",
+    failed: "The staff area did not open. Sign in with the code sent to this account's own email and try again.",
+    notNow: "Not now",
+  },
   signOutEverywhere: "Sign out everywhere",
   loggedNote: "Every view of a person, every reveal and every change here is logged.",
   fresh: {
@@ -2475,6 +2513,13 @@ function orNames(names: readonly string[]): string {
   if (names.length <= 1) return names[0] ?? "";
   if (names.length <= 3) return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
   return `${names[0]}, ${names[1]} or ${names.length - 2} others`;
+}
+
+const COUNT_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
+
+/** A small count in words ("three more"), so a shared post carries no figures. */
+function countWord(n: number): string {
+  return COUNT_WORDS[n] ?? String(n);
 }
 
 export const COPY: Copy = {
@@ -3013,6 +3058,8 @@ export const COPY: Copy = {
   stepMsgBuilding: "Preparing your order…",
   stepMsgApproving: "Approve the spend in your wallet…",
   stepMsgSigning: "Confirm in your wallet…",
+  stepMsgApprovingHeadless: "Approving the spend…",
+  stepMsgSending: "Sending your order…",
   keepThisOpen: "Keep this open. It usually takes under a minute.",
   settling: "Settling your order…",
   settlingNote: "Usually under a minute, sometimes a little more.",
@@ -4006,6 +4053,23 @@ export const COPY: Copy = {
   inviteXShare: "Share on X",
   inviteXText: "I kept a place for you on Berth. US stocks by name, held in an account your own wallet controls.",
   inviteXDisclosure: "Berth may pay me a small reward if you join.",
+  holdingsXShare: "Share what you hold on X",
+  holdingsXSheet: {
+    title: "Share what you hold",
+    lede: "Only the names go in the post, never amounts, prices or returns. X opens with the words filled in, and nothing is posted unless you post it.",
+    choose: "Name these",
+    preview: "The post",
+    none: "Choose at least one to name.",
+    open: "Open X",
+    notNow: "Not now",
+  },
+  holdingsXText: (list, count) =>
+    `I hold ${list} on Berth, as ${count === 1 ? "a token that tracks the shares" : "tokens that track the shares"}.`,
+  holdingsXList: (names, more) => {
+    if (more > 0) return `${names.join(", ")} and ${countWord(more)} more`;
+    if (names.length <= 1) return names.join("");
+    return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  },
   termsOfUse: {
     title: "Terms of use",
     status: `Effective ${LEGAL_EFFECTIVE_DATE}.`,

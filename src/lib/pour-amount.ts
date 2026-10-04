@@ -70,20 +70,29 @@ export type PourAmounts = {
  * token (callers pass the token price ALREADY in that currency: oracle USD ×
  * the FX rate); unpriced tokens fall back to token entry even if the field
  * is nominally in money.
+ *
+ * `max`: the field still shows exactly the text Max wrote, so it means the
+ * whole amount, to the last unit. Money text is floored to cents, and
+ * converting cents back to tokens left a sliver behind (a Max sell of
+ * 0.011016 NVDA sold 0.010979). Any other text is read as typed.
  */
 export function pourAmounts(
   text: string,
   denom: "money" | "token",
   decimals: number | undefined,
   price: number | undefined,
+  max?: { text: string; amount: bigint },
 ): PourAmounts {
   if (decimals === undefined) {
     return { moneyMode: false, buildAmount: undefined, worth: undefined };
   }
   const moneyMode = denom === "money" && price !== undefined;
-  const buildAmount = moneyMode
-    ? usdToTokenAmount(text, price, decimals)
-    : parseAmount(text, decimals);
+  const buildAmount =
+    max && max.amount > 0n && text === max.text
+      ? max.amount
+      : moneyMode
+        ? usdToTokenAmount(text, price, decimals)
+        : parseAmount(text, decimals);
   const worth =
     buildAmount !== undefined && price !== undefined
       ? Number(formatUnits(buildAmount, decimals)) * price

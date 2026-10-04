@@ -297,6 +297,15 @@ async function deliverQuietly(input: NoticeInput): Promise<void> {
  * write has succeeded. Never throws and never waits; with sending off (no
  * key, or EMAIL_SENDING=off) it does nothing at all.
  */
+/**
+ * Sends one notice now, quietly (never throws): what `sendNotice` schedules,
+ * and what `./notify` runs after loading this module lazily.
+ */
+export async function deliverNotice(input: NoticeInput): Promise<void> {
+  if (!sendingAllowed()) return;
+  await deliverQuietly(input);
+}
+
 export function sendNotice(input: NoticeInput): void {
   if (!sendingAllowed()) return;
   try {

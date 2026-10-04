@@ -416,3 +416,71 @@ describe("the gas gate in the order gates", () => {
     expect(withdrawGate(sell).kind).toBe("ready");
   });
 });
+
+describe("Max sells exactly what is held", () => {
+  // David's NVDA sell of 4 Oct 2026: 0.011016273649717106 shares held.
+  const held = 11_016_273_649_717_106n;
+  const price = 229.2; // per share, in the display currency
+
+  it("in money mode, Max of 0.011016273649717106 sells exactly that", () => {
+    const text = amountText(held, 18, true, price);
+    const { buildAmount, moneyMode } = pourAmounts(text, "money", 18, price, { text, amount: held });
+    expect(moneyMode).toBe(true);
+    expect(buildAmount).toBe(held);
+  });
+
+  it("without the Max mark the same cents left a sliver behind (the old dust)", () => {
+    const text = amountText(held, 18, true, price);
+    const { buildAmount } = pourAmounts(text, "money", 18, price);
+    expect(buildAmount).toBeLessThan(held);
+    expect(held - buildAmount!).toBeGreaterThan(0n);
+  });
+
+  it("in share mode, Max is exact too", () => {
+    const text = amountText(held, 18, false, price);
+    expect(text).toBe("0.011016273649717106");
+    expect(pourAmounts(text, "token", 18, price, { text, amount: held }).buildAmount).toBe(held);
+  });
+
+  it("once the text is changed, it is read as typed", () => {
+    const text = amountText(held, 18, true, price);
+    const { buildAmount } = pourAmounts("1.00", "money", 18, price, { text, amount: held });
+    expect(buildAmount).toBeLessThan(held);
+    expect(buildAmount).not.toBe(held);
+  });
+
+  it("a Max with nothing held means nothing", () => {
+    expect(pourAmounts("0.00", "money", 18, price, { text: "0.00", amount: 0n }).buildAmount).toBeUndefined();
+  });
+});
+
+describe("Max is the holding seen when it was pressed", () => {
+  const seen = 11_016_273_649_717_106n;
+  const price = 229.2;
+  const text = amountText(seen, 18, true, price);
+  const ready = {
+    address: "0xabc",
+    hasDestination: true,
+    recipient: "0xdef",
+    usingCustomRecipient: false,
+    belowMinimum: false,
+    isWrongChain: false,
+    noRoute: false,
+    belowDust: false,
+    quoted: 90n,
+    minOut: 89n,
+    hasWalletProvider: true,
+  };
+
+  it("a holding that grows afterwards does not grow the order", () => {
+    const grown = seen * 3n;
+    const { buildAmount } = pourAmounts(text, "money", 18, price, { text, amount: seen });
+    expect(buildAmount).toBe(seen);
+    expect(withdrawGate({ ...ready, buildAmount: buildAmount!, availableShares: grown })).toEqual({ kind: "ready" });
+  });
+
+  it("a holding that shrinks afterwards is refused, never sold short of what is shown", () => {
+    const { buildAmount } = pourAmounts(text, "money", 18, price, { text, amount: seen });
+    expect(withdrawGate({ ...ready, buildAmount: buildAmount!, availableShares: seen - 1n })).toEqual({ kind: "insufficient" });
+  });
+});

@@ -65,7 +65,9 @@ import {
  *                                       home=empty for a new account with no
  *                                       money, home=new funded but holding
  *                                       nothing, &dock=0
- *                                       without the docked Ask
+ *                                       without the docked Ask; &share=1 the
+ *                                       "Share what you hold on X" link,
+ *                                       &share=open with its sheet open
  *   /dev/board?home=path                the guided first path, walked live from
  *                                       fixtures (path-gallery.tsx: &account=wallet,
  *                                       &at=, &skipped=, &drawer=1, &done=)
@@ -105,6 +107,7 @@ function Galleries() {
           <ActionStepper
             step={stepperWanted as VaultActionStep}
             approveNeeded={params.get("approve") !== "0"}
+            headless={params.get("headless") === "1"}
           />
         </Panel>
       </div>
@@ -137,6 +140,7 @@ function Galleries() {
         firstStock={params.get("first") === "1"}
         campaign={LINE_FIXTURES[params.get("campaign") ?? ""]}
         proof={params.get("proof")}
+        share={params.get("share")}
       />
     );
   }

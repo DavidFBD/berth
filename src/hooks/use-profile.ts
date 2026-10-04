@@ -1,5 +1,6 @@
 "use client";
 
+import { isStaffAnswer } from "@/lib/staff/entry";
 import { isUnavailableResponse, noteUnavailable, unavailableReasonOf } from "@/lib/unavailable-refusal";
 import { reportWithRetry } from "@/lib/pour-retry";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
@@ -670,6 +671,19 @@ export function useAccountWallets(enabled = true) {
     staleTime: 5 * 60_000,
     // Not deployed yet: nothing linked beyond what the session proves.
     notFound: { wallets: [], signedInWith: null },
+  });
+}
+
+/**
+ * Whether this account gets the drawer's quiet Staff entry (lib/staff/entry):
+ * the server's yes for an account on a staff list, false for everyone else.
+ */
+export function useStaffEntry(enabled = true) {
+  return useRewardsQuery<unknown, boolean>("staff-entry", "/api/account/staff", {
+    enabled,
+    staleTime: 10 * 60_000,
+    notFound: {},
+    select: isStaffAnswer,
   });
 }
 
