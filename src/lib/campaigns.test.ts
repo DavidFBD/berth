@@ -141,7 +141,8 @@ describe("the words", () => {
         staff.labels,
         staff.signals,
         staff.refusals,
-        staff.systemReasons,
+        // The retired rules' own reasons name the inviter, and say they are retired.
+        Object.fromEntries(Object.entries(staff.systemReasons).filter(([, words]) => !words.endsWith("under the retired rules"))),
         staff.rejectReasons,
         staff.create,
         staff.create.hints,
@@ -159,6 +160,11 @@ describe("the words", () => {
     expect(COPY.campaign.staff.activateConfirm("Autumn")).toMatch(/read this campaign/);
     expect(COPY.campaign.staff.activateCheck).toMatch(/I have read/);
     expect(COPY.campaign.staff.activateCheck).not.toMatch(/[Cc]ounsel/);
+  });
+
+  it("names the retired rules' reject reasons in words, never as raw ids", () => {
+    const reasons = COPY.campaign.staff.systemReasons;
+    for (const id of ["self_invite", "inviter_cap", "inviter_gone"]) expect(reasons[id]).toMatch(/under the retired rules$/);
   });
 
   it("formats whole dollars without cents", () => {
