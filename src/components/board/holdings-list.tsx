@@ -47,7 +47,7 @@ export function ComparisonLine({
     return <span className={`money ${TONE[direction]}`}>{formatPercentChange(value, 1)}</span>;
   };
   return (
-    <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-[11px] text-muted-foreground">
+    <p data-ph-mask className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-[11px] text-muted-foreground">
       {/* Each figure stays with its words when the line wraps. */}
       <span className="whitespace-nowrap">
         {label}, {copy.holdingsMarketDays(comparison.tradingDays)} {pct(comparison.changePct)}
@@ -159,8 +159,11 @@ export function HoldingsList({
 export function TickerTile({ symbol }: { symbol: string }) {
   const mark = LISTING_MARK_BY_SYMBOL[symbol];
   return (
+    // data-ph-block: a company mark is fixed path data a replay could read
+    // back as a holding, so the tile is left out of replays (lib/analytics).
     <span
       aria-hidden="true"
+      data-ph-block
       className="money flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-[9.5px] font-medium tracking-tight text-secondary-foreground"
     >
       {mark ? <CompanyMark id={mark} className="size-4.5" /> : symbol.slice(0, 4)}
@@ -200,7 +203,7 @@ export function HoldingsView({
   const shown = open ? rows : rows.slice(0, HOLDINGS_SHOWN);
 
   return (
-    <section>
+    <section data-ph-mask>
       <SectionHeading
         title={copy.holdingsTitle}
         hint={copy.holdingsHint}

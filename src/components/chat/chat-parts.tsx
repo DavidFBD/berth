@@ -245,7 +245,7 @@ export function PlanDraftCard({ plan, onOpen, className }: { plan: ChatPlanDraft
           <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{words.cardLabel}</span>
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-[15px] font-semibold text-foreground">{plan.name}</span>
-            <span className="shrink-0 font-mono text-[15px] font-medium text-foreground tabular-nums">{formatUsd(plan.usd)}</span>
+            <span data-ph-mask className="shrink-0 font-mono text-[15px] font-medium text-foreground tabular-nums">{formatUsd(plan.usd)}</span>
           </div>
           <span className="text-xs text-secondary-foreground">
             {when}

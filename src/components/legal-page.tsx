@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { BerthMark } from "@/components/berth-mark";
 import { COPY, type LegalDocument } from "@/lib/copy";
@@ -8,7 +9,16 @@ import { COPY, type LegalDocument } from "@/lib/copy";
  * outside AuthGate, so it reads the same signed in, signed out and to a
  * crawler. The words live in lib/copy; this only lays them out.
  */
-export function LegalPage({ doc, related = [] }: { doc: LegalDocument; related?: readonly { href: string; label: string }[] }) {
+export function LegalPage({
+  doc,
+  related = [],
+  inSection,
+}: {
+  doc: LegalDocument;
+  related?: readonly { href: string; label: string }[];
+  /** A control shown at the end of one section, by its id (the analytics switch in the privacy policy). */
+  inSection?: { id: string; node: ReactNode };
+}) {
   return (
     <main className="mx-auto w-full max-w-2xl px-5 pt-10 pb-[max(env(safe-area-inset-bottom),3rem)] sm:px-8 sm:pt-14">
       <Link href="/" className="inline-flex items-center gap-2.5 text-foreground" aria-label={doc.backHome}>
@@ -60,6 +70,7 @@ export function LegalPage({ doc, related = [] }: { doc: LegalDocument; related?:
               {section.after?.map((line) => (
                 <p key={line}>{line}</p>
               ))}
+              {inSection?.id === section.id && <div className="mt-2 rounded-lg border border-border bg-card p-4">{inSection.node}</div>}
             </div>
           </section>
         ))}

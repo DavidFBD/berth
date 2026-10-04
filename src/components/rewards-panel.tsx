@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/analytics";
 import { useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
@@ -357,7 +358,7 @@ export function AddEmailBlock({ hasEmail }: { hasEmail: boolean }) {
                     }
                   }}
                 >
-                  <p className="text-xs text-muted-foreground">
+                  <p data-ph-mask className="text-xs text-muted-foreground">
                     {link.secondCode ? copy.mergeCodeSent(link.pendingEmail) : copy.addEmailCodeSent(link.pendingEmail)}
                   </p>
                   <Input
@@ -611,7 +612,7 @@ function ThankYouRow({
   const amount = XP_ACTIONS.invite_accepted.amount;
   const copy = useCopy();
   return (
-    <div className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2">
+    <div data-ph-mask className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2">
       {src ? (
         <Image
           src={src}
@@ -738,7 +739,11 @@ function InviteRow({ code, taps }: { code: string; taps: number }) {
   return (
     <button
       type="button"
-      onClick={() => copyText(inviteLink(code))}
+      data-ph-mask
+      onClick={() => {
+        copyText(inviteLink(code));
+        track("invite_link_copied", { surface: "invite_row" });
+      }}
       className="flex min-h-12 items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
     >
       {copied ? (
@@ -777,6 +782,7 @@ function ProgressRow({
   const copy = useCopy();
 
   const nudge = () => {
+    track("invite_link_copied", { surface: "invite_nudge" });
     void navigator.clipboard
       .writeText(
         copy.nudgeMessage(XP_ACTIONS.friend_poured.amount, inviteLink(code)),
@@ -790,7 +796,7 @@ function ProgressRow({
   };
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg bg-muted/60 px-3 py-2.5">
+    <div data-ph-mask className="flex flex-col gap-1.5 rounded-lg bg-muted/60 px-3 py-2.5">
       <div className="flex items-center gap-3">
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium text-foreground">
@@ -802,7 +808,10 @@ function ProgressRow({
         </span>
         <button
           type="button"
-          onClick={() => copyText(inviteLink(code))}
+          onClick={() => {
+        copyText(inviteLink(code));
+        track("invite_link_copied", { surface: "invite_row" });
+      }}
           aria-label={copy.inviteCopyLabel}
           className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background/60 text-primary transition-[transform,background-color] duration-150 ease-lift hover:bg-background active:scale-[0.94]"
         >

@@ -18,6 +18,8 @@ import { CURRENCIES } from "@/lib/currencies";
 import { cn } from "@/lib/utils";
 import { useAwardTheme } from "@/hooks/use-profile";
 import { AdvancedSection } from "@/components/key-export-row";
+import { ANALYTICS_CONFIGURED } from "@/components/analytics/analytics-root";
+import { AnalyticsSwitch } from "@/components/analytics/analytics-switch";
 
 const APPEARANCE_ICONS: Record<AppearanceId, typeof Sun> = {
   system: Desktop,
@@ -154,6 +156,8 @@ export function SettingsBody({ evmAddress }: { evmAddress?: string }) {
               </div>
             </section>
 
+            {ANALYTICS_CONFIGURED && <AnalyticsSwitch />}
+
             <div className="flex gap-5 self-start text-[13px]">
               <a href="/privacy" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
                 {copy.privacyLink}
@@ -170,3 +174,4 @@ export function SettingsBody({ evmAddress }: { evmAddress?: string }) {
     </div>
   );
 }
+

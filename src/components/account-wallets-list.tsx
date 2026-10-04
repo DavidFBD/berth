@@ -75,7 +75,7 @@ export function WalletsList({
   ].filter((group) => group.wallets.length > 0);
 
   return (
-    <div>
+    <div data-ph-block>
       <div className="flex flex-col px-3 pt-3 pb-1">
         <span className="text-sm font-medium text-foreground">{copy.accountWalletsTitle}</span>
         <span className="text-xs text-muted-foreground">{copy.accountWalletsSub}</span>
@@ -253,6 +253,7 @@ export function UnlinkedWalletLine({
   return (
     <div
       role="status"
+      data-ph-block
       className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-border px-3 py-2", className)}
     >
       <span className="min-w-0 flex-1 text-sm text-foreground">
@@ -294,7 +295,7 @@ export function SignedInAsLine({
 }) {
   const copy = useCopy();
   return (
-    <div role="status" className={cn("flex flex-col gap-2 rounded-xl border border-border px-3 py-2.5", className)}>
+    <div role="status" data-ph-block className={cn("flex flex-col gap-2 rounded-xl border border-border px-3 py-2.5", className)}>
       <span className="flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
         <span className="whitespace-nowrap">{copy.signedInAsWallet(shortenAddress(signedIn, 4))}</span>
         <span aria-hidden>·</span>
@@ -334,7 +335,7 @@ export function AddWalletList({
 }) {
   const copy = useCopy();
   return (
-    <div className="border-t border-border">
+    <div data-ph-block className="border-t border-border">
       <ul className="divide-y divide-border">
         {rows.map((row) => (
           <li key={`${row.network}:${row.address ?? ""}`} className="px-3 py-2.5">

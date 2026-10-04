@@ -199,12 +199,13 @@ export function FirstBuyStep({
   ) : readyUsd === undefined ? (
     copy.calmHome.firstReadyUnpriced
   ) : (
-    copy.calmHome.firstReady(money.format(readyUsd))
+    // The balance it names stays out of a replay (lib/analytics).
+    <span data-ph-mask>{copy.calmHome.firstReady(money.format(readyUsd))}</span>
   );
 
   return (
     <StepCard title={title ?? copy.calmHome.firstTitle} line={line} frame={frame}>
-      <div role="radiogroup" aria-label={copy.calmHome.pickLabel} className="divide-y divide-border border-y border-border">
+      <div data-ph-mask role="radiogroup" aria-label={copy.calmHome.pickLabel} className="divide-y divide-border border-y border-border">
         {PICKS.map((listing) => {
           const price = prices.priceOf(listing);
           const moved = performance.performanceOf(listing);

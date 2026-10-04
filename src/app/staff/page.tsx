@@ -7,6 +7,9 @@ import { readOverview } from "@/lib/server/staff/overview";
 import { readBudgets } from "@/lib/server/staff/budgets";
 import { count, day, listingName, percent, shortDay, usd } from "@/lib/staff/format";
 
+/** The PostHog project, for product analytics (lib/analytics); the EU app when no project is named. */
+const POSTHOG_PROJECT_URL = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_URL || "https://eu.posthog.com";
+
 /** The staff Overview: the userbase and the business, from the ledger (lib/server/staff/overview). */
 export default async function StaffOverviewPage() {
   const staff = await staffGate("page");
@@ -22,7 +25,17 @@ export default async function StaffOverviewPage() {
 
   return (
     <StaffShell staff={staff} active="overview">
-      <PageTitle title={o.title} />
+      <PageTitle
+        title={o.title}
+        sub={
+          <span className="flex flex-col gap-1">
+            <a href={POSTHOG_PROJECT_URL} target="_blank" rel="noopener noreferrer" className="self-start underline underline-offset-4 hover:text-foreground">
+              {o.posthog}
+            </a>
+            <span>{o.posthogChecklist}</span>
+          </span>
+        }
+      />
       {low.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-[14px] text-foreground">
           <span>{words.lowStrip(low.map((service) => words.budgets.service[service.id]).join(", "))}</span>

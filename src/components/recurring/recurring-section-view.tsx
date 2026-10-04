@@ -30,7 +30,7 @@ export function RecurringSectionView({
 }) {
   const copy = useCopy().recurring;
   return (
-    <section className="flex flex-col" aria-label={copy.sectionLabel} data-testid="recurring-section">
+    <section className="flex flex-col" aria-label={copy.sectionLabel} data-testid="recurring-section" data-ph-mask>
       <div className="flex items-center gap-1 px-3 pt-3 pb-1">
         <span className="text-sm font-medium text-foreground">{copy.sectionLabel}</span>
         <InfoTip label={copy.sectionLabel}>

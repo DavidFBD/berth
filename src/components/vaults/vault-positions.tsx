@@ -61,7 +61,7 @@ export function VaultPositions({
     // Rows stay mounted at all times, `hidden` or not, so their position
     // queries keep running and can flip the section open the moment one
     // resolves true — an `anyPresent &&` guard here would never see it.
-    <div className={cn(!anyPresent && "hidden")}>
+    <div data-ph-mask className={cn(!anyPresent && "hidden")}>
       <SectionHeading title={copy.vaultsTitle} hint={copy.vaultsHint} />
       <div className="flex flex-col gap-1 p-3">
         {vaults.map((vault) => (

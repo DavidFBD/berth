@@ -27,6 +27,7 @@ import { parseHandle } from "@/lib/handle";
 import { rankForXp } from "@/lib/xp";
 import { EASE_LIFT } from "@/lib/motion";
 import { toast } from "@/lib/toast";
+import { track, trackOnce } from "@/lib/analytics";
 import type { FirstPathCopy } from "@/lib/copy";
 import { cn } from "@/lib/utils";
 
@@ -183,6 +184,16 @@ export function useLiveFirstPath({
   }, [onPath, funded, server?.facts.funded, writeMutate]);
 
   const done = useDoneMoment(view);
+  // The path's funnel (lib/analytics): each step shown once a page session, each Done moment once.
+  const shownStep = view.kind === "step" ? view.step : null;
+  const shownIndex = view.kind === "step" ? view.index : 0;
+  const shownTotal = view.kind === "step" ? view.total : 0;
+  useEffect(() => {
+    if (shownStep) trackOnce(`path:${shownStep}`, "path_step_shown", { step: shownStep, index: shownIndex, total: shownTotal });
+  }, [shownStep, shownIndex, shownTotal]);
+  useEffect(() => {
+    if (done) trackOnce(`path-done:${done}`, "path_step_completed", { step: done });
+  }, [done]);
   const [invitedHow, setInvitedHow] = useState<"shared" | "copied" | undefined>(undefined);
   const unskip = useCallback((step: PathStep) => writeMutate({ unskip: step }), [writeMutate]);
   return {
@@ -193,11 +204,15 @@ export function useLiveFirstPath({
     canBuy,
     done,
     skip: (step) => {
+      track("path_step_skipped", { step });
       writeMutate({ skip: step });
       toast(copy.skipped, { id: "first-path-skip", action: { label: copy.undo, onClick: () => unskip(step) } });
     },
     unskip,
-    finish: () => writeMutate({ finish: true }),
+    finish: () => {
+      track("path_finished", { skipped: server?.skipped.length ?? 0 });
+      writeMutate({ finish: true });
+    },
     shared: (how) => {
       setInvitedHow(how);
       writeMutate({ invited: true });
@@ -375,7 +390,7 @@ function InviteBody() {
     );
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div data-ph-mask className="flex flex-col gap-2">
       {path.demo ? (
         <Button className={cn(PRIMARY, "gap-2")} onClick={path.demo.share}>
           <ShareNetwork weight="duotone" className="size-4.5" aria-hidden />

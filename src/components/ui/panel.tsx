@@ -22,14 +22,20 @@ export function Panel({
   surface = "panel",
   className,
   children,
+  "data-ph-mask": phMask,
+  "data-ph-block": phBlock,
 }: {
   as?: "section" | "div" | "aside";
   surface?: "sheet" | "panel" | "flush";
   className?: string;
   children: ReactNode;
+  "data-ph-mask"?: boolean;
+  "data-ph-block"?: boolean;
 }) {
   return (
     <Tag
+      data-ph-mask={phMask || undefined}
+      data-ph-block={phBlock || undefined}
       className={cn(
         // Flat since 2026-09-29: both are a white card on the stone canvas
         // with one hairline and no shadow. The two names stay so a section

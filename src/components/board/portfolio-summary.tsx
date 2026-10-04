@@ -295,7 +295,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   );
 
   return (
-    <div className="mt-5 lg:mt-[22px]">
+    <div data-ph-mask className="mt-5 lg:mt-[22px]">
       <div className="relative flex min-h-5 items-center">
         {legend}
         {readout}

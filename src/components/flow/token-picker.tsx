@@ -357,7 +357,7 @@ export function TokenPicker({
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="flex flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)] group-data-[swipe-axis=y]/drawer-popup:h-[65svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
+        <div data-ph-mask className="flex flex-col gap-3 p-4 pb-[max(env(safe-area-inset-bottom),1rem)] group-data-[swipe-axis=y]/drawer-popup:h-[65svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
           {showHoldings ? (
             <>
               <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">

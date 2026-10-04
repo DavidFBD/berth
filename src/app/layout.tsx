@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "@/components/providers";
 import { ToastStack } from "@/components/toast-stack";
 import "./globals.css";
@@ -108,7 +107,6 @@ export default function RootLayout({
           {children}
           <ToastStack />
         </Providers>
-        <Analytics />
       </body>
     </html>
   );

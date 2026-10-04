@@ -42,7 +42,7 @@ export function MarketPreview({ count = SHOWN.length }: { count?: number } = {})
   const performance = useListingPerformance();
 
   return (
-    <Panel surface="sheet" className="w-full text-left">
+    <Panel surface="sheet" data-ph-mask className="w-full text-left">
       <SectionHeading title={copy.welcomePreviewTitle} hint={copy.welcomePreviewHint} />
       <ul className="divide-y divide-border border-t border-border">
         {SHOWN.slice(0, count).map((listing) => {

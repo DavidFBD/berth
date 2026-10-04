@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/analytics";
 import { useUnavailableReason } from "@/lib/unavailable-refusal";
 import { RECURRING_PATH } from "@/hooks/use-recurring";
 import type { Availability } from "@/lib/availability";
@@ -114,6 +115,7 @@ export function PlanSheetHost({ onSignIn, onClosed }: { onSignIn?: () => void; o
   useEffect(
     () =>
       onPlanSheet((next) => {
+        track("recurring_started", { via: next.via ?? "app", editing: Boolean(next.planId) });
         setRequest(next);
         setState(draftFromRequest(next));
         setProblem(null);
@@ -173,6 +175,7 @@ export function PlanSheetHost({ onSignIn, onClosed }: { onSignIn?: () => void; o
       : ({ action: "create", plan: input, via: request.via ?? "app" } as const);
     action.mutate(body, {
       onSuccess: () => {
+        track("recurring_saved", { cadence: state.cadence, via: request.via ?? "app", editing: Boolean(request.planId), dip: state.dip });
         setOpen(false);
         setResumeSince(null);
         onClosed?.();
@@ -261,7 +264,7 @@ export function PlanSheetView({
           <DrawerTitle>{copy.sheetTitle}</DrawerTitle>
           <DrawerDescription>{copy.sheetSub}</DrawerDescription>
         </DrawerHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-2" data-testid="plan-sheet">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-2" data-testid="plan-sheet" data-ph-mask>
           <label className="flex flex-col gap-1.5">
             <span className="text-xs text-muted-foreground">{copy.listingLabel}</span>
             <select

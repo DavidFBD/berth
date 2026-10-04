@@ -88,6 +88,7 @@ import {
 } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 import { LimitPlaced, LimitPriceFields, LimitSummary } from "./limit-price";
+import { useDrawerFunnel } from "@/components/analytics/use-drawer-funnel";
 
 /**
  * Full mobile deposit flow in one bottom drawer: pick source chain + token,
@@ -397,6 +398,17 @@ export function DepositDrawer({
       : undefined;
   const limitPriceLabel = limit.price ? formatUsd(priceNumber(limit.price)) : "";
 
+  // The drawer's half of the order funnel (lib/analytics): codes and buckets only.
+  useDrawerFunnel({
+    side: "buy",
+    open,
+    listing,
+    chainKey: token ? srcChainKey : null,
+    usd: worthUsd,
+    quoted: !limit.active && quote.quoted !== undefined,
+    limitActive: limit.active,
+  });
+
   const finish = () => {
     action.reset();
     setAmount("");
@@ -658,6 +670,7 @@ export function DepositDrawer({
               crossfade so two states never read double-exposed. */}
           <AnimatePresence initial={false} mode="popLayout">
           <motion.div
+            data-ph-mask
             key={
               action.step === "resting"
                 ? "resting"

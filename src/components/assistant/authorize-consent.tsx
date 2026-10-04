@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/analytics";
 import { useState } from "react";
 import { Eye, NotePencil, ShieldCheck } from "@phosphor-icons/react";
 import { BerthMark } from "@/components/berth-mark";
@@ -81,6 +82,7 @@ export function ConsentCard({
       setPressed(null);
       return;
     }
+    track("ai_connect_finished", { assistant: party.kind === "known" ? party.assistant : "other", decision }, { beacon: true });
     setLeaving(true);
     window.location.assign(redirect);
   };
@@ -95,7 +97,7 @@ export function ConsentCard({
           {copy.authorizeTitle(party)}
         </h1>
         {unverified && <p className="text-sm font-medium text-foreground">{unverified}</p>}
-        {who && <p className="text-sm text-muted-foreground">{copy.authorizeAccount(who)}</p>}
+        {who && <p data-ph-mask className="text-sm text-muted-foreground">{copy.authorizeAccount(who)}</p>}
       </div>
 
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">

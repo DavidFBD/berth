@@ -71,7 +71,7 @@ export function ProfileCardView({
   const other = viewer.relation !== "self";
 
   return (
-    <div className="flex flex-col items-center gap-5 rounded-lg border border-border bg-card px-5 pt-7 pb-5">
+    <div data-ph-mask className="flex flex-col items-center gap-5 rounded-lg border border-border bg-card px-5 pt-7 pb-5">
       <div className="flex flex-col items-center gap-3">
         <AvatarWithRank avatarId={card.avatarId} level={rank.level} size={88} />
         <div className="flex flex-col items-center gap-0.5">

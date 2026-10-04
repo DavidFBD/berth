@@ -87,6 +87,7 @@ export function WaitingStripView({ orders, onOpen }: { orders: readonly LimitOrd
       type="button"
       onClick={onOpen}
       data-testid="waiting-strip"
+      data-ph-mask
       className="flex min-h-12 w-full items-center gap-3 rounded-lg border border-border bg-card py-2.5 pr-4 pl-[18px] text-left lg:pl-5 outline-none transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:scale-[0.99] focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       <Hourglass weight="duotone" className="size-[17px] shrink-0 text-muted-foreground" aria-hidden />
@@ -163,7 +164,7 @@ function WaitingRow({ order, onCancel }: { order: LimitOrderView; onCancel: () =
 /** The list as drawn, for Home's drawer and the dev gallery. */
 export function WaitingListView({ orders, onCancel }: { orders: readonly LimitOrderView[]; onCancel: (order: LimitOrderView) => void }) {
   return (
-    <ul className="divide-y divide-border" data-testid="waiting-list">
+    <ul className="divide-y divide-border" data-testid="waiting-list" data-ph-mask>
       {orders.map((order) => (
         <WaitingRow key={order.intentTx} order={order} onCancel={() => onCancel(order)} />
       ))}
@@ -285,7 +286,7 @@ export function CancelCheckView({
 }) {
   const copy = useCopy();
   return (
-    <div className="flex flex-col gap-4 px-4" data-testid="cancel-check">
+    <div className="flex flex-col gap-4 px-4" data-testid="cancel-check" data-ph-mask>
       <div className="flex flex-col gap-1">
         <p className="font-display text-lg text-foreground">{copy.limitCancelConfirm(nameOf(order.symbol))}</p>
         <p className="text-sm text-muted-foreground">

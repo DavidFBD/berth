@@ -127,6 +127,8 @@ export function PortfolioChart({
   return (
     <div
       ref={box}
+      // Blocked, not masked: the line's shape is the account's value over time (lib/analytics).
+      data-ph-block
       className="relative h-[150px] cursor-crosshair touch-pan-y select-none lg:h-[190px]"
       onPointerDown={pick}
       onPointerMove={pick}

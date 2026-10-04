@@ -80,7 +80,7 @@ export function CashShelfView({
 
   return (
     // On a phone the actions drop under the words, in line with them.
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-[18px] py-4 lg:px-6 lg:py-5">
+    <div data-ph-mask className="flex flex-wrap items-center gap-x-3 gap-y-3 px-[18px] py-4 lg:px-6 lg:py-5">
       <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-secondary-foreground">
         <Bank weight="duotone" className="size-[18px]" />
       </span>

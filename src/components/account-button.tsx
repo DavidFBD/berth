@@ -109,7 +109,7 @@ export function AccountButton({
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>{copy.accountTotalLabel}</DrawerTitle>
-            <DrawerDescription>
+            <DrawerDescription data-ph-mask>
               {email ? copy.accountSignedInAs(email) : copy.accountSignedInEmail}
             </DrawerDescription>
           </DrawerHeader>
@@ -393,6 +393,9 @@ function ExternalAccountEntry({
             focusEmail={focusEmail}
             assistant={assistant}
             onLeave={() => setServiceOpen(false)}
+            // Settings for a wallet account too: appearance, currency and
+            // the analytics switch (no key export: that needs an embedded wallet).
+            onOpenSettings={() => {}}
           />
         </DrawerContent>
       </Drawer>
@@ -453,7 +456,7 @@ function ReceiveRow({
   const [qrOpen, setQrOpen] = useState(false);
 
   return (
-    <div>
+    <div data-ph-block>
       <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
         <Wallet className="size-5 shrink-0 text-primary" />
         <div className="flex min-w-0 flex-1 flex-col">

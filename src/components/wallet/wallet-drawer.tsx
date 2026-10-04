@@ -177,7 +177,7 @@ function FamilyList({
   const asleepAddress = restore.phase === "session" ? restore.address : undefined;
   return (
     <ScrollArea className="group-data-[swipe-axis=y]/drawer-popup:max-h-[55svh] group-data-[swipe-axis=x]/drawer-popup:min-h-0 group-data-[swipe-axis=x]/drawer-popup:flex-1">
-      <div className="flex flex-col gap-0.5 px-2">
+      <div data-ph-mask className="flex flex-col gap-0.5 px-2">
         {groups.map((group) => {
           if (!group.isConnected && group.chainType === "EVM" && asleepAddress) {
             return (
@@ -520,7 +520,7 @@ function StatusPanel({
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium text-foreground">{title}</p>
         {detail && (
-          <p className="line-clamp-3 text-xs break-words text-muted-foreground">
+          <p data-ph-mask className="line-clamp-3 text-xs break-words text-muted-foreground">
             {detail}
           </p>
         )}

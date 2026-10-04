@@ -122,6 +122,7 @@ function KeyExportRow({ evmAddress }: { evmAddress: string }) {
       <AnimatePresence initial={false}>
         {gate.confirming && (
           <motion.div
+            data-ph-block
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}

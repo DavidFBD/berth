@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/analytics";
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   CaretLeft,
@@ -105,6 +106,7 @@ export function AccountDrawerScreens({
 
   const show = useCallback(
     (next: DrawerView) => {
+      if (next !== "main" && next !== view) track("account_screen_opened", { screen: next });
       if (view === "main") mainScroll.current = scroller.current?.scrollTop ?? 0;
       pendingScroll.current = next === "main" ? mainScroll.current : 0;
       setView(next);
@@ -281,7 +283,7 @@ function Identity() {
 
   const face = <AvatarWithRank avatarId={avatarId} level={rank.level} size={56} />;
   return (
-    <Panel as="div" className="flex flex-col gap-3 p-3">
+    <Panel as="div" data-ph-mask className="flex flex-col gap-3 p-3">
       <div className="flex items-center gap-3">
         {avatarId ? (
           <button
@@ -348,7 +350,8 @@ function Row({
     >
       <Glyph weight="duotone" className="size-5 shrink-0 text-muted-foreground" />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium text-foreground">{title}</span>
+        {/* Fixed copy: may show in a replay (lib/analytics maskText); the sub, with its counts, stays masked. */}
+        <span data-ph-unmask className="text-sm font-medium text-foreground">{title}</span>
         <span className="text-xs text-muted-foreground">{sub}</span>
       </span>
       {badge !== undefined && (

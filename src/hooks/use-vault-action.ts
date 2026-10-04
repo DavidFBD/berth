@@ -13,6 +13,7 @@ import {
 } from "@sodax/dapp-kit";
 import {
   DEFAULT_RELAY_TX_TIMEOUT,
+  getChainType,
   getIntentRelayChainId,
   isBitcoinChainKeyType,
   isHubChainKeyType,
@@ -72,6 +73,7 @@ import type { PourReadiness } from "@/hooks/use-privy-evm-wallet";
 import { useAwardPour } from "@/hooks/use-profile";
 import { useRecordLimitOrder } from "@/hooks/use-limit-orders";
 import { addPending } from "@/lib/limit-pending";
+import { chainFamily, failureReason, track, type OrderType } from "@/lib/analytics";
 
 // Re-exported so existing consumers keep one import site for error copy and
 // the step union.
@@ -263,7 +265,33 @@ export interface UseVaultActionResult {
 type ActivePour = {
   context: PourReportContext;
   fillToasts: FillToastCopy;
+  /** The order's analytics funnel (lib/analytics): codes only, and what it has already said. */
+  funnel?: Funnel;
 };
+
+type Funnel = {
+  side: "buy" | "sell";
+  props: { listing: string; chain_family: string; order_type: OrderType };
+  said: Set<string>;
+};
+
+/** One funnel step of the order, once per run (lib/analytics: never an amount, address or hash). */
+function sayFunnel(pour: ActivePour | null, stage: "sign_requested" | "signed" | "filled" | "failed", reason?: string): void {
+  const funnel = pour?.funnel;
+  if (!funnel || funnel.said.has(stage)) return;
+  if (stage === "failed" && funnel.said.has("filled")) return;
+  funnel.said.add(stage);
+  if (stage === "failed") track(`${funnel.side}_failed`, { ...funnel.props, reason: reason ?? "other" });
+  else track(`${funnel.side}_${stage}`, funnel.props);
+}
+
+function funnelFor(side: "buy" | "sell", listing: string | undefined, chainKey: SpokeChainKey, limit: boolean): Funnel {
+  return {
+    side,
+    props: { listing: listing ?? "other", chain_family: chainFamily(getChainType(chainKey)), order_type: limit ? "limit" : "market" },
+    said: new Set(),
+  };
+}
 
 /** What the machine knows about the order once it has left the wallet. */
 type SentOrder = {
@@ -374,6 +402,9 @@ export function useVaultAction(options?: {
   /** Advance the pipeline, keeping the report's "failed at" in step. */
   const advance = useCallback((next: PourStep) => {
     if (pourRef.current) pourRef.current.context.step = next;
+    if (next === "signing") sayFunnel(pourRef.current, "sign_requested");
+    if (next === "confirming" || next === "tracking" || next === "resting") sayFunnel(pourRef.current, "signed");
+    if (next === "resting" && pourRef.current?.funnel) track("limit_saved", { side: pourRef.current.funnel.side });
     if (next === "tracking" || next === "confirming") {
       trackingStartedRef.current = Date.now();
     }
@@ -388,6 +419,7 @@ export function useVaultAction(options?: {
       if (raw !== undefined) console.error("[vault-action]", raw);
       setError(message);
       setStep("error");
+      sayFunnel(pourRef.current, "failed", failureReason({ cancelled: message === CANCELLED_MESSAGE, errorCode: extractErrorCode(raw) }));
 
       // A cancelled order isn't a bug; everything else goes to the team so
       // the user never has to describe what happened. `fail` is only
@@ -451,6 +483,7 @@ export function useVaultAction(options?: {
   const settleFilled = useCallback(
     (pour: ActivePour | null, intentTxHash?: string, fillTx?: string) => {
       if (pour?.context.action === "deposit") onPouredRef.current?.();
+      sayFunnel(pour, "filled");
       if (pour) {
         toast.success(pour.fillToasts.successTitle, {
           description: pour.fillToasts.successDescription,
@@ -479,6 +512,7 @@ export function useVaultAction(options?: {
       file: (context: ErrorReportContext) => void,
     ) => {
       if (!pour) return;
+      sayFunnel(pour, "failed", "fill_failed");
       toast.error(FILL_FAILED_MESSAGE, {
         description: pour.fillToasts.failureDescription,
       });
@@ -1034,6 +1068,7 @@ export function useVaultAction(options?: {
           walletMode: args.walletMode,
         },
         fillToasts: args.fillToasts,
+        funnel: funnelFor("buy", args.vaultName, args.srcChainKey, !!args.limit),
       };
       // Every on-chain send is preceded by a chain re-assertion: embedded
       // wallets share one provider whose chain any competing switch can
@@ -1262,6 +1297,7 @@ export function useVaultAction(options?: {
           walletMode: args.walletMode,
         },
         fillToasts: args.fillToasts,
+        funnel: funnelFor("sell", args.vaultName, args.dstChainKey, !!args.limit),
       };
       const onRightChain = async (): Promise<boolean> => {
         if (!args.ensureReady) return true;

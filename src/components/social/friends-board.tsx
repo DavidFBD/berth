@@ -25,7 +25,7 @@ export function BoardView({ board }: { board: FriendsBoard }) {
   return (
     <Panel surface="sheet">
       <SectionHeading title={copy.boardMonth(monthLabel(board.month, "long"))} hint={copy.boardWhy} />
-      <ol className="flex flex-col divide-y divide-border border-t border-border">
+      <ol data-ph-block className="flex flex-col divide-y divide-border border-t border-border">
         {board.rows.map((row) => {
           const rank = rankForXp(row.xp);
           const body = (

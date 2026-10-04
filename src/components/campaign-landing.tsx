@@ -1,5 +1,6 @@
 "use client";
 
+import { campaignRef, trackOnce } from "@/lib/analytics";
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { BerthMark } from "@/components/berth-mark";
@@ -30,6 +31,9 @@ export function CampaignLanding({
     if (landed.current) return;
     landed.current = true;
     pocketCampaignCode(code);
+    // Sent only where analytics was already allowed (lib/analytics): a first visit sends nothing,
+    // and the campaign goes as a reference, never its code.
+    trackOnce("campaign-landed", "campaign_landed", { campaign: campaignRef(code) });
     router.replace("/");
   }, [code, router]);
 

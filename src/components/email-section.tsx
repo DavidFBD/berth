@@ -51,7 +51,7 @@ export function EmailSection({
   if (!settings.address) {
     if (!offerAdd) return null;
     return (
-      <section className={cn("flex flex-col", heading === "caps" && "gap-2")}>
+      <section data-ph-mask className={cn("flex flex-col", heading === "caps" && "gap-2")}>
         {title}
         <button
           type="button"
@@ -70,7 +70,7 @@ export function EmailSection({
 
   const prefs = settings.prefs;
   return (
-    <section className={cn("flex flex-col", heading === "caps" && "gap-2")} aria-label={copy.sectionLabel}>
+    <section data-ph-mask className={cn("flex flex-col", heading === "caps" && "gap-2")} aria-label={copy.sectionLabel}>
       {title}
       <div className={cn("flex flex-col", heading === "caps" ? "rounded-xl border border-border" : "px-0")}>
         <p className="px-3 pt-3 text-sm text-foreground break-all">{copy.goesTo(settings.address)}</p>

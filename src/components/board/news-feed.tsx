@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/analytics";
 import { useEffect, useId, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -130,6 +131,7 @@ export function NewsFeed({
   const [pressed, setPressed] = useState<{ at: number; updatedAt?: number } | null>(null);
   const refreshing = news.isRefreshing;
   const refresh = () => {
+    track("news_refresh_tapped", {});
     setPressed({ at: Date.now(), updatedAt: news.data.updatedAt });
     void news.refresh();
   };
@@ -452,6 +454,7 @@ function ArticleCard({ story, now, isNew, movement, verdictChip }: CardProps) {
           href={story.url}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => track("news_story_opened", { listing: story.symbol, source_kind: story.kind })}
           className="group flex items-start gap-2 text-sm leading-snug font-medium text-foreground"
         >
           <span className="line-clamp-2 min-w-0 flex-1 underline-offset-2 group-hover:underline">{story.title}</span>
@@ -534,6 +537,7 @@ function PostCard({ story, now, isNew, movement, verdictChip }: CardProps) {
       href={story.url}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={() => track("news_story_opened", { listing: story.symbol, source_kind: story.kind })}
       className={`flex items-start gap-3 ${PAD} py-4 transition-[background-color] duration-150 ease-lift hover:bg-muted/60`}
     >
       {/* A plain img on purpose: small files already on X's own CDN. */}

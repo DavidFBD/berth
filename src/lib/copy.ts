@@ -1116,6 +1116,9 @@ export type Copy = {
   email: EmailCopy;
   recurring: RecurringCopy;
 
+  /* — product analytics (lib/analytics): the quiet consent card and its Settings switch — */
+  analytics: AnalyticsCopy;
+
   /* — the privacy policy (app/privacy): public, signed in or not — */
   /** The small link to /privacy, in the settings drawer and under the consent screen. */
   privacyLink: string;
@@ -1898,6 +1901,8 @@ export const STAFF_COPY = {
   notTracked: "Not tracked yet",
   overview: {
     title: "Overview",
+    posthog: "Product analytics in PostHog",
+    posthogChecklist: "Before deploy, in PostHog's project settings: Discard client IP data on, replay retention 30 days, console log and network capture off. The privacy policy promises all three.",
     accounts: "Accounts",
     accountsNote: "Live accounts. A merged account counts once, as its survivor.",
     active7: "Active, 7 days",
@@ -2235,6 +2240,21 @@ export const STAFF_COPY = {
 };
 
 export type StaffCopy = typeof STAFF_COPY;
+
+/** Product analytics consent (components/analytics): the card, and the switch in Settings. */
+export type AnalyticsCopy = {
+  /** The card's title and the switch's label. */
+  title: string;
+  body: string;
+  allow: string;
+  decline: string;
+  /** The link to the policy's analytics section. */
+  more: string;
+  /** Under the switch in Settings. */
+  switchSub: string;
+  /** Under the switch when the browser sends Do Not Track or Global Privacy Control. */
+  signalNote: string;
+};
 
 /**
  * The three facts about the operator that the privacy policy names. The
@@ -3592,10 +3612,19 @@ export const COPY: Copy = {
       backHome: "Go to Berth",
     },
   },
+  analytics: {
+    title: "Help improve Berth",
+    body: "May Berth count which screens and steps you use, so we can see what works and fix what does not? With your yes we may also record how you move through the app, with every amount, balance, address and name hidden. Until you choose, nothing is sent.",
+    allow: "Allow",
+    decline: "No thanks",
+    more: "How it works",
+    switchSub: "Counts which screens and steps you use, and may record how you move through the app, with every amount, balance, address and name hidden. Off unless you allow it.",
+    signalNote: "Your browser asks sites not to track you, so this stays off.",
+  },
   privacyLink: "Privacy",
   privacyPolicy: {
     title: "Privacy policy",
-    status: "Effective 2 October 2026.",
+    status: "Effective 4 October 2026.",
     intro: [
       "This policy explains what Berth collects when you use www.berthmarkets.com and the Berth connector for your AI, why, who else sees it, how long we keep it, and what you can ask of us.",
       "Berth is self custodial. We never hold your keys and we never hold your money.",
@@ -3623,14 +3652,28 @@ export const COPY: Copy = {
           "Campaigns. If you open your account through a campaign link: which campaign, each step of its rules your account met and when, the order that qualified, the public record of that token at your account from the buy to the end of the holding period, the wallets checked against the one per wallet rule, and the transaction that paid you. To prevent abuse we also compare your claim with the other claims in the same campaign: whether an email address is a variant of another claimant's, whether you signed up within minutes of another claimant or were invited by one, and whether a wallet or a payout address is shared with another claim. A reviewer at Berth sees your claim with your email address and wallets, and records the decision and any note about it. We use all of this to pay each reward once, to the right person, and to refuse abuse.",
           "Your AI. If you connect Claude, ChatGPT, Grok or another AI, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what your AI asked or what Berth answered.",
           "Error reports. When an order fails or does not settle, the app sends a report so we can fix the cause: the step it stopped at, the networks, the token and amount, the transaction hashes, a shortened form of your address, the error text, recent app logs, the page address, your screen size and your browser's user agent. Keys and tokens are removed first, and it never includes your email address.",
-          "Usage statistics. We count page views with Vercel Web Analytics, which uses no cookies.",
+          "Usage statistics, only if you allow it. We count page views with Vercel Web Analytics, which uses no cookies, and send it each page's address without anything in it that could name you, under the same Help improve Berth choice as product analytics.",
+          "Product analytics, only if you allow it. Which screens you open and which steps you take, and a replay of how you moved through the app with every amount, balance, address and name hidden, through PostHog. See Product analytics below.",
           "Your country. With each visit and each request to your account, our host Vercel tells us the country your connection comes from, and for some countries its region, so Berth can say where it is not offered and not open an account or take an order there. We use it for that one answer and do not store or log it. This rests on our duty to offer Berth only where it may be offered.",
           "Emails we send. For each notice: its type, what it was about (an order, a connection), whether it was sent, and the email provider's message identifier. Never the email's text: while a notice waits to be sent again, we keep only what it will name (such as a listing, a price or a shortened wallet address), and delete that once it is sent. Your choices of which emails to get, and whether mail to your address bounced or was reported as spam.",
         ],
         after: [
           "We use this to run your account, show what you own and how it has done, check an order before a reward is paid for it, pay invite and campaign rewards, keep the service secure, limit abuse, and fix what breaks.",
           "We do not sell personal data. We do not use it for advertising, and we do not build profiles of you for anyone else.",
-          "Where the law asks for a legal basis: running your account and your orders is necessary to provide the service you asked for. Security, abuse limits, error reports and usage statistics rest on our legitimate interest in a service that works and is safe. Most bought on Berth rests on our legitimate interest in showing what people on Berth buy, with the safeguards described under Your profile and friends. Showing your friends what you hold rests on your consent, which you give and take back with its switch. For anything else, we will ask you first.",
+          "Where the law asks for a legal basis: running your account and your orders is necessary to provide the service you asked for. Security, abuse limits and error reports rest on our legitimate interest in a service that works and is safe. Usage statistics and product analytics rest on your consent, which you give and take back under Help improve Berth. Most bought on Berth rests on our legitimate interest in showing what people on Berth buy, with the safeguards described under Your profile and friends. Showing your friends what you hold rests on your consent, which you give and take back with its switch. For anything else, we will ask you first.",
+        ],
+      },
+      {
+        id: "analytics",
+        heading: "Product analytics",
+        body: [
+          "If you allow it, Berth uses PostHog to learn how the app is used: which screens open, which of the first steps and which steps of a buy or a sell are reached, and why an order stopped, as a code. We use this to make Berth simpler and to fix what goes wrong, and for nothing else.",
+          "Berth sends only events it names, never everything you tap. They carry no amounts, balances, addresses, email addresses, usernames, order identifiers or headlines. An amount you type is only ever sent as a broad range, such as 50 to 100 dollars. Page addresses are sent without anything in them that could name you, such as a username or an invite code.",
+          "With the same yes, PostHog may record a replay of how you moved through the app, so we can see where something was hard. Everything you type, and every amount, balance, address, email address and name on screen, is hidden before the replay leaves your browser. Your private key, codes and lists of people are left out entirely. Network traffic and the browser's console are not recorded, and profile pages, invite and friend links, email links, the AI consent screen and staff pages are never recorded.",
+          "Your account appears in PostHog only as a code made from your account identifier with a secret one way function, never as your email address, wallet or username. The link to that code is cleared from your browser when you sign out.",
+          "PostHog stores this on servers in Frankfurt, in the European Union. Your IP address is discarded and not used to guess where you are.",
+          "Nothing is sent until you choose Allow, and nothing at all if you choose No thanks. If your browser sends Do Not Track or Global Privacy Control, Berth takes that as no and does not ask. You can change your answer at any time under Settings, Help improve Berth, or, signed in or not, with the switch at the end of this section. Turning it off stops all sending at once, PostHog's and Vercel's page counts alike, and removes PostHog's identifier from your browser.",
+          "This rests on your consent. Replays are kept for 30 days. Events are kept for as long as our PostHog plan keeps them, today one year.",
         ],
       },
       {
@@ -3707,11 +3750,12 @@ export const COPY: Copy = {
         list: [
           "Privy, for email sign in and the wallets it creates for email accounts. Privy receives your email address and secures your wallet's keys.",
           "Neon, which hosts our database.",
-          "Vercel, which hosts the app, serves every request and counts page views. Like any web host, it processes your IP address and browser details to do so.",
+          "Vercel, which hosts the app and serves every request, and, only if you allow it, counts page views. Like any web host, it processes your IP address and browser details to do so.",
           "SODAX, whose service, solvers and relayers price, route and fill your orders. They receive the addresses, amounts and transactions needed to fill them.",
           "Blockchain networks. Your browser reads balances and sends transactions through public network nodes. A Bitcoin order links to mempool.space so you can follow it there.",
           "GitHub, where error reports are kept in a private repository.",
           "OpenAI, if you use the Assistant in Berth, as described above.",
+          "PostHog, only if you allow product analytics, as described above. It receives the named events and masked replays, stored in the European Union.",
           "Resend, which delivers our emails. It receives your email address, the notice's content (such as a listing's name, an amount, a price, or a friend's username, and in a weekly summary you turned on, your account's value and holdings, what filled, your recurring buys' names, dates and how many runs you signed or let pass, and how many new friends and Salutes you had) and whether the email was delivered, bounced or reported as spam.",
           "TypeSafe, whose Jev model helps choose the one line shown at the top of the app, such as news about something you own. It receives which listings your account holds and whether it has cash to spend, never your name, email or address.",
           "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
@@ -3725,7 +3769,7 @@ export const COPY: Copy = {
         id: "storage",
         heading: "Cookies and local storage",
         body: [
-          "Berth sets no advertising or tracking cookies. The app keeps a few things in your browser's local storage so it remembers your choices:",
+          "Berth sets no advertising cookies, and no analytics cookie unless you allow product analytics. The app keeps a few things in your browser's local storage so it remembers your choices:",
         ],
         list: [
           "your appearance and currency, and the comparison and time range you last picked;",
@@ -3733,7 +3777,9 @@ export const COPY: Copy = {
           "which suggestions you dismissed;",
           "an invite code you arrived with, until your account is created;",
           "a campaign code you arrived with, until your account is created;",
-          "a signed session token when you sign in with a wallet, valid for seven days.",
+          "a signed session token when you sign in with a wallet, valid for seven days;",
+          "whether you allowed product analytics, so you are not asked again;",
+          "if you allowed it, PostHog's own identifier for this browser and session, in local storage and a cookie, removed when you turn it off.",
         ],
         after: [
           "When you sign in with email, Privy keeps its own sign in session in your browser. Clearing this site's data in your browser removes all of it.",
@@ -3751,6 +3797,7 @@ export const COPY: Copy = {
           "Abuse limit counters: one day. They hold a hashed form of the caller's IP address, never the address itself.",
           "Your recurring plans and the record of each time one came due: until you delete the plan, or your account. Deleting a plan deletes its record with it.",
           "Invite link visits and error reports: up to 12 months.",
+          "Product analytics, if you allowed it: replays 30 days, events as long as our PostHog plan keeps them, today one year.",
           "Campaign records: for as long as needed for legal, accounting and abuse prevention purposes, and at most 7 years after the campaign ends.",
           "The record of what staff and reviewers at Berth did and looked at, including every view of an account, every search by email or wallet, every reveal, every change, and their decisions and notes on campaign claims: 24 months.",
           "The record of profile and friend changes: 12 months.",

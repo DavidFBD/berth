@@ -11,6 +11,7 @@ import { AppPrivyProvider, PRIVY_ENABLED } from "@/components/privy-provider";
 import { SignOutSweep } from "@/components/sign-out-sweep";
 import { PrivySolanaBridge } from "@/components/privy-solana-bridge";
 import { SettingsProvider } from "@/components/settings-provider";
+import { AnalyticsRoot } from "@/components/analytics/analytics-root";
 import { WalletDiagnostics } from "@/components/dev/wallet-diagnostics";
 import { WalletRestore } from "@/hooks/use-wallet-restore";
 import { sodaxConfig, walletConfig } from "@/lib/sodax-config";
@@ -57,6 +58,8 @@ export function Providers({ children }: { children: ReactNode }) {
                   <WalletDiagnostics />
                 )}
                 {children}
+                {/* Product analytics: nothing loads or sends before consent. */}
+                {mounted && <AnalyticsRoot />}
                 {/* The toast stack is mounted by the root layout, after Providers. */}
               </MotionConfig>
             </IconContext.Provider>

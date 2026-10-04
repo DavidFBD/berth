@@ -83,7 +83,7 @@ export function LimitPriceFields({
 }) {
   const copy = useCopy();
   return (
-    <div className="flex flex-col gap-2.5" data-testid="limit-fields">
+    <div className="flex flex-col gap-2.5" data-testid="limit-fields" data-ph-mask>
       <div className="flex gap-1.5" role="group">
         <Chip selected={mode === "now"} onClick={() => onMode("now")}>
           {copy.limitModeNow}
@@ -203,7 +203,7 @@ export function LimitSummary({
     ...(feeLabel ? [copy.limitSummaryFee(feeLabel)] : []),
   ];
   return (
-    <div className="flex flex-col gap-4" data-testid="limit-summary">
+    <div className="flex flex-col gap-4" data-testid="limit-summary" data-ph-mask>
       <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-3.5 py-3">
         <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{copy.limitReviewTitle}</span>
         <p className="font-display text-lg leading-snug text-foreground">
@@ -243,7 +243,7 @@ export function LimitPlaced({
 }) {
   const copy = useCopy();
   return (
-    <div className="flex flex-col items-center gap-3 px-3 py-4 text-center" data-testid="limit-placed">
+    <div className="flex flex-col items-center gap-3 px-3 py-4 text-center" data-testid="limit-placed" data-ph-mask>
       <Hourglass weight="duotone" className="size-12 text-muted-foreground" aria-hidden />
       <div className="flex flex-col gap-1">
         <p className="font-display text-lg text-foreground">{copy.limitPlacedTitle}</p>

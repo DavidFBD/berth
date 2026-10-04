@@ -77,6 +77,7 @@ export function RecurringStripView({
     <AnimatePresence initial={false}>
       {run ? (
         <motion.div
+          data-ph-mask
           key={run.id}
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}

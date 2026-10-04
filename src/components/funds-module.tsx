@@ -67,7 +67,7 @@ export function FundsModule({
 
   return (
     // On a phone the actions drop under the words, in line with them.
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-[18px] py-4 lg:px-6 lg:py-5">
+    <div data-ph-mask className="flex flex-wrap items-center gap-x-3 gap-y-3 px-[18px] py-4 lg:px-6 lg:py-5">
       <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-secondary-foreground">
         <Coins weight="duotone" className="size-[18px]" />
       </span>
@@ -167,7 +167,7 @@ function FundsBreakdownDrawer({
           <DrawerDescription>{copy.fundsInsideSub}</DrawerDescription>
         </DrawerHeader>
 
-        <div className="flex max-h-[65svh] flex-col gap-3 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+        <div data-ph-mask className="flex max-h-[65svh] flex-col gap-3 overflow-y-auto p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
           {holdings.length > 0 && (
             <div className="flex flex-col gap-1">
               {holdings.map(({ chainKey, token, balance, usdValue }) => (

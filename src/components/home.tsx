@@ -1,5 +1,6 @@
 "use client";
 
+import { trackOnce } from "@/lib/analytics";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
@@ -265,6 +266,9 @@ function SignedInHome() {
   // Before a first stock, the step waits for the waiting-orders read too,
   // so the total never lands above it after it has been placed.
   const stage: HomeStage | undefined = decided !== "owns" && limitOrders.isLoading ? undefined : decided;
+  useEffect(() => {
+    if (stage) trackOnce(`home-stage:${stage}`, "home_stage_shown", { stage });
+  }, [stage]);
 
   // What sits one tap away (components/home-more), and the add-money drawer.
   const [boardOpen, setBoardOpen] = useState(false);
@@ -389,7 +393,7 @@ function SignedInHome() {
   // Cash row only once cash is parked, and an empty panel not at all.
   const empty = stage === "empty";
   const money = (
-    <Panel key="money" className="divide-y divide-border [&:not(:has(>:not(.hidden)))]:hidden">
+    <Panel key="money" data-ph-mask className="divide-y divide-border [&:not(:has(>:not(.hidden)))]:hidden">
       <FundsModule onTopUp={openAddMoney} quietWhenEmpty={empty} />
       {(!empty || holdsCash) && (
         <CashShelf

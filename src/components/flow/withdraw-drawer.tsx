@@ -66,6 +66,7 @@ import {
   IntentTracking,
 } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
+import { useDrawerFunnel } from "@/components/analytics/use-drawer-funnel";
 
 /** One vault share (18 decimals) — reads the price-per-share via previewRedeem. */
 const ONE_SHARE = 10n ** 18n;
@@ -346,6 +347,17 @@ export function WithdrawDrawer({
       : undefined;
   const limitPriceLabel = limit.price ? formatUsd(priceNumber(limit.price)) : "";
 
+  // The drawer's half of the order funnel (lib/analytics): codes and buckets only.
+  useDrawerFunnel({
+    side: "sell",
+    open,
+    listing,
+    chainKey: outputToken ? dstChainKey : null,
+    usd: buildAmount ? sharesWorthUsd(buildAmount) : undefined,
+    quoted: !limit.active && quote.quoted !== undefined,
+    limitActive: limit.active,
+  });
+
   const finish = () => {
     action.reset();
     setAmount("");
@@ -599,6 +611,7 @@ export function WithdrawDrawer({
           {/* Same three-act wash as the deposit drawer. */}
           <AnimatePresence initial={false} mode="popLayout">
           <motion.div
+            data-ph-mask
             key={
               action.step === "resting"
                 ? "resting"
@@ -877,7 +890,7 @@ export function WithdrawDrawer({
                 {/* Cash-out path: send to a different address (e.g. an
                     exchange deposit address) instead of your own wallet. */}
                 {dstChainKey && outputToken && (
-                  <div className="flex flex-col gap-1.5">
+                  <div data-ph-block className="flex flex-col gap-1.5">
                     {usingCustom ? (
                       <>
                         <div className="flex items-center justify-between">

@@ -131,6 +131,7 @@ export function ChatPanel({
     >
       <div
         ref={scroller}
+        data-ph-mask
         onScroll={(event) => {
           const element = event.currentTarget;
           pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48;

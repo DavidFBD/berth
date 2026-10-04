@@ -165,7 +165,7 @@ export function IntentTracking({
       <div className={cn("flex flex-col items-center gap-3 px-3 py-4 text-center", className)}>
         {/* The mark settles into its final frame; the order is done. */}
         <LoadingMark className="size-40" done />
-        <div className="flex flex-col gap-1">
+        <div data-ph-mask className="flex flex-col gap-1">
           <p className="font-display text-lg text-foreground">{successTitle}</p>
           <p className="text-sm text-muted-foreground">{successBody}</p>
           {fillTxHash && (
@@ -232,6 +232,7 @@ export function IntentTracking({
           )}
           {spokeTxUrl && spokeTxHash && (
             <a
+              data-ph-block
               href={spokeTxUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -272,6 +273,7 @@ export function IntentTracking({
           </p>
           {hubTxHash && (
             <a
+              data-ph-block
               href={hubTxUrl(hubTxHash)}
               target="_blank"
               rel="noopener noreferrer"
@@ -328,6 +330,7 @@ export function EarlierOrderNote({
       <p>{copy.earlierOrderOnItsWay}</p>
       {order.spokeTxUrl && (
         <a
+          data-ph-block
           href={order.spokeTxUrl}
           target="_blank"
           rel="noopener noreferrer"

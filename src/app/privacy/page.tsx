@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { socialCard } from "@/lib/og/metadata";
 import { LegalPage } from "@/components/legal-page";
 import { COPY } from "@/lib/copy";
+import { AnalyticsSwitch } from "@/components/analytics/analytics-switch";
 
 export const metadata: Metadata = {
   title: `${COPY.privacyPolicy.title} · Berth`,
@@ -26,6 +27,8 @@ export default function PrivacyPage() {
         { href: "/terms", label: COPY.termsOfUse.title },
         { href: "/assistants", label: COPY.assistantsHelp.title },
       ]}
+      // Your answer, changeable right here as well as in Settings.
+      inSection={process.env.NEXT_PUBLIC_POSTHOG_KEY ? { id: "analytics", node: <AnalyticsSwitch link={false} /> } : undefined}
     />
   );
 }

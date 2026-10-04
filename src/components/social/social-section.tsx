@@ -3,6 +3,7 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { toast } from "@/lib/toast";
+import { track } from "@/lib/analytics";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, CaretDown, EnvelopeSimple, ShareNetwork, Trophy } from "@phosphor-icons/react";
 import { AvatarWithRank } from "@/components/rank-glyph";
@@ -117,7 +118,7 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
   return (
     <div className="flex flex-col divide-y divide-border">
       <div className="flex flex-col gap-2 px-3 py-2.5">
-        <div className="flex min-h-9 items-center gap-3">
+        <div data-ph-block className="flex min-h-9 items-center gap-3">
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{handle}</span>
           <Button variant="ghost" size="sm" render={<Link href={own.href} onClick={own.onClick} />} nativeButton={false}>
             {copy.view}
@@ -233,7 +234,7 @@ function Requests({ people, demo }: { people: Person[]; demo: boolean }) {
     <div className="flex flex-col gap-1 px-3 py-2.5">
       <span className="text-xs text-muted-foreground">{copy.requestsTitle}</span>
       <p className="text-xs text-muted-foreground">{copy.acceptHoldingsNote}</p>
-      <ul className="flex flex-col">
+      <ul data-ph-block className="flex flex-col">
         {people.map((person) => (
           <li key={person.handle} className="flex min-h-11 items-center gap-2.5">
             <PersonLink person={person} />
@@ -270,6 +271,7 @@ export function useShareFriendLink(handle: string, demoToken?: string) {
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({ url, text: copy.shareLinkText(handle) });
+        track("invite_link_shared", { surface: "friend_link" });
         return "shared";
       } catch {
         // Dismissed, or not allowed here: fall back to copying.
@@ -278,6 +280,7 @@ export function useShareFriendLink(handle: string, demoToken?: string) {
     return navigator.clipboard.writeText(url).then(
       () => {
         if (!quiet) toast.success(copy.linkCopied);
+        track("invite_link_copied", { surface: "friend_link" });
         return "copied" as const;
       },
       () => {
@@ -299,7 +302,7 @@ function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; de
       </div>
       {list && list.friends.length === 0 && <p className="px-3 text-xs text-muted-foreground">{copy.friendsNone}</p>}
       {list && list.friends.length > 0 && (
-        <ul className="flex flex-col px-3">
+        <ul data-ph-block className="flex flex-col px-3">
           {list.friends.map((person) => (
             <li key={person.handle} className="flex min-h-11 items-center">
               <PersonLink person={person} />
@@ -308,7 +311,7 @@ function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; de
         </ul>
       )}
       {list && list.outgoing.length > 0 && (
-        <ul className="flex flex-col px-3">
+        <ul data-ph-block className="flex flex-col px-3">
           {list.outgoing.map((person) => (
             <li key={person.handle} className="flex min-h-11 items-center gap-2">
               <PersonLink person={person} />
@@ -359,7 +362,7 @@ function HoldingFold({ sharing, demo }: { sharing: boolean; demo?: SocialDemo })
   });
   if (rows.length === 0) return <p className="px-3 pb-3 text-xs text-muted-foreground">{copy.social.holdingNone}</p>;
   return (
-    <ul data-friends-hold className="flex flex-col px-3 pb-2.5">
+    <ul data-friends-hold data-ph-mask className="flex flex-col px-3 pb-2.5">
       {rows.map(({ listing, line }) => (
         <li key={listing.address} className="flex min-h-12 items-center gap-2.5 py-1">
           <TickerTile symbol={listing.symbol} />
@@ -379,7 +382,7 @@ function BlockedFold({ demo }: { demo?: SocialDemo }) {
   const action = useSocialAction();
   const people = demo?.blocked ?? blocked.data ?? [];
   return (
-    <ul className="flex flex-col px-3 pb-2.5">
+    <ul data-ph-block className="flex flex-col px-3 pb-2.5">
       {people.map((person) => (
         <li key={person.handle} className="flex min-h-11 items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm text-foreground">{person.handle}</span>

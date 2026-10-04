@@ -113,7 +113,7 @@ export function WalletsSection() {
   };
 
   return (
-    <Panel>
+    <Panel data-ph-block>
     <MergeCard />
     <WalletsList
       wallets={all

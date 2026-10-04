@@ -21,7 +21,9 @@ import { LevelUpCard, XpLine, XpPill } from "@/components/xp-toast";
  * when it shows, not while it waits.
  */
 
-const BOTTOM = "calc(max(var(--ask-dock-clearance, 0px), env(safe-area-inset-bottom)) + 16px)";
+// The analytics consent card (components/analytics/consent-card), while it
+// shows, publishes its height as --consent-clearance; toasts rise above it.
+const BOTTOM = "calc(max(var(--ask-dock-clearance, 0px), env(safe-area-inset-bottom)) + 16px + var(--consent-clearance, 0px))";
 
 function render(entry: ToastEntry) {
   const { id, content, revision } = entry;
@@ -93,13 +95,16 @@ export function ToastStack() {
     }
     return () => toastQueue.attach(null);
   }, []);
+  // data-ph-mask: toasts name amounts and friends; a replay shows them masked (lib/analytics).
   return (
-    <Toaster
-      expand
-      visibleToasts={MAX_VISIBLE}
-      gap={10}
-      offset={{ bottom: BOTTOM, right: 24 }}
-      mobileOffset={{ bottom: BOTTOM, left: 16, right: 16 }}
-    />
+    <div data-ph-mask className="contents">
+      <Toaster
+        expand
+        visibleToasts={MAX_VISIBLE}
+        gap={10}
+        offset={{ bottom: BOTTOM, right: 24 }}
+        mobileOffset={{ bottom: BOTTOM, left: 16, right: 16 }}
+      />
+    </div>
   );
 }

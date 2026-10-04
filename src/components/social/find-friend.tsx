@@ -71,7 +71,7 @@ export function FindFriendView({
           </Button>
         </div>
       </form>
-      <div aria-live="polite">
+      <div aria-live="polite" data-ph-mask>
         {result?.kind === "slow" && <p className="text-xs text-muted-foreground">{copy.findSlow}</p>}
         {answer && !answer.found && <p className="text-sm text-muted-foreground">{copy.notFound}</p>}
         {answer?.found && <ProfileCardView answer={answer} handlers={handlers} heading="h2" />}

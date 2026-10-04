@@ -49,7 +49,7 @@ export function ConnectButton({ className }: { className?: string }) {
           )}
         >
           <span aria-hidden className={cn("size-1.5 rounded-full", asleep ? "bg-muted-foreground" : "bg-good")} />
-          <span className="font-mono tabular-nums">
+          <span data-ph-mask className="font-mono tabular-nums">
             {singleAddress
               ? shortenAddress(singleAddress)
               : `${total} wallet${total === 1 ? "" : "s"}`}

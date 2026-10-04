@@ -1,5 +1,7 @@
 "use client";
 
+import { trackOnce } from "@/lib/analytics";
+import { useEffect } from "react";
 import { ChatCircleText, Newspaper } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -36,6 +38,13 @@ export function FirstLookReadingView({
 }) {
   const words = useCopy().firstLook;
   const name = rowName(listing);
+  // Shown once a page session per listing (lib/analytics): which lines were true, never the words.
+  const said = look.kind === "hidden" || look.kind === "loading" ? null : look.look;
+  const inNewsShown = Boolean(said?.looked && said.inNews);
+  const movedShown = said?.movePct !== undefined;
+  useEffect(() => {
+    if (said) trackOnce(`first-look:${listing.symbol}`, "first_look_shown", { listing: listing.symbol, in_news: inNewsShown, moved: movedShown });
+  }, [Boolean(said), listing.symbol, inNewsShown, movedShown]); // eslint-disable-line react-hooks/exhaustive-deps
   if (look.kind === "hidden") return null;
   if (look.kind === "loading") {
     return (

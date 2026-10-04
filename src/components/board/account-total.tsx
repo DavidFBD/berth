@@ -98,7 +98,7 @@ export function AccountTotalView({ figures }: { figures: AccountFigures }) {
   ];
 
   return (
-    <section className="rounded-lg border border-border bg-card px-[18px] pt-[18px] pb-4 lg:px-6 lg:pt-[22px] lg:pb-5">
+    <section data-ph-mask className="rounded-lg border border-border bg-card px-[18px] pt-[18px] pb-4 lg:px-6 lg:pt-[22px] lg:pb-5">
       <div className="flex items-center gap-1 text-[13px] text-muted-foreground">
         <span>{copy.accountTotalLabel}</span>
         {/* The one (i) for the figure and the chart under it. */}

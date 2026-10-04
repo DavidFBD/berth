@@ -169,7 +169,7 @@ export function DrawerGallery({ scene, view, old = false }: { scene: DrawerScene
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>{COPY.accountTotalLabel}</DrawerTitle>
-            <DrawerDescription>{COPY.accountSignedInAs(DEMO_EMAIL)}</DrawerDescription>
+            <DrawerDescription data-ph-mask>{COPY.accountSignedInAs(DEMO_EMAIL)}</DrawerDescription>
           </DrawerHeader>
           <EmailDrawerBody
             address={DEMO_ADDRESS}

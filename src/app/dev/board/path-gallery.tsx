@@ -238,7 +238,7 @@ export function PathGallery({ account, at, skipped: skippedParam, drawer: drawer
           <DrawerContent>
             <DrawerHeader>
               <DrawerTitle>{COPY.accountTotalLabel}</DrawerTitle>
-              <DrawerDescription>{account === "email" ? COPY.accountSignedInAs("gosia@example.com") : COPY.drawer.rows.wallets.sub}</DrawerDescription>
+              <DrawerDescription data-ph-mask>{account === "email" ? COPY.accountSignedInAs("gosia@example.com") : COPY.drawer.rows.wallets.sub}</DrawerDescription>
             </DrawerHeader>
             <AccountDrawerScreens kind={account} hasAddress onLeave={() => setDrawerOpen(false)} onSignOut={noop} />
           </DrawerContent>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { trackOnce } from "@/lib/analytics";
 import Link from "next/link";
 import { Coins, SealCheck } from "@phosphor-icons/react";
 import { useCopy } from "@/components/settings-provider";
@@ -15,6 +17,10 @@ import { campaignDay, campaignLine, campaignUsd, type CampaignLine as Line } fro
  */
 export function CampaignLine({ enabled, bare = false }: { enabled: boolean; bare?: boolean }) {
   const progress = useCampaignProgress(enabled);
+  const step = campaignLine(progress.data)?.kind ?? null;
+  useEffect(() => {
+    if (step) trackOnce(`campaign-step:${step}`, "campaign_step", { step });
+  }, [step]);
   return <CampaignLineView line={campaignLine(progress.data)} bare={bare} />;
 }
 
@@ -54,6 +60,7 @@ export function CampaignLineView({ line, bare = false }: { line: Line | null; ba
     <div
       role="status"
       data-testid="campaign-line"
+      data-ph-mask
       className={
         bare
           ? "flex items-center justify-center gap-2 pt-1 text-center"

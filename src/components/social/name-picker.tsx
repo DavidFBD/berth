@@ -62,6 +62,7 @@ export function NamePickerView({
           : copy.refusal(status.reason, status.nextChange);
   return (
     <form
+      data-ph-mask
       className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();

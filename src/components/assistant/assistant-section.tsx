@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/analytics";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowSquareOut, ArrowUpRight, CaretDown, Check, CheckCircle, Copy, DownloadSimple } from "@phosphor-icons/react";
@@ -128,7 +129,10 @@ export function AssistantSection({
             aria-expanded={open === assistant.id}
             aria-label={isConnected(assistant.id) ? copy.assistantButtonConnected(assistant.name) : undefined}
             className={cn("relative h-auto min-w-0 flex-col gap-1.5 rounded-xl px-2 pt-3 pb-2.5 text-[13px]", open === assistant.id && "border-foreground/40 dark:border-foreground/30 dark:bg-input/60")}
-            onClick={() => setOpen((current) => (current === assistant.id ? null : assistant.id))}
+            onClick={() => {
+              if (open !== assistant.id) track("ai_connect_started", { assistant: assistant.id });
+              setOpen((current) => (current === assistant.id ? null : assistant.id));
+            }}
           >
             <ProviderMark id={assistant.id} className="size-5" />
             <span className="truncate">{assistant.name}</span>

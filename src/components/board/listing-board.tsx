@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { trackOnce } from "@/lib/analytics";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Funnel } from "@phosphor-icons/react";
 import { Sparkline } from "@/components/board/sparkline";
@@ -310,7 +311,7 @@ export function ListingBoard({
       {yours.length > 0 && (
         <>
           <GroupLabel>{copy.boardYours}</GroupLabel>
-          <ul className="divide-y divide-border border-t border-border">{yours.map(row)}</ul>
+          <ul data-ph-mask className="divide-y divide-border border-t border-border">{yours.map(row)}</ul>
         </>
       )}
       {/* Only a ranking may be called one: while the day's moves load,
@@ -361,17 +362,38 @@ export function ListingBoard({
  * (lib/social-proof thresholds), so an empty answer leaves no trace.
  */
 function MostBoughtList({ answer }: { answer: MostBoughtResponse }) {
-  const copy = useCopy();
   const shown = answer.rows.flatMap((row) => {
     const listing = STOCK_LISTINGS.find((candidate) => candidate.symbol === row.symbol);
     return listing ? [{ listing, people: row.people, plus: row.plus }] : [];
   });
   if (shown.length === 0 || !answer.week) return null;
-  const week = new Date(`${answer.week}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return <MostBoughtShown week={answer.week} shown={shown} />;
+}
+
+/** The list once there is one; seen at least half in view counts once a page session (lib/analytics). */
+function MostBoughtShown({ week: weekDay, shown }: { week: string; shown: { listing: TokenListing; people: number; plus: boolean }[] }) {
+  const copy = useCopy();
+  const list = useRef<HTMLOListElement>(null);
+  const rows = shown.length;
+  useEffect(() => {
+    const element = list.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        trackOnce("most-bought", "most_bought_viewed", { rows });
+        observer.disconnect();
+      },
+      { threshold: 0.5 },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [rows]);
+  const week = new Date(`${weekDay}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   return (
     <>
       <GroupLabel>{copy.mostBoughtTitle(week)}</GroupLabel>
-      <ol data-most-bought className="divide-y divide-border border-t border-border">
+      <ol ref={list} data-most-bought className="divide-y divide-border border-t border-border">
         {shown.map(({ listing, people, plus }) => (
           <li key={listing.address} className="flex min-h-14 items-center gap-2.5 px-[18px] py-2.5 lg:gap-3 lg:px-6">
             <TickerTile symbol={listing.symbol} />
