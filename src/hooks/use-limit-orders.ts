@@ -215,7 +215,7 @@ export function useCancelWaitingOrder() {
         cancelTx = String(done.value.srcChainTxHash);
       } else {
         // Only ever for this account's own hub wallet on the home chain.
-        const hubWallet = await sodax.hubProvider.getUserHubWalletAddress(address, route.chainKey);
+        const hubWallet = await sodax.hubProvider.getUserHubWalletAddress(sdkAddress(route.chainKey, address), route.chainKey);
         if (hubWallet.toLowerCase() !== intent.creator.toLowerCase()) return { ok: false, message: COPY.limitCancelNotYours };
         const payload = encodeContractCalls([EvmSolverService.encodeCancelIntent(intent, sodax.config.solver.intentsContract)]);
         const sent = await sodax.spoke.sendMessage({

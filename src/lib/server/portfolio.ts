@@ -1,6 +1,7 @@
 import { erc20Abi, formatUnits, type Address } from "viem";
 import { HOME_CHAIN } from "@/lib/account";
 import type { OrderFacts } from "@/lib/benchmark";
+import { sdkAddress } from "@/lib/chains";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { ledgerDays, ledgerExplains, snapshotDay, valueHoldings, type Holding, type ValuedDay } from "@/lib/portfolio-days";
 import type { PortfolioDay } from "@/lib/portfolio-history";
@@ -29,7 +30,7 @@ const LISTING_SYMBOLS = new Set(TOKEN_LISTINGS.map((listing) => listing.symbol))
 
 /** The account: the hub wallet derived from the spoke address on the home chain (lib/account). */
 export async function hubWalletFor(spokeAddress: string): Promise<string> {
-  const wallet = await getSodax().hubProvider.getUserHubWalletAddress(spokeAddress, HOME_CHAIN);
+  const wallet = await getSodax().hubProvider.getUserHubWalletAddress(sdkAddress(HOME_CHAIN, spokeAddress), HOME_CHAIN);
   return wallet.toLowerCase();
 }
 

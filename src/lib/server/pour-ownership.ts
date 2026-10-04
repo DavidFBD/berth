@@ -7,6 +7,7 @@ import {
   type Sodax,
 } from "@sodax/sdk";
 import { HOME_CHAIN } from "@/lib/account";
+import { sdkAddress } from "@/lib/chains";
 import { normalizeAddress, type WalletFamily } from "@/lib/identity/caip";
 import { getSql } from "@/lib/server/db";
 import { linkedWallets } from "@/lib/server/identities";
@@ -443,7 +444,7 @@ export function sodaxOwnershipReads(
     sourceHub: (srcChain, srcAddress) =>
       withTimeout(async () => {
         if (srcChain === HUB_RELAY_CHAIN_ID) {
-          return lower(await sodax.hubProvider.getUserHubWalletAddress(srcAddress, ChainKeys.SONIC_MAINNET));
+          return lower(await sodax.hubProvider.getUserHubWalletAddress(sdkAddress(ChainKeys.SONIC_MAINNET, srcAddress), ChainKeys.SONIC_MAINNET));
         }
         const wallet = await sodax.hubProvider.publicClient.readContract({
           address: sodax.hubProvider.chainConfig.addresses.hubWallet,
@@ -453,7 +454,7 @@ export function sodaxOwnershipReads(
         });
         return lower(wallet as string);
       }, ms),
-    homeHub: (address) => withTimeout(async () => lower(await sodax.hubProvider.getUserHubWalletAddress(address, HOME_CHAIN)), ms),
+    homeHub: (address) => withTimeout(async () => lower(await sodax.hubProvider.getUserHubWalletAddress(sdkAddress(HOME_CHAIN, address), HOME_CHAIN)), ms),
     intentAt,
   };
 }

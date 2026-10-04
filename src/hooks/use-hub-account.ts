@@ -8,6 +8,7 @@ import { useAccountXAccount } from "@/hooks/use-wallet-restore";
 import type { Address } from "@sodax/sdk";
 import { HOME_CHAIN, homeSpokeAddress } from "@/lib/account";
 import { accountHubPlan } from "@/lib/account-wallets";
+import { sdkAddress } from "@/lib/chains";
 import { useAccountSession } from "@/hooks/use-account";
 import { useAccountWallets, usePendingWallet, useProfile } from "@/hooks/use-profile";
 
@@ -91,7 +92,7 @@ export function useHubAccount(spokeAddressOverride?: string): HubAccount {
   const derived = useQueries({
     queries: spokes.map((spoke) => ({
       queryKey: ["shared", "userHubWalletAddress", HOME_CHAIN, spoke],
-      queryFn: () => sodax.hubProvider.getUserHubWalletAddress(spoke, HOME_CHAIN),
+      queryFn: () => sodax.hubProvider.getUserHubWalletAddress(sdkAddress(HOME_CHAIN, spoke), HOME_CHAIN),
       staleTime: Infinity,
       refetchInterval: false as const,
     })),

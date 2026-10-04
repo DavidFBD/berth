@@ -1,5 +1,6 @@
 import { ChainKeys, EvmSolverService, type Intent, type IntentResponse } from "@sodax/sdk";
 import { HOME_CHAIN } from "@/lib/account";
+import { sdkAddress } from "@/lib/chains";
 import { decodeFeeReceiver, type OrderRecord } from "@/lib/orders";
 import { listListings } from "@/lib/listings";
 import { PARTNER_FEE } from "@/lib/sodax-config";
@@ -136,7 +137,7 @@ export function defaultRecoveryDeps(): RecoveryDeps {
     fetchIntents: fetchAllUserIntents,
     hubOf: (address, family) =>
       sodax.hubProvider
-        .getUserHubWalletAddress(address, HUB_CHAIN_OF[family])
+        .getUserHubWalletAddress(sdkAddress(HUB_CHAIN_OF[family], address), HUB_CHAIN_OF[family])
         .then((wallet) => wallet.toLowerCase())
         .catch(() => null),
     verify: verifyPourTx,
