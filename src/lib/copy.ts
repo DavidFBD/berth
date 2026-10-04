@@ -37,6 +37,15 @@ export type Copy = {
   walletConnecting: (name: string) => string;
   walletConnectFailed: string;
 
+  /** The quiet "Beta" pill beside the wordmark; BERTH_BETA in lib/beta.ts hides it everywhere at once. */
+  beta: {
+    tag: string;
+    openLabel: string;
+    body: string;
+    contactLabel: string;
+    contactHref: string;
+  };
+
   /* — labels only a screen reader hears, which are copy like any other — */
   infoOpenLabel: string;
   /** The sell drawer's free-text address field. */
@@ -232,6 +241,8 @@ export type Copy = {
      * one exists.
      */
     colosseum: { label: string; href: string };
+    /** Superteam Netherlands, shown as its mark beside the Colosseum badge; `label` names the link for screen readers. */
+    superteam: { label: string; href: string };
     /** The three sections between the hero and the Wall Street film: one line of headline, one short line, a compact visual. */
     sections: {
       what: { title: string; line: string };
@@ -2535,6 +2546,14 @@ export const COPY: Copy = {
   walletConnecting: (name) => `Waiting for ${name}…`,
   walletConnectFailed: "Could not connect. Try again, or continue with email.",
 
+  beta: {
+    tag: "Beta",
+    openLabel: "About the beta label",
+    body: "Berth is new. We are still improving it, and your feedback helps.",
+    contactLabel: "support@berthmarkets.com",
+    contactHref: "mailto:support@berthmarkets.com",
+  },
+
   infoOpenLabel: "How Berth works",
   withdrawCustomAddressLabel: "Address to send to",
   avatarChooseLabel: (face) => `Choose ${face}`,
@@ -2720,6 +2739,7 @@ export const COPY: Copy = {
     onNetwork: (network) => `on ${network}`,
     // Swap this href for Berth's own Colosseum project page once it exists.
     colosseum: { label: "Colosseum 2026 entry", href: "https://colosseum.com/" },
+    superteam: { label: "Superteam Netherlands", href: "https://nl.superteam.fun" },
     sections: {
       what: {
         title: "US stocks and funds, in an account your wallet controls.",
