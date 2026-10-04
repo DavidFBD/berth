@@ -85,7 +85,9 @@ const PAY_PRICE_IDS: Readonly<Record<string, string>> = {
   hype: "hyperliquid",
   // The hub's own form of a coin, paid from the account on Sonic. Only
   // wrappers taken as one to one with their coin: sodaBTC is the SDK's
-  // soda vault for Bitcoin (SodaTokens.sodaBTC). Others stay unpriced
+  // soda vault for Bitcoin (SodaTokens.sodaBTC). From @sodax/sdk 2.2 the
+  // SDK calls it "BTC"; lib/chains getDepositTokens gives it back its
+  // sodaBTC name, which is what keeps this id live. Others stay unpriced
   // until checked.
   sodabtc: "bitcoin",
 };

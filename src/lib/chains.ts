@@ -66,12 +66,47 @@ export function getChainLogo(chainKey: SpokeChainKey): string | undefined {
  * listing is the sell path's job, not the deposit picker's.
  */
 export function getDepositTokens(chainKey: SpokeChainKey): readonly XToken[] {
-  return getSupportedSolverTokens(chainKey).filter(
+  const tokens = getSupportedSolverTokens(chainKey).filter(
     (token) =>
       !token.symbol.startsWith("lsoda") &&
       !isTokenListingAddress(token.address),
   );
+  if (chainKey !== ChainKeys.SONIC_MAINNET) return tokens;
+  return tokens.map((token) => {
+    const shown = HUB_VAULT_DISPLAY[token.address.toLowerCase()];
+    return shown ? { ...token, ...shown } : token;
+  });
 }
+
+/**
+ * The hub's vault tokens on Sonic, under the names they had up to
+ * @sodax/sdk 2.0.0. From 2.2 the SDK calls them by the coin they hold
+ * (sodaBTC became "BTC", sodaSOL "SOL"), which would put the real coin's
+ * name and logo on what is a hub wrapper of it, and price it as the coin
+ * where Berth has only checked sodaBTC (lib/orders PAY_PRICE_IDS). Keyed by
+ * lowercase address; only symbol and name change, so every payload keeps
+ * the SDK's own token.
+ */
+const HUB_VAULT_DISPLAY: Readonly<Record<string, Pick<XToken, "symbol" | "name">>> = {
+  "0x40cd41b35db9e5109ae7e54b44de8625db320e6b": { symbol: "sodaBNB", name: "Soda BNB" },
+  "0x14238d267557e9d799016ad635b53cd15935d290": { symbol: "sodaAVAX", name: "Soda AVAX" },
+  "0x7a1a5555842ad2d0ed274d09b5c4406a95799d5d": { symbol: "sodaBTC", name: "Soda BTC" },
+  "0xdea692287e2ce8cb08fa52917be0f16b1dacdc87": { symbol: "sodaSOL", name: "Soda SOL" },
+  "0x6bc8c37cba91f76e68c9e6d689a9c21e4d32079b": { symbol: "sodaXLM", name: "Soda XLM" },
+  "0x1f22279c89b213944b7ea41dacb0a868ddcdfd13": { symbol: "sodaINJ", name: "Soda INJ" },
+  "0xdc5b4b00f98347e95b9f94911213dab4c687e1e3": { symbol: "sodaSUI", name: "Soda SUI" },
+  "0x208ed38f4783328aa9ebfec360d32e7520a9b779": { symbol: "sodaPOL", name: "Soda POL" },
+  "0x6e81124fc5d2bf666b16a0a5d90066ebf35c7411": { symbol: "sodaHYPE", name: "Soda HYPE" },
+  "0x4b207114f9118deac56436e1ae3c45648783c7ac": { symbol: "sodaRBNT", name: "Soda RBNT" },
+  "0x14c5eb2d25dfb834852dfc85744875d1ecb09748": { symbol: "sodaLL", name: "Soda LL" },
+  "0xcb6b152d3a943f25157381afca7fefcd2ef5a357": { symbol: "sodaWEETH", name: "SODA WEETH" },
+  "0x58b0538d7eeaee69ef32f9f1de5cbf32a10a977b": { symbol: "sodaWSTETH", name: "SODA WSTETH" },
+  "0xf4ba497c9b805e4bd88a8a9e6a7b8f74984c3e39": { symbol: "sodaNEAR", name: "SODA NEAR" },
+  "0xd7d41b5f803b6a40f8a6eaa34e459a4564e39891": { symbol: "sodaKAIA", name: "Soda KAIA" },
+  "0x1fbe5229e9d189f26bee77e5bfa24309fda90483": { symbol: "sodaSTX", name: "Soda STX" },
+  "0x3bb956cc8922e1ba4148dc10ed1b4fa19aa599c4": { symbol: "sodaHBAR", name: "Soda HBAR" },
+  "0xe1bad4400d947bc4fa66f9c0a143d800002083a0": { symbol: "sodaJITOSOL", name: "Soda JITOSOL" },
+};
 
 /**
  * The chain's native (gas) token as an XToken, when the solver list carries

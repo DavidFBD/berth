@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, type XToken } from "@sodax/sdk";
-import { DEPOSIT_SOURCE_CHAINS, getChainName, getNativeGasToken, toBalanceReadToken } from "./chains";
+import { DEPOSIT_SOURCE_CHAINS, getChainName, getDepositTokens, getNativeGasToken, toBalanceReadToken } from "./chains";
+import { priceIdFor } from "./orders";
 
 /**
  * One representative token per chain family the picker can show (see
@@ -130,5 +131,35 @@ describe("getNativeGasToken", () => {
   it("still names the native coin on an EVM chain and on Solana", () => {
     expect(getNativeGasToken(ChainKeys.BASE_MAINNET)?.symbol).toBe("ETH");
     expect(getNativeGasToken(ChainKeys.SOLANA_MAINNET)?.symbol).toBe("SOL");
+  });
+});
+
+describe("getDepositTokens on Sonic", () => {
+  const sonic = getDepositTokens(ChainKeys.SONIC_MAINNET);
+  const at = (address: string) => sonic.find((token) => token.address.toLowerCase() === address.toLowerCase());
+
+  it("shows hub vault tokens under their soda names, never as the coin itself", () => {
+    expect(at("0x7A1A5555842Ad2D0eD274d09b5c4406a95799D5d")).toMatchObject({ symbol: "sodaBTC", name: "Soda BTC" });
+    expect(at("0xdEa692287E2cE8Cb08FA52917Be0F16b1DACDC87")).toMatchObject({ symbol: "sodaSOL", name: "Soda SOL" });
+    expect(at("0xdc5B4b00F98347E95b9F94911213DAB4C687e1e3")).toMatchObject({ symbol: "sodaSUI", name: "Soda SUI" });
+    for (const coin of ["BTC", "SOL", "BNB", "AVAX", "XLM", "INJ", "SUI", "POL", "HYPE", "NEAR", "KAIA", "STX", "HBAR"]) {
+      expect(sonic.some((token) => token.symbol === coin), coin).toBe(false);
+    }
+  });
+
+  it("keeps the SDK's address and decimals, so payloads are untouched", () => {
+    expect(at("0x7A1A5555842Ad2D0eD274d09b5c4406a95799D5d")).toMatchObject({
+      address: "0x7A1A5555842Ad2D0eD274d09b5c4406a95799D5d",
+      decimals: 18,
+    });
+  });
+
+  it("prices sodaBTC as bitcoin and leaves the other wrappers unpriced", () => {
+    expect(priceIdFor(at("0x7A1A5555842Ad2D0eD274d09b5c4406a95799D5d")?.symbol)).toBe("bitcoin");
+    expect(priceIdFor(at("0xdEa692287E2cE8Cb08FA52917Be0F16b1DACDC87")?.symbol)).toBeUndefined();
+  });
+
+  it("leaves other chains' coins under their own names", () => {
+    expect(getDepositTokens(ChainKeys.SOLANA_MAINNET).some((token) => token.symbol === "SOL")).toBe(true);
   });
 });
