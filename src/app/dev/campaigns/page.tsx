@@ -19,8 +19,8 @@ import { useMounted } from "@/hooks/use-mounted";
  *   /dev/campaigns?create=open  the create form open, its Funding block filled
  *                               (&address=0x... to judge another address)
  *
- * The lines in the calm home's own layout: /dev/board?home=new&campaign=rules
- * (rules, invited, staying, qualified, paid).
+ * The lines in the calm home's own layout: /dev/board?home=new&campaign=setUp
+ * (setUp, staying, qualified, paid).
  */
 
 export default function CampaignsGalleryPage() {

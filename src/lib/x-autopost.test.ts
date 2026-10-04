@@ -198,22 +198,22 @@ describe("milestones", () => {
   });
 });
 
-const CAMPAIGN: LiveCampaign = { code: "friends-oct", amountUsd: 5, stayDays: 7, perInviter: 3, placesLeft: 18, endsAt: new Date("2026-11-01T04:00:00Z") };
+const CAMPAIGN: LiveCampaign = { code: "welcome-oct", amountUsd: 5, stayDays: 7, placesLeft: 18, endsAt: new Date("2026-11-01T04:00:00Z") };
 
 describe("the campaign", () => {
-  it("says the inviter is paid for a friend who stays, never anything about buying", () => {
+  it("says a new account opened through the link is paid once it stays, never anything about buying or an inviter", () => {
     const text = composePost(campaignDraft(CAMPAIGN, MON));
     expect(text).toBe(
-      "Invite a friend who is new to Berth. If they set up their account and still use Berth 7 days later, $5 in USDC is added to your account, for up to 3 friends, while places last. 18 places left, until 31 October. How it works: https://www.berthmarkets.com/c/friends-oct",
+      "New to Berth? Open an account through this link, set it up and still use Berth 7 days later, and $5 in USDC on Base is added to your account, while places last. 18 places left, until 31 October. How it works: https://www.berthmarkets.com/c/welcome-oct",
     );
+    expect(text).not.toMatch(/invite/i);
     expect(text).not.toMatch(/\b(buy|bought|hold|trade)\b/i);
     expect(postProblems(text)).toEqual([]);
   });
 
   it("leaves out places and the end when they are not known", () => {
     const text = campaignDraft({ ...CAMPAIGN, placesLeft: null, endsAt: null }, MON).body;
-    expect(text).toBe("Invite a friend who is new to Berth. If they set up their account and still use Berth 7 days later, $5 in USDC is added to your account, for up to 3 friends, while places last.");
-    expect(campaignDraft({ ...CAMPAIGN, perInviter: 1, placesLeft: null, endsAt: null }, MON).body).toContain("for up to 1 friend, while");
+    expect(text).toBe("New to Berth? Open an account through this link, set it up and still use Berth 7 days later, and $5 in USDC on Base is added to your account, while places last.");
     expect(campaignDraft({ ...CAMPAIGN, placesLeft: 1, endsAt: null }, MON).body).toMatch(/ 1 place left\.$/);
   });
 });
@@ -249,7 +249,7 @@ describe("choosing the day's post", () => {
   it("lets a live campaign take the slot, but never two in a row", () => {
     const first = choosePost({ ...base, campaign: CAMPAIGN, news: NEWS });
     expect(first?.draft.source).toBe("campaign");
-    expect(first?.campaignCode).toBe("friends-oct");
+    expect(first?.campaignCode).toBe("welcome-oct");
     const second = choosePost({ ...base, campaign: CAMPAIGN, news: NEWS, lastSource: "campaign" });
     expect(second?.draft.source).toBe("news");
     expect(choosePost({ ...base, campaign: CAMPAIGN, lastSource: "campaign" })).toBeNull();
@@ -257,9 +257,9 @@ describe("choosing the day's post", () => {
 
   it("gives a news or calendar post the campaign as its call to action when it fits, and never a milestone", () => {
     const news = choosePost({ ...base, campaign: CAMPAIGN, news: NEWS, lastSource: "campaign" })!;
-    expect(news.campaignCode).toBe("friends-oct");
+    expect(news.campaignCode).toBe("welcome-oct");
     expect(news.text).toBe(
-      "NVIDIA in the news. Reuters reports: “NVIDIA opens a new research centre in Taipei” Invite a friend: $5 in USDC for you if they set up and still use Berth 7 days later, up to 3 friends, while places last. https://www.berthmarkets.com/c/friends-oct",
+      "NVIDIA in the news. Reuters reports: “NVIDIA opens a new research centre in Taipei” New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC is yours, while places last. https://www.berthmarkets.com/c/welcome-oct",
     );
     const milestone = choosePost({ ...base, campaign: CAMPAIGN, milestones: MILESTONE, lastSource: "campaign" })!;
     expect(milestone.campaignCode).toBeNull();
@@ -310,7 +310,7 @@ describe("length and the copy rules", () => {
       composePost({ body: t.halfDay(longestDay), cta: t.seeIt, url: "https://www.berthmarkets.com" }),
       composePost({ body: t.mostHeld("30 September", longestName.name, 20), cta: t.seeIt, url: "https://www.berthmarkets.com" }),
       composePost({ body: t.mostBought("30 September", longestName.name, 1000, true), cta: t.seeIt, url: "https://www.berthmarkets.com" }),
-      composePost(campaignDraft({ code: "a".repeat(32), amountUsd: 12.5, stayDays: 90, perInviter: 100, placesLeft: 1000, endsAt: new Date("2026-09-30T12:00:00Z") }, MON)),
+      composePost(campaignDraft({ code: "a".repeat(32), amountUsd: 12.5, stayDays: 90, placesLeft: 1000, endsAt: new Date("2026-09-30T12:00:00Z") }, MON)),
       composePost(withCampaignCta(HOLIDAY[0], { ...CAMPAIGN, amountUsd: 12.5, stayDays: 90 })),
     ];
     for (const post of posts) {
@@ -328,7 +328,7 @@ describe("length and the copy rules", () => {
 
   it("never says buy, sell, advice or a prediction in its own words", () => {
     const t = COPY.xAutopost;
-    const own = [t.holiday("d", "n", "r"), t.halfDay("d"), t.news("N", "P", ""), t.mostHeld("w", "N", 2), t.mostBought("w", "N", 3, false), t.seeIt, t.campaignCta("$5", 7, 3), t.campaignLink, t.campaign("$5", 7, 3, 3, "1 May")];
+    const own = [t.holiday("d", "n", "r"), t.halfDay("d"), t.news("N", "P", ""), t.mostHeld("w", "N", 2), t.mostBought("w", "N", 3, false), t.seeIt, t.campaignCta("$5", 7), t.campaignLink, t.campaign("$5", 7, 3, "1 May")];
     for (const line of own) {
       expect(line).not.toMatch(/\b(buy|sell|invest|advice|will rise|target|guarantee)\b/i);
       expect(line).not.toMatch(/\s-\s|[–—]/);

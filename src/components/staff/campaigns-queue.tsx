@@ -28,6 +28,7 @@ export type StaffAction =
   | { action: "paid"; claimId: string; txHash: string }
   | { action: "activate"; campaignId: string; counselReviewed: true; fundingChecked: true }
   | { action: "pause"; campaignId: string }
+  | { action: "delete"; campaignId: string }
   | { action: "create"; campaign: Record<string, string> }
   | { action: "reveal"; claimId: string; field: "email" | "wallets" }
   | { action: "add_source"; campaignId: string; address: string; reason: string }
@@ -36,7 +37,7 @@ export type StaffAction =
 /** Fields shown in full after an audited reveal, by claim. */
 export type Revealed = Record<
   string,
-  { email?: string | null; inviterEmail?: string | null; wallets?: QueueClaim["wallets"]; inviterWallets?: QueueClaim["wallets"]; payout?: string | null }
+  { email?: string | null; wallets?: QueueClaim["wallets"]; payout?: string | null }
 >;
 
 type Fetched = { status: "missing" } | { status: "stale" } | { status: "ready"; data: StaffCampaignsResponse };
@@ -70,7 +71,7 @@ export function StaffCampaigns() {
   });
   const act = useMutation({
     mutationFn: (action: StaffAction) => post(action),
-    onSuccess: (answer) => {
+    onSuccess: (answer, action) => {
       if (answer.status === "stale") {
         setStale(true);
         setMessage(copy.refusals.fresh_session);
@@ -83,7 +84,13 @@ export function StaffCampaigns() {
         const { claimId, values } = result.detail as { claimId: string; values: Revealed[string] };
         setRevealed((previous) => ({ ...previous, [claimId]: { ...previous[claimId], ...values } }));
       }
-      setMessage(result && !result.ok ? (copy.refusals[result.refusal] ?? result.refusal) : null);
+      setMessage(
+        result && !result.ok
+          ? (copy.refusals[result.refusal] ?? result.refusal)
+          : result?.ok && action.action === "delete"
+            ? copy.deleted(String(result.detail?.code ?? ""))
+            : null,
+      );
     },
     onError: () => setMessage(copy.failed),
   });
@@ -193,6 +200,7 @@ export function CampaignsQueueView({
 function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; busy: boolean; onAction: (action: StaffAction) => void }) {
   const copy = useCopy().campaign.staff;
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [fundingChecked, setFundingChecked] = useState(false);
   const fundingCopy = useCopy().campaign.staff.funding;
@@ -218,7 +226,7 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
         </span>
       </div>
       <p className="text-sm text-muted-foreground">
-        {campaign.kind === "invite" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays, campaign.perInviter) : copy.retired}
+        {campaign.kind === "signup" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays) : copy.retired}
       </p>
       <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
         <div className="h-full bg-primary" style={{ width: `${paidPct}%` }} />
@@ -242,7 +250,7 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
         otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
       />
       <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
-      {campaign.kind !== "invite" ? null : campaign.active ? (
+      {campaign.kind !== "signup" ? null : campaign.active ? (
         <div>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
             {copy.deactivate}
@@ -293,6 +301,33 @@ function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; b
           </Button>
         </div>
       )}
+      {campaign.deletable && !confirming && (deleting ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="delete-confirm">
+          <p className="text-sm text-foreground">{copy.deleteConfirm(campaign.title, campaign.code)}</p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => {
+                onAction({ action: "delete", campaignId: campaign.id });
+                setDeleting(false);
+              }}
+            >
+              {copy.delete}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>
+              {copy.cancel}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDeleting(true)}>
+            {copy.delete}
+          </Button>
+        </div>
+      ))}
     </Panel>
   );
 }
@@ -309,13 +344,6 @@ function withRevealed(claim: QueueClaim, shown: Revealed[string] | undefined): Q
     ...claim,
     email: shown.email !== undefined ? shown.email : claim.email,
     wallets: shown.wallets ?? claim.wallets,
-    inviter: claim.inviter
-      ? {
-          ...claim.inviter,
-          email: shown.inviterEmail !== undefined ? shown.inviterEmail : claim.inviter.email,
-          wallets: shown.inviterWallets ?? claim.inviter.wallets,
-        }
-      : null,
     payout: shown.payout !== undefined ? { ...claim.payout, address: shown.payout } : claim.payout,
   };
 }
@@ -457,24 +485,13 @@ function ClaimCard({
         )}
         <Fact label={copy.labels.lastSeen}>{claim.lastSeenAt ? when(claim.lastSeenAt) : copy.empty}</Fact>
         <Fact label={copy.labels.wallets}>
-          {revealed?.wallets === undefined && (claim.wallets.length > 0 || (claim.inviter?.wallets.length ?? 0) > 0) && (
+          {revealed?.wallets === undefined && claim.wallets.length > 0 && (
             <Button size="xs" variant="ghost" className="mb-1 text-muted-foreground" disabled={busy} onClick={() => onAction({ action: "reveal", claimId: claim.id, field: "wallets" })}>
               {copy.revealWallets}
             </Button>
           )}
           <WalletList wallets={claim.wallets} />
         </Fact>
-        {claim.inviter && (
-          <>
-            <Fact label={copy.labels.inviter}>
-              {claim.inviter.email ?? <Mono>{claim.inviter.userId}</Mono>}
-              {claim.inviter.email && <span className="block"><Mono>{claim.inviter.userId}</Mono></span>}
-            </Fact>
-            <Fact label={copy.labels.inviterWallets}>
-              <WalletList wallets={claim.inviter.wallets} />
-            </Fact>
-          </>
-        )}
         <Fact label={copy.labels.signals}>
           {claim.signals.length === 0 ? copy.noSignals : claim.signals.map((signal) => <span key={signal} className="block">{copy.signals[signal]}</span>)}
           <span className="block text-xs text-muted-foreground">{copy.noDeviceSignals}</span>
@@ -589,7 +606,6 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
     budgetUsd: "100",
     maxClaims: "20",
     stayDays: "14",
-    perInviter: "3",
     startsAt: "",
     endsAt: "",
     payoutAddress: "",
@@ -636,8 +652,6 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
         )}
         {field("maxClaims", copy.maxClaims, copy.hints.maxClaims, "number")}
         {field("stayDays", copy.stayDays, copy.hints.stayDays, "number")}
-        {field("perInviter", copy.perInviter, copy.hints.perInviter, "number")}
-        <span />
         {field("startsAt", copy.starts, copy.hints.starts, "datetime-local")}
         {field("endsAt", copy.ends, copy.hints.ends, "datetime-local")}
         <PayoutAddressField value={fields.payoutAddress} onChange={(payoutAddress) => setFields({ ...fields, payoutAddress })} />

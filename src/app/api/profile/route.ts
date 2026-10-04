@@ -11,7 +11,8 @@ import {
 } from "@/lib/server/accounts";
 import { fetchPrivyEmail } from "@/lib/server/privy";
 import { AVAILABLE } from "@/lib/server/availability";
-import { attributeInvite } from "@/lib/server/campaigns/store";
+import { attributeSignup } from "@/lib/server/campaigns/store";
+import { normalizeCampaignCode } from "@/lib/campaigns";
 import {
   readRewardsCaller,
   resolveRewardsUser,
@@ -48,15 +49,17 @@ export async function POST(request: NextRequest) {
     if (referrerId) user = { ...user, referred_by: referrerId };
   }
 
-  // Invite campaigns (lib/server/campaigns): an account carrying someone's
-  // invite, young and opened inside a live invite campaign's dates, gets
-  // its claim, which pays the one who invited it once it is set up and
-  // still in use some days later. Never where Berth is not available. A
-  // pocketed /c/<code> only chooses between live campaigns. A failure here
-  // never fails the sync.
-  if (user.referred_by && (read.caller.availability ?? AVAILABLE).available) {
+  // Campaigns (lib/server/campaigns): a new account that arrived through a
+  // campaign's own link (/c/<code>, pocketed before sign in) gets its
+  // claim, when that exact code is a live campaign; the account itself is
+  // paid once it is set up and still in use some days later. A personal
+  // invite (referred_by) has no part in it and never earns money. Before
+  // the welcome below, so only the account's first sync can make a claim.
+  // Never where Berth is not available. A failure here never fails the sync.
+  const campaignCode = normalizeCampaignCode(read.caller.body.campaignCode);
+  if (campaignCode && (read.caller.availability ?? AVAILABLE).available) {
     try {
-      await attributeInvite(user.id, read.caller.body.campaignCode);
+      await attributeSignup(user.id, campaignCode);
     } catch (error) {
       console.warn("[campaigns] attribution failed", error instanceof Error ? error.message : error);
     }

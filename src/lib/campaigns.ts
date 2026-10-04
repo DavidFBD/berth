@@ -1,12 +1,13 @@
 /**
  * Reward campaigns, the client safe half (the server half is
- * lib/server/campaigns). Since 5 October 2026 a campaign rewards an invite
- * that sticks, never a buy: invite a friend new to Berth, and when they
- * open an account inside the campaign's dates, set it up and still use
- * Berth `stayDays` days later, `amountUsd` in USDC is added to the
- * inviter's account, for up to `perInviter` friends, while places last.
- * Nothing asks for a buy, a holding or a volume. Berth never sends the
- * money itself: David pays each approved claim by hand.
+ * lib/server/campaigns). Since 5 October 2026 a campaign rewards a new
+ * account opened through the campaign's own link (/c/<code>), never a buy:
+ * a person who opens a new account through the link inside the campaign's
+ * dates, sets it up and still uses Berth `stayDays` days later has
+ * `amountUsd` in USDC added to their own account, once per person, while
+ * places last. A personal invite (/r/<code>) never earns money. Nothing
+ * asks for a buy, a holding or a volume. Berth never sends the money
+ * itself: David pays each approved claim by hand.
  *
  * The campaign code rulebook lives here, beside the invite code's
  * (lib/invite-code): lowercase letters, digits and hyphens, 3 to 32, never
@@ -23,8 +24,12 @@ export function normalizeCampaignCode(value: unknown): string | null {
   return CODE_SHAPE.test(trimmed) ? trimmed : null;
 }
 
-/** Which rules a campaign runs. 'buy' is retired: its rows stay, read only. */
-export type CampaignKind = "buy" | "invite";
+/**
+ * Which rules a campaign runs. 'signup' is every campaign since 5 October
+ * 2026. 'buy' and 'invite' (which paid the inviter) are retired: their rows
+ * stay, read only.
+ */
+export type CampaignKind = "buy" | "invite" | "signup";
 
 export const CLAIM_STATES = [
   "attributed",
@@ -43,26 +48,19 @@ export type ClaimState = (typeof CLAIM_STATES)[number];
 export const SLOT_STATES: readonly ClaimState[] = ["holding", "qualified", "approved", "paid"];
 
 /**
- * What the inviter's home reads (app/api/campaign): the live invite
- * campaign's rules, and how their own invited friends are getting on.
- * Never anything about a buy.
+ * Where the account's own campaign reward stands (app/api/campaign), for
+ * the account that opened through a campaign's link: setting up (not set
+ * up yet), staying (set up, waiting out the days), qualified (approved
+ * included, not paid yet) or paid. Never anything about a buy, and nothing
+ * about anyone else's account.
  */
 export type CampaignProgress = {
   amountUsd: number;
   stayDays: number;
-  perInviter: number;
-  /** An invite campaign is live now: its rules may be said. */
-  open: boolean;
-  /** Friends invited inside a campaign, not set up yet. */
-  invited: number;
-  /** Friends set up, waiting out the days. */
-  staying: number;
-  /** ISO; the first day one of the staying friends may qualify. */
-  nextEligibleAt: string | null;
-  /** Qualified or approved, not yet paid. */
-  qualified: number;
-  /** USD paid to this inviter in the last PAID_LINE_DAYS, and when last. */
-  paidUsd: number;
+  status: "setting_up" | "staying" | "qualified" | "paid";
+  /** ISO; when the stay is judged, once set up. */
+  eligibleAt: string | null;
+  /** ISO; when it was paid. */
   paidAt: string | null;
 };
 
@@ -72,30 +70,31 @@ export type CampaignResponse = { campaign: CampaignProgress | null };
 export const PAID_LINE_DAYS = 14;
 
 /**
- * Which line the inviter's home shows, or none: a recent payment first,
- * then a friend who qualified, then one waiting out the days, then one
- * invited and not set up yet, and otherwise, while a campaign is live, its
- * rules. A refusal says nothing on the home.
+ * Which line the home shows the account that opened through a campaign's
+ * link, or none: still to set up, then waiting out the days, then
+ * qualified, then paid (for PAID_LINE_DAYS). A refusal or an expiry says
+ * nothing on the home.
  */
 export type CampaignLine =
-  | { kind: "rules"; amountUsd: number; stayDays: number; perInviter: number }
-  | { kind: "invited"; amountUsd: number; stayDays: number }
+  | { kind: "setUp"; amountUsd: number; stayDays: number }
   | { kind: "staying"; amountUsd: number; eligible: Date }
   | { kind: "qualified" }
   | { kind: "paid"; amountUsd: number };
 
 export function campaignLine(progress: CampaignProgress | null | undefined, now: Date = new Date()): CampaignLine | null {
   if (!progress) return null;
-  if (progress.paidUsd > 0 && progress.paidAt && now.getTime() - new Date(progress.paidAt).getTime() <= PAID_LINE_DAYS * 86_400_000) {
-    return { kind: "paid", amountUsd: progress.paidUsd };
+  switch (progress.status) {
+    case "paid":
+      return progress.paidAt && now.getTime() - new Date(progress.paidAt).getTime() <= PAID_LINE_DAYS * 86_400_000
+        ? { kind: "paid", amountUsd: progress.amountUsd }
+        : null;
+    case "qualified":
+      return { kind: "qualified" };
+    case "staying":
+      return progress.eligibleAt ? { kind: "staying", amountUsd: progress.amountUsd, eligible: new Date(progress.eligibleAt) } : null;
+    default:
+      return { kind: "setUp", amountUsd: progress.amountUsd, stayDays: progress.stayDays };
   }
-  if (progress.qualified > 0) return { kind: "qualified" };
-  if (progress.staying > 0 && progress.nextEligibleAt) {
-    return { kind: "staying", amountUsd: progress.amountUsd, eligible: new Date(progress.nextEligibleAt) };
-  }
-  if (progress.invited > 0) return { kind: "invited", amountUsd: progress.amountUsd, stayDays: progress.stayDays };
-  if (progress.open) return { kind: "rules", amountUsd: progress.amountUsd, stayDays: progress.stayDays, perInviter: progress.perInviter };
-  return null;
 }
 
 /** A whole dollar amount as "$5", anything else with cents: "$5.50". */
@@ -109,4 +108,4 @@ export function campaignDay(date: Date, timeZone?: string): string {
 }
 
 /** Why staff refused a claim, as the staff page and the CLI name them. */
-export const REJECT_REASONS = ["not_active", "self_invite", "one_per_person", "abuse", "other"] as const;
+export const REJECT_REASONS = ["not_active", "one_per_person", "abuse", "other"] as const;

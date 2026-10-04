@@ -5,13 +5,12 @@ import { AVAILABLE } from "@/lib/server/availability";
 import type { CampaignResponse } from "@/lib/campaigns";
 
 /**
- * The caller's invite campaign line, as an inviter (lib/campaigns
- * campaignLine): the live campaign's rules and how the friends they invited
- * are getting on, their open claims advanced on the way (database only;
- * the stay is judged by the morning run). `{ campaign: null }` when no
- * invite campaign is live and nobody they invited holds a claim, for
- * anyone asking from where Berth is not available, and while the tables
- * are not there.
+ * The caller's own campaign reward (lib/campaigns campaignLine): where the
+ * claim of an account that opened through a campaign's link stands, its
+ * open claim advanced on the way (database only; the stay is judged by the
+ * morning run). `{ campaign: null }` when the caller holds no open or paid
+ * claim, for anyone asking from where Berth is not available, and while
+ * the tables are not there.
  */
 export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);
@@ -25,7 +24,6 @@ export async function POST(request: NextRequest) {
     campaign = await campaignProgress(resolved.user.id);
   } catch (error) {
     console.warn("[campaigns] progress read failed", error instanceof Error ? error.message : error);
-    // Unknown is not "no campaign": a share post must keep its reward disclosure (components/share-on-x).
     return NextResponse.json({ error: "campaign_unavailable" }, { status: 503 });
   }
   return NextResponse.json({ campaign } satisfies CampaignResponse);

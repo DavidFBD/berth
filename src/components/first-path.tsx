@@ -357,7 +357,7 @@ export function HomePathCard({ slots, footnote }: { slots: HomePathSlots; footno
 
 /**
  * A quiet line under every path card. The home passes none since
- * 2026-10-05: an invite campaign's line never stands beside the first buy
+ * 2026-10-05: a campaign's line never stands beside the first buy
  * step (components/board/campaign-line shows once the path is done).
  */
 function Footnote({ children }: { children?: ReactNode }) {

@@ -2,7 +2,10 @@
  * X's post intent: a link that opens X's own composer with words and a
  * link filled in, which the person can change or close. Berth posts
  * nothing, calls no X API and rewards nothing for it (X's developer policy
- * forbids paying for a post, and Berth never pays for any X action).
+ * forbids paying for a post, and Berth never pays for any X action). A
+ * personal invite never earns its sharer money (campaigns pay only the new
+ * account opened through a campaign's own link), so these posts carry no
+ * reward disclosure.
  */
 export const X_POST_INTENT = "https://x.com/intent/post";
 
@@ -10,13 +13,9 @@ export function xPostIntent(text: string, url: string): string {
   return `${X_POST_INTENT}?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
 }
 
-/**
- * The invite post's words: the calm line, and while an invite campaign is
- * live, or whether one is live is not known yet, the disclosure that the
- * inviter may be paid. Only a known "no campaign" leaves it off.
- */
-export function inviteXWords(copy: { inviteXText: string; inviteXDisclosure: string }, campaignLive: boolean | undefined): string {
-  return campaignLive === false ? copy.inviteXText : `${copy.inviteXText} ${copy.inviteXDisclosure}`;
+/** The invite post's words: the one calm line. */
+export function inviteXWords(copy: { inviteXText: string }): string {
+  return copy.inviteXText;
 }
 
 /** X's post limit, and the weight it gives any link (t.co), whatever its length. */
@@ -44,23 +43,19 @@ export function xWeight(text: string): number {
 type HoldingsXCopy = {
   holdingsXText: (list: string, count: number) => string;
   holdingsXList: (names: readonly string[], more: number) => string;
-  inviteXDisclosure: string;
 };
 
 /**
  * The words for "Share what you hold on X": one calm first person line
  * naming the chosen holdings by name, never an amount, a value, a price or
- * a return, and the invite disclosure on the same terms as inviteXWords.
+ * a return.
  * Up to five names are spelled out, the rest counted; if the post would
  * still pass 280 with the link (weighed as 23), the list is shortened, never
  * the sentence. Empty when nothing is chosen.
  */
-export function holdingsXWords(copy: HoldingsXCopy, names: readonly string[], campaignLive: boolean | undefined): string {
+export function holdingsXWords(copy: HoldingsXCopy, names: readonly string[]): string {
   if (names.length === 0) return "";
-  const words = (named: number) => {
-    const sentence = copy.holdingsXText(copy.holdingsXList(names.slice(0, named), names.length - named), names.length);
-    return campaignLive === false ? sentence : `${sentence} ${copy.inviteXDisclosure}`;
-  };
+  const words = (named: number) => copy.holdingsXText(copy.holdingsXList(names.slice(0, named), names.length - named), names.length);
   let named = Math.min(names.length, HOLDINGS_X_NAMED);
   while (named > 1 && xWeight(words(named)) + 1 + X_LINK_WEIGHT > X_POST_LIMIT) named -= 1;
   return words(named);

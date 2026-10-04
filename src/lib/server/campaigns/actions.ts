@@ -4,15 +4,7 @@ import { staffAdminIds, staffAudit } from "@/lib/server/staff-auth";
 import { sendNotice } from "@/lib/server/email/notify";
 import { normalizeCampaignCode, REJECT_REASONS, campaignUsd } from "@/lib/campaigns";
 import { claimById, campaignById } from "@/lib/server/campaigns/store";
-import {
-  claimInviter,
-  claimPerson,
-  DEFAULT_PER_INVITER,
-  inviteStillEligible,
-  MAX_STAY_DAYS,
-  MIN_STAY_DAYS,
-  staffIneligible,
-} from "@/lib/server/campaigns/eligibility";
+import { claimPerson, MAX_STAY_DAYS, MIN_STAY_DAYS, staffIneligible, stillEligible } from "@/lib/server/campaigns/eligibility";
 import { personAccounts } from "@/lib/server/campaigns/store";
 import {
   fetchBaseReceipt,
@@ -55,10 +47,9 @@ export type ActionRefusal =
   | "one_per_person"
   | "wallet_used"
   | "email_used"
-  | "self_invite"
-  | "inviter_cap"
-  | "inviter_gone"
   | "retired"
+  | "active"
+  | "has_places"
   | "existing_customer"
   | "staff_ineligible"
   | "no_person"
@@ -118,10 +109,8 @@ export type CampaignInput = {
   amountUsd: unknown;
   budgetUsd: unknown;
   maxClaims: unknown;
-  /** Days after setting up that the friend must still be using Berth (campaigns.hold_days). */
+  /** Days after setting up that the new account must still be using Berth (campaigns.hold_days). */
   stayDays: unknown;
-  /** Friends one inviter can be paid for (campaigns.max_per_inviter). */
-  perInviter: unknown;
   startsAt: unknown;
   endsAt: unknown;
   /** The funding wallet, optional here: when given it must be a wallet, and it becomes the campaign's first payout source. */
@@ -143,7 +132,7 @@ const date = (value: unknown): Date | null => {
 };
 
 /**
- * An invite campaign (the only kind made since 5 October 2026), always
+ * A signup campaign (the only kind made since 5 October 2026), always
  * created inactive: it counts nobody until activated with counsel's review
  * confirmed. Places times the amount must fit in the budget, so the places
  * are a promise the budget can keep.
@@ -155,10 +144,9 @@ export async function createCampaign(staffUserId: string, input: CampaignInput):
   const budget = money(input.budgetUsd, 100_000);
   const maxClaims = whole(input.maxClaims, 1, 10_000);
   const stayRaw = whole(input.stayDays, 1, 365);
-  const perInviter = input.perInviter === undefined || input.perInviter === "" ? DEFAULT_PER_INVITER : whole(input.perInviter, 1, 100);
   const startsAt = date(input.startsAt);
   const endsAt = date(input.endsAt);
-  const shown = { code, title, amount, budget, maxClaims, stayDays: stayRaw, perInviter, startsAt: startsAt?.toISOString(), endsAt: endsAt?.toISOString() };
+  const shown = { code, title, amount, budget, maxClaims, stayDays: stayRaw, startsAt: startsAt?.toISOString(), endsAt: endsAt?.toISOString() };
   if (stayRaw !== null && (stayRaw < MIN_STAY_DAYS || stayRaw > MAX_STAY_DAYS)) {
     return refused(staffUserId, "campaign.create", code, "stay_out_of_range", shown);
   }
@@ -169,17 +157,17 @@ export async function createCampaign(staffUserId: string, input: CampaignInput):
     return refused(staffUserId, "campaign.create", code, "bad_address", { ...shown, address: String(input.payoutAddress).slice(0, 60) });
   }
   if (wallet === ZERO_ADDRESS) return refused(staffUserId, "campaign.create", code, "zero_address", shown);
-  if (!code || !title || !amount || !budget || !maxClaims || !stayDays || !perInviter || !startsAt || !endsAt || endsAt <= startsAt || amount > budget) {
+  if (!code || !title || !amount || !budget || !maxClaims || !stayDays || !startsAt || !endsAt || endsAt <= startsAt || amount > budget) {
     return refused(staffUserId, "campaign.create", code, "bad_input", shown);
   }
   if (Math.round(amount * 100) * maxClaims > Math.round(budget * 100)) return refused(staffUserId, "campaign.create", code, "places_over_budget", shown);
   try {
     const rows = await auditedWrite<{ id: string }>(
       {
-        text: `insert into campaigns (code, title, kind, amount_usd, budget_usd, max_claims, hold_days, max_per_inviter, starts_at, ends_at, active)
-               values ($1, $2, 'invite', $3, $4, $5, $6, $7, $8, $9, false)
+        text: `insert into campaigns (code, title, kind, amount_usd, budget_usd, max_claims, hold_days, starts_at, ends_at, active)
+               values ($1, $2, 'signup', $3, $4, $5, $6, $7, $8, false)
                on conflict (code) do nothing returning id`,
-        params: [code, title, amount, budget, maxClaims, stayDays, perInviter, startsAt.toISOString(), endsAt.toISOString()],
+        params: [code, title, amount, budget, maxClaims, stayDays, startsAt.toISOString(), endsAt.toISOString()],
       },
       { staffUserId, action: "campaign.create", target: code, detail: shown },
     );
@@ -214,8 +202,8 @@ export async function setCampaignActive(
   if (active) {
     const campaign = await campaignById(campaignId);
     if (!campaign) return refused(staffUserId, action, campaignId, "not_found");
-    // The first campaigns rewarded a buy. They stay retired.
-    if (campaign.kind !== "invite") return refused(staffUserId, action, campaignId, "retired");
+    // The first campaigns rewarded a buy, the next ones the inviter. They stay retired.
+    if (campaign.kind !== "signup") return refused(staffUserId, action, campaignId, "retired");
     if (counselReviewed !== true) return refused(staffUserId, action, campaignId, "counsel_required");
     if (fundingChecked !== true) return refused(staffUserId, action, campaignId, "funding_check_required");
     const wallets = (await getSql().query(
@@ -238,11 +226,12 @@ export async function setCampaignActive(
 }
 
 /**
- * Qualified to approved, fixing where the USDC goes: the INVITER's own
- * home address (their live account, after any merge), on Base. Before it,
- * the guards and the one payout per person are asked again of both people
- * as they are now (a merge or a wallet linked since can make them one
- * person, or someone who already counted). A retired buy claim is not
+ * Qualified to approved, fixing where the USDC goes: the claim's own
+ * account's home address (its live account, after any merge), on Base:
+ * the person who opened through the campaign's link is the one paid.
+ * Before it, the guards and the one payout per person are asked again of
+ * the person as they are now (a merge or a wallet linked since can make
+ * them someone who already counted). A claim of a retired campaign is not
  * approved.
  */
 export async function approveClaim(staffUserId: string, claimId: string): Promise<ActionResult> {
@@ -250,21 +239,21 @@ export async function approveClaim(staffUserId: string, claimId: string): Promis
   if (!claim) return refused(staffUserId, "claim.approve", claimId, "not_found");
   if (claim.state !== "qualified") return refused(staffUserId, "claim.approve", claimId, "wrong_state");
   const campaign = await campaignById(claim.campaign_id);
-  if (!campaign || campaign.kind !== "invite" || !claim.inviter_id) return refused(staffUserId, "claim.approve", claimId, "retired");
-  const still = await inviteStillEligible(claim);
+  if (!campaign || campaign.kind !== "signup") return refused(staffUserId, "claim.approve", claimId, "retired");
+  const still = await stillEligible(claim);
   if (still) return refused(staffUserId, "claim.approve", claimId, still === "no_person" ? "no_person" : still);
   const rows = await auditedWrite<{ payout_address: string }>(
     {
       text: `update campaign_claims cl
                 set state = 'approved', approved_at = now(), approved_by = $2,
                     payout_address = p.wallet_address, payout_chain = $3, updated_at = now()
-               from users i join users p on p.id = coalesce(i.retired_into, i.id)
-              where cl.id = $1 and i.id = cl.inviter_id and cl.state = 'qualified'
+               from users u join users p on p.id = coalesce(u.retired_into, u.id)
+              where cl.id = $1 and u.id = cl.user_id and cl.state = 'qualified'
                 and p.wallet_address ~ '^0x[0-9a-f]{40}$'
               returning cl.payout_address`,
       params: [claimId, staffUserId, PAYOUT_CHAIN.key],
     },
-    { staffUserId, action: "claim.approve", target: claimId, detail: { chain: PAYOUT_CHAIN.key, paidTo: "inviter" } },
+    { staffUserId, action: "claim.approve", target: claimId, detail: { chain: PAYOUT_CHAIN.key, paidTo: "signup" } },
   );
   if (rows[0]) return { ok: true, detail: { payoutAddress: rows[0].payout_address, chain: PAYOUT_CHAIN.key } };
   const now = await claimById(claimId);
@@ -291,12 +280,12 @@ export async function rejectClaim(staffUserId: string, claimId: string, reason: 
 }
 
 /**
- * Records the payment David sent by hand, to the inviter. The hash is read on Base, read
+ * Records the payment David sent by hand, to the claim's own account. The hash is read on Base, read
  * only, and counts only USDC from an active payout source of the claim's
  * campaign (campaign_payout_sources), or from STAFF_PAYOUT_ADDRESSES, the
  * optional global fallback. One transaction may pay several claims: it
  * must pay this claim's address at least the sum of every claim recorded
- * against it there. Then the claim is paid, and the inviter is emailed.
+ * against it there. Then the claim is paid, and its person is emailed.
  *
  * A hash that cannot be read (not mined yet, a typo, the RPC down) keeps
  * the claim approved with the hash pending: no "Paid" line, no email. It
@@ -317,12 +306,9 @@ export async function markClaimPaid(
   if (!claim) return refused(staffUserId, "claim.mark_paid", claimId, "not_found", { txHash });
   if (claim.state !== "approved") return refused(staffUserId, "claim.mark_paid", claimId, "wrong_state", { txHash });
   if (!claim.payout_address) return refused(staffUserId, "claim.mark_paid", claimId, "no_payout_address", { txHash });
-  // The one paid (the inviter; on a retired buy claim, the claimant) and the invited friend: neither may be marked not eligible.
-  const payee = claim.inviter_id ? await claimInviter(claim) : await claimPerson(claim);
-  const friend = await claimPerson(claim);
-  for (const person of [payee, friend]) {
-    if (person && (await staffIneligible(await personAccounts(person.id)))) return refused(staffUserId, "claim.mark_paid", claimId, "staff_ineligible", { txHash });
-  }
+  // The one paid, the claim's own person, may not be marked not eligible.
+  const payee = await claimPerson(claim);
+  if (payee && (await staffIneligible(await personAccounts(payee.id)))) return refused(staffUserId, "claim.mark_paid", claimId, "staff_ineligible", { txHash });
   const campaign = await campaignById(claim.campaign_id);
   if (!campaign) return refused(staffUserId, "claim.mark_paid", claimId, "not_found", { txHash });
   const senders = await claimPayoutSenders(claim.campaign_id, env);
@@ -376,15 +362,38 @@ export async function markClaimPaid(
   )[0]?.outcome;
   if (outcome === "short") return clearPending("mismatch", { ...base, paid: paidRaw });
   if (outcome !== "paid") return refused(staffUserId, action, claimId, "wrong_state", base);
-  // After the commit: the one paid (the inviter) is told once, deduped on the claim.
-  const paidUser = claim.inviter_id ?? claim.user_id;
-  const person = (await getSql().query(`select coalesce(retired_into, id) as id from users where id = $1`, [paidUser])) as { id: string }[];
+  // After the commit: the one paid, the claim's own person, is told once, deduped on the claim.
+  const person = (await getSql().query(`select coalesce(retired_into, id) as id from users where id = $1`, [claim.user_id])) as { id: string }[];
   sendNotice({
-    userId: person[0]?.id ?? paidUser,
+    userId: person[0]?.id ?? claim.user_id,
     ref: claimId,
     notice: { type: "campaign_paid", amount: campaignUsd(campaign.amount_usd), chain: PAYOUT_CHAIN.name },
   });
   return { ok: true, detail: { verified: true } };
+}
+
+/**
+ * Deletes a campaign that never took on money: allowed while it is
+ * inactive and no claim of it holds a place or was ever paid (a draft never
+ * activated always qualifies). Refused while active, or once any claim
+ * holds a place (holding, qualified, approved) or was paid: money history
+ * is never erased. Its open, rejected and expired claims, their marks, and
+ * its payout wallets go with it, the audit row in the same transaction
+ * (db/schema.sql campaign_delete), and its code is free for a new campaign.
+ */
+export async function deleteCampaign(staffUserId: string, campaignId: string): Promise<ActionResult> {
+  const campaign = await campaignById(campaignId);
+  if (!campaign) return refused(staffUserId, "campaign.delete", campaignId, "not_found");
+  const outcome = (
+    (await getSql().query(`select campaign_delete($1, $2, $3::jsonb) as outcome`, [
+      campaignId,
+      staffUserId,
+      JSON.stringify({ neverActivated: campaign.activated_at === null }),
+    ])) as { outcome: "deleted" | "not_found" | "active" | "has_places" }[]
+  )[0]?.outcome;
+  if (outcome === "deleted") return { ok: true, detail: { code: campaign.code } };
+  const refusal: ActionRefusal = outcome === "active" || outcome === "has_places" || outcome === "not_found" ? outcome : "error";
+  return refused(staffUserId, "campaign.delete", campaignId, refusal, { code: campaign.code });
 }
 
 /**

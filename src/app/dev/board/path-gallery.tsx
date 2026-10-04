@@ -44,7 +44,7 @@ import { campaignLine, type CampaignProgress } from "@/lib/campaigns";
  *   &skipped=avatar,username             start with those set aside
  *   &drawer=1                            the account drawer open on it
  *   &done=avatar                         hold that step's Done moment
- *   &campaign=rules                      a campaign's line under the card
+ *   &campaign=setUp                      a campaign's line under the card
  */
 export type PathGalleryProps = {
   account: "email" | "wallet";
@@ -52,7 +52,7 @@ export type PathGalleryProps = {
   skipped: string | null;
   drawer: boolean;
   done: string | null;
-  /** `&campaign=rules` (or invited, staying, qualified, paid): the campaign line under the path's card, from /dev/campaigns' fixtures. */
+  /** `&campaign=setUp` (or staying, qualified, paid): the campaign line under the path's card, from /dev/campaigns' fixtures. */
   campaign?: CampaignProgress;
 };
 

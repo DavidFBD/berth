@@ -5,13 +5,8 @@ import { COPY } from "./copy";
 const base: CampaignProgress = {
   amountUsd: 5,
   stayDays: 14,
-  perInviter: 3,
-  open: true,
-  invited: 0,
-  staying: 0,
-  nextEligibleAt: null,
-  qualified: 0,
-  paidUsd: 0,
+  status: "setting_up",
+  eligibleAt: null,
   paidAt: null,
 };
 
@@ -26,22 +21,20 @@ describe("normalizeCampaignCode", () => {
   });
 });
 
-describe("campaignLine, the inviter's line", () => {
-  it("says nothing when there is nothing to say", () => {
+describe("campaignLine, the new account's own line", () => {
+  it("says nothing without a claim", () => {
     expect(campaignLine(null)).toBeNull();
     expect(campaignLine(undefined)).toBeNull();
-    expect(campaignLine({ ...base, open: false })).toBeNull();
   });
 
-  it("walks the rules, a friend invited, a friend staying, qualified and paid, the furthest along first", () => {
-    expect(campaignLine(base)).toEqual({ kind: "rules", amountUsd: 5, stayDays: 14, perInviter: 3 });
-    expect(campaignLine({ ...base, invited: 1 })).toEqual({ kind: "invited", amountUsd: 5, stayDays: 14 });
+  it("walks setting up, staying, qualified and paid", () => {
+    expect(campaignLine(base)).toEqual({ kind: "setUp", amountUsd: 5, stayDays: 14 });
     const eligible = "2026-10-17T12:00:00.000Z";
-    expect(campaignLine({ ...base, invited: 1, staying: 1, nextEligibleAt: eligible })).toEqual({ kind: "staying", amountUsd: 5, eligible: new Date(eligible) });
-    expect(campaignLine({ ...base, staying: 1, nextEligibleAt: eligible, qualified: 1 })).toEqual({ kind: "qualified" });
+    expect(campaignLine({ ...base, status: "staying", eligibleAt: eligible })).toEqual({ kind: "staying", amountUsd: 5, eligible: new Date(eligible) });
+    expect(campaignLine({ ...base, status: "qualified", eligibleAt: eligible })).toEqual({ kind: "qualified" });
     const now = new Date("2026-10-20T00:00:00Z");
-    expect(campaignLine({ ...base, qualified: 1, paidUsd: 10, paidAt: "2026-10-15T00:00:00Z" }, now)).toEqual({ kind: "paid", amountUsd: 10 });
-    expect(campaignLine({ ...base, paidUsd: 5, paidAt: "2026-09-01T00:00:00Z" }, now)).toEqual({ kind: "rules", amountUsd: 5, stayDays: 14, perInviter: 3 });
+    expect(campaignLine({ ...base, status: "paid", paidAt: "2026-10-15T00:00:00Z" }, now)).toEqual({ kind: "paid", amountUsd: 5 });
+    expect(campaignLine({ ...base, status: "paid", paidAt: "2026-09-01T00:00:00Z" }, now)).toBeNull();
   });
 });
 
@@ -49,27 +42,30 @@ describe("the words", () => {
   const words = COPY.campaign;
 
   it("say the lines exactly as agreed, with no dash as punctuation", () => {
-    expect(words.rules(campaignUsd(5), 14, 3)).toBe(
-      "Invite a friend who is new to Berth. If they set up their account and still use Berth 14 days later, $5 in USDC is added to your account, for up to 3 friends, while places last.",
+    expect(words.landingLede(campaignUsd(5), 14)).toBe(
+      "Open a new Berth account through this link, set it up and still use Berth 14 days later, and $5 in USDC on Base is added to your account, while places last.",
     );
     expect(words.staying("$5", campaignDay(new Date("2026-10-17T12:00:00Z"), "UTC"))).toBe(
-      "A friend you invited is set up. If they still use Berth on 17 Oct, $5 in USDC is added to your account.",
+      "Your account is set up. If you still use Berth on 17 Oct, $5 in USDC on Base is added to your account.",
     );
-    expect(words.qualified).toBe("A friend you invited stayed. Usually paid within a few days.");
+    expect(words.qualified).toBe("You stayed. Your reward is usually paid within a few days.");
     expect(words.paid("$5").startsWith("Paid.")).toBe(true);
-    expect(words.rules("$5", 1, 1)).toContain("1 day later");
-    expect(words.rules("$5", 7, 1)).toContain("up to 1 friend,");
+    expect(words.setUp("$5", 1)).toContain("1 day later");
+    expect(words.staff.terms("$5", 14)).toBe(
+      "$5 in USDC on Base to each new account opened through this campaign's link that sets up and still uses Berth 14 days later. One per person.",
+    );
     const create = words.staff.create;
     const all = [
       words.landingTitle,
-      words.landingLede("$5", 14, 3),
-      words.rules("$5", 14, 3),
-      words.invited("$5", 14),
+      words.landingLede("$5", 14),
+      words.setUp("$5", 14),
       words.staying("$5", "17 Oct"),
       words.staff.activateConfirm("Autumn"),
       words.staff.activateCheck,
+      words.staff.deleteConfirm("Autumn", "autumn"),
+      words.staff.deleted("autumn"),
       words.staff.lede,
-      words.staff.terms("$5", 14, 3),
+      words.staff.terms("$5", 14),
       words.staff.retired,
       ...Object.values(words.staff.signals),
       ...Object.values(words.staff.refusals),
@@ -84,9 +80,8 @@ describe("the words", () => {
   it("never promise anything for a buy: no user facing campaign line names buying, holding or trading as a condition", () => {
     const userFacing = [
       words.landingTitle,
-      words.landingLede("$5", 14, 3),
-      words.rules("$5", 14, 3),
-      words.invited("$5", 14),
+      words.landingLede("$5", 14),
+      words.setUp("$5", 14),
       words.staying("$5", "17 Oct"),
       words.qualified,
       words.paid("$5"),
@@ -95,8 +90,41 @@ describe("the words", () => {
     for (const line of userFacing) expect(line).not.toMatch(/\b(buy|bought|hold|holding|keep it|trade|trading)\b/i);
     const terms = COPY.termsOfUse.sections.find((section) => section.id === "campaigns")!;
     const text = [...terms.body, ...(terms.list ?? [])].join(" ");
-    expect(text).toMatch(/No campaign asks you or your friend to buy, hold or trade anything/);
+    expect(text).toMatch(/No campaign asks you to buy, hold or trade anything/);
+    expect(text).toMatch(/your own invite link or invite code never earns money/);
     expect(text).not.toMatch(/buys at least|market buy|keeps it for/);
+  });
+
+  it("describes no inviter reward anywhere a person or staff reads about a campaign", () => {
+    const staff = COPY.campaign.staff;
+    const everything = JSON.stringify(
+      [
+        words.landingTitle,
+        words.landingLede("$5", 14),
+        words.setUp("$5", 14),
+        words.staying("$5", "17 Oct"),
+        words.qualified,
+        words.paid("$5"),
+        staff.activateConfirm("Autumn"),
+        staff.terms("$5", 14),
+        staff.retired,
+        staff.deleteConfirm("Autumn", "autumn"),
+        staff.waiting(2),
+        staff.labels,
+        staff.signals,
+        staff.refusals,
+        staff.systemReasons,
+        staff.rejectReasons,
+        staff.create,
+        staff.create.hints,
+        COPY.xAutopost.campaign("$5", 14, 3, "31 October"),
+        COPY.xAutopost.campaignCta("$5", 14),
+        COPY.email.campaignPaid.body("$5", "Base"),
+        COPY.termsOfUse.sections.find((section) => section.id === "campaigns"),
+      ],
+      (_key, value) => (typeof value === "function" ? undefined : value),
+    );
+    expect(everything).not.toMatch(/inviter|a friend you invited|for each new friend|per inviter/i);
   });
 
   it("names counsel review in the activation confirmation", () => {

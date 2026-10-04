@@ -311,12 +311,11 @@ describe("the evening's post", () => {
   });
 });
 
-async function inviteCampaign({ code = "friends-oct", maxClaims = 20, budget = 100, amount = 5, active = true, ends = MON + 20 * DAY } = {}) {
+async function signupCampaign({ code = "welcome-oct", maxClaims = 20, budget = 100, amount = 5, active = true, ends = MON + 20 * DAY } = {}) {
   await sql.query(`alter table campaigns add column if not exists kind text not null default 'buy'`);
-  await sql.query(`alter table campaigns add column if not exists max_per_inviter int not null default 3`);
   const [{ id }] = (await sql.query(
     `insert into campaigns (code, title, starts_at, ends_at, active, max_claims, budget_usd, amount_usd, hold_days, kind)
-     values ($1, $1, $2::timestamptz, $3::timestamptz, $4, $5, $6, $7, 7, 'invite') returning id`,
+     values ($1, $1, $2::timestamptz, $3::timestamptz, $4, $5, $6, $7, 7, 'signup') returning id`,
     [code, new Date(MON - DAY).toISOString(), new Date(ends).toISOString(), active, maxClaims, budget, amount],
   )) as { id: string }[];
   return id;
@@ -332,17 +331,18 @@ async function takePlaces(campaignId: string, count: number) {
 }
 
 describe("the campaign", () => {
-  it("is never a retired buy campaign", async () => {
+  it("is never a retired buy or invite campaign", async () => {
     await sql.query(
-      `insert into campaigns (code, title, starts_at, ends_at, active, kind) values ('old-buy', 'x', $1::timestamptz, $2::timestamptz, true, 'buy')`,
+      `insert into campaigns (code, title, starts_at, ends_at, active, kind) values ('old-buy', 'x', $1::timestamptz, $2::timestamptz, true, 'buy'),
+              ('old-invite', 'x', $1::timestamptz, $2::timestamptz, true, 'invite')`,
       [new Date(MON - DAY).toISOString(), new Date(MON + DAY).toISOString()],
     );
     expect(await readLiveCampaign(MON)).toBeNull();
   });
 
   it("is live only while active, inside its dates, with a place and a reward's budget left", async () => {
-    const id = await inviteCampaign({ maxClaims: 20, budget: 100, amount: 5 });
-    expect(await readLiveCampaign(MON)).toMatchObject({ code: "friends-oct", amountUsd: 5, stayDays: 7, perInviter: 3, placesLeft: 20 });
+    const id = await signupCampaign({ maxClaims: 20, budget: 100, amount: 5 });
+    expect(await readLiveCampaign(MON)).toMatchObject({ code: "welcome-oct", amountUsd: 5, stayDays: 7, placesLeft: 20 });
     await takePlaces(id, 18);
     expect(await readLiveCampaign(MON)).toMatchObject({ placesLeft: 2 });
     await takePlaces(id, 2);
@@ -358,19 +358,19 @@ describe("the campaign", () => {
 
   it("takes every other slot and is the call to action between", async () => {
     const x = fakeX();
-    await inviteCampaign();
+    await signupCampaign();
     await marketauxStory({ at: MON + 2 * DAY });
     expect(await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "posted", source: "campaign" });
-    expect(JSON.parse(x.posts()[0].body).text).toContain("https://www.berthmarkets.com/c/friends-oct");
+    expect(JSON.parse(x.posts()[0].body).text).toContain("https://www.berthmarkets.com/c/welcome-oct");
     const second = await runAutopost({ now: MON + 3 * DAY, env: ENV, fetchImpl: x.fetchImpl });
     expect(second).toMatchObject({ status: "posted", source: "news" });
-    expect(JSON.parse(x.posts()[1].body).text).toContain("Invite a friend: $5 in USDC for you");
-    expect(JSON.parse(x.posts()[1].body).text).toContain("up to 3 friends, while places last");
+    expect(JSON.parse(x.posts()[1].body).text).toContain("New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC is yours");
+    expect(JSON.parse(x.posts()[1].body).text).not.toMatch(/invite/i);
   });
 
   it("is checked again at the moment of posting", async () => {
     const x = fakeX();
-    await inviteCampaign();
+    await signupCampaign();
     await marketauxStory();
     // The campaign closes between the draft and the post (here, during the token refresh).
     const closing: FetchLike = async (url, init) => {

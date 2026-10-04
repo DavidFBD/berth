@@ -3,14 +3,15 @@ import { normalizeCampaignCode, type CampaignKind, type ClaimState } from "@/lib
 
 /**
  * Campaign rows and attribution (db/schema.sql, campaigns and
- * campaign_claims). An invite claim is made for the INVITED account, naming
- * its inviter, when the account's invite binds (lib/server/accounts
- * bindReferral, or claimReferral by hand) and a live invite campaign covers
- * the moment the account was opened: the account is young (72 hours), was
- * opened inside the campaign's dates, is not merged into another, and the
- * sync comes from where Berth is available (the profile route asks before
- * calling). An account holds one claim, ever. Attribution never touches
- * referred_by or friends; it reads them.
+ * campaign_claims). A claim is made for a NEW account that arrived through
+ * a campaign's own link (/c/<code>, pocketed before sign in and carried by
+ * the account's first profile sync), when that exact code is a live signup
+ * campaign: active, now inside its dates, and the account opened inside
+ * them too. The account is young (72 hours), has not had its first sync
+ * yet (no welcome XP), is not merged into another, and the sync comes from
+ * where Berth is available (the profile route asks before calling). The
+ * account itself is the one paid. An account holds one claim, ever. A
+ * personal invite (users.referred_by) has nothing to do with it.
  */
 
 export type CampaignRow = {
@@ -18,7 +19,6 @@ export type CampaignRow = {
   code: string;
   title: string;
   kind: CampaignKind;
-  max_per_inviter: number;
   amount_usd: number;
   budget_usd: number;
   max_claims: number;
@@ -31,14 +31,14 @@ export type CampaignRow = {
   created_at: Date;
 };
 
-export const CAMPAIGN_COLUMNS = `id, code, title, kind, max_per_inviter, amount_usd::float8 as amount_usd, budget_usd::float8 as budget_usd,
+export const CAMPAIGN_COLUMNS = `id, code, title, kind, amount_usd::float8 as amount_usd, budget_usd::float8 as budget_usd,
   max_claims, min_buy_usd::float8 as min_buy_usd, hold_days, starts_at, ends_at, active, activated_at, created_at`;
 
 export type ClaimRow = {
   id: string;
   campaign_id: string;
   user_id: string;
-  /** The account that invited this one (invite claims); null on a retired buy claim. */
+  /** Retired with the invite rules: never written since 5 October 2026, null on every signup claim. */
   inviter_id: string | null;
   onboarded_at: Date | null;
   state: ClaimState;
@@ -84,7 +84,6 @@ export function toCampaign(row: Record<string, unknown>): CampaignRow {
     budget_usd: Number(row.budget_usd),
     min_buy_usd: Number(row.min_buy_usd),
     max_claims: Number(row.max_claims),
-    max_per_inviter: Number(row.max_per_inviter ?? 1),
     hold_days: Number(row.hold_days),
     starts_at: new Date(row.starts_at as string),
     ends_at: new Date(row.ends_at as string),
@@ -127,27 +126,23 @@ export async function claimById(id: string): Promise<ClaimRow | undefined> {
 }
 
 /**
- * What the /c/<code> landing may say: an invite campaign's promise, only
+ * What the /c/<code> landing may say: a signup campaign's promise, only
  * while it is active and inside its dates. Anything else (unknown,
- * inactive, over, a retired buy campaign, or a database that cannot be
- * read) is no campaign at all.
+ * inactive, over, a retired campaign, or a database that cannot be read)
+ * is no campaign at all.
  */
-export async function campaignForLanding(
-  raw: string,
-): Promise<{ code: string; amountUsd: number; stayDays: number; perInviter: number } | null> {
+export async function campaignForLanding(raw: string): Promise<{ code: string; amountUsd: number; stayDays: number } | null> {
   const code = normalizeCampaignCode(raw);
   if (!code) return null;
   try {
     const rows = (await getSql().query(
-      `select code, amount_usd::float8 as amount_usd, hold_days, max_per_inviter
+      `select code, amount_usd::float8 as amount_usd, hold_days
          from campaigns
-        where code = $1 and kind = 'invite' and active and now() >= starts_at and now() <= ends_at`,
+        where code = $1 and kind = 'signup' and active and now() >= starts_at and now() <= ends_at`,
       [code],
-    )) as { code: string; amount_usd: number; hold_days: number; max_per_inviter: number }[];
+    )) as { code: string; amount_usd: number; hold_days: number }[];
     const row = rows[0];
-    return row
-      ? { code: row.code, amountUsd: Number(row.amount_usd), stayDays: Number(row.hold_days), perInviter: Number(row.max_per_inviter) }
-      : null;
+    return row ? { code: row.code, amountUsd: Number(row.amount_usd), stayDays: Number(row.hold_days) } : null;
   } catch (error) {
     console.warn("[campaigns] landing read failed", error instanceof Error ? error.message : error);
     return null;
@@ -155,33 +150,31 @@ export async function campaignForLanding(
 }
 
 /**
- * Makes the invite claim of a new account that arrived with someone's
- * invite, when a live invite campaign covers the moment it was opened. The
- * campaign whose code the account also arrived with wins (a /c/<code>
- * link), else the live one that started first. Returns the claim id, or
- * null when nothing was written: no invite, not new (older than 72 hours,
- * or opened outside every live campaign's dates), merged into another
- * account, invited by itself, or a claim already made.
+ * Makes the claim of a new account that arrived through a campaign's link.
+ * Only the exact code the account carries counts, and only while that
+ * campaign is a live signup campaign that covers the moment the account was
+ * opened; there is no other campaign to fall back on, and a personal invite
+ * counts for nothing. Returns the claim id, or null when nothing was
+ * written: no code, an unknown, inactive, retired or ended campaign, an
+ * account not new (older than 72 hours, already synced once, or opened
+ * outside the campaign's dates), merged into another, or a claim already
+ * made.
  */
-export async function attributeInvite(userId: string, rawCode?: unknown): Promise<string | null> {
+export async function attributeSignup(userId: string, rawCode: unknown): Promise<string | null> {
   const code = normalizeCampaignCode(rawCode);
+  if (!code) return null;
   const rows = (await getSql().query(
-    `insert into campaign_claims (campaign_id, user_id, inviter_id, state)
-     select c.id, u.id, u.referred_by, 'attributed'
+    `insert into campaign_claims (campaign_id, user_id, state)
+     select c.id, u.id, 'attributed'
        from users u
-       join lateral (
-         select c.id from campaigns c
-          where c.kind = 'invite' and c.active
-            and now() >= c.starts_at and now() <= c.ends_at
-            and u.created_at >= c.starts_at and u.created_at <= c.ends_at
-          order by (c.code = $2) desc nulls last, c.starts_at asc, c.created_at asc, c.id asc
-          limit 1
-       ) c on true
+       join campaigns c
+         on c.code = $2 and c.kind = 'signup' and c.active
+        and now() >= c.starts_at and now() <= c.ends_at
+        and u.created_at >= c.starts_at and u.created_at <= c.ends_at
       where u.id = $1
-        and u.referred_by is not null
-        and u.referred_by <> u.id
         and u.retired_into is null
         and u.created_at > now() - interval '72 hours'
+        and not exists (select 1 from xp_events x where x.user_id = u.id and x.kind = 'account_created')
      on conflict (user_id) do nothing
      returning id`,
     [userId, code],

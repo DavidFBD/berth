@@ -9,11 +9,12 @@ import { useCampaignProgress } from "@/hooks/use-profile";
 import { campaignDay, campaignLine, campaignUsd, type CampaignLine as Line } from "@/lib/campaigns";
 
 /**
- * The quiet invite campaign line on an inviter's home (lib/campaigns
- * campaignLine): the live campaign's rules, then how a friend they invited
- * is getting on, then qualified, then paid. One sentence, no button, no
- * countdown: the money is stated exactly and nothing more is promised. It
- * never mentions a buy: an invite campaign never asks for one.
+ * The quiet campaign line on the home of an account that opened through a
+ * campaign's link (lib/campaigns campaignLine): what is left to set up,
+ * then the day the stay is judged, then qualified, then paid. One
+ * sentence, no button, no countdown: the money is stated exactly and
+ * nothing more is promised. It never mentions a buy: a campaign never asks
+ * for one. Nobody else sees a campaign line.
  */
 export function CampaignLine({ enabled, bare = false }: { enabled: boolean; bare?: boolean }) {
   const progress = useCampaignProgress(enabled);
@@ -36,11 +37,8 @@ export function CampaignLineView({ line, bare = false }: { line: Line | null; ba
   if (!line) return null;
   let text: string;
   switch (line.kind) {
-    case "rules":
-      text = copy.rules(campaignUsd(line.amountUsd), line.stayDays, line.perInviter);
-      break;
-    case "invited":
-      text = copy.invited(campaignUsd(line.amountUsd), line.stayDays);
+    case "setUp":
+      text = copy.setUp(campaignUsd(line.amountUsd), line.stayDays);
       break;
     case "staying":
       text = copy.staying(campaignUsd(line.amountUsd), campaignDay(line.eligible));
@@ -65,7 +63,7 @@ export function CampaignLineView({ line, bare = false }: { line: Line | null; ba
     >
       <Icon weight="duotone" aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       <span className={bare ? "min-w-0 text-xs text-muted-foreground" : "min-w-0 flex-1 text-sm text-foreground"}>{text}</span>
-      {(line.kind === "rules" || line.kind === "invited") && (
+      {(line.kind === "setUp" || line.kind === "staying") && (
         <Link href="/terms#campaigns" className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:underline">
           {copy.termsLink}
         </Link>

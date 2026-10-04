@@ -621,9 +621,9 @@ export function useCloseFirstStock() {
 }
 
 /**
- * The account's invite campaign line, as an inviter (app/api/campaign), for
- * the home's quiet line. Null when no invite campaign is live and nobody
- * they invited holds a claim; a route not deployed reads the same.
+ * The account's own campaign reward (app/api/campaign), for the home's
+ * quiet line. Null when the account holds no open or paid claim; a route
+ * not deployed reads the same.
  */
 export function useCampaignProgress(enabled: boolean) {
   return useRewardsQuery<CampaignResponse, CampaignProgress | null>("campaign", "/api/campaign", {

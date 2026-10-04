@@ -17,7 +17,7 @@ import type { MostBoughtResponse } from "@/lib/social-proof";
  * cron). The sources, in order of preference, the first with something
  * true to say winning:
  *
- * 1. An invite campaign that is active, inside its dates and funded for at
+ * 1. A signup campaign that is active, inside its dates and funded for at
  *    least one more reward, but never two posts in a row (the feed is not
  *    a promotion). When it may not take the slot it may still be the call
  *    to action of a calendar or news post.
@@ -351,14 +351,12 @@ export function milestoneDrafts({
 
 /* — the campaign — */
 
-/** An invite campaign that may be posted right now (lib/server/x-autopost readLiveCampaign decides that). */
+/** A signup campaign that may be posted right now (lib/server/x-autopost readLiveCampaign decides that). */
 export type LiveCampaign = {
   code: string;
   amountUsd: number;
-  /** How long the friend must still use Berth. */
+  /** How long the new account must still use Berth. */
   stayDays: number;
-  /** How many friends one inviter may be paid for (campaigns.max_per_inviter). */
-  perInviter: number;
   /** Places left, when it can be said exactly; null otherwise. */
   placesLeft: number | null;
   endsAt: Date | null;
@@ -378,7 +376,6 @@ export function campaignDraft(campaign: LiveCampaign, now: number): Draft {
     body: COPY.xAutopost.campaign(
       campaignUsd(campaign.amountUsd),
       campaign.stayDays,
-      campaign.perInviter,
       campaign.placesLeft,
       campaign.endsAt ? campaignEndDay(campaign.endsAt) : null,
     ),
@@ -391,7 +388,7 @@ export function campaignDraft(campaign: LiveCampaign, now: number): Draft {
 export function withCampaignCta(draft: Draft, campaign: LiveCampaign): Draft {
   return {
     ...draft,
-    cta: COPY.xAutopost.campaignCta(campaignUsd(campaign.amountUsd), campaign.stayDays, campaign.perInviter),
+    cta: COPY.xAutopost.campaignCta(campaignUsd(campaign.amountUsd), campaign.stayDays),
     url: campaignUrl(campaign.code),
   };
 }

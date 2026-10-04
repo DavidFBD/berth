@@ -58,19 +58,18 @@ const at = (ms: number) => new Date(ms).toISOString();
 const msOf = (value: unknown): number => (value instanceof Date ? value.getTime() : Date.parse(String(value)));
 
 /**
- * The invite campaign that may be posted at `now`, or null: active, begun,
- * not ended, an invite campaign (a retired buy campaign is never posted,
- * and before campaigns had a kind there were only those), with places left
- * and budget for at least one more reward, counting the claims that hold a
- * place (lib/campaigns SLOT_STATES). The one place that knows the
- * campaigns table's columns: `kind` and `max_per_inviter` are read through
- * to_jsonb so this runs on a schema with or without them (without, nothing
- * is posted).
+ * The signup campaign that may be posted at `now`, or null: active, begun,
+ * not ended, a signup campaign (a retired buy or invite campaign is never
+ * posted, and before campaigns had a kind there were only buy ones), with
+ * places left and budget for at least one more reward, counting the claims
+ * that hold a place (lib/campaigns SLOT_STATES). The one place that knows
+ * the campaigns table's columns: `kind` is read through to_jsonb so this
+ * runs on a schema with or without it (without, nothing is posted).
  */
 export async function readLiveCampaign(now: number): Promise<LiveCampaign | null> {
   const rows = (await getSql().query(
     `select c.code, c.amount_usd::float8 as amount_usd, c.budget_usd::float8 as budget_usd, c.max_claims, c.hold_days,
-            c.ends_at, to_jsonb(c)->>'kind' as kind, to_jsonb(c)->>'max_per_inviter' as max_per_inviter,
+            c.ends_at, to_jsonb(c)->>'kind' as kind,
             (select count(*)::int from campaign_claims cc where cc.campaign_id = c.id and cc.state = any($2::text[])) as taken
      from campaigns c
      where c.active and c.starts_at <= $1::timestamptz and c.ends_at > $1::timestamptz
@@ -84,19 +83,16 @@ export async function readLiveCampaign(now: number): Promise<LiveCampaign | null
     hold_days: number;
     ends_at: unknown;
     kind: string | null;
-    max_per_inviter: string | null;
     taken: number;
   }[];
   for (const row of rows) {
-    if (row.kind !== "invite") continue;
+    if (row.kind !== "signup") continue;
     const amount = Number(row.amount_usd);
     const taken = Number(row.taken);
     const byBudget = Math.floor((Number(row.budget_usd) - taken * amount) / amount + 1e-9);
     const placesLeft = Math.min(Number(row.max_claims) - taken, byBudget);
-    // The cap per inviter is a material limit: a campaign whose cap cannot be read is not posted.
-    const perInviter = Number(row.max_per_inviter);
-    if (!(amount > 0) || placesLeft <= 0 || !Number.isInteger(perInviter) || perInviter < 1) continue;
-    return { code: row.code, amountUsd: amount, stayDays: Number(row.hold_days), perInviter, placesLeft, endsAt: new Date(msOf(row.ends_at)) };
+    if (!(amount > 0) || placesLeft <= 0) continue;
+    return { code: row.code, amountUsd: amount, stayDays: Number(row.hold_days), placesLeft, endsAt: new Date(msOf(row.ends_at)) };
   }
   return null;
 }

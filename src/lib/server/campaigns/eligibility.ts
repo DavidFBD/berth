@@ -1,7 +1,7 @@
 import { getSql } from "@/lib/server/db";
 import { liveAccount, normalizeWallet, type UserRow } from "@/lib/server/accounts";
 import { parseCaip10 } from "@/lib/identity/caip";
-import { PAID_LINE_DAYS, type CampaignProgress, type ClaimState } from "@/lib/campaigns";
+import { type CampaignProgress, type ClaimState } from "@/lib/campaigns";
 import {
   CAMPAIGN_COLUMNS,
   CLAIM_COLUMNS,
@@ -14,49 +14,45 @@ import {
 import { foldEmail } from "@/lib/server/campaigns/fold-email";
 
 /**
- * Whether an invite claim has earned its USDC, computed on the server from
+ * Whether a signup claim has earned its USDC, computed on the server from
  * what Berth already records. Nothing here pays anyone: the furthest a
  * claim gets on its own is `qualified`; staff approve, David pays by hand.
- * The one paid is the INVITER. Nothing anywhere asks for a buy, a holding
- * or a trading volume.
+ * The one paid is the account that opened through the campaign's link,
+ * the claim's own person. Nothing anywhere asks for a buy, a holding or a
+ * trading volume, and a personal invite plays no part.
  *
  * THE RULES, every one of them, in the order a claim meets them:
  *
- * 1. Attributed (lib/server/campaigns/store attributeInvite). The invited
- *    account carries someone's invite (users.referred_by, bound only to a
- *    new account), was opened inside a live invite campaign's dates, is no
- *    older than 72 hours when the claim is made, and the sync came from
- *    where Berth is available. One claim per account, ever.
- * 2. The farming guards, asked of the invited PERSON (the live account and
- *    every account merged into it) and the inviter's person:
- *    - inviter_gone: the inviter's account is not there any more.
- *    - self_invite: the two are one person (merged into one), or share any
- *      wallet (linked, unlinked or home) or a folded email (plus tag
- *      dropped, Gmail's dots too).
- *    - existing_customer: any account of the invited person is older than
- *      72 hours before the claim, or has an order from before it: an
- *      account that merged with an older one is not new.
- *    - staff_ineligible: staff marked the invited person or the inviter
- *      not eligible (users.campaign_ineligible_at).
- *    - email_used: another account outside both people has the invited
- *      person's folded email: the same person already on Berth.
- * 3. Set up (SET_UP_SQL), all three on the invited person's live
- *    account: a verified email (users.email, written only from Privy's
- *    verified record), a username (a handles row) and a wallet (a home
- *    address, users.wallet_address). Until then the claim stays
- *    `attributed`. The terms are not asked: Berth asks for them only before
- *    a first buy, and a buy is never a condition.
- * 4. A place, reserved atomically (db/schema.sql campaign_reserve_invite):
+ * 1. Attributed (lib/server/campaigns/store attributeSignup). The account
+ *    arrived through the campaign's link (its exact code, carried by the
+ *    account's first sync), was opened inside the live signup campaign's
+ *    dates, is no older than 72 hours when the claim is made, and the sync
+ *    came from where Berth is available. One claim per account, ever.
+ * 2. The farming guards, asked of the PERSON (the live account and every
+ *    account merged into it):
+ *    - existing_customer: any account of the person is older than 72 hours
+ *      before the claim, or has an order from before it: an account that
+ *      merged with an older one is not new.
+ *    - staff_ineligible: staff marked the person not eligible
+ *      (users.campaign_ineligible_at).
+ *    - email_used: another account outside the person has their folded
+ *      email (plus tag dropped, Gmail's dots too): the same person
+ *      already on Berth.
+ * 3. Set up (SET_UP_SQL), all three on the person's live account: a
+ *    verified email (users.email, written only from Privy's verified
+ *    record), a username (a handles row) and a wallet (a home address,
+ *    users.wallet_address). Until then the claim stays `attributed`. The
+ *    terms are not asked: Berth asks for them only before a first buy, and
+ *    a buy is never a condition.
+ * 4. A place, reserved atomically (db/schema.sql campaign_reserve_signup):
  *    the campaign is active; one payout per real person, across every
- *    invite campaign (any wallet or the folded email of the invited person
- *    already standing on another claim: wallet_used, email_used); the per
- *    inviter cap (max_per_inviter of the inviter's friends holding a place
- *    in this campaign: inviter_cap); the budget and max_claims, with a
- *    waiting line. The claim is then `holding` from onboarded_at, eligible
- *    hold_days later.
+ *    campaign (any wallet or the folded email of the person already
+ *    standing on another claim: wallet_used, email_used); the budget and
+ *    max_claims, with a waiting line. The claim is then `holding` from
+ *    onboarded_at, eligible hold_days later.
  * 5. Still using Berth. On the first morning run at or after eligible_at:
- *    the invited person opened Berth signed in (users.last_seen_at, bumped
- *    by the profile sync at most once a UTC day) at or after the later of
+ *    the person opened Berth signed in (users.last_seen_at, bumped by the
+ *    profile sync at most once a UTC day) at or after the later of
  *    eligible_at minus ACTIVE_WINDOW_DAYS and onboarded_at plus one day,
  *    so a return on a later day inside the last week of the stay. Yes:
  *    `qualified`. No: `rejected`, not_active.
@@ -65,22 +61,20 @@ import { foldEmail } from "@/lib/server/campaigns/fold-email";
  * `expired`, full when it was waiting for a place, else ended. A paused
  * campaign reserves nobody new; claims already holding a place carry on.
  * At approval (lib/server/campaigns/actions) rule 2 and the one payout per
- * person are asked again of both people as they are then.
+ * person are asked again of the person as they are then.
  *
- * Retired buy campaigns (kind 'buy') take no part: an open claim of one is
- * expired as ended on the next run, and nothing judges a buy any more.
+ * Retired campaigns (kind 'buy', and 'invite', which paid the inviter)
+ * take no part: an open claim of one is expired as ended on the next run.
  */
 
 const DAY_MS = 86_400_000;
 /** An account older than this before its claim was made is not new (the attribution window). */
 export const NEW_ACCOUNT_MS = 72 * 3_600_000;
-/** Rule 5: the friend must have opened Berth in this many last days of the stay. */
+/** Rule 5: the person must have opened Berth in this many last days of the stay. */
 export const ACTIVE_WINDOW_DAYS = 7;
 /** The stay a new campaign may ask for, in days. */
 export const MIN_STAY_DAYS = 7;
 export const MAX_STAY_DAYS = 60;
-/** The per inviter cap a new campaign starts with (db default too). */
-export const DEFAULT_PER_INVITER = 3;
 /** The stay a new campaign starts with on the create form. */
 export const DEFAULT_STAY_DAYS = 14;
 
@@ -150,7 +144,11 @@ export async function existingCustomer(accountIds: readonly string[], claimCreat
   return rows[0]?.old === true;
 }
 
-/** Rule 2, self_invite: one person, a shared wallet or a shared folded email. Pure. */
+/**
+ * One person, a shared wallet or a shared folded email. Pure. Invite XP
+ * (lib/server/invite-xp) asks it of a friend and their inviter; campaigns
+ * no longer have an inviter to ask it of.
+ */
 export function sameHands(
   invited: { accounts: readonly string[]; wallets: readonly string[]; emails: readonly string[] },
   inviter: { accounts: readonly string[]; wallets: readonly string[]; emails: readonly string[] },
@@ -160,7 +158,7 @@ export function sameHands(
   return invited.emails.some((email) => inviter.emails.includes(email));
 }
 
-/** Rule 2, email_used: an account outside both people carries one of these folded emails. */
+/** Rule 2, email_used: an account outside the person carries one of these folded emails. */
 export async function emailElsewhere(emails: readonly string[], insiders: readonly string[]): Promise<boolean> {
   if (emails.length === 0) return false;
   const rows = (await getSql().query(
@@ -212,9 +210,9 @@ export function claimDeadline(campaign: Pick<CampaignRow, "ends_at" | "hold_days
   return new Date(campaign.ends_at.getTime() + campaign.hold_days * DAY_MS);
 }
 
-export type ReserveOutcome = "holding" | "stale" | "inactive" | "wallet_used" | "email_used" | "inviter_cap" | "waitlisted" | "full";
+export type ReserveOutcome = "holding" | "stale" | "inactive" | "wallet_used" | "email_used" | "waitlisted" | "full";
 
-export type GuardOutcome = "no_person" | "inviter_gone" | "self_invite" | "existing_customer" | "staff_ineligible" | "email_used";
+export type GuardOutcome = "no_person" | "existing_customer" | "staff_ineligible" | "email_used";
 
 export type AdvanceOutcome = ClaimState | ReserveOutcome | GuardOutcome;
 
@@ -226,22 +224,15 @@ async function userRow(id: string): Promise<UserRow | undefined> {
   return rows[0];
 }
 
-/** The live account a claim belongs to now (the invited friend), after any merge. */
+/** The live account a claim belongs to now (the one paid), after any merge. */
 export async function claimPerson(claim: Pick<ClaimRow, "user_id">): Promise<UserRow | undefined> {
   return liveAccount(await userRow(claim.user_id));
 }
 
-/** The live account of the claim's inviter (the one paid), after any merge. */
-export async function claimInviter(claim: Pick<ClaimRow, "inviter_id">): Promise<UserRow | undefined> {
-  return claim.inviter_id ? liveAccount(await userRow(claim.inviter_id)) : undefined;
-}
-
-/** The people behind a claim, with what the guards compare. */
+/** The person behind a claim, with what the guards compare. */
 type People = {
   person: UserRow;
-  inviter: UserRow;
-  invited: { accounts: string[]; wallets: string[]; emails: string[] };
-  inviting: { accounts: string[]; wallets: string[]; emails: string[] };
+  self: { accounts: string[]; wallets: string[]; emails: string[] };
 };
 
 async function who(accountId: string) {
@@ -249,24 +240,20 @@ async function who(accountId: string) {
   return { accounts, wallets: await personWallets(accounts), emails: await personEmails(accounts) };
 }
 
-/** Rule 2 for one claim, as the people are now. Null when every guard passes. */
+/** Rule 2 for one claim, as the person is now. */
 export async function guards(claim: ClaimRow): Promise<{ refusal: GuardOutcome } | { people: People }> {
   const person = await claimPerson(claim);
   if (!person) return { refusal: "no_person" };
-  const inviter = await claimInviter(claim);
-  if (!inviter) return { refusal: "inviter_gone" };
-  const invited = await who(person.id);
-  const inviting = await who(inviter.id);
-  if (sameHands(invited, inviting)) return { refusal: "self_invite" };
-  if (await existingCustomer(invited.accounts, claim.created_at)) return { refusal: "existing_customer" };
-  if ((await staffIneligible(invited.accounts)) || (await staffIneligible(inviting.accounts))) return { refusal: "staff_ineligible" };
-  if (await emailElsewhere(invited.emails, [...invited.accounts, ...inviting.accounts])) return { refusal: "email_used" };
-  return { people: { person, inviter, invited, inviting } };
+  const self = await who(person.id);
+  if (await existingCustomer(self.accounts, claim.created_at)) return { refusal: "existing_customer" };
+  if (await staffIneligible(self.accounts)) return { refusal: "staff_ineligible" };
+  if (await emailElsewhere(self.emails, self.accounts)) return { refusal: "email_used" };
+  return { people: { person, self } };
 }
 
-/** The marks one payout per person stands on: every wallet and folded email of the invited person. Pure. */
-export function inviteeMarks(invited: { wallets: readonly string[]; emails: readonly string[] }): string[] {
-  return [...invited.wallets.map((wallet) => `wallet:${wallet}`), ...invited.emails.map((email) => `email:${email}`)];
+/** The marks one payout per person stands on: every wallet and folded email of the person. Pure. */
+export function personMarks(self: { wallets: readonly string[]; emails: readonly string[] }): string[] {
+  return [...self.wallets.map((wallet) => `wallet:${wallet}`), ...self.emails.map((email) => `email:${email}`)];
 }
 
 /** Rejects a claim by the rules (no staff member), from any state not yet paid or closed. */
@@ -288,13 +275,13 @@ async function expire(claimId: string, reason: "ended" | "full", now: Date): Pro
 
 /**
  * Moves an attributed claim through rules 2 to 4 (database only): rejected
- * by a guard, left attributed until the friend is set up, then a place
+ * by a guard, left attributed until the person is set up, then a place
  * reserved, waited for, or expired past the deadline. Any other state is
  * left as it is. Safe to run as often as asked.
  */
 export async function advanceClaim(claim: ClaimRow, campaign: CampaignRow, now: Date = new Date()): Promise<AdvanceOutcome> {
-  if (campaign.kind !== "invite") {
-    // A retired buy campaign's open claim closes; nothing judges a buy any more.
+  if (campaign.kind !== "signup") {
+    // A retired campaign's open claim closes: nothing judges a buy, and nobody is paid for an invite.
     if (claim.state === "attributed" || claim.state === "buying") {
       await expire(claim.id, "ended", now);
       return "expired";
@@ -311,12 +298,11 @@ export async function advanceClaim(claim: ClaimRow, campaign: CampaignRow, now: 
     if (checked.refusal !== "no_person") await ruleReject(claim.id, checked.refusal, now);
     return checked.refusal;
   }
-  const { person, inviter, invited } = checked.people;
+  const { person, self } = checked.people;
   if (!(await onboarded(person.id))) return "attributed";
-  const rows = (await getSql().query(`select campaign_reserve_invite($1, $2, $3::text[], $4::timestamptz) as outcome`, [
+  const rows = (await getSql().query(`select campaign_reserve_signup($1, $2::text[], $3::timestamptz) as outcome`, [
     claim.id,
-    inviter.id,
-    inviteeMarks(invited),
+    personMarks(self),
     now.toISOString(),
   ])) as { outcome: ReserveOutcome }[];
   return rows[0]?.outcome ?? "stale";
@@ -324,13 +310,13 @@ export async function advanceClaim(claim: ClaimRow, campaign: CampaignRow, now: 
 
 /**
  * Rule 2 and the one payout per person asked again of a claim holding a
- * place, for approval: both people now (after any merge or wallet linked
+ * place, for approval: the person now (after any merge or wallet linked
  * since), against every other claim. Null when it still stands, else why not.
  */
-export async function inviteStillEligible(claim: ClaimRow): Promise<GuardOutcome | "wallet_used" | null> {
+export async function stillEligible(claim: ClaimRow): Promise<GuardOutcome | "wallet_used" | null> {
   const checked = await guards(claim);
   if ("refusal" in checked) return checked.refusal;
-  const marks = inviteeMarks(checked.people.invited);
+  const marks = personMarks(checked.people.self);
   const taken = (await getSql().query(
     `select m.mark from campaign_invitee_marks m join campaign_claims o on o.id = m.claim_id
       where m.mark = any($1::text[]) and m.claim_id <> $2 and o.state <> 'expired'`,
@@ -342,7 +328,7 @@ export async function inviteStillEligible(claim: ClaimRow): Promise<GuardOutcome
 }
 
 export type CampaignStepSummary = {
-  /** Invite claims whose stay ended, judged first. */
+  /** Claims whose stay ended, judged first. */
   judged: number;
   qualified: number;
   notActive: number;
@@ -357,8 +343,8 @@ export const CAMPAIGN_STEP_LIMIT = 200;
 
 /**
  * The daily step, inside the morning run (lib/server/morning). Judging
- * comes first (rule 5, database only), so a pile of invited accounts that
- * never set up can never keep a friend who stayed from qualifying; then
+ * comes first (rule 5, database only), so a pile of accounts that never
+ * set up can never keep one who stayed from qualifying; then
  * open claims are advanced, waiting ones first in the order they waited,
  * until `deadline`. Holding to qualified happens here and only here.
  */
@@ -380,7 +366,7 @@ export async function runCampaignStep({
   const due = ((await sql.query(
     `select ${CLAIM_COLUMNS.replace(/(^|,\s*)(\w+)/g, "$1cl.$2")}
        from campaign_claims cl join campaigns c on c.id = cl.campaign_id
-      where c.kind = 'invite' and cl.state = 'holding' and cl.eligible_at <= $1::timestamptz
+      where c.kind = 'signup' and cl.state = 'holding' and cl.eligible_at <= $1::timestamptz
       order by cl.eligible_at asc, cl.id asc
       limit $2`,
     [now.toISOString(), limit],
@@ -449,71 +435,48 @@ export async function runCampaignStep({
   return summary;
 }
 
-/** Open invite claims of one inviter advanced on a progress read, at most. */
-const PROGRESS_ADVANCE_LIMIT = 10;
-
 /**
- * The inviter's view, as the home reads it: the live invite campaign's
- * rules (the one that started first), and how the friends this person
- * invited are getting on, their open claims advanced first (database
- * only). Null when no invite campaign is live and nobody this person
- * invited holds a claim. Never says anything to the invited friend.
+ * The account's own reward, as the home reads it: the claim this person's
+ * account holds (any account merged into it included, the newest first),
+ * advanced first while still open (database only). Null when the person
+ * holds no claim, or it was refused or expired, or it belongs to a retired
+ * campaign. Says nothing about anyone else.
  */
 export async function campaignProgress(userId: string, now: Date = new Date()): Promise<CampaignProgress | null> {
   const sql = getSql();
-  const live = ((await sql.query(
-    `select ${CAMPAIGN_COLUMNS} from campaigns
-      where kind = 'invite' and active and now() >= starts_at and now() <= ends_at
-      order by starts_at asc, created_at asc, id asc limit 1`,
-  )) as Record<string, unknown>[]).map(toCampaign)[0];
   const mine = async () =>
     ((await sql.query(
       `select ${CLAIM_COLUMNS.replace(/(^|,\s*)(\w+)/g, "$1cl.$2")}
          from campaign_claims cl
          join campaigns c on c.id = cl.campaign_id
-         join users i on i.id = cl.inviter_id
-        where c.kind = 'invite' and coalesce(i.retired_into, i.id) = $1
-        order by cl.created_at asc, cl.id asc`,
+         join users u on u.id = cl.user_id
+        where c.kind = 'signup' and coalesce(u.retired_into, u.id) = $1
+        order by cl.created_at desc, cl.id desc
+        limit 1`,
       [userId],
-    )) as Record<string, unknown>[]).map(toClaim);
-  let claims = await mine();
-  const open = claims.filter((claim) => claim.state === "attributed").slice(0, PROGRESS_ADVANCE_LIMIT);
-  if (open.length) {
-    for (const claim of open) {
-      const rows = (await sql.query(`select ${CAMPAIGN_COLUMNS} from campaigns where id = $1`, [claim.campaign_id])) as Record<string, unknown>[];
-      if (rows[0]) await advanceClaim(claim, toCampaign(rows[0]), now);
-    }
-    claims = await mine();
+    )) as Record<string, unknown>[]).map(toClaim)[0];
+  let claim = await mine();
+  if (!claim) return null;
+  const campaign = (
+    (await sql.query(`select ${CAMPAIGN_COLUMNS} from campaigns where id = $1`, [claim.campaign_id])) as Record<string, unknown>[]
+  ).map(toCampaign)[0];
+  if (!campaign) return null;
+  if (claim.state === "attributed") {
+    await advanceClaim(claim, campaign, now);
+    claim = (await mine()) ?? claim;
   }
-  if (!live && claims.length === 0) return null;
-  const terms =
-    live ??
-    ((await sql.query(`select ${CAMPAIGN_COLUMNS} from campaigns where id = $1`, [claims[claims.length - 1].campaign_id])) as Record<string, unknown>[]).map(
-      toCampaign,
-    )[0];
-  if (!terms) return null;
-  const amounts = new Map<string, number>();
-  for (const claim of claims) {
-    if (!amounts.has(claim.campaign_id)) {
-      const rows = (await sql.query(`select amount_usd::float8 as amount_usd from campaigns where id = $1`, [claim.campaign_id])) as { amount_usd: number }[];
-      amounts.set(claim.campaign_id, Number(rows[0]?.amount_usd ?? 0));
-    }
+  const base = { amountUsd: campaign.amount_usd, stayDays: campaign.hold_days, eligibleAt: claim.eligible_at?.toISOString() ?? null, paidAt: null };
+  switch (claim.state) {
+    case "attributed":
+      return { ...base, status: "setting_up" };
+    case "holding":
+      return { ...base, status: "staying" };
+    case "qualified":
+    case "approved":
+      return { ...base, status: "qualified" };
+    case "paid":
+      return { ...base, status: "paid", paidAt: claim.paid_at?.toISOString() ?? null };
+    default:
+      return null;
   }
-  const recent = claims.filter(
-    (claim) => claim.state === "paid" && claim.paid_at && now.getTime() - claim.paid_at.getTime() <= PAID_LINE_DAYS * DAY_MS,
-  );
-  const staying = claims.filter((claim) => claim.state === "holding" && claim.eligible_at);
-  const nextEligible = staying.map((claim) => claim.eligible_at!.getTime()).sort((a, b) => a - b)[0];
-  return {
-    amountUsd: terms.amount_usd,
-    stayDays: terms.hold_days,
-    perInviter: terms.max_per_inviter,
-    open: Boolean(live),
-    invited: claims.filter((claim) => claim.state === "attributed").length,
-    staying: staying.length,
-    nextEligibleAt: nextEligible === undefined ? null : new Date(nextEligible).toISOString(),
-    qualified: claims.filter((claim) => claim.state === "qualified" || claim.state === "approved").length,
-    paidUsd: recent.reduce((sum, claim) => sum + (amounts.get(claim.campaign_id) ?? 0), 0),
-    paidAt: recent.map((claim) => claim.paid_at!.toISOString()).sort().at(-1) ?? null,
-  };
 }

@@ -6,7 +6,6 @@ import { buttonVariants, Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { useCopy } from "@/components/settings-provider";
 import { XMark } from "@/components/x-mark";
-import { useCampaignProgress } from "@/hooks/use-profile";
 import { track } from "@/lib/analytics";
 import { inviteLink } from "@/lib/referral";
 import { cn } from "@/lib/utils";
@@ -52,21 +51,18 @@ export function ShareHoldingsOnX({
         {copy.holdingsXShare}
       </button>
       <Drawer open={open} onOpenChange={setOpen}>
-        <ShareSheet key={round} open={open} names={names} code={code} onDone={() => setOpen(false)} />
+        <ShareSheet key={round} names={names} code={code} onDone={() => setOpen(false)} />
       </Drawer>
     </>
   );
 }
 
-function ShareSheet({ open, names, code, onDone }: { open: boolean; names: readonly string[]; code: string; onDone: () => void }) {
+function ShareSheet({ names, code, onDone }: { names: readonly string[]; code: string; onDone: () => void }) {
   const copy = useCopy();
   const sheet = copy.holdingsXSheet;
-  // Asked only while the sheet is open; not known yet reads as live, so the disclosure stays.
-  const campaign = useCampaignProgress(open);
-  const live = campaign.data === undefined ? undefined : campaign.data !== null && campaign.data.open;
   const [left, setLeft] = useState<ReadonlySet<string>>(() => new Set());
   const chosen = names.filter((name) => !left.has(name));
-  const words = holdingsXWords(copy, chosen, live);
+  const words = holdingsXWords(copy, chosen);
   const link = inviteLink(code);
   const toggle = (name: string) =>
     setLeft((prev) => {

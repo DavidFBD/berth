@@ -10,15 +10,15 @@ export { foldEmail };
 
 /**
  * The staff review queue (app/staff/campaigns, pnpm campaign:queue): every
- * campaign with its budget meter, and every claim past "invited, not set
- * up yet" with the evidence a reviewer needs: the invited friend (signed
- * up, set up, last opened Berth, wallets), the inviter who would be paid
- * (wallets, where to pay), and the signals Berth can derive from what it
- * already keeps. Berth keeps no device data, so no device signal exists;
- * the page says so. Read only.
+ * campaign with its budget meter, and every claim past "arrived, not set
+ * up yet" with the evidence a reviewer needs: the account that opened
+ * through the campaign's link, who is the one paid (signed up, set up,
+ * last opened Berth, wallets, where to pay), and the signals Berth can
+ * derive from what it already keeps. Berth keeps no device data, so no
+ * device signal exists; the page says so. Read only.
  */
 
-export type SignalCode = "email_alias" | "close_signup" | "same_inviter_close" | "inviter_invited" | "shared_wallet" | "same_payout";
+export type SignalCode = "email_alias" | "close_signup" | "shared_wallet" | "same_payout";
 
 type Wallet = { address: string; family: string; linked: boolean };
 
@@ -28,27 +28,25 @@ export type QueueClaim = {
   campaignCode: string;
   campaignKind: CampaignKind;
   state: ClaimState;
-  /** The invited friend's live account (after any merge). */
+  /** The live account (after any merge) that opened through the link: the one paid. */
   userId: string;
   email: string | null;
   signupAt: string;
   attributedAt: string;
-  /** When the friend was first seen set up; the place was reserved then. */
+  /** When the account was first seen set up; the place was reserved then. */
   onboardedAt: string | null;
   /** When the stay is judged. */
   eligibleAt: string | null;
-  /** The friend's last signed in visit: as judged once judged, else as it stands. */
+  /** The last signed in visit: as judged once judged, else as it stands. */
   lastSeenAt: string | null;
   wallets: Wallet[];
-  /** The one paid: the inviter's live account. Null on a retired buy claim. */
-  inviter: { userId: string; email: string | null; wallets: Wallet[] } | null;
-  /** Fixed at approval; before it, the address approval would fix (the inviter's home). */
+  /** Fixed at approval; before it, the address approval would fix (the account's own home). */
   payout: { address: string | null; chain: string; token: "USDC"; amountUsd: number };
   paid: { at: string | null; tx: string | null; verified: boolean | null } | null;
   reason: string | null;
   signals: SignalCode[];
   /**
-   * When staff marked the friend or the inviter (any of their accounts) not
+   * When staff marked the person (any of their accounts) not
    * eligible for campaigns, or null. Mark paid refuses such a claim; the
    * queue says so first, so nobody sends USDC by hand to one marked since.
    */
@@ -66,9 +64,12 @@ export type CampaignMeter = {
   amountUsd: number;
   budgetUsd: number;
   maxClaims: number;
-  /** Days after setting up that the friend must still use Berth. */
+  /** Days after setting up that the account must still use Berth. */
   stayDays: number;
-  perInviter: number;
+  /** Never activated: a draft. */
+  draft: boolean;
+  /** Staff may delete it now: inactive, and no claim holds a place or was paid. */
+  deletable: boolean;
   counts: Record<ClaimState, number>;
   /** Holding, qualified and approved, in dollars. */
   reservedUsd: number;
@@ -87,14 +88,12 @@ export const CLOSE_SIGNUP_MS = 10 * 60_000;
 export type SignalInput = {
   id: string;
   campaignId: string;
-  /** The invited friend. */
+  /** The person paid. */
   userId: string;
-  /** The inviter (live), or null. */
-  inviterId: string | null;
   email: string | null;
   signupAt: number;
   wallets: readonly string[];
-  /** Where the USDC would go (fixed at approval, else the inviter's home). */
+  /** Where the USDC would go (fixed at approval, else the account's own home). */
   payout?: string | null;
 };
 
@@ -106,15 +105,10 @@ export function deriveSignals(claims: readonly SignalInput[]): Map<string, Signa
     const signals: SignalCode[] = [];
     const folded = foldEmail(claim.email);
     const close = (other: SignalInput) => Math.abs(other.signupAt - claim.signupAt) <= CLOSE_SIGNUP_MS;
-    const sameInviter = (other: SignalInput) => claim.inviterId !== null && other.inviterId === claim.inviterId;
     if (folded && others.some((other) => foldEmail(other.email) === folded)) signals.push("email_alias");
-    if (others.some((other) => close(other) && !sameInviter(other))) signals.push("close_signup");
-    if (others.some((other) => close(other) && sameInviter(other))) signals.push("same_inviter_close");
-    if (claim.inviterId && others.some((other) => other.userId === claim.inviterId)) signals.push("inviter_invited");
+    if (others.some(close)) signals.push("close_signup");
     if (others.some((other) => other.wallets.some((wallet) => claim.wallets.includes(wallet)))) signals.push("shared_wallet");
-    if (claim.payout && claims.some((other) => other.id !== claim.id && other.payout === claim.payout && other.inviterId !== claim.inviterId)) {
-      signals.push("same_payout");
-    }
+    if (claim.payout && claims.some((other) => other.userId !== claim.userId && other.payout === claim.payout)) signals.push("same_payout");
     out.set(claim.id, signals);
   }
   return out;
@@ -146,19 +140,18 @@ export function maskClaim(claim: QueueClaim): QueueClaim {
     ...claim,
     email: maskEmail(claim.email),
     wallets: maskWallets(claim.wallets),
-    inviter: claim.inviter ? { ...claim.inviter, email: maskEmail(claim.inviter.email), wallets: maskWallets(claim.inviter.wallets) } : null,
     payout: { ...claim.payout, address: maskWallet(claim.payout.address) },
   };
 }
 
 export type RevealField = "email" | "wallets";
 
-/** One claim's field in full, for both people, for an audited reveal on the staff page. */
+/** One claim's field in full, for an audited reveal on the staff page. */
 export async function revealClaim(claimId: string, field: RevealField): Promise<Record<string, unknown> | null> {
   const claim = (await staffQueue({ reveal: true })).claims.find((entry) => entry.id === claimId);
   if (!claim) return null;
-  if (field === "email") return { email: claim.email, inviterEmail: claim.inviter?.email ?? null };
-  return { wallets: claim.wallets, inviterWallets: claim.inviter?.wallets ?? [], payout: claim.payout.address };
+  if (field === "email") return { email: claim.email };
+  return { wallets: claim.wallets, payout: claim.payout.address };
 }
 
 /**
@@ -176,21 +169,17 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
             coalesce(cl.reject_reason, cl.expire_reason) as reason, c.amount_usd::float8 as amount_usd,
             p.id as person_id, p.email, p.created_at as signup_at, p.wallet_address as home,
             (select max(x.last_seen_at) from users x where x.id = p.id or x.retired_into = p.id) as last_seen_at,
-            q.id as inviter_id, q.email as inviter_email, q.wallet_address as inviter_home,
-            (select max(x.campaign_ineligible_at) from users x
-              where x.id in (p.id, q.id) or x.retired_into = p.id or (q.id is not null and x.retired_into = q.id)) as staff_ineligible_at
+            (select max(x.campaign_ineligible_at) from users x where x.id = p.id or x.retired_into = p.id) as staff_ineligible_at
        from campaign_claims cl
        join campaigns c on c.id = cl.campaign_id
        join users u on u.id = cl.user_id
        join users p on p.id = coalesce(u.retired_into, u.id)
-       left join users i on i.id = cl.inviter_id
-       left join users q on q.id = coalesce(i.retired_into, i.id)
       order by cl.updated_at desc, cl.id`,
   )) as Record<string, unknown>[];
   const sourceRows = (await sql.query(
     `select id, campaign_id, address, added_at, added_reason from campaign_payout_sources where removed_at is null order by added_at`,
   )) as { id: string; campaign_id: string; address: string; added_at: string | Date; added_reason: string }[];
-  const people = [...new Set(rows.flatMap((row) => [String(row.person_id), ...(row.inviter_id ? [String(row.inviter_id)] : [])]))];
+  const people = [...new Set(rows.map((row) => String(row.person_id)))];
   const identityRows = (people.length
     ? await sql.query(
         `select coalesce(u.retired_into, u.id) as person, i.value, i.family, i.unlinked_at is null as linked
@@ -223,13 +212,12 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
     if (record) record[row.state as ClaimState] += 1;
   }
 
-  const payoutOf = (row: Record<string, unknown>) => ((row.payout_address as string | null) ?? (row.inviter_home as string | null) ?? null)?.toLowerCase() ?? null;
+  const payoutOf = (row: Record<string, unknown>) => ((row.payout_address as string | null) ?? (row.home as string | null) ?? null)?.toLowerCase() ?? null;
   const signals = deriveSignals(
     rows.map((row) => ({
       id: String(row.id),
       campaignId: String(row.campaign_id),
       userId: String(row.person_id),
-      inviterId: (row.inviter_id as string | null) ?? null,
       email: (row.email as string | null) ?? null,
       signupAt: new Date(row.signup_at as string).getTime(),
       wallets: walletsWithHome(String(row.person_id), row.home).map((wallet) => wallet.address),
@@ -263,15 +251,8 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
       eligibleAt: iso(row.eligible_at),
       lastSeenAt: judgedSeen !== undefined ? iso(judgedSeen) : iso(row.last_seen_at),
       wallets: walletsWithHome(person, row.home),
-      inviter: row.inviter_id
-        ? {
-            userId: String(row.inviter_id),
-            email: (row.inviter_email as string | null) ?? null,
-            wallets: walletsWithHome(String(row.inviter_id), row.inviter_home),
-          }
-        : null,
       payout: {
-        address: (row.payout_address as string | null) ?? (row.inviter_home as string | null) ?? null,
+        address: (row.payout_address as string | null) ?? (row.home as string | null) ?? null,
         chain: PAYOUT_CHAIN.name,
         token: "USDC",
         amountUsd: Number(row.amount_usd),
@@ -300,7 +281,8 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
         budgetUsd: campaign.budget_usd,
         maxClaims: campaign.max_claims,
         stayDays: campaign.hold_days,
-        perInviter: campaign.max_per_inviter,
+        draft: campaign.activated_at === null,
+        deletable: !campaign.active && SLOT_STATES.every((state) => record[state] === 0),
         counts: record,
         reservedUsd: reserved * campaign.amount_usd,
         paidUsd: record.paid * campaign.amount_usd,
@@ -321,8 +303,8 @@ export function formatQueue(queue: StaffQueue): string {
   const lines: string[] = [];
   for (const campaign of queue.campaigns) {
     lines.push(
-      `${campaign.code} (${campaign.title}) ${campaign.kind === "invite" ? "" : "RETIRED buy campaign, "}${campaign.active ? "ACTIVE" : "inactive"}, ${day(campaign.startsAt)} to ${day(campaign.endsAt)}`,
-      `  ${usd(campaign.amountUsd)} to the inviter per friend still using Berth ${campaign.stayDays} days after setting up, up to ${campaign.perInviter} per inviter`,
+      `${campaign.code} (${campaign.title}) ${campaign.kind === "signup" ? "" : `RETIRED ${campaign.kind} campaign, `}${campaign.active ? "ACTIVE" : "inactive"}, ${day(campaign.startsAt)} to ${day(campaign.endsAt)}`,
+      `  ${usd(campaign.amountUsd)} to each new account opened through the link, set up and still using Berth ${campaign.stayDays} days after setting up`,
       `  budget: ${usd(campaign.reservedUsd)} reserved, ${usd(campaign.paidUsd)} paid, of ${usd(campaign.budgetUsd)}; ${campaign.slots}/${campaign.maxClaims} places`,
       `  ${Object.entries(campaign.counts)
         .map(([state, count]) => `${state} ${count}`)
@@ -335,14 +317,11 @@ export function formatQueue(queue: StaffQueue): string {
     if (claims.length === 0) continue;
     lines.push("", `${state.toUpperCase()} (${claims.length})`);
     for (const claim of claims) {
-      lines.push(`  ${claim.id.slice(0, 8)} ${claim.campaignCode} friend ${claim.userId.slice(0, 8)} ${claim.email ?? "(no email)"}, signed up ${day(claim.signupAt)}`);
+      lines.push(`  ${claim.id.slice(0, 8)} ${claim.campaignCode} account ${claim.userId.slice(0, 8)} ${claim.email ?? "(no email)"}, signed up ${day(claim.signupAt)}`);
       if (claim.onboardedAt) lines.push(`    set up ${day(claim.onboardedAt)}, judged ${day(claim.eligibleAt)}, last opened Berth ${day(claim.lastSeenAt)}`);
-      lines.push(`    friend's wallets ${list(claim.wallets)}`);
-      if (claim.inviter) {
-        lines.push(`    inviter ${claim.inviter.userId.slice(0, 8)} ${claim.inviter.email ?? "(no email)"}, wallets ${list(claim.inviter.wallets)}`);
-      }
+      lines.push(`    wallets ${list(claim.wallets)}`);
       if (claim.state === "qualified" || claim.state === "approved") {
-        lines.push(`    pay the inviter ${usd(claim.payout.amountUsd)} ${claim.payout.token} on ${claim.payout.chain} to ${claim.payout.address ?? "(no home address)"}`);
+        lines.push(`    pay the account ${usd(claim.payout.amountUsd)} ${claim.payout.token} on ${claim.payout.chain} to ${claim.payout.address ?? "(no home address)"}`);
       }
       if (claim.paid) lines.push(`    paid ${day(claim.paid.at)} tx ${claim.paid.tx} ${claim.paid.verified ? "verified" : "NOT verified"}`);
       if (claim.reason) lines.push(`    reason ${claim.reason}`);

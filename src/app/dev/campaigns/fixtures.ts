@@ -16,30 +16,26 @@ const campaignBase = {
   budgetUsd: 100,
   maxClaims: 20,
   stayDays: 14,
-  perInviter: 3,
 };
 
 const C1 = "00000000-0000-4000-8000-00000000c001";
-const inviterA = { userId: "00000000-0000-4000-8000-000000000201", email: "ivy.example@example.com", wallets: [{ address: addr(0xf1), family: "evm", linked: true }] };
-const inviterB = { userId: "00000000-0000-4000-8000-000000000202", email: "otto.example@example.com", wallets: [{ address: addr(0xf2), family: "evm", linked: true }] };
 
 type Claim = StaffCampaignsResponse["claims"][number];
 const claim = (n: number, over: Partial<Claim>): Claim => ({
   id: `00000000-0000-4000-8000-0000000000a${n}`,
   campaignId: C1,
-  campaignCode: "autumn-invite",
-  campaignKind: "invite",
+  campaignCode: "autumn",
+  campaignKind: "signup",
   state: "holding",
   userId: `00000000-0000-4000-8000-00000000010${n}`,
-  email: `friend${n}.example@example.com`,
+  email: `new${n}.example@example.com`,
   signupAt: iso(now - 20 * DAY),
   attributedAt: iso(now - 20 * DAY + 40_000),
   onboardedAt: iso(now - 19 * DAY),
   eligibleAt: iso(now - 5 * DAY),
   lastSeenAt: iso(now - 7 * DAY),
   wallets: [{ address: addr(0xe0 + n), family: "evm", linked: true }],
-  inviter: inviterA,
-  payout: { address: addr(0xf1), chain: "Base", token: "USDC", amountUsd: 5 },
+  payout: { address: addr(0xe0 + n), chain: "Base", token: "USDC", amountUsd: 5 },
   paid: null,
   reason: null,
   signals: [],
@@ -51,10 +47,12 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
   campaigns: [
     {
       id: C1,
-      code: "autumn-invite",
-      title: "Autumn invites",
-      kind: "invite",
+      code: "autumn",
+      title: "Autumn welcome",
+      kind: "signup",
       active: true,
+      draft: false,
+      deletable: false,
       startsAt: iso(now - 25 * DAY),
       endsAt: iso(now + 20 * DAY),
       ...campaignBase,
@@ -68,10 +66,12 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
     },
     {
       id: "00000000-0000-4000-8000-00000000c002",
-      code: "winter-invite",
-      title: "Winter invites",
-      kind: "invite",
+      code: "winter",
+      title: "Winter welcome",
+      kind: "signup",
       active: false,
+      draft: true,
+      deletable: true,
       startsAt: iso(now + 40 * DAY),
       endsAt: iso(now + 70 * DAY),
       ...campaignBase,
@@ -87,6 +87,8 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       title: "First buy, retired",
       kind: "buy",
       active: false,
+      draft: false,
+      deletable: true,
       startsAt: iso(now - 60 * DAY),
       endsAt: iso(now - 30 * DAY),
       ...campaignBase,
@@ -102,17 +104,17 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
     claim(1, { state: "qualified" }),
     claim(2, {
       state: "qualified",
-      email: "friend1.example+2@example.com",
+      email: "new1.example+2@example.com",
       signupAt: iso(now - 20 * DAY + 4 * 60_000),
       wallets: [
         { address: addr(0xe2), family: "evm", linked: true },
         { address: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV", family: "solana", linked: false },
       ],
-      signals: ["email_alias", "same_inviter_close"],
+      signals: ["email_alias", "close_signup"],
     }),
-    claim(3, { state: "approved", inviter: inviterB, payout: { address: addr(0xf2), chain: "Base", token: "USDC", amountUsd: 5 } }),
+    claim(3, { state: "approved" }),
     claim(4, { state: "holding", signupAt: iso(now - 3 * DAY), onboardedAt: iso(now - 2 * DAY), eligibleAt: iso(now + 12 * DAY), lastSeenAt: iso(now - DAY) }),
-    claim(5, { state: "paid", inviter: inviterB, payout: { address: addr(0xf2), chain: "Base", token: "USDC", amountUsd: 5 }, paid: { at: iso(now - DAY), tx: hash(0xbeef), verified: true } }),
+    claim(5, { state: "paid", paid: { at: iso(now - DAY), tx: hash(0xbeef), verified: true } }),
     claim(6, { state: "rejected", lastSeenAt: iso(now - 18 * DAY), reason: "not_active" }),
   ],
 };
@@ -120,24 +122,18 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
 const progress = (over: Partial<CampaignProgress>): CampaignProgress => ({
   amountUsd: 5,
   stayDays: 14,
-  perInviter: 3,
-  open: true,
-  invited: 0,
-  staying: 0,
-  nextEligibleAt: null,
-  qualified: 0,
-  paidUsd: 0,
+  status: "setting_up",
+  eligibleAt: null,
   paidAt: null,
   ...over,
 });
 
 /** The home lines' fixtures, by scene name (also read by /dev/board?campaign=). */
 export const LINE_FIXTURES: Record<string, CampaignProgress> = {
-  rules: progress({}),
-  invited: progress({ invited: 1 }),
-  staying: progress({ staying: 1, nextEligibleAt: iso(Date.UTC(2026, 9, 17, 14)) }),
-  qualified: progress({ qualified: 1 }),
-  paid: progress({ paidUsd: 5, paidAt: iso(Date.now() - DAY) }),
+  setUp: progress({}),
+  staying: progress({ status: "staying", eligibleAt: iso(Date.UTC(2026, 9, 17, 14)) }),
+  qualified: progress({ status: "qualified" }),
+  paid: progress({ status: "paid", paidAt: iso(Date.now() - DAY) }),
 };
 
 /** USDC on Base held by each fixture wallet, as the balance read answers (lowercase keys). */
@@ -148,13 +144,12 @@ export const BALANCE_FIXTURE: Record<string, StaffBalanceResponse["balance"]> = 
 
 /** The create form as the gallery opens it: a campaign about to be funded by a sponsor. */
 export const CREATE_PREFILL: Record<string, string> = {
-  code: "sponsor-invite",
-  title: "Sponsored invites",
+  code: "sponsor-welcome",
+  title: "Sponsored welcome",
   amountUsd: "5",
   budgetUsd: "100",
   maxClaims: "20",
   stayDays: "14",
-  perInviter: "3",
   startsAt: "2026-10-12T09:00",
   endsAt: "2026-11-12T09:00",
   payoutAddress: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",

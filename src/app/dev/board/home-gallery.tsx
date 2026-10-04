@@ -116,7 +116,7 @@ export function HomeGallery({
   share?: string | null;
   /** `&proof=1` (or 0): the social counts on the board drawer from fixtures (social-proof-fixtures.ts). */
   proof?: string | null;
-  /** `&campaign=rules` (invited, staying, qualified, paid): the campaign line, from /dev/campaigns' fixtures. */
+  /** `&campaign=setUp` (staying, qualified, paid): the campaign line, from /dev/campaigns' fixtures. */
   campaign?: CampaignProgress;
   /** Seeds the first look (`&look=fixture` or `&look=quiet`); absent asks the live route. */
   look?: "fixture" | "quiet";

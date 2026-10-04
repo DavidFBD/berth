@@ -9,20 +9,18 @@ import { pocketCampaignCode } from "@/lib/campaign-pocket";
 
 /**
  * The human half of a /c/<code> landing: pocket the code and step through
- * to the front door, saying the invite offer once on the way, exactly as
- * the campaign states it. The offer is for the one who invites; nobody is
- * asked to buy anything.
+ * to the front door, saying the offer once on the way, exactly as the
+ * campaign states it. The offer is for the one who opens a new account
+ * through this link; nobody is asked to buy anything.
  */
 export function CampaignLanding({
   code,
   amount,
   stayDays,
-  perInviter,
 }: {
   code: string;
   amount: string;
   stayDays: number;
-  perInviter: number;
 }) {
   const router = useRouter();
   const copy = useCopy();
@@ -43,7 +41,7 @@ export function CampaignLanding({
       <BerthMark className="size-14" title="Berth" />
       <p className="text-lg font-semibold text-foreground">{copy.campaign.landingTitle}</p>
       <p className="max-w-80 text-sm leading-relaxed text-muted-foreground">
-        {copy.campaign.landingLede(amount, stayDays, perInviter)}
+        {copy.campaign.landingLede(amount, stayDays)}
       </p>
     </div>
   );
