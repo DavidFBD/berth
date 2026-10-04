@@ -215,7 +215,7 @@ export type Copy = {
   };
   /** The guided first path (lib/first-path, components/first-path): one step at a time, then "You're set up". */
   firstPath: FirstPathCopy;
-  /** The welcome page around the way in (components/welcome): hero, three short sections, the Wall Street film, the close. */
+  /** The welcome page around the way in (components/welcome): hero with the phone film, three short sections, the Wall Street film, the close. */
   welcomePage: {
     navLabel: string;
     eyebrow: string;
@@ -242,6 +242,7 @@ export type Copy = {
      * one sentence beside or under a film, `label` its accessible name.
      */
     films: {
+      hero: { line: string; label: string };
       wallStreet: { line: string; label: string };
       /** The pill's words: what a tap will do. */
       soundOn: string;
@@ -2496,9 +2497,13 @@ export const COPY: Copy = {
       },
     },
     films: {
+      hero: {
+        line: "Buy a company by name, sign once, and climb the ranks beside your friends.",
+        label: "A short film: your avatar and what you hold, a buy of a stock by name signed once, a new rank and a board of friends.",
+      },
       wallStreet: {
-        line: "One buy of NVIDIA, from the board to your own wallet, in one signature.",
-        label: "A short film: a $50 buy of NVIDIA, paid with crypto from any of 20 networks and signed once in your own wallet.",
+        line: "One buy of Tesla, paid with the ETH you already hold, in one signature.",
+        label: "A short film: a $50 buy of Tesla, paid with ETH on Arbitrum and signed once in your own wallet, with no bridge or swap first.",
       },
       soundOn: "Sound on",
       soundOff: "Sound off",

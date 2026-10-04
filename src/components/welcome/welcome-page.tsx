@@ -5,16 +5,18 @@ import Link from "next/link";
 import { HandHeart, PencilSimpleLine, Trophy } from "@phosphor-icons/react";
 import { BerthMark } from "@/components/berth-mark";
 import { MarketPreview } from "@/components/board";
-import { WallStreetFilm } from "@/components/welcome/welcome-films";
+import { HeroPhone, WallStreetFilm } from "@/components/welcome/welcome-films";
 import { useCopy } from "@/components/settings-provider";
 import { cn } from "@/lib/utils";
 import { PILL } from "@/components/ui/pill";
 
 /**
  * The front door, short on purpose (2026-09-30): the positioning line and
- * the way in, then three short sections a stranger needs to
+ * the way in on the left, the film in its phone on the right (under
+ * the way in on a phone), then three short sections a stranger needs to
  * decide, what it is, what you pay with, whose custody, and the Wall Street
- * film before the close. The highlighted
+ * film before the close. Friends, ranks and the first buy are carried by
+ * the hero film, so they have no section of their own. The highlighted
  * phrase stays ink on the pale wash, so the email button is the page's one
  * accent, and the Colosseum entry sits under the way in, not above the
  * headline. Everything that signs someone in is passed in as `ctas`, so this
@@ -57,7 +59,7 @@ export function WelcomePage({
         )}
       </nav>
 
-      <header className="pt-7 pb-12 lg:pt-14 lg:pb-20">
+      <header className="grid gap-8 pt-7 pb-12 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-16 lg:pt-10 lg:pb-16">
         <div>
           <p className="mb-4 text-[13px] font-medium text-muted-foreground lg:mb-[22px]">{page.eyebrow}</p>
           <h1 className="max-w-[50rem] font-display text-[40px] leading-[1.1] tracking-[-0.028em] text-foreground lg:text-[60px] lg:leading-[1.08] lg:tracking-[-0.03em]">
@@ -99,6 +101,7 @@ export function WelcomePage({
           </a>
           </div>
         </div>
+        <HeroPhone />
       </header>
 
       <main>
