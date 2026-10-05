@@ -3,17 +3,23 @@
  * existed, from the intent itself (intent.dstAddress, the wallet the fill's
  * Transfer went to; lib/server/orders stores the same thing at fill time).
  *
- * Touches only rows where delivered_to is null and writes only that column,
- * so it is safe to run again: a second run sees only what the first could
- * not resolve. Prints counts, never addresses.
+ * Touches only rows where delivered_to is null and writes that column and,
+ * where it is still null, holding_chain, read from the same intent by
+ * src/lib/orders holdingChainOf: an address on Robinhood Chain written
+ * beside a null chain would be read as a hub wallet and judged on Sonic.
+ * Safe to run again: a second run sees only what the first could not
+ * resolve. Prints counts, never addresses.
  *
- *   node scripts/backfill-delivered-to.mjs
+ *   node --no-warnings --experimental-strip-types scripts/backfill-delivered-to.mjs
  *
  * Reads DATABASE_URL from the environment, else from .env.local (as db-push).
  */
 import { readFileSync } from "node:fs";
 import { neon } from "@neondatabase/serverless";
 import { Sodax } from "@sodax/sdk";
+
+const { holdingChainOf } = await import("../src/lib/orders.ts");
+const { DELIVERED_TO_UPDATE, deliveredToParams } = await import("../src/lib/order-backfill-sql.ts");
 
 if (!process.env.DATABASE_URL) {
   try {
@@ -51,7 +57,7 @@ async function intentOf(tx) {
 }
 
 const rows = await sql.query(
-  "select intent_tx from orders where delivered_to is null order by created_at",
+  "select intent_tx, direction from orders where delivered_to is null order by created_at",
 );
 let filled = 0;
 let unresolved = 0;
@@ -65,12 +71,7 @@ for (const row of rows) {
     unresolved += 1;
     continue;
   }
-  const updated = await sql.query(
-    `update orders set delivered_to = $2
-      where intent_tx = $1 and delivered_to is null
-      returning 1`,
-    [row.intent_tx, delivered],
-  );
+  const updated = await sql.query(DELIVERED_TO_UPDATE, deliveredToParams(row.intent_tx, delivered, holdingChainOf(row.direction, intent)));
   if (updated.length > 0) filled += 1;
 }
 console.log(`rows seen: ${rows.length}, filled: ${filled}, unresolved: ${unresolved}`);

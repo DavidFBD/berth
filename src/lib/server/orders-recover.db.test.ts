@@ -88,7 +88,7 @@ describe("decodeFeeReceiver", () => {
 });
 
 describe("berthFilledIntents", () => {
-  const listings = new Set(TOKEN_LISTINGS.map((listing) => listing.address.toLowerCase()));
+  const listings = TOKEN_LISTINGS;
   it("keeps a filled listing order that paid Berth's fee and nothing else", () => {
     const kept = berthFilledIntents(
       [
@@ -106,6 +106,15 @@ describe("berthFilledIntents", () => {
       [tx(1), "sell"],
       [tx(2), "buy"],
     ]);
+  });
+
+  it("keeps a buy delivered on Robinhood Chain by its hub asset there, and only on that chain", () => {
+    const rh = item({ txHash: tx(8), input: USDC_HUB, output: NVDA.rhHubAsset! });
+    const kept = berthFilledIntents(
+      [{ ...rh, intent: { ...rh.intent, dstChain: 21071 } }, item({ txHash: tx(9), input: USDC_HUB, output: NVDA.rhHubAsset! })],
+      listings,
+    );
+    expect(kept.map((entry) => [entry.intentTx, entry.direction])).toEqual([[tx(8), "buy"]]);
   });
 });
 
@@ -248,5 +257,43 @@ describe("recovering orders", () => {
     expect(report.recovered).toHaveLength(0);
     expect(report.rejected).toEqual([{ intentTx: tx(0x201), reason: "not your pour" }]);
     expect(((await sql.query(`select 1 from orders where intent_tx = $1`, [tx(0x201)])) as unknown[]).length).toBe(0);
+  });
+
+  it("writes a recovered Robinhood Chain buy as held there, under the Sonic listing (the recovery writer)", async () => {
+    const owner = ((await sql.query(`insert into users (wallet_address) values ($1) returning id`, [
+      "0x7777777777777777777777777777777777777777",
+    ])) as { id: string }[])[0].id;
+    const base = item({ txHash: tx(0x401), input: USDC_HUB, output: NVDA.rhHubAsset! });
+    const rh: IntentResponse = { ...base, intent: { ...base.intent, dstChain: 21071, dstAddress: "0x7777777777777777777777777777777777777777" } };
+    const report = await recoverAccountOrders(
+      { id: owner, wallet_address: "0x7777777777777777777777777777777777777777" },
+      {
+        write: true,
+        deps: depsFor([rh], {
+          fetchIntents: vi.fn(async () => [rh]),
+          build: vi.fn(async ({ intentTx, direction, intent }) =>
+            readOrder({
+              intentTx,
+              direction,
+              intent,
+              listing: { symbol: NVDA.symbol, address: NVDA.address, decimals: NVDA.decimals },
+              pay: { symbol: "USDC", decimals: 6, chainKey: "0x2105.base" },
+              received: 5n * 10n ** 15n,
+              placedAt: new Date("2026-10-05T09:19:00Z"),
+            }),
+          ),
+        }),
+      },
+    );
+    expect(report.written).toBe(1);
+    expect(await sql.query(`select holding_chain, listing_address, delivered_to from orders where intent_tx = $1`, [tx(0x401)])).toEqual([
+      { holding_chain: "robinhood", listing_address: NVDA.address.toLowerCase(), delivered_to: "0x7777777777777777777777777777777777777777" },
+    ]);
+  });
+
+  it("names the hub on every other recovered row", async () => {
+    expect(await sql.query(`select distinct holding_chain from orders where intent_tx in ($1, $2)`, [tx(0x101), tx(0x301)])).toEqual([
+      { holding_chain: "sonic" },
+    ]);
   });
 });

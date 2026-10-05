@@ -12,11 +12,21 @@
  * Reads DATABASE_URL from the environment (source .env.local first).
  */
 import { neon } from "@neondatabase/serverless";
-import { Sodax } from "@sodax/sdk";
+import { EvmSolverService, Sodax } from "@sodax/sdk";
 
-const { readOrder, pickFill, priceIdFor, isDollarStable, TRANSFER_TOPIC, addressTopic } = await import(
-  "../src/lib/orders.ts"
-);
+const {
+  readOrder,
+  pickFill,
+  pickIntentFill,
+  priceIdFor,
+  isDollarStable,
+  holdingChainOf,
+  listingOfIntent,
+  INTENT_FILLED_TOPIC,
+  TRANSFER_TOPIC,
+  addressTopic,
+} = await import("../src/lib/orders.ts");
+const { BACKFILL_ORDER_UPSERT, backfillOrderParams } = await import("../src/lib/order-backfill-sql.ts");
 const { COINGECKO_ID_BY_LOWER_SYMBOL } = await import("../src/lib/coingecko-ids.ts");
 const { listListings } = await import("../src/lib/listings.ts");
 const { displayToken } = await import("../src/lib/chains.ts");
@@ -71,9 +81,10 @@ for (const pour of pours) {
     continue;
   }
   const intent = found.value;
-  const ours = direction === "buy" ? intent.outputToken : intent.inputToken;
   const other = direction === "buy" ? intent.inputToken : intent.outputToken;
-  const listing = listings.find((entry) => entry.address.toLowerCase() === ours.toLowerCase());
+  // By its Sonic address on the hub, by its hub asset on Robinhood Chain
+  // (src/lib/orders listingOfIntent, the pour route's own reading).
+  const listing = listingOfIntent(listings, intent, direction);
   if (!listing) {
     console.log("skip, not a listing", pour.ref);
     continue;
@@ -82,7 +93,21 @@ for (const pour of pours) {
   const receipt = await rpc("eth_getTransactionReceipt", [pour.ref]);
   const placedAt = receipt ? await blockTime(receipt.blockNumber) : null;
   let fill;
-  if (direction === "buy" && receipt) {
+  if (direction === "buy" && receipt && holdingChainOf(direction, intent) === "robinhood") {
+    // Delivered on Robinhood Chain: no Transfer of the listing reaches the
+    // buyer on Sonic, so the fill is this intent's IntentFilled (as
+    // src/lib/server/orders buildOrder reads it).
+    const from = Number.parseInt(receipt.blockNumber, 16);
+    const logs = await rpc("eth_getLogs", [
+      {
+        fromBlock: receipt.blockNumber,
+        toBlock: `0x${(from + FILL_SEARCH_BLOCKS).toString(16)}`,
+        address: sodax.config.solver.intentsContract,
+        topics: [INTENT_FILLED_TOPIC],
+      },
+    ]);
+    fill = Array.isArray(logs) ? pickIntentFill(logs, EvmSolverService.getIntentHash(intent)) : undefined;
+  } else if (direction === "buy" && receipt) {
     const from = Number.parseInt(receipt.blockNumber, 16);
     const logs = await rpc("eth_getLogs", [
       {
@@ -114,29 +139,9 @@ for (const pour of pours) {
   });
   console.log(
     `${order.direction} ${order.quantity ?? "?"} ${order.listingSymbol} for ${order.payAmount ?? "?"} ${order.paySymbol ?? "?"}` +
-      ` usd=${order.usdValue ?? "-"} (${order.usdSource ?? "unknown"}) placed=${order.placedAt?.toISOString() ?? "?"} fill=${order.fillTx ? "yes" : "no"}`,
+      ` on ${order.holdingChain} usd=${order.usdValue ?? "-"} (${order.usdSource ?? "unknown"}) placed=${order.placedAt?.toISOString() ?? "?"} fill=${order.fillTx ? "yes" : "no"}`,
   );
   if (!WRITE) continue;
-  await sql.query(
-    `insert into orders (
-       user_id, wallet_address, intent_tx, fill_tx, direction, listing_symbol,
-       listing_address, quantity, min_quantity, pay_symbol, pay_chain,
-       pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source,
-       delivered_to
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-     on conflict (intent_tx) do update set
-       delivered_to = coalesce(orders.delivered_to, excluded.delivered_to),
-       usd_value = coalesce(orders.usd_value, excluded.usd_value),
-       usd_source = coalesce(orders.usd_source, excluded.usd_source),
-       fill_tx = coalesce(orders.fill_tx, excluded.fill_tx),
-       quantity = coalesce(orders.quantity, excluded.quantity),
-       filled_at = coalesce(orders.filled_at, excluded.filled_at)`,
-    [
-      pour.user_id, order.walletAddress, order.intentTx, order.fillTx, order.direction,
-      order.listingSymbol, order.listingAddress, order.quantity, order.minQuantity,
-      order.paySymbol, order.payChain, order.payAmount, order.feeAmount, order.usdValue,
-      order.placedAt, order.filledAt, order.usdSource, order.deliveredTo,
-    ],
-  );
+  await sql.query(BACKFILL_ORDER_UPSERT, backfillOrderParams(pour.user_id, order));
 }
 console.log(WRITE ? "written" : "dry run; add --write to save");

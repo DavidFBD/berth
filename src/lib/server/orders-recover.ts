@@ -1,7 +1,7 @@
 import { ChainKeys, EvmSolverService, type Intent, type IntentResponse } from "@sodax/sdk";
 import { HOME_CHAIN } from "@/lib/account";
 import { sdkAddress } from "@/lib/chains";
-import { decodeFeeReceiver, type OrderRecord } from "@/lib/orders";
+import { decodeFeeReceiver, listingOfIntent, type IntentListing, type OrderRecord } from "@/lib/orders";
 import { listListings } from "@/lib/listings";
 import { PARTNER_FEE } from "@/lib/sodax-config";
 import { getSql } from "@/lib/server/db";
@@ -67,17 +67,14 @@ export type Candidate = { intentTx: string; direction: "buy" | "sell"; fillTx: s
  */
 export function berthFilledIntents(
   items: readonly IntentResponse[],
-  listingAddresses: ReadonlySet<string>,
+  /** Every listing, matched by lib/orders listingOfIntent: its Sonic address on the hub, its hub asset on Robinhood Chain. */
+  listings: readonly IntentListing[],
   feeReceiver: string = PARTNER_FEE.address,
 ): Candidate[] {
   const out = new Map<string, Candidate>();
   for (const item of items) {
     const intent = item.intent;
-    const direction = listingAddresses.has(intent.outputToken.toLowerCase())
-      ? "buy"
-      : listingAddresses.has(intent.inputToken.toLowerCase())
-        ? "sell"
-        : null;
+    const direction = listingOfIntent(listings, intent, "buy") ? "buy" : listingOfIntent(listings, intent, "sell") ? "sell" : null;
     if (!direction) continue;
     if (decodeFeeReceiver(intent.data) !== feeReceiver.toLowerCase()) continue;
     if (verdictFromRecord(item) !== "filled") continue;
@@ -161,8 +158,8 @@ export async function insertRecoveredOrder(userId: string, order: OrderRecord, n
        user_id, wallet_address, intent_tx, fill_tx, direction, listing_symbol,
        listing_address, quantity, min_quantity, pay_symbol, pay_chain,
        pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source,
-       delivered_to, hold_checked_at
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       delivered_to, hold_checked_at, holding_chain
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      on conflict (intent_tx) do nothing
      returning id`,
     [
@@ -188,6 +185,11 @@ export async function insertRecoveredOrder(userId: string, order: OrderRecord, n
       // (lib/server/holds) never pays held_30_days for a recovered buy:
       // retroactive XP is a decision this does not make.
       now.toISOString(),
+      // Where the stock token sits, read from the intent (lib/orders
+      // holdingChainOf), never left null: a Robinhood Chain buy recorded
+      // without it would be judged on Sonic once the hold check reads both
+      // chains (plan P1b), read as zero and forfeited.
+      order.holdingChain,
     ],
   )) as { id: string }[];
   const id = rows[0]?.id;
@@ -247,8 +249,7 @@ export async function recoverAccountOrders(
   }
   report.intents = seen.size;
 
-  const listingAddresses = new Set(listListings(getSodax().leverageYield.listVaults()).map((listing) => listing.address.toLowerCase()));
-  const candidates = berthFilledIntents([...seen.values()], listingAddresses);
+  const candidates = berthFilledIntents([...seen.values()], listListings(getSodax().leverageYield.listVaults()));
   report.berthFilled = candidates.length;
   if (candidates.length === 0) return report;
 
