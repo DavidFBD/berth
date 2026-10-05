@@ -5,11 +5,12 @@ import { newYorkDay } from "@/lib/marks";
 import { explainedFrom, ledgerExplains, valueHoldings } from "@/lib/portfolio-days";
 import {
   historyRanges,
-  type HistoryResult,
   type LivePoint,
   type Range,
 } from "@/lib/portfolio-history";
+import { pickMove, withStory, type StoryHolding, type StoryMove, type StoryResult } from "@/lib/portfolio-story";
 import { readMarks } from "@/lib/server/marks";
+import { loadMoves, type MoveNews } from "@/lib/server/moves";
 import {
   liveListingPrices,
   loadListingOrders,
@@ -56,6 +57,16 @@ import type { Marks, OrderFacts } from "@/lib/benchmark";
  * - 'ok': `benchmarkPct` a number when the closes allow; `changePct` a
  *   number unless a sell landed on a day its listing has no close.
  *
+ * Each day's story rides on its point (lib/portfolio-story, additive):
+ * `change` the dollars the holdings made or lost that day with buys and
+ * sells set aside (null when a price or a cost is missing), `changePct`
+ * the same over the money at work, `top` the holding that moved most
+ * `{symbol, usd, pct}`, `fromBuy` on a first point told from what was
+ * paid. Each range adds `contributions` (each holding's dollars over the
+ * window), `changeUsd` and `orders` (`{day, at, symbol, direction, usd}`,
+ * the point each landed on). `move` is a large move with news in a
+ * listing held, on a day on the line, or null.
+ *
  * `todaySource` says where today's point came from: `value` 'oracle' when
  * every holding was priced live, 'marks' when any took its latest close,
  * 'stored' when the live read took too long and the line ends on the
@@ -72,8 +83,12 @@ type Named = Pick<Benchmark, "symbol" | "name">;
 export type PortfolioHistoryResponse = {
   benchmark: Named;
   benchmarks: Named[];
-  /** Every offered range, plus since first buy always. */
-  ranges: Partial<Record<Range, HistoryResult>>;
+  /**
+   * Every offered range, plus since first buy always. Each point carries its
+   * day's story and each range its contributions and orders
+   * (lib/portfolio-story); all additive to lib/portfolio-history's answer.
+   */
+  ranges: Partial<Record<Range, StoryResult>>;
   /** What the range control offers, in order. Empty under two days. */
   available: Range[];
   /** When the newest point was read, ISO; null with no data at all. */
@@ -87,7 +102,16 @@ export type PortfolioHistoryResponse = {
     value: "oracle" | "marks" | "stored";
     benchmark: "oracle" | "defillama" | "marks";
   } | null;
+  /**
+   * A large move with news in a listing the account held, on a day on the
+   * line (lib/server/moves, lib/portfolio-story pickMove): "in the news",
+   * never "because". Null on most days; absent from older answers.
+   */
+  move?: StoryMove | null;
 };
+
+/** How long the moves read may take before the line goes without one. */
+const MOVES_READ_MS = 2_500;
 
 /** DefiLlama's current price for a benchmark-only id, or undefined. */
 async function currentPrice(marketId: string): Promise<number | undefined> {
@@ -154,6 +178,17 @@ export async function loadPortfolioHistory({
     })
     .finally(() => clearTimeout(timer));
 
+  // A move with news is read beside everything else and given up quietly.
+  let movesTimer: ReturnType<typeof setTimeout> | undefined;
+  const movesRead = Promise.race([
+    loadMoves().then((read) => read.moves),
+    new Promise<MoveNews[]>((resolve) => {
+      movesTimer = setTimeout(() => resolve([]), MOVES_READ_MS);
+    }),
+  ])
+    .catch(() => [] as MoveNews[])
+    .finally(() => clearTimeout(movesTimer));
+
   const [liveOutcome, marks] = await Promise.all([
     liveRead,
     readMarks([...new Set([benchmark.symbol, ...listingSymbols])]),
@@ -166,6 +201,7 @@ export async function loadPortfolioHistory({
   if (heldNow.length > 0) Object.assign(marks, await readMarks(heldNow));
 
   let live: LivePoint | undefined;
+  let liveHoldings: StoryHolding[] | undefined;
   let todaySource: PortfolioHistoryResponse["todaySource"] =
     timedOut && days.length > 0 ? { value: "stored", benchmark: "marks" } : null;
   if (liveInputs) {
@@ -202,6 +238,7 @@ export async function loadPortfolioHistory({
         benchmarkPrice,
         prices: liveInputs.prices,
       };
+      liveHoldings = valued.day.holdings;
       todaySource = { value: fromMarks ? "marks" : "oracle", benchmark: benchmarkSource };
     }
   }
@@ -213,7 +250,15 @@ export async function loadPortfolioHistory({
     marks,
     live,
     liveBalances: liveInputs?.balances,
+    liveHoldings,
   });
+
+  // Held that day: the stored day's holdings, or today's live balances.
+  const heldOn = (day: string, symbol: string) => {
+    if (live && day === live.day) return (liveInputs?.balances[symbol] ?? 0) > 0;
+    return days.some((entry) => entry.day === day && entry.holdings.some((holding) => holding.symbol === symbol && holding.quantity > 0));
+  };
+  const move = pickMove(await movesRead, ranges.since?.days ?? [], heldOn);
 
   const response: PortfolioHistoryResponse = {
     benchmark: { symbol: benchmark.symbol, name: benchmark.name },
@@ -222,6 +267,7 @@ export async function loadPortfolioHistory({
     available,
     updatedAt: live?.asOf ?? days.at(-1)?.asOf ?? null,
     todaySource,
+    move,
   };
   return response;
 }
@@ -241,6 +287,7 @@ export function storedComparison({
   marks,
   live,
   liveBalances,
+  liveHoldings,
 }: {
   days: readonly StoredPortfolioDay[];
   orders: readonly OrderFacts[];
@@ -248,7 +295,9 @@ export function storedComparison({
   marks: Readonly<Record<string, Marks>>;
   live?: LivePoint;
   liveBalances?: Readonly<Record<string, number>>;
-}): { ranges: Partial<Record<Range, HistoryResult>>; available: Range[] } {
+  /** What today's live value was made of, for today's story. */
+  liveHoldings?: readonly StoryHolding[];
+}): { ranges: Partial<Record<Range, StoryResult>>; available: Range[] } {
   // Do the orders add up to what is held? Judged on today's balances when
   // they were read, else on the newest stored day's holdings and the orders
   // placed before it. With neither there is nothing to contradict them.
@@ -270,7 +319,7 @@ export function storedComparison({
   // move, so only snapshots are drawn from it on.
   const drawn = base ? days.filter((day) => day.source === "snapshot" || day.day <= base.day) : days;
 
-  return historyRanges({
+  const { ranges, available } = historyRanges({
     days: drawn,
     orders,
     benchmarkSymbol: benchmark.symbol,
@@ -280,4 +329,9 @@ export function storedComparison({
     balanceExplained,
     base,
   });
+  // Each day's story beside the numbers (lib/portfolio-story): additive.
+  return {
+    ranges: withStory(ranges, { days: drawn, orders, listingCloses: marks, live, liveHoldings }, { rebased: Boolean(base && drawn.some((day) => day.day === base.day)) }),
+    available,
+  };
 }
