@@ -36,7 +36,7 @@ const linked = (address: string, isHome: boolean): IdentityRow => ({
   proof: "siwe",
   created_at: "2026-10-01T00:00:00Z",
 });
-const query = vi.fn(async (_text: string, _params?: unknown[]): Promise<unknown[]> => []);
+const query = vi.fn(async (): Promise<unknown[]> => []);
 vi.mock("@/lib/server/db", () => ({ getSql: () => ({ query }) }));
 
 /** Contract code by lowercase address, per RPC host; anything else is a plain key. */
