@@ -176,6 +176,69 @@ export function handoffTarget({ hasListing, canBuy }: { hasListing: boolean; can
   return hasListing ? "buy" : "choose";
 }
 
+/**
+ * The order that sent the person to add money (`topUpFor` on the home), and
+ * whether it still stands after what just happened. It reopens only for a
+ * card payment begun from the Add money drawer it opened; a payment begun
+ * elsewhere (the path's step, the account drawer) or closing Add money with
+ * nothing on its way lets it go, so an old order never reopens later.
+ */
+export type TopUpEvent =
+  | { kind: "funded"; fromAddMoney: boolean }
+  | { kind: "addMoneyClosed"; watching: boolean }
+  | { kind: "payAnotherWay" };
+
+export function keepsTopUp(event: TopUpEvent): boolean {
+  switch (event.kind) {
+    case "funded":
+      return event.fromAddMoney;
+    case "addMoneyClosed":
+      return event.watching;
+    case "payAnotherWay":
+      // The drawer stays open on the ways to pay: a payment made there is still for that order.
+      return true;
+  }
+}
+
+/** Money that just arrived, offered as the next buy's pay token (components/flow/deposit-drawer). */
+export type PreferPay = { chainKey: string; address: string; since: number };
+
+/** How long arrived money is offered first; after that the sweep picks as always. */
+export const PREFER_PAY_FOR_MS = 15 * 60_000;
+
+/** How long until an offer made at `since` lapses (0 once it has): the home lets it go then. */
+export function preferPayLeftMs(prefer: PreferPay, now: number): number {
+  return Math.max(0, prefer.since + PREFER_PAY_FOR_MS - now);
+}
+
+/**
+ * Whether the buy drawer starts from the money that just arrived:
+ *   use   the sweep shows that token still held
+ *   wait  the sweep is still reading: decide once it answers
+ *   skip  nothing to prefer, or no longer held (spent meanwhile): never
+ *         preselect a token the person does not hold
+ * (A lapsed offer never gets here: the home drops it at preferPayLeftMs.)
+ */
+export function preferPayChoice({
+  prefer,
+  loading,
+  holdings,
+}: {
+  prefer: Pick<PreferPay, "chainKey" | "address"> | null | undefined;
+  loading: boolean;
+  holdings: readonly { chainKey: string; address: string; balance: bigint }[];
+}): "use" | "wait" | "skip" {
+  if (!prefer) return "skip";
+  if (loading) return "wait";
+  const held = holdings.some(
+    (holding) =>
+      holding.chainKey === prefer.chainKey &&
+      holding.address.toLowerCase() === prefer.address.toLowerCase() &&
+      holding.balance > 0n,
+  );
+  return held ? "use" : "skip";
+}
+
 /** Raw USDC units as dollars, for the arrival line. */
 export function usdcToUsd(units: bigint): number {
   return Number(units) / 10 ** FUND_USDC_DECIMALS;

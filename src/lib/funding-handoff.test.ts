@@ -5,7 +5,11 @@ import {
   STOP_AFTER_MS,
   arrivalView,
   fundingOutcome,
+  PREFER_PAY_FOR_MS,
+  keepsTopUp,
   nextLowest,
+  preferPayChoice,
+  preferPayLeftMs,
   offersPayAnotherWay,
   readBaseline,
   withTimeout,
@@ -115,6 +119,41 @@ describe("readBaseline", () => {
   it("caps one read with a timeout", async () => {
     await expect(withTimeout(new Promise(() => {}), 10)).rejects.toThrow();
     await expect(withTimeout(Promise.resolve(1), 10)).resolves.toBe(1);
+  });
+});
+
+describe("the order that asked for money (topUpFor)", () => {
+  it("stands for a card payment begun from the Add money drawer it opened", () => {
+    expect(keepsTopUp({ kind: "funded", fromAddMoney: true })).toBe(true);
+    expect(keepsTopUp({ kind: "payAnotherWay" })).toBe(true);
+    expect(keepsTopUp({ kind: "addMoneyClosed", watching: true })).toBe(true);
+  });
+  it("is let go when Add money closes with nothing on its way, or a payment begins elsewhere", () => {
+    // Topped up from a buy, paid with crypto, closed: a later card payment must not reopen that order.
+    expect(keepsTopUp({ kind: "addMoneyClosed", watching: false })).toBe(false);
+    expect(keepsTopUp({ kind: "funded", fromAddMoney: false })).toBe(false);
+  });
+});
+
+describe("money that just arrived, offered first (preferPay)", () => {
+  const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const prefer = { chainKey: "0x2105.base", address: USDC };
+  it("is used only while the sweep shows it still held", () => {
+    expect(preferPayChoice({ prefer, loading: false, holdings: [{ chainKey: prefer.chainKey, address: USDC.toLowerCase(), balance: 5n }] })).toBe("use");
+  });
+  it("never preselects a token no longer held", () => {
+    expect(preferPayChoice({ prefer, loading: false, holdings: [] })).toBe("skip");
+    expect(preferPayChoice({ prefer, loading: false, holdings: [{ chainKey: prefer.chainKey, address: USDC, balance: 0n }] })).toBe("skip");
+    expect(preferPayChoice({ prefer, loading: false, holdings: [{ chainKey: "other", address: USDC, balance: 9n }] })).toBe("skip");
+  });
+  it("waits for the sweep, and skips when there is nothing to prefer", () => {
+    expect(preferPayChoice({ prefer, loading: true, holdings: [] })).toBe("wait");
+    expect(preferPayChoice({ prefer: null, loading: true, holdings: [] })).toBe("skip");
+  });
+  it("lapses PREFER_PAY_FOR_MS after the money arrived", () => {
+    const offer = { ...prefer, since: T0 };
+    expect(preferPayLeftMs(offer, T0)).toBe(PREFER_PAY_FOR_MS);
+    expect(preferPayLeftMs(offer, T0 + PREFER_PAY_FOR_MS + 1)).toBe(0);
   });
 });
 

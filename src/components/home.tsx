@@ -73,9 +73,9 @@ import { useUnavailableRefused } from "@/lib/unavailable-refusal";
 import { FirstPathProvider, HomePathCard, pathOnScreen, useLiveFirstPath } from "@/components/first-path";
 import { FundingProvider } from "@/components/funding-handoff";
 import { useFundingHandoff } from "@/hooks/use-funding-handoff";
-import { FUND_USDC_BASE, handoffTarget } from "@/lib/funding-handoff";
+import { FUND_USDC_BASE, handoffTarget, keepsTopUp, preferPayLeftMs, type PreferPay } from "@/lib/funding-handoff";
 import { toast } from "@/lib/toast";
-import { ChainKeys, type SpokeChainKey } from "@sodax/sdk";
+import { ChainKeys } from "@sodax/sdk";
 import { NUDGES_SAID_BY_PATH, buyStepState, pathPlace } from "@/lib/first-path";
 
 /** The board's frame, shared with the dev gallery (/dev/board?home=…) so the two cannot drift. */
@@ -331,7 +331,13 @@ function SignedInHome() {
   // The buy that sent the person to add money, when one did.
   const [topUpFor, setTopUpFor] = useState<Listing | null>(null);
   // Money that just arrived, for the next buy's "paying with" slot.
-  const [preferPay, setPreferPay] = useState<{ chainKey: SpokeChainKey; address: string } | null>(null);
+  const [preferPay, setPreferPay] = useState<PreferPay | null>(null);
+  // Offered first for a while only: an offer nobody took lapses, and the sweep picks again.
+  useEffect(() => {
+    if (!preferPay) return;
+    const timer = setTimeout(() => setPreferPay(null), preferPayLeftMs(preferPay, Date.now()));
+    return () => clearTimeout(timer);
+  }, [preferPay]);
   // The ways to pay, unless money is still on its way (then the wait shows): a wait that settled is let go first.
   const showAddMoney = () => {
     if (handoff.view?.kind !== "waiting") {
@@ -514,6 +520,10 @@ function SignedInHome() {
   // The card payment went through: the wait shows in the Add money drawer,
   // wherever the payment began (the account drawer closes for it).
   const onFunded = (watch: Parameters<typeof handoff.begin>[0]) => {
+    // A payment begun outside Add money is not for the order that once opened it.
+    if (!keepsTopUp({ kind: "funded", fromAddMoney: addMoneyOpen })) setTopUpFor(null);
+    // Money from an earlier arrival is no longer the one to offer first.
+    setPreferPay(null);
     handoff.begin(watch);
     onAccountOpenChange(false);
     setAddMoneyOpen(true);
@@ -539,7 +549,7 @@ function SignedInHome() {
     };
     if (handoffTo === "none") return settle();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the arrival is only known from a chain read
-    setPreferPay({ chainKey: ChainKeys.BASE_MAINNET, address: FUND_USDC_BASE });
+    setPreferPay({ chainKey: ChainKeys.BASE_MAINNET, address: FUND_USDC_BASE, since: Date.now() });
     if (handoffTo === "choose") {
       settle();
       // Closed while it was on its way: one quiet way on, in a toast.
@@ -581,9 +591,14 @@ function SignedInHome() {
   };
   // A card payment that failed with the provider must not hold the person on the wait:
   // the ways to pay come back, and the order that asked for money still follows them.
-  const payAnotherWay = () => handoff.end();
+  const payAnotherWay = () => {
+    handoff.end();
+    if (!keepsTopUp({ kind: "payAnotherWay" })) setTopUpFor(null);
+  };
   const onAddMoneyOpenChange = (next: boolean) => {
     setAddMoneyOpen(next);
+    // Closed with nothing on its way (paid with crypto, or not at all): the order that opened it is let go.
+    if (!next && !keepsTopUp({ kind: "addMoneyClosed", watching: handoff.view?.kind === "waiting" || handoff.view?.kind === "arrived" })) setTopUpFor(null);
     // Closed on a stopped wait, or on an arrival with no order to reopen:
     // nothing more to watch. While waiting, it goes on, and an order that
     // asked for the money is still offered once it lands.

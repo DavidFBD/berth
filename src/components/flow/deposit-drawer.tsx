@@ -32,6 +32,7 @@ import {
   getNativeGasToken,
   toBalanceReadToken,
 } from "@/lib/chains";
+import { preferPayChoice, type PreferPay } from "@/lib/funding-handoff";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
 import { formatTokenAmount, formatUsd } from "@/lib/format";
@@ -143,7 +144,7 @@ export function DepositDrawer({
    * the sweep would pick: money that just arrived from a card payment
    * (lib/funding-handoff), USDC on Base. The person can still change it.
    */
-  preferPay?: { chainKey: SpokeChainKey; address: string } | null;
+  preferPay?: PreferPay | null;
   /**
    * Dev galleries only: stands in for the wallet sweep, so the drawer's
    * waiting and picked states can be reviewed without a session.
@@ -244,13 +245,29 @@ export function DepositDrawer({
   // Render-time state adjustment, per house pattern.
   const [preferTaken, setPreferTaken] = useState(false);
   if (!open && preferTaken) setPreferTaken(false);
-  if (open && preferPay && !preferTaken) {
+  // Only while fresh, and only once the sweep shows it still held (lib/funding-handoff preferPayChoice).
+  const preferChoice =
+    open && preferPay && !preferTaken
+      ? preferPayChoice({
+          prefer: preferPay,
+          loading: holdingsLoading,
+          holdings: sweptHoldings.map((holding) => ({
+            chainKey: holding.chainKey,
+            address: holding.token.address,
+            balance: holding.balance,
+          })),
+        })
+      : "wait";
+  if (open && preferPay && !preferTaken && preferChoice !== "wait") {
     setPreferTaken(true);
-    const preferred = getDepositTokens(preferPay.chainKey).find(
-      (candidate) => candidate.address.toLowerCase() === preferPay.address.toLowerCase(),
-    );
+    const preferred =
+      preferChoice === "use"
+        ? getDepositTokens(preferPay.chainKey as SpokeChainKey).find(
+            (candidate) => candidate.address.toLowerCase() === preferPay.address.toLowerCase(),
+          )
+        : undefined;
     if (preferred) {
-      setSrcChainKey(preferPay.chainKey);
+      setSrcChainKey(preferPay.chainKey as SpokeChainKey);
       setToken(preferred);
     }
   }
