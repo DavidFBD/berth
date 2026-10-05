@@ -6,6 +6,7 @@ import {
   arrivalView,
   fundingOutcome,
   handoffTarget,
+  moneyStepOffer,
   stillWatching,
   usdcToUsd,
 } from "./funding-handoff";
@@ -77,5 +78,18 @@ describe("handoffTarget", () => {
 describe("usdcToUsd", () => {
   it("reads six decimals", () => {
     expect(usdcToUsd(10_500_000n)).toBe(10.5);
+  });
+});
+
+describe("moneyStepOffer", () => {
+  it("offers the card first to an email account whose wallet exists", () => {
+    expect(moneyStepOffer({ walletAccount: false, canPayByCard: true, aside: false })).toBe("card");
+  });
+  it("opens Add money while the wallet is still being made, or when money set aside is named first", () => {
+    expect(moneyStepOffer({ walletAccount: false, canPayByCard: false, aside: false })).toBe("drawer");
+    expect(moneyStepOffer({ walletAccount: false, canPayByCard: true, aside: true })).toBe("drawer");
+  });
+  it("never offers a wallet account Privy's card window", () => {
+    expect(moneyStepOffer({ walletAccount: true, canPayByCard: true, aside: false })).toBe("wallet");
   });
 });

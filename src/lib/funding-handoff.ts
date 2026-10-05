@@ -106,3 +106,22 @@ export function handoffTarget({ hasListing, canBuy }: { hasListing: boolean; can
 export function usdcToUsd(units: bigint): number {
   return Number(units) / 10 ** FUND_USDC_DECIMALS;
 }
+
+/**
+ * What the money step offers (components/home-next-step AddMoneyStep):
+ *   wallet  a wallet account pays from its wallet; a quiet way to its own address on Base
+ *   card    an email account with its wallet: the card payment first, crypto as the quiet way
+ *   drawer  otherwise (the wallet still being made, or money set aside to name first): Add money's drawer
+ */
+export function moneyStepOffer({
+  walletAccount,
+  canPayByCard,
+  aside,
+}: {
+  walletAccount: boolean;
+  canPayByCard: boolean;
+  aside: boolean;
+}): "wallet" | "card" | "drawer" {
+  if (walletAccount) return "wallet";
+  return canPayByCard && !aside ? "card" : "drawer";
+}

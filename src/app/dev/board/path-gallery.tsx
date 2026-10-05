@@ -13,6 +13,8 @@ import { RankChip } from "@/components/rewards-panel";
 import { Panel } from "@/components/ui/panel";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { AccountDrawerScreens } from "@/components/account-drawer";
+import { AddMoneyDrawer, WalletAddMoney } from "@/components/account-button";
+import type { ArrivalView } from "@/lib/funding-handoff";
 import { FirstPathProvider, HomePathCard, pathOnScreen, useDoneMoment, type FirstPathValue } from "@/components/first-path";
 import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { buyStepState, firstPath, isPathStep, withSkip, withoutSkip, NUDGES_SAID_BY_PATH, type PathFacts, type PathStep } from "@/lib/first-path";
@@ -45,6 +47,13 @@ import { campaignLine, type CampaignProgress } from "@/lib/campaigns";
  *   &drawer=1                            the account drawer open on it
  *   &done=avatar                         hold that step's Done moment
  *   &campaign=setUp                      a campaign's line under the card
+ *   &funding=waiting|slow|stopped|arrived|buy|away
+ *                                        the Add money drawer after a card
+ *                                        payment: on its way, slow, stopped,
+ *                                        arrived (choose, or reopening an order,
+ *                                        or where Berth takes none). Pay by card
+ *                                        on the money step walks it live:
+ *                                        on its way, then $25 arrives.
  */
 export type PathGalleryProps = {
   account: "email" | "wallet";
@@ -54,7 +63,28 @@ export type PathGalleryProps = {
   done: string | null;
   /** `&campaign=setUp` (or staying, qualified, paid): the campaign line under the path's card, from /dev/campaigns' fixtures. */
   campaign?: CampaignProgress;
+  funding?: string | null;
 };
+
+/** The Add money drawer's handoff from a `&funding=` scene (lib/funding-handoff). */
+function fundingScene(scene: string | null | undefined): { view: ArrivalView; target: "buy" | "choose" | "none" } | null {
+  switch (scene) {
+    case "waiting":
+      return { view: { kind: "waiting", slow: false }, target: "choose" };
+    case "slow":
+      return { view: { kind: "waiting", slow: true }, target: "choose" };
+    case "stopped":
+      return { view: { kind: "stopped" }, target: "choose" };
+    case "arrived":
+      return { view: { kind: "arrived", amount: 25_000_000n }, target: "choose" };
+    case "buy":
+      return { view: { kind: "arrived", amount: 25_000_000n }, target: "buy" };
+    case "away":
+      return { view: { kind: "arrived", amount: 25_000_000n }, target: "none" };
+    default:
+      return null;
+  }
+}
 
 const ORDER: readonly (keyof PathFacts)[] = ["avatarSet", "usernameSet", "funded", "firstBuy", "inviteSent"];
 const AT: Record<string, number> = { avatar: 0, username: 1, money: 2, firstBuy: 3, invite: 4, complete: 5 };
@@ -91,7 +121,9 @@ function firstLookFixture(): FirstLookResponse {
   };
 }
 
-export function PathGallery({ account, at, skipped: skippedParam, drawer: drawerParam, done: doneParam, campaign }: PathGalleryProps) {
+export function PathGallery({ account, at, skipped: skippedParam, drawer: drawerParam, done: doneParam, campaign, funding }: PathGalleryProps) {
+  const [handoff, setHandoff] = useState(() => fundingScene(funding));
+  const [addMoneyOpen, setAddMoneyOpen] = useState(() => fundingScene(funding) !== null);
   const [facts, setFacts] = useState(() => startFacts(account, at));
   const [skipped, setSkipped] = useState<PathStep[]>(() => (skippedParam ?? "").split(",").filter(isPathStep));
   const [finished, setFinished] = useState(false);
@@ -177,6 +209,12 @@ export function PathGallery({ account, at, skipped: skippedParam, drawer: drawer
     pay("pour_in", XP_ACTIONS.pour_in.amount);
     set({ firstBuy: true, funded: true });
   };
+  // Pay by card, walked: Privy's window is skipped, the money is on its way, then $25 lands.
+  const payByCard = () => {
+    setHandoff({ view: { kind: "waiting", slow: false }, target: "choose" });
+    setAddMoneyOpen(true);
+    setTimeout(() => setHandoff({ view: { kind: "arrived", amount: 25_000_000n }, target: "choose" }), 4_000);
+  };
   const holdingsUsd = rows.reduce((sum, row) => sum + (row.worth ?? 0), 0);
   const nudge: Nudge | null = stage === "empty" ? { kind: "addFunds" } : stage === "funded" ? { kind: "firstBuy" } : null;
 
@@ -206,7 +244,14 @@ export function PathGallery({ account, at, skipped: skippedParam, drawer: drawer
                   footnote={campaign ? <CampaignLineView line={campaignLine(campaign)} bare /> : null}
                   slots={{
                     money: (frame, title) => (
-                      <AddMoneyStep walletAccount={account === "wallet"} onAddMoney={addMoney} onBrowse={addMoney} frame={frame} title={title} />
+                      <AddMoneyStep
+                        walletAccount={account === "wallet"}
+                        onAddMoney={addMoney}
+                        onBrowse={addMoney}
+                        frame={frame}
+                        title={title}
+                        demoPayByCard={account === "email" ? payByCard : undefined}
+                      />
                     ),
                     firstBuy: (frame, title, note, state) => (
                       <FirstBuyStep readyUsd={25} unfunded={state.unfunded} loading={state.loading} onBuy={buy} onBrowse={noop} frame={frame} title={title} note={note} onReadNews={noop} />
@@ -240,13 +285,39 @@ export function PathGallery({ account, at, skipped: skippedParam, drawer: drawer
             more={<HomeMore onBoard={noop} onNews={noop} onAi={noop} />}
           />
         </div>
+        <AddMoneyDrawer
+          open={addMoneyOpen}
+          onOpenChange={(next) => {
+            setAddMoneyOpen(next);
+            if (!next) setHandoff(null);
+          }}
+          arrival={
+            handoff
+              ? {
+                  ...handoff,
+                  listingName: handoff.target === "buy" ? "NVIDIA" : undefined,
+                  onChoose: () => {
+                    setAddMoneyOpen(false);
+                    setHandoff(null);
+                    set({ funded: true });
+                  },
+                }
+              : null
+          }
+        />
         <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
           <DrawerContent>
             <DrawerHeader>
               <DrawerTitle>{COPY.accountTotalLabel}</DrawerTitle>
               <DrawerDescription data-ph-mask>{account === "email" ? COPY.accountSignedInAs("gosia@example.com") : COPY.drawer.rows.wallets.sub}</DrawerDescription>
             </DrawerHeader>
-            <AccountDrawerScreens kind={account} hasAddress onLeave={() => setDrawerOpen(false)} onSignOut={noop} />
+            <AccountDrawerScreens
+              kind={account}
+              hasAddress
+              onLeave={() => setDrawerOpen(false)}
+              onSignOut={noop}
+              money={account === "wallet" ? <WalletAddMoney address="0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be" /> : undefined}
+            />
           </DrawerContent>
         </Drawer>
       </FirstPathProvider>

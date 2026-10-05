@@ -7,6 +7,7 @@ import { useLinkInProgress } from "@/hooks/use-link-email";
 import { useStaffSignInRunning } from "@/components/staff/entry";
 import { AnimatePresence, motion } from "motion/react";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
+import { useXAccount } from "@sodax/wallet-sdk-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Copy,
@@ -53,6 +54,7 @@ export function AccountButton({
   assistant = null,
   focusEmail = false,
   focusFriends = false,
+  focusMoney = false,
 }: {
   /** Optional controlled open state so the page (the funds module's top-up button) can open the account drawer. */
   open?: boolean;
@@ -63,6 +65,8 @@ export function AccountButton({
   focusEmail?: boolean;
   /** Opened from the social notice: the profile and friends screen. */
   focusFriends?: boolean;
+  /** A wallet account's Add money: opened on the wallets screen (components/account-button WalletAddMoney). */
+  focusMoney?: boolean;
 } = {}) {
   const privy = usePrivyEmbeddedWallet();
   const linking = useLinkInProgress();
@@ -76,7 +80,7 @@ export function AccountButton({
   useScrollToAddEmail(accountOpen && focusEmail);
   // Back from a friend's profile opened in the drawer: open again, on that screen.
   const pending = useDrawerReturn(() => setAccountOpen(true), accountOpen);
-  const start = initialScreen({ assistant: assistant !== null, focusEmail, friends: focusFriends, pending });
+  const start = initialScreen({ assistant: assistant !== null, focusEmail, friends: focusFriends, money: focusMoney, pending });
 
   if (!PRIVY_ENABLED) return <ConnectButton />;
 
@@ -431,10 +435,39 @@ function ExternalAccountEntry({
             // Settings for a wallet account too: appearance, currency and
             // the analytics switch (no key export: that needs an embedded wallet).
             onOpenSettings={() => {}}
+            money={<WalletAddMoney />}
           />
         </DrawerContent>
       </Drawer>
     </div>
+  );
+}
+
+/**
+ * Adding money for a wallet account. Privy's card window needs a Privy
+ * sign in, which a wallet account does not keep (hooks/use-privy-evm-wallet
+ * isWalletAccountUser), so Berth cannot open it here. What it can say
+ * honestly: card payments work with an email account, the wallet's own
+ * app may sell crypto by card, and this is the wallet's address on Base.
+ */
+export function WalletAddMoney({ address: demoAddress }: { address?: string }) {
+  const copy = useCopy();
+  const evm = useXAccount({ xChainType: "EVM" });
+  const address = demoAddress ?? evm.address;
+  if (!address) return null;
+  return (
+    <Panel className="divide-y divide-border">
+      <div className="flex flex-col gap-1 px-3 py-3">
+        <span className="text-sm font-medium text-foreground">{copy.funding.walletTitle}</span>
+        <span className="text-xs leading-[1.5] text-muted-foreground">{copy.funding.walletLine}</span>
+      </div>
+      <ReceiveRow
+        title={copy.funding.walletReceiveTitle}
+        description={copy.funding.walletReceiveBody}
+        address={address}
+        copyToast={copy.funding.walletReceiveToast}
+      />
+    </Panel>
   );
 }
 

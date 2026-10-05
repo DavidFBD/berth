@@ -129,16 +129,20 @@ export function initialScreen({
   assistant,
   focusEmail,
   friends = false,
+  money = false,
   pending,
 }: {
   assistant: boolean;
   focusEmail: boolean;
   /** Opened from the social notice: the profile and friends screen, where its switch lives. */
   friends?: boolean;
+  /** A wallet account's Add money: the wallets screen, with the wallet's own address on Base. */
+  money?: boolean;
   pending: ReturnState;
 }): ReturnState {
   if (assistant) return { view: "ai", scroll: null };
   if (friends) return { view: "friends", scroll: null };
+  if (money) return { view: "money", scroll: null };
   if (focusEmail) return NO_RETURN;
   return pending;
 }

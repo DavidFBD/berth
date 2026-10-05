@@ -78,7 +78,7 @@ export function AccountDrawerScreens({
   returnScroll?: number | null;
   /** Opened from the email nudge: the add-email flow is the first screen's one step. */
   focusEmail?: boolean;
-  /** The money screen's receive and top up rows (email accounts), from the account button. */
+  /** The money screen's receive and top up rows, from the account button (a wallet account's own address on Base). */
   money?: ReactNode;
   /**
    * The drawer closed for the recurring plan sheet, retired 2026-10-04. No
@@ -447,7 +447,7 @@ function SubContent({
       return (
         <>
           <WalletsSection />
-          {kind === "email" && money}
+          {money}
         </>
       );
     case "notifications":

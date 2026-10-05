@@ -148,6 +148,12 @@ function SignedInHome() {
     setAccountAssistant(assistant);
     setAccountOpen(true);
   };
+  // A wallet account adds money to its own wallet: the account drawer, on that screen.
+  const [focusMoney, setFocusMoney] = useState(false);
+  const openAccountForMoney = () => {
+    setFocusMoney(true);
+    setAccountOpen(true);
+  };
   const openAccountForFriends = () => {
     setFocusFriends(true);
     setAccountOpen(true);
@@ -162,6 +168,7 @@ function SignedInHome() {
       setAccountAssistant(null);
       setFocusEmail(false);
       setFocusFriends(false);
+      setFocusMoney(false);
     }
   };
   // Whether a higher-priority strip already holds the email nudge's slot.
@@ -313,7 +320,7 @@ function SignedInHome() {
   // money lives in its wallet, so it keeps the account drawer as before.
   const openAddMoney = () => {
     if (emailSession) showAddMoney();
-    else openAccount();
+    else openAccountForMoney();
   };
   // A buy or sell opened from the board drawer brings the board back when it closes.
   const [boardReturn, setBoardReturn] = useState(false);
@@ -603,6 +610,7 @@ function SignedInHome() {
             assistant={accountAssistant}
             focusEmail={focusEmail}
             focusFriends={focusFriends}
+            focusMoney={focusMoney}
           />
         </HomeHeader>
 
@@ -625,6 +633,7 @@ function SignedInHome() {
                     <AddMoneyStep
                       walletAccount={!emailSession}
                       onAddMoney={openAddMoney}
+                      cardAddress={emailSession && pageAvailability.available ? privy.embedded?.address : undefined}
                       onBrowse={openBoard}
                       aside={vaults.present ? { kind: "vault", usd: vaults.usd } : holdsCash ? { kind: "cash" } : undefined}
                       frame={frame}
@@ -654,6 +663,7 @@ function SignedInHome() {
               <AddMoneyStep
                 walletAccount={!emailSession}
                 onAddMoney={openAddMoney}
+                cardAddress={emailSession && pageAvailability.available ? privy.embedded?.address : undefined}
                 onBrowse={openBoard}
                 aside={vaults.present ? { kind: "vault", usd: vaults.usd } : holdsCash ? { kind: "cash" } : undefined}
               />
