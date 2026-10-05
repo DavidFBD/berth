@@ -290,10 +290,26 @@ create table if not exists no_xp_intents (
 -- or 'delivery_refused', a buy delivered on Robinhood Chain that the
 -- server's own re-check of the destination did not allow, or never could
 -- make (lib/server/delivery-gate).
+--
+-- The check only ever widens, in one statement: it is replaced only while
+-- it lacks 'delivery_refused', so rerunning this file takes no lock, and
+-- a later, wider check is never narrowed back by this one. (An older copy
+-- of this file still drops and re-adds it narrower; scripts/db-push.mjs runs
+-- every statement in one transaction, so such a push fails whole and
+-- changes nothing once a 'delivery_refused' row exists. Never push a
+-- schema.sql older than this from a db-push without that transaction.)
 alter table no_xp_intents add column if not exists reason text not null default 'unavailable';
-alter table no_xp_intents drop constraint if exists no_xp_intents_reason_check;
-alter table no_xp_intents add constraint no_xp_intents_reason_check
-  check (reason in ('unavailable', 'unproven_source', 'delivery_refused'));
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'no_xp_intents'::regclass and conname = 'no_xp_intents_reason_check'
+       and pg_get_constraintdef(oid) like '%delivery_refused%'
+  ) then
+    alter table no_xp_intents drop constraint if exists no_xp_intents_reason_check
+    ; alter table no_xp_intents add constraint no_xp_intents_reason_check
+        check (reason in ('unavailable', 'unproven_source', 'delivery_refused'))
+  ; end if
+; end $$;
 
 -- A claim settled for such a buy says so: recorded, nothing paid.
 alter table pour_claims drop constraint if exists pour_claims_outcome_check;

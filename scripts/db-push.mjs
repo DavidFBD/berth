@@ -23,14 +23,23 @@ if (!url) {
 
 const sql = neon(url);
 const schema = readFileSync("db/schema.sql", "utf8");
-// The http driver runs one statement per call; split on the blank-line
-// boundaries between statements (semicolon at end of line).
+// The http driver runs one statement per query; split on the boundaries
+// between statements (semicolon at end of line). Statements inside a DO
+// block lead with their semicolons, so a block stays whole.
 const statements = schema
   .split(/;\s*\n/)
   .map((statement) => statement.trim())
   .filter((statement) => statement.length > 0);
 
-for (const statement of statements) {
-  await sql.query(statement);
+// All or nothing: every statement in one Postgres transaction (the http
+// driver's non-interactive sql.transaction). A statement that fails rolls
+// back every one before it, so a push from an older schema.sql can never
+// leave a constraint dropped and the rest of the file unapplied. The file
+// holds nothing a transaction refuses (no `create index concurrently`).
+try {
+  await sql.transaction((txn) => statements.map((statement) => txn.query(statement)));
+} catch (error) {
+  console.error(`Nothing applied: the push failed and was rolled back whole.\n${error instanceof Error ? error.message : error}`);
+  process.exit(1);
 }
-console.log(`Applied ${statements.length} statements. Schema is up to date.`);
+console.log(`Applied ${statements.length} statements in one transaction. Schema is up to date.`);
