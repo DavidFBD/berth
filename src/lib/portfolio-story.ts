@@ -326,10 +326,20 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
       });
     let top: DayMover | null = null;
     let mover: DayMover | null = null;
+    // A crumb left after a sell can move ten percent on nothing: only a
+    // holding with at least 1% of the money at work and a dollar is named
+    // for its percent, unless none is.
+    const atWorkIn = (symbol: string) => {
+      const held = before?.held.get(symbol);
+      return (held ? held.quantity * held.price : 0) + (paid.get(symbol) ?? 0);
+    };
+    const floor = Math.max(0.01 * ((before?.value ?? 0) + [...paid.values()].reduce((sum, usd) => sum + usd, 0)), 1);
     for (const candidate of movers) {
       if (!top || Math.abs(candidate.usd) > Math.abs(top.usd)) top = candidate;
-      if (candidate.pct !== null && (!mover || Math.abs(candidate.pct) > Math.abs(mover.pct!))) mover = candidate;
+      if (candidate.pct === null || atWorkIn(candidate.symbol) < floor) continue;
+      if (!mover || Math.abs(candidate.pct) > Math.abs(mover.pct!)) mover = candidate;
     }
+    if (!mover && top?.pct != null) mover = top;
     return {
       day: point.day,
       change,

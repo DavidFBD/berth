@@ -446,8 +446,12 @@ export type Copy = {
   portfolioDayFlat: string;
   /** The day line: the first day, counted from what was paid. */
   portfolioFromBuy: string;
-  /** The day line when a price for the day is missing. */
+  /** The day line when a price for the day is missing. The line adds the full stop. */
   portfolioDayUnknown: string;
+  /** A day with nothing held (after selling everything): the day line and the tile's label. */
+  portfolioNothingHeld: string;
+  /** Under the legend when the line is in dollars because a sale could not be priced. */
+  portfolioNoReturn: string;
   /** The day line: an order that landed that day. The amount follows in figures. */
   portfolioBought: (name: string) => string;
   portfolioSold: (name: string) => string;
@@ -2961,7 +2965,10 @@ export const COPY: Copy = {
   portfolioDayDown: (pct, usd) => `Down ${pct}, ${usd}`,
   portfolioDayFlat: "Unchanged",
   portfolioFromBuy: "Since you bought",
-  portfolioDayUnknown: "No figure for this day, a price is missing.",
+  portfolioDayUnknown: "No figure for this day, a price is missing",
+  portfolioNothingHeld: "Nothing held",
+  portfolioNoReturn:
+    "A sale could not be priced, so the return cannot be told and the line shows your money in dollars.",
   portfolioBought: (name) => `You bought ${name}`,
   portfolioSold: (name) => `You sold ${name}`,
   portfolioMoreOrders: (count) => `and ${count} more ${count === 1 ? "order" : "orders"}`,

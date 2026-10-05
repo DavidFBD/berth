@@ -259,7 +259,11 @@ function DayLine({
   const shownOrders = orders.slice(0, 2);
   // Each part keeps its own words together; the line breaks between parts.
   const parts: { key: string; node: ReactNode }[] = [];
-  if (point.change == null) {
+  // Nothing held and nothing moved: say that, not that a figure is missing.
+  const empty = point.value <= 0 && !point.mover && (point.change == null || Math.abs(point.change) < 0.005);
+  if (empty) {
+    parts.push({ key: "empty", node: copy.portfolioNothingHeld });
+  } else if (point.change == null) {
     parts.push({ key: "unknown", node: copy.portfolioDayUnknown });
   } else {
     if (!sameAsTop || point.fromBuy) {
@@ -363,6 +367,9 @@ function useStripDays(points: readonly StoryPoint[], liveDay: string | null): St
           ? copy.portfolioDayFlat
           : (pct > 0 ? copy.portfolioDayUp : copy.portfolioDayDown)(size(pct), money.format(Math.abs(point.change)));
     const date = today ? copy.portfolioToday : longDayName(point.day);
+    if (point.value <= 0 && !point.mover && (point.change == null || Math.abs(point.change) < 0.005)) {
+      return { ...point, moverName, today, label: `${date}. ${copy.portfolioNothingHeld}.` };
+    }
     return { ...point, moverName, today, label: copy.portfolioDayAria(date, change, moverName) };
   });
 }
@@ -481,7 +488,9 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   const result = data.ranges[range];
 
   // In the first seven market days the strip shows the days to come, empty.
-  const firstWeek = stripSource.length > 0 && stripSource.length < 7;
+  // Only an account whose record reaches its first buy is in its first seven days.
+  const firstWeek =
+    stripSource.length > 0 && stripSource.length < 7 && !since?.rebasedFrom && !since?.recordFrom;
   const slots = firstWeek ? nextMarketDays(stripSource.at(-1)!.day, 7 - stripSource.length) : [];
   const stripHeading = firstWeek ? copy.portfolioFirstWeek(stripSource.length) : copy.portfolioWeekLabel;
   const allOrders = since?.orders ?? result?.orders ?? [];
@@ -548,7 +557,8 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
     // hidden, so nothing below moves.
     // Anchored to the bottom: on a narrow screen a second line grows up into
     // the space above the legend, never down over the line.
-    <p className="absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-1.5 text-[13px] leading-5 text-muted-foreground">
+    // Each separator rides with the part after it, so a wrap never strands one.
+    <p className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-1.5 text-[13px] leading-5 text-muted-foreground">
       <span className="whitespace-nowrap">
         {scrubbed.origin
           ? copy.portfolioWhenBought
@@ -556,8 +566,10 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
             ? copy.portfolioToday
             : shortDate(scrubbed.day)}
       </span>
-      <span aria-hidden="true">·</span>
       <span className="whitespace-nowrap text-foreground">
+        <span aria-hidden="true" className="mr-1.5 text-muted-foreground">
+          ·
+        </span>
         {copy.portfolioYou} <span className="money tabular-nums">{figure(scrubbed.value)}</span>
         {/* On a percent line the dollars ride along, so the money is never out of sight. */}
         {percent && scrubbed.dollars !== null && (
@@ -568,8 +580,10 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
       </span>
       {withBenchmark && scrubbed.benchmark !== null && (
         <>
-          <span aria-hidden="true">·</span>
           <span className="whitespace-nowrap">
+            <span aria-hidden="true" className="mr-1.5">
+              ·
+            </span>
             {copy.benchmarkNames[shownBenchmark]}{" "}
             <span className="money tabular-nums">{figure(scrubbed.benchmark)}</span>
           </span>
@@ -588,6 +602,9 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   } else if (result.recordFrom) {
     reason = copy.portfolioRecordStarts(shortDate(result.recordFrom));
   }
+  // The line fell back to dollars for a reason not said above (a sell with
+  // no quantity or no close that day): say so.
+  if (!percent && reason === null) reason = copy.portfolioNoReturn;
 
   const legend = (
     <p
@@ -726,12 +743,14 @@ function FirstDay({
           <span className="text-muted-foreground">{copy.portfolioSinceBuy}</span>
         </p>
         {scrubbed && (
-          <p className="absolute inset-0 flex items-baseline gap-x-1.5 text-[13px] leading-5 text-muted-foreground">
+          <p className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-1.5 text-[13px] leading-5 text-muted-foreground">
             <span className="whitespace-nowrap">
               {scrub === 0 ? copy.portfolioWhenBought : today ? copy.portfolioToday : copy.portfolioNow}
             </span>
-            <span aria-hidden="true">·</span>
             <span className="whitespace-nowrap text-foreground">
+              <span aria-hidden="true" className="mr-1.5 text-muted-foreground">
+                ·
+              </span>
               {copy.portfolioYou}{" "}
               {percent && (
                 <>

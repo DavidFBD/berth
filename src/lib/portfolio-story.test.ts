@@ -221,6 +221,23 @@ describe("dailyStory", () => {
     // The strip's pick is by percent, so the small position that moved 10% is named.
     expect(stories[1].mover).toEqual({ symbol: "TSLA", usd: expect.closeTo(1), pct: expect.closeTo(10) });
   });
+
+  it("does not name a crumb under 1% of the money at work for its percent", () => {
+    const { stories } = dailyStory({
+      days: [
+        day("2026-09-14", [
+          { symbol: "NVDA", quantity: 1, price: 100 },
+          { symbol: "TSLA", quantity: 0.005, price: 100 },
+        ]),
+        day("2026-09-15", [
+          { symbol: "NVDA", quantity: 1, price: 102 },
+          { symbol: "TSLA", quantity: 0.005, price: 130 },
+        ]),
+      ],
+      orders: [],
+    });
+    expect(stories[1].mover?.symbol).toBe("NVDA");
+  });
 });
 
 describe("rangeStory and withStory", () => {

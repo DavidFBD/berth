@@ -97,7 +97,11 @@ export function WeekStrip({
               tabIndex={day.day === tabDay ? 0 : -1}
               aria-pressed={pinned === day.day}
               aria-label={day.label}
-              onClick={() => onPin(day.day)}
+              onClick={() => {
+                // Unpinning with a mouse also lets go of the hover, so the line clears.
+                if (pinned === day.day) onHover(null);
+                onPin(day.day);
+              }}
               onKeyDown={(event) => walk(event, index)}
               onFocus={() => {
                 setFocusDay(day.day);
@@ -149,7 +153,7 @@ export function WeekStrip({
             aria-hidden="true"
             className="flex min-w-0 flex-col items-center gap-[3px] px-0.5 pt-1.5 pb-2"
           >
-            <span className="text-[11px] leading-4 text-muted-foreground opacity-70">{weekday(slot)}</span>
+            <span className="text-[11px] leading-4 text-muted-foreground">{weekday(slot)}</span>
             {/* A day still to come: a short rule where its figure will be. */}
             <span className="flex h-4 items-center">
               <span className="block h-px w-3.5 bg-faint" />
