@@ -14,7 +14,7 @@ export const maxDuration = 15;
  * POST, no body, answered as
  *
  *   { chainKey: "robinhood", address, reason: "switched_on" }
- *       delivered to `address`, the account's own EVM wallet, on Robinhood Chain
+ *       delivered to `address`, the session's own linked EVM wallet, on Robinhood Chain
  *   { chainKey: "sonic", address: null, reason }
  *       the hub, as every buy before, with a short machine code saying why
  *       (not_listed, no_new_buys, read_failed, no_evm_wallet, not_eoa,
@@ -44,11 +44,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(hubDelivery("no_new_buys") satisfies DeliveryResponse);
   }
 
-  // The account's home EVM wallet, else the wallet this request signs as
-  // (an EVM one, or deliveryFor says hub). A failed read is the hub.
+  // The wallet this session signs with, and only when it is one of the
+  // account's own linked EVM wallets. Not the home wallet when the two
+  // differ: a sell of what lands on Robinhood Chain (plan P3a) must be
+  // signed there by the wallet that holds it, and the one wallet this
+  // session is known to sign with is its own. Anything else (a Solana or
+  // Bitcoin session, a wallet the account does not hold) answers the hub.
+  // A failed read of the account's wallets is the hub too, never a guess.
   let evmAddress: string | null = null;
   try {
-    evmAddress = (await accountEvmAddresses(user.id, user.wallet_address)).home ?? read.caller.wallet;
+    const { all } = await accountEvmAddresses(user.id, user.wallet_address, { failClosed: true });
+    const signer = (read.caller.wallet ?? "").toLowerCase();
+    evmAddress = signer && all.includes(signer) ? signer : null;
   } catch {
     return NextResponse.json(hubDelivery("read_failed") satisfies DeliveryResponse);
   }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { backfillInsert, homeWalletValue, planIdentityBackfill, type BackfillUser } from "./identities";
 
 const A = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
@@ -73,5 +73,27 @@ describe("backfillInsert", () => {
     expect(params).toHaveLength(16);
     expect(text).toContain("$16::text");
     expect(text).toContain("on conflict do nothing");
+  });
+});
+
+describe("accountEvmAddresses when the table cannot be read", () => {
+  it("stands users.wallet_address in for other callers, and throws for one that asks to fail closed", async () => {
+    const { setSqlClient } = await import("./db");
+    const { accountEvmAddresses } = await import("./identities");
+    setSqlClient({
+      query: async () => {
+        throw new Error("db down");
+      },
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await accountEvmAddresses("u1", A)).toEqual({ home: A.toLowerCase(), all: [A.toLowerCase()] });
+      await expect(accountEvmAddresses("u1", A, { failClosed: true })).rejects.toThrow("db down");
+    } finally {
+      setSqlClient(null);
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
 });

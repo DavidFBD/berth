@@ -370,6 +370,7 @@ export type LinkedWallet = {
 export async function linkedWallets(
   userId: string,
   usersWallet?: string | null,
+  { failClosed = false }: { failClosed?: boolean } = {},
 ): Promise<LinkedWallet[]> {
   let rows: { value: string; family: WalletFamily; is_home: boolean; proof: IdentityProof; created_at: string | Date }[] = [];
   try {
@@ -380,6 +381,9 @@ export async function linkedWallets(
       [userId],
     )) as typeof rows;
   } catch (error) {
+    // A caller that must not act on a guess (lib/server/delivery: where a
+    // buy is sent) gets the failure itself rather than the stand-in.
+    if (failClosed) throw error;
     warnIdentity("wallet list", userId, error);
   }
   const out: LinkedWallet[] = [];
@@ -405,11 +409,16 @@ export async function linkedWallets(
   return out;
 }
 
-/** The account's EVM addresses, home first: every one has its own hub wallet. */
+/**
+ * The account's EVM addresses, home first: every one has its own hub wallet.
+ * `failClosed` throws when the table cannot be read, instead of standing
+ * users.wallet_address in (linkedWallets).
+ */
 export async function accountEvmAddresses(
   userId: string,
   usersWallet?: string | null,
+  options: { failClosed?: boolean } = {},
 ): Promise<{ home: string | null; all: string[] }> {
-  const evm = (await linkedWallets(userId, usersWallet)).filter((wallet) => wallet.family === "evm");
+  const evm = (await linkedWallets(userId, usersWallet, options)).filter((wallet) => wallet.family === "evm");
   return { home: evm.find((wallet) => wallet.isHome)?.address ?? null, all: evm.map((wallet) => wallet.address) };
 }
