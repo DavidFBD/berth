@@ -39,6 +39,17 @@ const linked = (address: string, isHome: boolean): IdentityRow => ({
 const query = vi.fn(async (_text: string, _params?: unknown[]): Promise<unknown[]> => []);
 vi.mock("@/lib/server/db", () => ({ getSql: () => ({ query }) }));
 
+/** Contract code by lowercase address, per RPC host; anything else is a plain key. */
+let code: Record<string, string> = {};
+let rpcDown = false;
+const rpc = vi.fn(async (url: string | URL, init?: RequestInit) => {
+  if (rpcDown) return new Response("busy", { status: 503 });
+  const call = JSON.parse(String(init?.body)) as { id: number; method: string; params: [string, string] };
+  const host = new URL(String(url)).host;
+  const result = call.method === "eth_getCode" ? (code[`${host}:${call.params[0].toLowerCase()}`] ?? "0x") : null;
+  return new Response(JSON.stringify({ jsonrpc: "2.0", id: call.id, result }));
+});
+
 const { POST } = await import("./route");
 
 const ask = async (country?: string) =>
@@ -58,8 +69,15 @@ beforeEach(() => {
   usersWallet = HOME;
   query.mockReset();
   query.mockImplementation(async () => [linked(HOME, true), linked(SIGNER, false)]);
+  code = {};
+  rpcDown = false;
+  rpc.mockClear();
+  vi.stubGlobal("fetch", rpc);
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("POST /api/delivery", () => {
   it("answers the hub for everyone while the switch is empty, without reading wallets", async () => {
@@ -110,6 +128,38 @@ describe("POST /api/delivery", () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     availability = { available: false, reason: "united-states" };
     expect(await ask("US")).toEqual(HUB("no_new_buys"));
+  });
+
+  it("asks both Robinhood Chain and Sonic whether the address is a plain key", async () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+    expect(await ask("NL")).toEqual(RH(SIGNER));
+    const hosts = rpc.mock.calls.map(([url]) => new URL(String(url)).host);
+    expect(hosts).toContain("robinhood-rpc.publicnode.com");
+    expect(hosts).toContain("sonic-rpc.publicnode.com");
+  });
+
+  it("answers the hub for a smart account, with code on Robinhood Chain or on Sonic", async () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+    code = { [`robinhood-rpc.publicnode.com:${SIGNER}`]: "0x6080" };
+    expect(await ask("NL")).toEqual(HUB("not_eoa"));
+    // A Safe on Sonic, nothing at the address on Robinhood Chain: nobody's there.
+    code = { [`sonic-rpc.publicnode.com:${SIGNER}`]: "0x6080" };
+    expect(await ask("NL")).toEqual(HUB("not_eoa"));
+    // An EIP-7702 delegation is code too.
+    code = { [`robinhood-rpc.publicnode.com:${SIGNER}`]: `0xef0100${"11".repeat(20)}` };
+    expect(await ask("NL")).toEqual(HUB("not_eoa"));
+  });
+
+  it("answers the hub when the chain cannot be asked", async () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+    rpcDown = true;
+    expect(await ask("NL")).toEqual(HUB("not_eoa"));
+  });
+
+  it("asks no chain unless the answer would be Robinhood Chain", async () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+    expect(await ask("GB")).toEqual(HUB("restricted_country"));
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("answers the hub when the account's wallets cannot be read, rather than trusting the signing wallet", async () => {

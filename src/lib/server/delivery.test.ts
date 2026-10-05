@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { robinhoodDeliveryOn } from "./delivery";
+import { getAddress } from "viem";
+import { hubDelivery } from "@/lib/delivery";
+import { confirmPlainKey, isPlainKey, robinhoodDeliveryOn } from "./delivery";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -27,5 +29,30 @@ describe("robinhoodDeliveryOn", () => {
     vi.stubEnv("LIMIT_ORDERS_USERS", ME.join(","));
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
     expect(robinhoodDeliveryOn(ME)).toBe(false);
+  });
+});
+
+describe("isPlainKey", () => {
+  const ADDRESS = "0xbe59d5bf40ac4a349bd748e0d7c19ef27ad3ca23";
+  const answering = (result: unknown) =>
+    vi.fn(async () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result })));
+
+  it("is a plain key only when both chains answer with no code", async () => {
+    expect(await isPlainKey(ADDRESS, { fetcher: answering("0x") })).toBe(true);
+    expect(await isPlainKey(ADDRESS, { fetcher: answering("0x6080") })).toBe(false);
+  });
+
+  it("is not, when a chain answers nothing usable or fails", async () => {
+    expect(await isPlainKey(ADDRESS, { fetcher: answering(null) })).toBe(false);
+    expect(await isPlainKey(ADDRESS, { fetcher: vi.fn(async () => new Response("busy", { status: 503 })) })).toBe(false);
+    expect(await isPlainKey(ADDRESS, { fetcher: vi.fn(async () => Promise.reject(new Error("offline"))) })).toBe(false);
+  });
+
+  it("passes a hub answer through without asking any chain", async () => {
+    const fetcher = answering("0x");
+    expect(await confirmPlainKey(hubDelivery("not_listed"), { fetcher })).toEqual(hubDelivery("not_listed"));
+    expect(fetcher).not.toHaveBeenCalled();
+    const robinhood = { chainKey: "robinhood", address: getAddress(ADDRESS), reason: "switched_on" } as const;
+    expect(await confirmPlainKey(robinhood, { fetcher: answering("0x6080") })).toEqual(hubDelivery("not_eoa"));
   });
 });

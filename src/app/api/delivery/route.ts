@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { deliveryFor, hubDelivery, type Delivery } from "@/lib/delivery";
 import { accountEvmAddresses } from "@/lib/server/identities";
 import { AVAILABLE, requestCountry } from "@/lib/server/availability";
-import { robinhoodDeliveryOn } from "@/lib/server/delivery";
+import { confirmPlainKey, robinhoodDeliveryOn } from "@/lib/server/delivery";
 import { readRewardsCaller, resolveRewardsUser } from "@/lib/server/rewards-route";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,8 @@ export const maxDuration = 15;
  * further read. Switched on, the hub is still the answer where Berth takes
  * no new buy, where Robinhood does not offer its tokens
  * (ROBINHOOD_RESTRICTED_COUNTRIES), when the country is unknown, for an
- * account with no EVM wallet, and whenever a read fails. Same proof of
+ * account with no EVM wallet, for an address with contract code on
+ * Robinhood Chain or Sonic (a smart account), and whenever a read fails. Same proof of
  * identity as the rewards routes: a Privy token or a wallet session.
  */
 export type DeliveryResponse = Delivery;
@@ -64,5 +65,7 @@ export async function POST(request: NextRequest) {
     evmAddress,
     country: requestCountry(request.headers, { url: request.url }),
   });
-  return NextResponse.json(delivery satisfies DeliveryResponse);
+  // Only a plain key on Robinhood Chain and on Sonic: a smart account's
+  // address there may be nobody's (lib/server/delivery isPlainKey).
+  return NextResponse.json((await confirmPlainKey(delivery)) satisfies DeliveryResponse);
 }
