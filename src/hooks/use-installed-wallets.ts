@@ -23,9 +23,42 @@ export type InstalledWallets = {
 export function useInstalledWallets(): InstalledWallets {
   const mounted = useMounted();
   const byChain = useXConnectorsByChain();
-  const wallets = useMemo(
-    () => (mounted ? pickInstalledWallets(byChain) : []),
-    [mounted, byChain],
-  );
+  const wallets = useMemo(() => {
+    if (!mounted) return [];
+    const found = pickInstalledWallets(byChain);
+    return process.env.NODE_ENV === "production" ? found : withDevWallets(found);
+  }, [mounted, byChain]);
   return { ready: mounted, wallets };
+}
+
+const DEV_WALLETS: [string, string][] = [
+  ["MetaMask", "EVM"],
+  ["Phantom", "EVM"],
+  ["Rabby", "EVM"],
+  ["Backpack", "SOLANA"],
+  ["Coinbase Wallet", "EVM"],
+  ["OKX Wallet", "EVM"],
+  ["Solflare", "SOLANA"],
+  ["Trust Wallet", "EVM"],
+  ["Xverse", "BITCOIN"],
+  ["Leather", "STACKS"],
+  ["Unisat", "BITCOIN"],
+  ["Suiet", "SUI"],
+];
+
+/**
+ * Dev only: `?devWallets=10` on any page offers that many made up wallets
+ * on top of what this browser really has, so the welcome page's overflow
+ * can be seen without ten extensions. They cannot connect. A no-op in
+ * production, where the caller never reaches it.
+ */
+function withDevWallets(found: InstalledWallet<IXConnector>[]): InstalledWallet<IXConnector>[] {
+  const count = Number(new URLSearchParams(window.location.search).get("devWallets"));
+  if (!Number.isFinite(count) || count <= 0) return found;
+  const fake = DEV_WALLETS.slice(0, Math.min(count, DEV_WALLETS.length)).map(([name, xChainType]) => {
+    const connector = { id: `dev.${name.toLowerCase().replace(/ /g, "")}`, name, xChainType, isInstalled: true } as unknown as IXConnector;
+    const extra = name === "Phantom" ? [{ ...connector, xChainType: "SOLANA" } as IXConnector] : [];
+    return { name, connectors: [connector, ...extra], primary: connector };
+  });
+  return [...found, ...fake];
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isDetectableWallet,
   pickInstalledWallets,
+  splitWalletOffer,
   type ConnectorLike,
 } from "./installed-wallets";
 
@@ -105,5 +106,53 @@ describe("pickInstalledWallets", () => {
       BITCOIN: [c("xverse", "Xverse", "BITCOIN")],
     });
     expect(wallets.map((w) => w.name)).toEqual(["Xverse", "Leather"]);
+  });
+});
+
+describe("splitWalletOffer", () => {
+  const names = ["MetaMask", "Phantom", "Rabby", "Backpack", "Coinbase Wallet", "OKX Wallet", "Solflare", "Trust Wallet", "Xverse", "Leather"];
+  const wallets = (n: number) => names.slice(0, n).map((name) => ({ name }));
+
+  it("shows nothing when nothing is detected", () => {
+    expect(splitWalletOffer([], null)).toEqual({ shown: [], hidden: [] });
+    expect(splitWalletOffer([], "Rabby")).toEqual({ shown: [], hidden: [] });
+  });
+
+  it("shows one or two wallets in full, as before, remembered or not", () => {
+    expect(splitWalletOffer(wallets(1), null)).toEqual({ shown: wallets(1), hidden: [] });
+    expect(splitWalletOffer(wallets(2), null)).toEqual({ shown: wallets(2), hidden: [] });
+    expect(splitWalletOffer(wallets(2), "Phantom")).toEqual({ shown: wallets(2), hidden: [] });
+  });
+
+  it("with three, shows the first and folds two", () => {
+    const { shown, hidden } = splitWalletOffer(wallets(3), null);
+    expect(shown.map((w) => w.name)).toEqual(["MetaMask"]);
+    expect(hidden.map((w) => w.name)).toEqual(["Phantom", "Rabby"]);
+  });
+
+  it("with three, leads with the remembered wallet and keeps the rest in order", () => {
+    const { shown, hidden } = splitWalletOffer(wallets(3), "rabby");
+    expect(shown.map((w) => w.name)).toEqual(["Rabby"]);
+    expect(hidden.map((w) => w.name)).toEqual(["MetaMask", "Phantom"]);
+  });
+
+  it("with ten, shows one and folds nine", () => {
+    const { shown, hidden } = splitWalletOffer(wallets(10), null);
+    expect(shown.map((w) => w.name)).toEqual(["MetaMask"]);
+    expect(hidden).toHaveLength(9);
+    expect(hidden.map((w) => w.name)).toEqual(names.slice(1));
+  });
+
+  it("with ten, leads with the remembered wallet when it is still installed", () => {
+    const { shown, hidden } = splitWalletOffer(wallets(10), "Coinbase Wallet");
+    expect(shown.map((w) => w.name)).toEqual(["Coinbase Wallet"]);
+    expect(hidden).toHaveLength(9);
+    expect(hidden.map((w) => w.name)).not.toContain("Coinbase Wallet");
+  });
+
+  it("falls back to the first when the remembered wallet is gone", () => {
+    const { shown, hidden } = splitWalletOffer(wallets(10), "Keplr");
+    expect(shown.map((w) => w.name)).toEqual(["MetaMask"]);
+    expect(hidden).toHaveLength(9);
   });
 });

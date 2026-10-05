@@ -37,6 +37,12 @@ export type Copy = {
   continueWithWallet: (name: string) => string;
   walletConnecting: (name: string) => string;
   walletConnectFailed: string;
+  /** The pill that folds the rest when more than two wallets are found: "More wallets (9)". */
+  moreWallets: (count: number) => string;
+  /** Heading of the list (sheet or popover) that pill opens. */
+  moreWalletsTitle: string;
+  /** A wallet family as read beside a wallet's name in that list, keyed by the SDK's chain type. */
+  walletFamilyNames: Record<string, string>;
 
   /** The quiet "Beta" pill beside the wordmark; BERTH_BETA in lib/beta.ts hides it everywhere at once. */
   beta: {
@@ -2599,6 +2605,19 @@ export const COPY: Copy = {
   continueWithWallet: (name) => `Continue with ${name}`,
   walletConnecting: (name) => `Waiting for ${name}…`,
   walletConnectFailed: "Could not connect. Try again, or continue with email.",
+  moreWallets: (count) => `More wallets (${count})`,
+  moreWalletsTitle: "Continue with a wallet",
+  walletFamilyNames: {
+    EVM: "Ethereum",
+    SOLANA: "Solana",
+    BITCOIN: "Bitcoin",
+    SUI: "Sui",
+    STACKS: "Stacks",
+    ICON: "ICON",
+    STELLAR: "Stellar",
+    NEAR: "NEAR",
+    INJECTIVE: "Injective",
+  },
 
   beta: {
     tag: "Beta",

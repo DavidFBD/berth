@@ -129,3 +129,54 @@ export function pickInstalledWallets<C extends ConnectorLike>(
   );
   return wallets;
 }
+
+/** Above this many wallets the way in folds the rest behind "More wallets". */
+export const WALLETS_SHOWN_IN_FULL = 2;
+
+/** The wallets offered as their own pill, and the ones folded behind "More wallets". */
+export type WalletOffer<W> = { shown: W[]; hidden: W[] };
+
+/**
+ * Split the detected wallets for the way in, so ten extensions never crowd
+ * the welcome page. Two or fewer are all shown, as before. More than two
+ * show one: the wallet last used on this device when it is still here
+ * (matched by name, as `pickInstalledWallets` groups them), otherwise the
+ * first in the usual order. The rest keep their order behind the fold.
+ */
+export function splitWalletOffer<W extends { name: string }>(
+  wallets: readonly W[],
+  rememberedName: string | null,
+): WalletOffer<W> {
+  if (wallets.length <= WALLETS_SHOWN_IN_FULL) return { shown: [...wallets], hidden: [] };
+  const key = rememberedName?.trim().toLowerCase();
+  const found = key ? wallets.findIndex((w) => w.name.trim().toLowerCase() === key) : -1;
+  const lead = found === -1 ? 0 : found;
+  return {
+    shown: [wallets[lead]],
+    hidden: wallets.filter((_, i) => i !== lead),
+  };
+}
+
+const LAST_WALLET_KEY = "berth.last-wallet.v1";
+
+/**
+ * The name of the wallet last picked on the way in on this device. Kept
+ * apart from the restore record (hooks/use-wallet-session), which is
+ * forgotten on sign out; this is only a name, so it can outlive one.
+ */
+export function lastWalletName(): string | null {
+  try {
+    const raw = localStorage.getItem(LAST_WALLET_KEY);
+    return raw && raw.trim() ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberLastWallet(name: string): void {
+  try {
+    localStorage.setItem(LAST_WALLET_KEY, name);
+  } catch {
+    // Private windows and blocked storage: the first wallet leads instead.
+  }
+}

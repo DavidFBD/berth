@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Wallet } from "@phosphor-icons/react";
+import { MoreWallets, WalletMark } from "@/components/welcome/more-wallets";
 import { toast } from "@/lib/toast";
 import { isUserRejectedError } from "@sodax/dapp-kit";
 import {
@@ -25,7 +26,12 @@ import { COPY } from "@/lib/copy";
 import { useMounted } from "@/hooks/use-mounted";
 import { useWalletRestore } from "@/hooks/use-wallet-restore";
 import { useInstalledWallets } from "@/hooks/use-installed-wallets";
-import type { InstalledWallet } from "@/lib/installed-wallets";
+import {
+  lastWalletName,
+  rememberLastWallet,
+  splitWalletOffer,
+  type InstalledWallet,
+} from "@/lib/installed-wallets";
 import { pendingReferralCode } from "@/lib/referral";
 import { NotHereCard, useAvailability } from "@/components/availability/availability";
 import { useRefusedForSanctions } from "@/lib/unavailable-refusal";
@@ -205,11 +211,18 @@ function WayIn({
   const { wallets } = useInstalledWallets();
   const connect = useXConnect();
   const [pending, setPending] = useState<string | null>(null);
+  // localStorage, safe to read in render: wallets only arrive once mounted
+  // (hooks/use-installed-wallets), so the server never gets this far.
+  const known = wallets.length > 0;
+  const remembered = useMemo(() => (known ? lastWalletName() : null), [known]);
+  const { shown, hidden } = splitWalletOffer(wallets, remembered);
+  const folded = hidden.length > 0;
 
   const pick = async (wallet: InstalledWallet<IXConnector>) => {
     setPending(wallet.name);
     try {
       await connect.mutateAsync(wallet.primary);
+      rememberLastWallet(wallet.name);
     } catch (error) {
       // A dismissed prompt is a decision, not a failure.
       if (!isUserRejectedError(error)) toast.error(copy.walletConnectFailed);
@@ -221,9 +234,37 @@ function WayIn({
   const filled =
     "h-12 rounded-full px-[22px] text-[14.5px] font-medium sm:h-11";
   const size = quiet ? "h-10 px-4 text-[13.5px]" : "h-12 px-[22px] text-[14.5px] sm:h-11";
+  // Folded on a phone, the one wallet and "More wallets" share a row, so the
+  // hero never runs past two rows of buttons: tighter, and the wallet by its
+  // name alone (its mark says what it is; the full words stay for readers).
+  const pairSize = quiet ? size : "h-12 px-4 text-[14.5px] sm:h-11 sm:px-[22px]";
   const first = PRIVY_ENABLED
     ? { label: copy.welcomePage.emailCta, onClick: onEmail }
     : { label: copy.connectWallet, onClick: onWallets };
+  const walletPill = (wallet: InstalledWallet<IXConnector>) => {
+    const full = pending === wallet.name ? copy.walletConnecting(wallet.name) : copy.continueWithWallet(wallet.name);
+    const short = pending === wallet.name ? full : wallet.name;
+    return (
+      <button
+        key={wallet.name}
+        type="button"
+        disabled={pending !== null}
+        onClick={() => void pick(wallet)}
+        aria-label={full}
+        className={cn(PILL, folded ? cn(pairSize, "min-w-0 flex-1 sm:flex-none") : size, "disabled:opacity-50")}
+      >
+        <WalletMark icon={wallet.icon} />
+        {folded && !quiet ? (
+          <>
+            <span className="truncate sm:hidden">{short}</span>
+            <span className="hidden truncate sm:inline">{full}</span>
+          </>
+        ) : (
+          full
+        )}
+      </button>
+    );
+  };
   return (
     <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
       {quiet ? (
@@ -235,26 +276,19 @@ function WayIn({
           {first.label}
         </Button>
       )}
-      {PRIVY_ENABLED &&
-        wallets.map((wallet) => (
-          <button
-            key={wallet.name}
-            type="button"
+      {PRIVY_ENABLED && !folded && shown.map(walletPill)}
+      {PRIVY_ENABLED && folded && (
+        <div className={cn("flex gap-2.5", quiet ? "flex-col sm:flex-row" : "flex-row")}>
+          {shown.map(walletPill)}
+          <MoreWallets
+            wallets={hidden}
+            onPick={(wallet) => void pick(wallet)}
             disabled={pending !== null}
-            onClick={() => void pick(wallet)}
-            className={cn(PILL, size, "disabled:opacity-50")}
-          >
-            {wallet.icon ? (
-              // Wallet icons are wallet-provided URLs, often data: URIs, which
-              // next/image does not take.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={wallet.icon} alt="" className="size-4 rounded-sm" />
-            ) : (
-              <Wallet weight="duotone" className="size-4" aria-hidden />
-            )}
-            {pending === wallet.name ? copy.walletConnecting(wallet.name) : copy.continueWithWallet(wallet.name)}
-          </button>
-        ))}
+            pendingName={pending !== null && hidden.some((w) => w.name === pending) ? pending : null}
+            className={cn(pairSize, "shrink-0")}
+          />
+        </div>
+      )}
       {quiet && PRIVY_ENABLED && (
         <button type="button" className={cn(PILL, size)} onClick={onWallets}>
           <Wallet weight="duotone" className="size-4" aria-hidden />
