@@ -6,7 +6,6 @@ import { toast } from "@/lib/toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
 import { useStaffSignInRunning } from "@/components/staff/entry";
 import { AnimatePresence, motion } from "motion/react";
-import { useAddFunds } from "@privy-io/react-auth";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -29,6 +28,8 @@ import { ConnectButton } from "@/components/wallet";
 import { RankChip } from "@/components/rewards-panel";
 import { ADD_EMAIL_ANCHOR } from "@/components/social/social-section";
 import { useCopy } from "@/components/settings-provider";
+import { ArrivalPanel, useAddMoney } from "@/components/funding-handoff";
+import type { ArrivalView } from "@/lib/funding-handoff";
 import { useMounted } from "@/hooks/use-mounted";
 import { useAccountWallets } from "@/hooks/use-profile";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
@@ -182,7 +183,7 @@ export function EmailDrawerBody({
         <Panel className="divide-y divide-border">
           {address ? (
             <>
-              <FundButton address={address} />
+              <FundButton address={address} surface="account" />
               <ReceiveRow
                 title={copy.receiveEvmTitle}
                 description={copy.receiveEvmBody}
@@ -291,7 +292,16 @@ export function useEmailSession(): boolean {
  * account's own addresses to send crypto to), so a new account's first
  * step is one tap and one choice rather than a search through the drawer.
  */
-export function AddMoneyDrawer({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function AddMoneyDrawer({
+  open,
+  onOpenChange,
+  arrival,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** A card payment went through: the wait for its money, and what follows, in the ways to pay's place. */
+  arrival?: AddMoneyArrival | null;
+}) {
   const privy = usePrivyEmbeddedWallet();
   const mounted = useMounted();
   const copy = useCopy();
@@ -305,13 +315,26 @@ export function AddMoneyDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{copy.calmHome.addMoneyTitle}</DrawerTitle>
-          <DrawerDescription>{copy.calmHome.addMoneySub}</DrawerDescription>
+          <DrawerDescription className={arrival ? "sr-only" : undefined}>
+            {arrival ? copy.funding.closeLine : copy.calmHome.addMoneySub}
+          </DrawerDescription>
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          {arrival ? (
+            <Panel className="p-3">
+              <ArrivalPanel
+                view={arrival.view}
+                target={arrival.target}
+                listingName={arrival.listingName}
+                onChoose={arrival.onChoose}
+                onClose={() => onOpenChange(false)}
+              />
+            </Panel>
+          ) : (
           <Panel className="divide-y divide-border">
             {address ? (
               <>
-                <FundButton address={address} title={copy.calmHome.cardRowTitle} />
+                <FundButton address={address} title={copy.calmHome.cardRowTitle} surface="add-money" />
                 <ReceiveRow
                   title={copy.receiveEvmTitle}
                   description={copy.receiveEvmBody}
@@ -332,11 +355,20 @@ export function AddMoneyDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
               <p className="px-3 py-3 text-sm text-muted-foreground">{copy.ctaOpeningAccount}</p>
             )}
           </Panel>
+          )}
         </div>
       </DrawerContent>
     </Drawer>
   );
 }
+
+/** What the Add money drawer shows once a card payment went through (components/funding-handoff). */
+export type AddMoneyArrival = {
+  view: ArrivalView;
+  target: "buy" | "choose" | "none";
+  listingName?: string;
+  onChoose: () => void;
+};
 
 /**
  * Opened from the email nudge: bring the add-email row (inside RewardsPanel)
@@ -444,7 +476,7 @@ function SolanaReceive() {
  * row (no drawer-on-drawer), and a copy whose toast confirms the shortened
  * form so you can double-check what landed in the clipboard.
  */
-function ReceiveRow({
+export function ReceiveRow({
   title,
   description,
   address,
@@ -519,42 +551,19 @@ function ReceiveRow({
   );
 }
 
-/** USDC on Base — cheap, every onramp speaks it; the default landing asset. */
-const FUND_DESTINATION_CHAIN = "eip155:8453" as const;
-const FUND_DESTINATION_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-
 /**
- * Privy's unified funding modal (useAddFunds): surfaces every method enabled
- * in the dashboard — card/Apple/Google Pay onramps (incl. Stripe), external
- * wallet transfer, cross-chain deposit — no code changes when toggles flip.
+ * Privy's funding window (components/funding-handoff useAddMoney): card,
+ * Apple Pay and Google Pay through whichever onramps the dashboard enables,
+ * landing USDC on Base, and the wait for it before the buy.
  */
-function FundButton({ address, title }: { address: string; title?: string }) {
-  const { addFunds } = useAddFunds();
+function FundButton({ address, title, surface }: { address: string; title?: string; surface: string }) {
+  const addMoney = useAddMoney(surface);
   const copy = useCopy();
 
   return (
     <button
       type="button"
-      onClick={() => {
-        addFunds({
-          destination: {
-            address,
-            chain: FUND_DESTINATION_CHAIN,
-            asset: FUND_DESTINATION_ASSET,
-          },
-          fiat: {},
-          crypto: {},
-        })
-          .then(() => {
-            toast.success(copy.fundsAddedTitle, {
-              description: copy.fundsAddedBody,
-            });
-          })
-          .catch(() => {
-            // Rejection includes plain user exit — stay quiet unless nothing
-            // is configured, which Privy surfaces inside its own modal.
-          });
-      }}
+      onClick={() => addMoney(address)}
       className="flex min-h-14 w-full items-center gap-3 px-3 py-3 text-left transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
     >
       <PlusCircle className="size-5 text-primary" />

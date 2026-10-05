@@ -1,6 +1,6 @@
 "use client";
 
-import { trackOnce } from "@/lib/analytics";
+import { track, trackOnce } from "@/lib/analytics";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
@@ -53,6 +53,7 @@ import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { HOME_CHAIN } from "@/lib/account";
 import {
   CASH_LISTING,
+  rowName,
   vaultListing,
   type Listing,
   type TokenListing,
@@ -70,6 +71,11 @@ import { TermsSheet } from "@/components/terms-sheet";
 import { NoAccountHere, NotHereBanner, useAvailability } from "@/components/availability/availability";
 import { useUnavailableRefused } from "@/lib/unavailable-refusal";
 import { FirstPathProvider, HomePathCard, pathOnScreen, useLiveFirstPath } from "@/components/first-path";
+import { FundingProvider } from "@/components/funding-handoff";
+import { useFundingHandoff } from "@/hooks/use-funding-handoff";
+import { FUND_USDC_BASE, handoffTarget } from "@/lib/funding-handoff";
+import { toast } from "@/lib/toast";
+import { ChainKeys, type SpokeChainKey } from "@sodax/sdk";
 import { NUDGES_SAID_BY_PATH, buyStepState, pathPlace } from "@/lib/first-path";
 
 /** The board's frame, shared with the dev gallery (/dev/board?home=…) so the two cannot drift. */
@@ -306,11 +312,28 @@ function SignedInHome() {
   // An email account adds money in its own small drawer; a wallet account's
   // money lives in its wallet, so it keeps the account drawer as before.
   const openAddMoney = () => {
-    if (emailSession) setAddMoneyOpen(true);
+    if (emailSession) showAddMoney();
     else openAccount();
   };
   // A buy or sell opened from the board drawer brings the board back when it closes.
   const [boardReturn, setBoardReturn] = useState(false);
+  // From adding money to the buy (lib/funding-handoff): a card payment that
+  // went through is watched until its USDC lands on Base, then the order
+  // that asked for it reopens paying with it, or the person chooses one.
+  const handoff = useFundingHandoff();
+  // The buy that sent the person to add money, when one did.
+  const [topUpFor, setTopUpFor] = useState<Listing | null>(null);
+  // Money that just arrived, for the next buy's "paying with" slot.
+  const [preferPay, setPreferPay] = useState<{ chainKey: SpokeChainKey; address: string } | null>(null);
+  // The ways to pay, unless money is still on its way (then the wait shows): a wait that settled is let go first.
+  const showAddMoney = () => {
+    if (handoff.view?.kind !== "waiting") {
+      if (handoff.view) handoff.end();
+      // Opened afresh: no order is waiting on this money (a top up sets its own just after).
+      setTopUpFor(null);
+    }
+    setAddMoneyOpen(true);
+  };
 
   // Email login is the primary path; the external wallet drawer is the
   // fallback for signed-in users reaching for a non-EVM source chain.
@@ -415,6 +438,8 @@ function SignedInHome() {
   const onBuyOpenChange = (next: boolean) => {
     setBuyOpen(next);
     if (!next) {
+      // The arrived money was offered once; the sweep picks from here on.
+      setPreferPay(null);
       // A buy closed while the last check asks: the order is not placed.
       if (confirmAnswer.current) answerConfirm(false);
       returnToChat();
@@ -469,7 +494,7 @@ function SignedInHome() {
       // From the drawer's Next step to the home's own: the drawer closes first.
       money: () => {
         onAccountOpenChange(false);
-        if (emailSession) setAddMoneyOpen(true);
+        if (emailSession) showAddMoney();
         else openBoard();
       },
       firstBuy: () => onAccountOpenChange(false),
@@ -479,6 +504,85 @@ function SignedInHome() {
   const pathWaiting = path.view.kind === "wait";
   const spendable = funds.totalUsd !== undefined && funds.totalUsd >= MIN_ORDER_USD ? funds.totalUsd : undefined;
 
+  // The card payment went through: the wait shows in the Add money drawer,
+  // wherever the payment began (the account drawer closes for it).
+  const onFunded = (watch: Parameters<typeof handoff.begin>[0]) => {
+    handoff.begin(watch);
+    onAccountOpenChange(false);
+    setAddMoneyOpen(true);
+  };
+  const handoffTo = handoffTarget({ hasListing: topUpFor !== null, canBuy: pageAvailability.available });
+  const topUpName = topUpFor && topUpFor.kind !== "vault" ? rowName(topUpFor) : undefined;
+  // Once the money lands: the next buy pays with it, and the order that
+  // asked for it reopens. With the drawer closed meanwhile, a toast offers
+  // the same way on rather than a drawer opening over whatever is in hand.
+  const arrived = handoff.view?.kind === "arrived";
+  const handedOff = useRef<number | null>(null);
+  // On the path its first buy card is the next thing on the home; otherwise every stock and fund.
+  const showChoice = () => {
+    if (path.view.kind === "step" && path.view.step === "firstBuy") window.scrollTo({ top: 0, behavior: "smooth" });
+    else openBoard();
+  };
+  useEffect(() => {
+    const watch = handoff.watch;
+    if (!arrived || !watch || handedOff.current === watch.startedAt) return;
+    const settle = () => {
+      handedOff.current = watch.startedAt;
+      track("add_money_arrived", { handoff: handoffTo });
+    };
+    if (handoffTo === "none") return settle();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the arrival is only known from a chain read
+    setPreferPay({ chainKey: ChainKeys.BASE_MAINNET, address: FUND_USDC_BASE });
+    if (handoffTo === "choose") {
+      settle();
+      // Closed while it was on its way: one quiet way on, in a toast.
+      if (!addMoneyOpen) {
+        handoff.end();
+        toast.success(copy.funding.arrivedTitle, { id: "funding-arrived", action: { label: copy.funding.arrivedChoose, onClick: showChoice } });
+      }
+      return;
+    }
+    if (!topUpFor) return settle();
+    const listing = topUpFor;
+    const name = listing.kind !== "vault" ? rowName(listing) : copy.calmHome.buyAction;
+    if (addMoneyOpen) {
+      // A beat on the arrival line, then the order it was added for.
+      const timer = setTimeout(() => {
+        settle();
+        setAddMoneyOpen(false);
+        handoff.end();
+        setTopUpFor(null);
+        openBuy(listing);
+      }, 1_600);
+      return () => clearTimeout(timer);
+    }
+    // Closed meanwhile: a toast offers the order rather than a drawer opening over whatever is in hand.
+    settle();
+    handoff.end();
+    setTopUpFor(null);
+    toast.success(copy.funding.arrivedTitle, {
+      id: "funding-arrived",
+      action: { label: copy.calmHome.firstBuy(name), onClick: () => openBuy(listing) },
+    });
+    // Once per watch: openBuy, showChoice and the copy are read as they stand when it lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived, handoff.watch, handoffTo, topUpFor, addMoneyOpen]);
+  const chooseAfterArrival = () => {
+    setAddMoneyOpen(false);
+    handoff.end();
+    showChoice();
+  };
+  const onAddMoneyOpenChange = (next: boolean) => {
+    setAddMoneyOpen(next);
+    // Closed on a stopped wait, or on an arrival with no order to reopen:
+    // nothing more to watch. While waiting, it goes on, and an order that
+    // asked for the money is still offered once it lands.
+    if (!next && handoff.view && (handoff.view.kind === "stopped" || (handoff.view.kind === "arrived" && handoffTo !== "buy"))) {
+      handoff.end();
+      setTopUpFor(null);
+    }
+  };
+
   // Where Berth is not available, a sign in the server made no account
   // for (lib/server/availability) says so instead of an empty board.
   const availability = pageAvailability;
@@ -486,6 +590,7 @@ function SignedInHome() {
 
   return (
     <FirstPathProvider value={path}>
+      <FundingProvider onFunded={onFunded}>
       {noAccountHere ? (
         <NoAccountHere availability={availability} />
       ) : (
@@ -674,12 +779,21 @@ function SignedInHome() {
             />
           </SectionDrawer>
         )}
-        <AddMoneyDrawer open={addMoneyOpen} onOpenChange={setAddMoneyOpen} />
+        <AddMoneyDrawer
+          open={addMoneyOpen}
+          onOpenChange={onAddMoneyOpenChange}
+          arrival={
+            handoff.view
+              ? { view: handoff.view, target: handoffTo, listingName: topUpName, onChoose: chooseAfterArrival }
+              : null
+          }
+        />
 
         <DraftLinkOpener onBuy={openDraftBuy} onSell={openDraftSell} />
         <DepositDrawer
           listing={buyListing}
           prefill={buyPrefill}
+          preferPay={preferPay}
           open={buyGate === "drawer"}
           confirmTerms={pageAvailability.available ? confirmTerms : undefined}
           onOpenChange={onBuyOpenChange}
@@ -690,6 +804,8 @@ function SignedInHome() {
             setChatReturn(false);
             setBuyOpen(false);
             openAddMoney();
+            // Money added from here comes back to this order (lib/funding-handoff).
+            setTopUpFor(buyListing);
           }}
         />
         <SellHost
@@ -745,6 +861,7 @@ function SignedInHome() {
       {askAvailable && <AskDock onOpen={() => openChat()} hidden={anyDrawerOpen} busy={chatBusy} />}
       </>
       )}
+      </FundingProvider>
     </FirstPathProvider>
   );
 }
