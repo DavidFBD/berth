@@ -123,15 +123,30 @@ alter table orders add column if not exists delivered_to text;
 -- starve the ones behind it.
 alter table orders add column if not exists hold_attempted_at timestamptz;
 
--- The chain a buy was delivered on (docs/plans/2026-10-05-robinhood-chain-
--- delivery): null or 'sonic' is the hub, where every buy has landed so far;
--- 'robinhood' is the person's own wallet on Robinhood Chain (chain 4663),
--- for accounts on the ROBINHOOD_DELIVERY_USERS switch. Null means sonic, so
--- no existing row is rewritten and an upsert can still fill it in later.
--- The hold check reads Sonic balances only, so it never judges a row whose
--- chain is not sonic (lib/server/holds).
-alter table orders add column if not exists delivered_chain text
-  check (delivered_chain in ('sonic', 'robinhood'));
+-- holding_chain: the chain where the stock token sits for this order
+-- (docs/plans/2026-10-05-robinhood-chain-delivery). For a buy, the chain it
+-- arrived on; for a sell, the chain it left from. It is never the payout
+-- chain of a sell (that is pay_chain). Null or 'sonic' is the hub, where
+-- every order has sat so far; 'robinhood' is the person's own wallet on
+-- Robinhood Chain (chain 4663). Null means sonic, so no existing row is
+-- rewritten and an upsert can still fill it in later. Values come from the
+-- SDK chain key only ('robinhood', never a chain id). The hold check reads
+-- Sonic balances only, so it never judges a row whose chain is not sonic
+-- (lib/server/holds).
+alter table orders add column if not exists holding_chain text;
+-- Named, and added on its own, so it exists even where the column was added
+-- earlier without it, and so a later widening can drop it by name.
+-- (Statements inside the block lead with their semicolons, as in
+-- merge_accounts, so scripts/db-push.mjs keeps the block whole.)
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'orders'::regclass and conname = 'orders_holding_chain_check'
+  ) then
+    alter table orders add constraint orders_holding_chain_check
+      check (holding_chain in ('sonic', 'robinhood'))
+  ; end if
+; end $$;
 
 -- The cron's candidate query filters unchecked buys by the same effective
 -- date expression it indexes here; the partial index keeps that a short

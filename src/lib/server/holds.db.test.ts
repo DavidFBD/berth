@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setSqlClient, type SqlClient } from "./db";
 import { makeTestDb } from "./pglite-test-db";
@@ -70,7 +72,7 @@ async function order({
   filledAt = daysAgo(31),
   placedAt = null,
   deliveredTo,
-  deliveredChain = null,
+  holdingChain = null,
 }: {
   owner: string;
   userId?: string | null;
@@ -81,17 +83,17 @@ async function order({
   placedAt?: Date | null;
   /** Defaults to a hub wallet derived from the owner; pass null for none. */
   deliveredTo?: string | null;
-  /** orders.delivered_chain: null (every row before Robinhood Chain delivery), 'sonic' or 'robinhood'. */
-  deliveredChain?: "sonic" | "robinhood" | null;
+  /** orders.holding_chain: null (every row before Robinhood Chain delivery), 'sonic' or 'robinhood'. */
+  holdingChain?: "sonic" | "robinhood" | null;
 }): Promise<string> {
   const intentTx = tx();
   const delivered =
     deliveredTo === undefined ? hub(Number.parseInt(owner.slice(2), 16)) : deliveredTo;
   await sql.query(
     `insert into orders (user_id, wallet_address, intent_tx, direction, listing_symbol,
-       listing_address, quantity, placed_at, filled_at, delivered_to, delivered_chain)
+       listing_address, quantity, placed_at, filled_at, delivered_to, holding_chain)
      values ($1, $2, $3, $4, 'X', $5, $6, $7, $8, $9, $10)`,
-    [userId, owner, intentTx, direction, listing, quantity, placedAt, filledAt, delivered, deliveredChain],
+    [userId, owner, intentTx, direction, listing, quantity, placedAt, filledAt, delivered, holdingChain],
   );
   return intentTx;
 }
@@ -489,7 +491,7 @@ describe("pendingHolds", () => {
 describe("a buy delivered to Robinhood Chain", () => {
   it("is never judged, so a zero Sonic balance cannot forfeit it", async () => {
     const owner = await account(40);
-    const robinhood = await order({ owner: owner.wallet_address!, deliveredChain: "robinhood", filledAt: daysAgo(45) });
+    const robinhood = await order({ owner: owner.wallet_address!, holdingChain: "robinhood", filledAt: daysAgo(45) });
 
     expect(await holdCandidates(NOW)).toEqual([]);
     const reader = chain(0n);
@@ -507,8 +509,8 @@ describe("a buy delivered to Robinhood Chain", () => {
   it("leaves the Sonic buys beside it judged exactly as before", async () => {
     const owner = await account(41);
     const legacy = await order({ owner: owner.wallet_address!, quantity: "1", filledAt: daysAgo(33) });
-    const sonic = await order({ owner: owner.wallet_address!, quantity: "1", deliveredChain: "sonic", filledAt: daysAgo(32) });
-    const robinhood = await order({ owner: owner.wallet_address!, quantity: "1", deliveredChain: "robinhood", filledAt: daysAgo(31) });
+    const sonic = await order({ owner: owner.wallet_address!, quantity: "1", holdingChain: "sonic", filledAt: daysAgo(32) });
+    const robinhood = await order({ owner: owner.wallet_address!, quantity: "1", holdingChain: "robinhood", filledAt: daysAgo(31) });
 
     expect((await holdCandidates(NOW)).map((candidate) => candidate.intentTx)).toEqual([legacy, sonic]);
     const reader = chain(0n);
@@ -526,7 +528,7 @@ describe("a buy delivered to Robinhood Chain", () => {
 
   it("is not listed as waiting, since no verdict is coming yet", async () => {
     const owner = await account(42);
-    await order({ owner: owner.wallet_address!, deliveredChain: "robinhood", filledAt: daysAgo(3) });
+    await order({ owner: owner.wallet_address!, holdingChain: "robinhood", filledAt: daysAgo(3) });
     const listed = await order({ owner: owner.wallet_address!, filledAt: daysAgo(2) });
 
     expect((await pendingHolds(owner.id)).map((hold) => hold.ref)).toEqual([listed]);
@@ -538,7 +540,7 @@ describe("a buy delivered to Robinhood Chain", () => {
     // A Robinhood Chain row stamped paid by hand (nothing in this build
     // stamps one): its quantity sits on another chain, so it must not raise
     // the Sonic buy's requirement.
-    const robinhood = await order({ owner: owner.wallet_address!, quantity: "5", deliveredChain: "robinhood", deliveredTo: wallet, filledAt: daysAgo(60) });
+    const robinhood = await order({ owner: owner.wallet_address!, quantity: "5", holdingChain: "robinhood", deliveredTo: wallet, filledAt: daysAgo(60) });
     await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(1), robinhood]);
     const sonic = await order({ owner: owner.wallet_address!, quantity: "1", deliveredTo: wallet, filledAt: daysAgo(31) });
 
@@ -548,6 +550,22 @@ describe("a buy delivered to Robinhood Chain", () => {
 
   it("is refused by the schema under any chain name it does not know", async () => {
     const owner = await account(44);
-    await expect(order({ owner: owner.wallet_address!, deliveredChain: "base" as "sonic" })).rejects.toThrow();
+    await expect(order({ owner: owner.wallet_address!, holdingChain: "base" as "sonic" })).rejects.toThrow();
+  });
+
+  it("keeps its check by name, and adds it again where the column came without one", async () => {
+    const named = "select count(*)::int as n from pg_constraint where conrelid = 'orders'::regclass and conname = 'orders_holding_chain_check'";
+    expect(await sql.query(named)).toEqual([{ n: 1 }]);
+    // The column already there without its check (an earlier ALTER): the
+    // schema's own statements, run again, put the check back exactly once.
+    await sql.query("alter table orders drop constraint orders_holding_chain_check");
+    const schema = readFileSync(join(process.cwd(), "db/schema.sql"), "utf8")
+      .split(/;\s*\n/)
+      .filter((statement) => statement.includes("holding_chain"));
+    expect(schema).toHaveLength(2);
+    for (let run = 0; run < 2; run += 1) for (const statement of schema) await sql.query(statement);
+    expect(await sql.query(named)).toEqual([{ n: 1 }]);
+    const owner = await account(45);
+    await expect(order({ owner: owner.wallet_address!, holdingChain: "4663" as "sonic" })).rejects.toThrow();
   });
 });

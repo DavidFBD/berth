@@ -31,7 +31,7 @@ import type { Hold } from "@/lib/profile-types";
  * A buy with no recorded delivery wallet, or of an address that is no
  * listing this build knows (neither a token listing nor a vault in the SDK
  * registry), is unverifiable and never judged or listed. So is a buy
- * delivered on any chain but Sonic (`orders.delivered_chain`, null meaning
+ * held on any chain but Sonic (`orders.holding_chain`, null meaning
  * sonic), since the balance read below is on Sonic only (see ON_SONIC).
  * Held: `held_30_days` is awarded once, deduped by the buy's intent tx,
  * parked unannounced so the toast fires the next time the person looks,
@@ -63,15 +63,15 @@ const LISTING_DECIMALS = 18;
 const EFFECTIVE_AT = "coalesce(o.filled_at, o.placed_at, o.created_at)";
 
 /**
- * Delivered on the hub, where readDeliveredBalances looks: `delivered_chain`
+ * Delivered on the hub, where readDeliveredBalances looks: `holding_chain`
  * null (every row before Robinhood Chain delivery) or 'sonic'. A buy
  * delivered to Robinhood Chain sits in the person's own wallet there, so a
  * Sonic balanceOf would read zero and forfeit it for good. Until the check
- * can read the delivery chain (plan P1b, before 4 November, the first day
+ * can read the holding chain (plan P1b, before 4 November, the first day
  * such a buy could fall due), it is neither judged, nor listed as waiting,
  * nor counted as paid toward another buy.
  */
-const ON_SONIC = (alias: string) => `coalesce(${alias}.delivered_chain, 'sonic') = 'sonic'`;
+const ON_SONIC = (alias: string) => `coalesce(${alias}.holding_chain, 'sonic') = 'sonic'`;
 
 /**
  * A filled buy with a known delivery wallet, on Sonic. Quantity on a buy is what the
