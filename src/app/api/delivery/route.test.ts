@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { getAddress } from "viem";
 import type { Availability } from "@/lib/availability";
+import { hubDelivery } from "@/lib/delivery";
 
 /**
  * The delivery route behind ROBINHOOD_DELIVERY_USERS: off for everyone
@@ -32,7 +33,8 @@ const ask = async (country?: string) =>
     }),
   )).json();
 
-const HUB = { robinhood: false, address: null };
+const HUB = hubDelivery;
+const RH = (address: string) => ({ chainKey: "robinhood", address: getAddress(address), reason: "switched_on" });
 
 beforeEach(() => {
   availability = undefined;
@@ -45,41 +47,41 @@ afterEach(() => vi.unstubAllEnvs());
 describe("POST /api/delivery", () => {
   it("answers the hub for everyone while the switch is empty, without reading wallets", async () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
-    expect(await ask("NL")).toEqual(HUB);
+    expect(await ask("NL")).toEqual(HUB("not_listed"));
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "someone-else");
-    expect(await ask("NL")).toEqual(HUB);
+    expect(await ask("NL")).toEqual(HUB("not_listed"));
     expect(accountEvmAddresses).not.toHaveBeenCalled();
   });
 
   it("delivers a switched account to its home EVM wallet on Robinhood Chain", async () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
-    expect(await ask("NL")).toEqual({ robinhood: true, address: getAddress(HOME) });
+    expect(await ask("NL")).toEqual(RH(HOME));
   });
 
   it("switches on by a wallet as well as by user id", async () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", SIGNER.toUpperCase().replace("0X", "0x"));
-    expect(await ask("NL")).toEqual({ robinhood: true, address: getAddress(HOME) });
+    expect(await ask("NL")).toEqual(RH(HOME));
   });
 
   it("falls back to the signing wallet when the account has no home EVM wallet", async () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     accountEvmAddresses.mockImplementation(async () => ({ home: null, all: [] }));
-    expect(await ask("NL")).toEqual({ robinhood: true, address: getAddress(SIGNER) });
+    expect(await ask("NL")).toEqual(RH(SIGNER));
     // A Solana-only account has nothing Robinhood Chain can pay.
     wallet = "7EYnhQoR9YM3N7UoaKRoA44Uy8JeaZV3qyouov87awMs";
-    expect(await ask("NL")).toEqual(HUB);
+    expect(await ask("NL")).toEqual(HUB("no_evm_wallet"));
   });
 
-  it("keeps a switched account on the hub from the United Kingdom, Canada, Switzerland, or nowhere known", async () => {
+  it("keeps a switched account on the hub from a restricted country, or nowhere known", async () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
-    for (const country of ["GB", "CA", "CH"]) expect(await ask(country), country).toEqual(HUB);
-    expect(await ask()).toEqual(HUB);
+    for (const country of ["GB", "CA", "CH", "JE"]) expect(await ask(country), country).toEqual(HUB("restricted_country"));
+    expect(await ask()).toEqual(HUB("unknown_country"));
   });
 
   it("keeps a switched account on the hub where Berth takes no new buy", async () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     availability = { available: false, reason: "united-states" };
-    expect(await ask("US")).toEqual(HUB);
+    expect(await ask("US")).toEqual(HUB("no_new_buys"));
   });
 
   it("answers the hub when the account's wallets cannot be read", async () => {
@@ -87,6 +89,6 @@ describe("POST /api/delivery", () => {
     accountEvmAddresses.mockImplementation(async () => {
       throw new Error("db down");
     });
-    expect(await ask("NL")).toEqual(HUB);
+    expect(await ask("NL")).toEqual(HUB("read_failed"));
   });
 });
