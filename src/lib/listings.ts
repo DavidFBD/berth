@@ -1,5 +1,6 @@
 import {
   ChainKeys,
+  robinhoodSupportedTokens,
   type Address,
   type LeverageYieldVault,
   type XToken,
@@ -66,6 +67,22 @@ export type TokenListing = {
   decimals: 18;
   /** The wrapper whose legal terms apply. One wrapper at launch. */
   wrapper: "robinhood";
+  /**
+   * The same Robinhood token's own contract on Robinhood Chain (chain 4663,
+   * SDK key `robinhood`): what a buy delivered there lands as, in the
+   * person's own wallet. Equal to ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL in
+   * lib/market-ids, which a test holds it to. Absent only if the SDK's
+   * robinhood spoke stops carrying the token; nothing may then deliver it
+   * there.
+   */
+  rhAddress?: Address;
+  /**
+   * That token's hub asset on Sonic, as the SDK's robinhood spoke names it:
+   * what an intent delivering to Robinhood Chain carries as its output on
+   * the hub. Distinct from `address` (the listing on Sonic, the spoke
+   * entry's `vault`).
+   */
+  rhHubAsset?: Address;
 };
 
 /** One of the cups, in listing shape. Everything on-chain stays on `vault`. */
@@ -82,6 +99,17 @@ export type VaultListing = {
 
 export type Listing = TokenListing | VaultListing;
 
+/**
+ * The SDK's robinhood spoke entry for a ticker (rc.8 carries all twenty
+ * four), read here rather than from lib/market-ids so this module keeps no
+ * local imports: `pnpm listings:verify` loads it straight into Node. The
+ * listings test holds every address to the pinned table, and the entry's
+ * `vault` to the listing's own Sonic address.
+ */
+const ROBINHOOD_SPOKE_TOKENS = robinhoodSupportedTokens as Readonly<
+  Record<string, { address: string; hubAsset: string } | undefined>
+>;
+
 const robinhood = (
   kind: TokenListing["kind"],
   symbol: string,
@@ -89,16 +117,20 @@ const robinhood = (
   issuerName: string,
   category: StockCategory,
   address: Address,
-): TokenListing => ({
-  kind,
-  symbol,
-  name,
-  issuerName,
-  category,
-  address,
-  decimals: 18,
-  wrapper: "robinhood",
-});
+): TokenListing => {
+  const spoke = ROBINHOOD_SPOKE_TOKENS[symbol];
+  return {
+    kind,
+    symbol,
+    name,
+    issuerName,
+    category,
+    address,
+    decimals: 18,
+    wrapper: "robinhood",
+    ...(spoke ? { rhAddress: spoke.address as Address, rhHubAsset: spoke.hubAsset as Address } : {}),
+  };
+};
 
 /**
  * The Robinhood tokens the solver trades on Sonic, in the order the backend

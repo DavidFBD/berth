@@ -10,6 +10,7 @@
 // Exit 1 on any drift, with every difference printed, so it can gate a
 // release. Read-only: no key, no wallet, no funds.
 import { createPublicClient, http, parseAbi } from "viem";
+import { Sodax } from "@sodax/sdk";
 
 // Node strips the types from the .ts import (see the flag in package.json),
 // so the script reads the very table the app ships, not a copy of it.
@@ -99,6 +100,29 @@ if (twinsResponse.ok) {
   }
 } else {
   note(`GET ${ROBINHOOD_TOKENS_URL} answered ${twinsResponse.status}`);
+}
+
+// 1b'. The installed SDK's robinhood spoke, which is what a buy delivered to
+//      Robinhood Chain is built against: each listing's rhAddress and
+//      rhHubAsset (lib/listings) must be the spoke token the SDK knows, and
+//      that token must vault into the listing on Sonic.
+const spokeTokens = new Sodax().config.getSupportedSwapTokensByChainId("robinhood");
+const spokeBySymbol = new Map(spokeTokens.map((token) => [token.symbol, token]));
+for (const listing of TOKEN_LISTINGS) {
+  const spoke = spokeBySymbol.get(listing.symbol);
+  if (!spoke) {
+    note(`${listing.symbol}: the SDK's robinhood spoke has no token of this symbol`);
+    continue;
+  }
+  if (!listing.rhAddress || lower(spoke.address) !== lower(listing.rhAddress))
+    note(`${listing.symbol}: rhAddress ${listing.rhAddress ?? "missing"}, SDK spoke has ${spoke.address}`);
+  if (!listing.rhHubAsset || lower(spoke.hubAsset) !== lower(listing.rhHubAsset))
+    note(`${listing.symbol}: rhHubAsset ${listing.rhHubAsset ?? "missing"}, SDK spoke has ${spoke.hubAsset}`);
+  if (lower(spoke.vault ?? "") !== lower(listing.address))
+    note(`${listing.symbol}: the SDK's robinhood token vaults into ${spoke.vault}, not the listing ${listing.address}`);
+  const pinned = ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[listing.symbol];
+  if (pinned && lower(spoke.address) !== lower(pinned))
+    note(`${listing.symbol}: SDK spoke token ${spoke.address}, lib/market-ids pins ${pinned}`);
 }
 
 // 1c. The solver oracle, which the board and the portfolio price from.

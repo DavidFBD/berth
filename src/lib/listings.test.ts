@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChainKeys, leverageYieldVaults } from "@sodax/sdk";
+import { ChainKeys, leverageYieldVaults, robinhoodSupportedTokens } from "@sodax/sdk";
 import { getAddress, isAddress } from "viem";
 import { MARKET_ID_BY_SYMBOL, ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } from "./market-ids";
 import { TOPICS } from "./x-feed";
@@ -255,5 +255,36 @@ describe("every listing is known to every per ticker table", () => {
     const symbols = new Set(TOKEN_LISTINGS.map((listing) => listing.symbol));
     for (const symbol of Object.keys(MARKET_ID_BY_SYMBOL)) expect(symbols.has(symbol), symbol).toBe(true);
     for (const symbol of Object.keys(ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL)) expect(symbols.has(symbol), symbol).toBe(true);
+  });
+});
+
+/**
+ * Robinhood Chain delivery (docs/plans/2026-10-05-robinhood-chain-delivery,
+ * P0b): every listing knows its own token on Robinhood Chain and the hub
+ * asset an intent delivering there carries. Both come from the SDK's
+ * robinhood spoke; the pinned table in lib/market-ids, verified on chain,
+ * is what they are held to.
+ */
+describe("the Robinhood Chain twin of every listing", () => {
+  it("carries all twenty four, each the pinned token and distinct from the Sonic listing", () => {
+    expect(TOKEN_LISTINGS).toHaveLength(24);
+    const spoke = robinhoodSupportedTokens as Record<string, { address: string; hubAsset: string; vault: string } | undefined>;
+    for (const listing of TOKEN_LISTINGS) {
+      expect(listing.rhAddress, listing.symbol).toBeDefined();
+      expect(listing.rhHubAsset, listing.symbol).toBeDefined();
+      expect(listing.rhAddress, listing.symbol).toBe(ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[listing.symbol]);
+      expect(isAddress(listing.rhHubAsset!), listing.symbol).toBe(true);
+      expect(listing.rhAddress!.toLowerCase(), listing.symbol).not.toBe(listing.address.toLowerCase());
+      expect(listing.rhHubAsset!.toLowerCase(), listing.symbol).not.toBe(listing.address.toLowerCase());
+      expect(listing.rhHubAsset!.toLowerCase(), listing.symbol).not.toBe(listing.rhAddress!.toLowerCase());
+      // The spoke entry vaults into this very listing on Sonic, so the
+      // twin is the right company and not a namesake.
+      expect(spoke[listing.symbol]?.vault.toLowerCase(), listing.symbol).toBe(listing.address.toLowerCase());
+    }
+  });
+
+  it("has a distinct hub asset per listing", () => {
+    const hubAssets = TOKEN_LISTINGS.map((listing) => listing.rhHubAsset!.toLowerCase());
+    expect(new Set(hubAssets).size).toBe(TOKEN_LISTINGS.length);
   });
 });
