@@ -584,7 +584,7 @@ function SignedInHome() {
     // Closed on a stopped wait, or on an arrival with no order to reopen:
     // nothing more to watch. While waiting, it goes on, and an order that
     // asked for the money is still offered once it lands.
-    if (!next && handoff.view && (handoff.view.kind === "stopped" || (handoff.view.kind === "arrived" && handoffTo !== "buy"))) {
+    if (!next && handoff.view && (handoff.view.kind === "stopped" || handoff.view.kind === "unknown" || (handoff.view.kind === "arrived" && handoffTo !== "buy"))) {
       handoff.end();
       setTopUpFor(null);
     }

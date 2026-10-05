@@ -75,6 +75,8 @@ function fundingScene(scene: string | null | undefined): { view: ArrivalView; ta
       return { view: { kind: "waiting", slow: true }, target: "choose" };
     case "stopped":
       return { view: { kind: "stopped" }, target: "choose" };
+    case "unknown":
+      return { view: { kind: "unknown" }, target: "choose" };
     case "arrived":
       return { view: { kind: "arrived", amount: 25_000_000n }, target: "choose" };
     case "buy":

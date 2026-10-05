@@ -1,11 +1,9 @@
-import { MIN_ORDER_USD } from "@/lib/order-minimum";
-
 /**
  * From adding money to the buy (2026-10-05). Privy's funding window
  * (useAddFunds) answers once the person is done with the provider, which is
  * when the payment was made, not when the money is in the account: a card
- * payment lands as USDC on Base minutes later. So the handoff watches the destination's USDC balance and moves on
- * only once it has actually risen. This module is the rulebook, pure, so
+ * payment lands as USDC on Base minutes later. So the handoff watches the
+ * destination's USDC balance and moves on only once it has actually risen. This module is the rulebook, pure, so
  * every turn is a unit test; components/funding-handoff draws it.
  *
  *   waiting   the money is on its way: the thinking orb, a calm line
@@ -13,7 +11,9 @@ import { MIN_ORDER_USD } from "@/lib/order-minimum";
  *             card payment can take
  *   stopped   past STOP_AFTER_MS: no more reads; the money shows on the
  *             home when it lands, and the provider can say where it is
- *   arrived   the balance rose: the buy opens with that USDC to pay with
+ *   unknown   the balance before could not be read: says so, reads nothing
+ *   arrived   the balance rose by ARRIVAL_THRESHOLD_UNITS or more from
+ *             the lowest it was since: the buy opens with that USDC
  */
 
 /** USDC on Base: what every onramp delivers and what Berth asks for (components/account-button). */
@@ -53,32 +53,97 @@ export function fundingOutcome(result: unknown): FundingOutcome {
 export type ArrivalView =
   | { kind: "waiting"; slow: boolean }
   | { kind: "stopped" }
+  /** The balance before the payment could not be read: no way to tell its money from what was there. */
+  | { kind: "unknown" }
   | { kind: "arrived"; amount: bigint };
 
-/** The least that counts as money arriving when the balance before is unknown: one order's minimum. */
-export const MIN_ARRIVAL_UNITS = BigInt(Math.round(MIN_ORDER_USD * 10 ** FUND_USDC_DECIMALS));
+/**
+ * The least rise that counts as the payment arriving: one dollar of USDC.
+ * Dust, rounding and a stray airdrop stay below it; no card payment does.
+ */
+export const ARRIVAL_THRESHOLD_UNITS = 10n ** BigInt(FUND_USDC_DECIMALS);
+
+/** How long one balance read may take before it counts as failed. */
+export const READ_TIMEOUT_MS = 4_000;
+/** How many times the balance before is tried, and the pause between tries. */
+export const BASELINE_ATTEMPTS = 3;
+export const BASELINE_RETRY_MS = 1_000;
+
+/** Settles with the read, or rejects once `ms` passed, so a hung read never holds the wait. */
+export function withTimeout<T>(read: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("read timed out")), ms);
+    read.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 /**
- * Where the wait stands. `baseline` is the USDC balance read as the window
- * opened (undefined when that read failed), `current` the latest read
- * (undefined until one answers). Money counts as arrived only when the
- * balance rose; with no baseline, only once it holds enough for an order,
- * so dust already there is never mistaken for the payment.
+ * The balance before the payment, tried up to BASELINE_ATTEMPTS times,
+ * each capped at READ_TIMEOUT_MS. Undefined when no try answered: the
+ * wait then says honestly that it cannot tell, rather than guessing.
+ */
+export async function readBaseline(
+  read: () => Promise<bigint>,
+  {
+    attempts = BASELINE_ATTEMPTS,
+    timeoutMs = READ_TIMEOUT_MS,
+    retryMs = BASELINE_RETRY_MS,
+  }: { attempts?: number; timeoutMs?: number; retryMs?: number } = {},
+): Promise<bigint | undefined> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await withTimeout(read(), timeoutMs);
+    } catch {
+      if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, retryMs));
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The lowest balance seen since the baseline, the floor a rise is measured
+ * from: USDC spent on Base while the payment is on its way lowers it, so
+ * the payment still shows as a rise once it lands.
+ */
+export function nextLowest(lowest: bigint, read: bigint | undefined): bigint {
+  return read !== undefined && read < lowest ? read : lowest;
+}
+
+/**
+ * Where the wait stands. `baseline` is the USDC balance read before the
+ * payment (undefined when no read answered), `lowest` the lowest read
+ * since (nextLowest; the baseline until one is lower), `current` the
+ * latest read (undefined until one answers). Money counts as arrived only
+ * when the balance rose from that floor by ARRIVAL_THRESHOLD_UNITS or
+ * more. With no baseline nothing can be told apart, so the view says so
+ * (`unknown`) and nothing is read.
  */
 export function arrivalView({
   baseline,
+  lowest = baseline,
   current,
   startedAt,
   now,
 }: {
   baseline: bigint | undefined;
+  lowest?: bigint;
   current: bigint | undefined;
   startedAt: number;
   now: number;
 }): ArrivalView {
+  if (baseline === undefined || lowest === undefined) return { kind: "unknown" };
   if (current !== undefined) {
-    if (baseline !== undefined && current > baseline) return { kind: "arrived", amount: current - baseline };
-    if (baseline === undefined && current >= MIN_ARRIVAL_UNITS) return { kind: "arrived", amount: current };
+    const floor = lowest < baseline ? lowest : baseline;
+    if (current - floor >= ARRIVAL_THRESHOLD_UNITS) return { kind: "arrived", amount: current - floor };
   }
   const waited = now - startedAt;
   if (waited >= STOP_AFTER_MS) return { kind: "stopped" };

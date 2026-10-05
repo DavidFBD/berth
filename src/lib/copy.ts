@@ -248,6 +248,9 @@ export type Copy = {
     closeLine: string;
     stoppedTitle: string;
     stoppedLine: string;
+    /** The balance before the payment could not be read, so its arrival cannot be told apart. */
+    unknownTitle: string;
+    unknownLine: string;
     arrivedTitle: string;
     arrivedLine: (amount: string) => string;
     /** Arrived, and an order asked for it: the buy reopens on its own. */
@@ -2804,8 +2807,11 @@ export const COPY: Copy = {
     stoppedTitle: "Not here yet",
     stoppedLine:
       "When it lands it shows on your home, ready to buy with. If it does not arrive, the provider you paid can tell you where it is.",
+    unknownTitle: "Your payment is with the provider",
+    unknownLine:
+      "Berth could not read your balance before you paid, so it cannot tell here when your money lands. When it does, it shows on your home, ready to buy with.",
     arrivedTitle: "Your money has arrived",
-    arrivedLine: (amount) => `${amount} is in your account, ready to buy with.`,
+    arrivedLine: (amount) => `Your account holds ${amount} more than before, ready to buy with.`,
     arrivedOpening: (name) => `Opening your order for ${name}.`,
     arrivedChoose: "Choose what to buy",
     arrivedAway: "It stays in your account. Berth does not take orders where you are.",

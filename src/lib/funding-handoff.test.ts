@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-  MIN_ARRIVAL_UNITS,
+  ARRIVAL_THRESHOLD_UNITS,
   SLOW_AFTER_MS,
   STOP_AFTER_MS,
   arrivalView,
   fundingOutcome,
+  nextLowest,
+  readBaseline,
+  withTimeout,
   handoffTarget,
   moneyStepOffer,
   stillWatching,
@@ -43,9 +46,33 @@ describe("arrivalView", () => {
   it("arrives with what the balance rose by", () => {
     expect(arrivalView({ baseline: 2_000_000n, current: 12_000_000n, startedAt: T0, now: T0 })).toEqual({ kind: "arrived", amount: 10_000_000n });
   });
-  it("without a baseline, arrives only once the balance holds an order's minimum", () => {
-    expect(arrivalView({ baseline: undefined, current: MIN_ARRIVAL_UNITS - 1n, startedAt: T0, now: T0 }).kind).toBe("waiting");
-    expect(arrivalView({ baseline: undefined, current: MIN_ARRIVAL_UNITS, startedAt: T0, now: T0 })).toEqual({ kind: "arrived", amount: MIN_ARRIVAL_UNITS });
+  it("counts only a rise of at least ARRIVAL_THRESHOLD_UNITS as arrival", () => {
+    expect(arrivalView({ baseline: 5_000_000n, current: 5_000_000n + ARRIVAL_THRESHOLD_UNITS - 1n, startedAt: T0, now: T0 }).kind).toBe("waiting");
+    expect(arrivalView({ baseline: 5_000_000n, current: 5_000_000n + ARRIVAL_THRESHOLD_UNITS, startedAt: T0, now: T0 })).toEqual({
+      kind: "arrived",
+      amount: ARRIVAL_THRESHOLD_UNITS,
+    });
+  });
+  it("never assumes without a baseline: a wallet that already holds money does not arrive at once", () => {
+    expect(arrivalView({ baseline: undefined, current: 500_000_000n, startedAt: T0, now: T0 })).toEqual({ kind: "unknown" });
+    expect(arrivalView({ baseline: undefined, current: undefined, startedAt: T0, now: T0 + STOP_AFTER_MS })).toEqual({ kind: "unknown" });
+    expect(stillWatching({ kind: "unknown" })).toBe(false);
+  });
+  it("measures from the lowest read, so a spend meanwhile cannot hide the payment", () => {
+    // 20 held, 15 spent on Base, then a 10 card payment lands: 15 now, below the baseline.
+    const lowest = nextLowest(nextLowest(20_000_000n, 20_000_000n), 5_000_000n);
+    expect(lowest).toBe(5_000_000n);
+    expect(arrivalView({ baseline: 20_000_000n, lowest, current: 15_000_000n, startedAt: T0, now: T0 })).toEqual({
+      kind: "arrived",
+      amount: 10_000_000n,
+    });
+    // The spend alone is no arrival.
+    expect(arrivalView({ baseline: 20_000_000n, lowest, current: 5_000_000n, startedAt: T0, now: T0 }).kind).toBe("waiting");
+  });
+  it("keeps the floor when a read is missing or higher", () => {
+    expect(nextLowest(5n, undefined)).toBe(5n);
+    expect(nextLowest(5n, 9n)).toBe(5n);
+    expect(nextLowest(5n, 3n)).toBe(3n);
   });
   it("says it is slow after SLOW_AFTER_MS and stops after STOP_AFTER_MS", () => {
     expect(arrivalView({ baseline: 0n, current: 0n, startedAt: T0, now: T0 + SLOW_AFTER_MS - 1 })).toEqual({ kind: "waiting", slow: false });
@@ -59,6 +86,24 @@ describe("arrivalView", () => {
     expect(stillWatching({ kind: "waiting", slow: true })).toBe(true);
     expect(stillWatching({ kind: "stopped" })).toBe(false);
     expect(stillWatching({ kind: "arrived", amount: 1n })).toBe(false);
+  });
+});
+
+describe("readBaseline", () => {
+  const fast = { timeoutMs: 20, retryMs: 1 };
+  it("takes the first read that answers", async () => {
+    const read = vi.fn<() => Promise<bigint>>().mockRejectedValueOnce(new Error("rpc")).mockResolvedValueOnce(7n);
+    await expect(readBaseline(read, fast)).resolves.toBe(7n);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+  it("gives up honestly after its tries, a hung read counting as failed", async () => {
+    const read = vi.fn(() => new Promise<bigint>(() => {}));
+    await expect(readBaseline(read, { ...fast, attempts: 3 })).resolves.toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+  it("caps one read with a timeout", async () => {
+    await expect(withTimeout(new Promise(() => {}), 10)).rejects.toThrow();
+    await expect(withTimeout(Promise.resolve(1), 10)).resolves.toBe(1);
   });
 });
 
