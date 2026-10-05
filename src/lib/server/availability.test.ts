@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { overrideAllowed, requestAvailability, unavailableResponse } from "./availability";
+import { overrideAllowed, requestAvailability, requestCountry, unavailableResponse } from "./availability";
 
 const headersOf = (entries: Record<string, string>) => new Headers(entries);
 
@@ -49,5 +49,22 @@ describe("unavailableResponse", () => {
     expect(response.status).toBe(451);
     const body = await response.json();
     expect(body).toEqual({ error: "Berth is not available where you are", code: "unavailable_here", reason: "united-states" });
+  });
+});
+
+describe("requestCountry", () => {
+  it("reads Vercel's country header, upper case, and nothing else", () => {
+    expect(requestCountry(headersOf({ "x-vercel-ip-country": "gb" }))).toBe("GB");
+    expect(requestCountry(headersOf({ "x-vercel-ip-country": "NL", "x-vercel-ip-country-region": "NH" }))).toBe("NL");
+    expect(requestCountry(headersOf({}))).toBeNull();
+    expect(requestCountry(headersOf({ "x-vercel-ip-country": "XX1" }))).toBeNull();
+  });
+
+  it("honours ?country in local development only", () => {
+    vi.stubEnv("VERCEL_ENV", "");
+    vi.stubEnv("NODE_ENV", "development");
+    expect(requestCountry(headersOf({ "x-vercel-ip-country": "NL" }), { url: "http://localhost:3000/?country=CH" })).toBe("CH");
+    vi.stubEnv("VERCEL_ENV", "production");
+    expect(requestCountry(headersOf({ "x-vercel-ip-country": "NL" }), { url: "https://www.berthmarkets.com/?country=CH" })).toBe("NL");
   });
 });

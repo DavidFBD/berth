@@ -59,6 +59,27 @@ export function requestAvailability(
 }
 
 /**
+ * The bare country code (ISO 3166-1 alpha-2, upper case) a request comes
+ * from, or null when it is unknown, read the same way as requestAvailability
+ * (the `?country=` override in `next dev` only). For a question the
+ * availability answer cannot carry: whether Robinhood offers its tokens
+ * there (lib/delivery). Read for that one answer and dropped; never
+ * stored, logged or sent back.
+ */
+export function requestCountry(headers: HeaderReader, options: { url?: string } = {}): string | null {
+  let country: string | null = null;
+  if (overrideAllowed() && options.url) {
+    try {
+      country = new URL(options.url).searchParams.get("country");
+    } catch {
+      // Not a URL: no override.
+    }
+  }
+  const cc = (country ?? headers.get("x-vercel-ip-country") ?? "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(cc) ? cc : null;
+}
+
+/**
  * For a comprehensively sanctioned place only (TERMS_AVAILABILITY
  * sanctionedCountries and sanctionedRegions): the refusal every account
  * route answers, sign in included, else null. There, Berth offers nothing
