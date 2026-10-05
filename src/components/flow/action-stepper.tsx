@@ -6,12 +6,14 @@ import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
 import { hubTxUrl } from "@/lib/chains";
 import { LoadingMark } from "@/components/loading-mark";
+import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { CANCELLED_MESSAGE } from "@/lib/error-copy";
 import type { ReportState } from "@/lib/error-report";
 import type { FillPhase } from "@/lib/pour-lifecycle";
 import type { VaultActionStep } from "@/hooks/use-vault-action";
 import { useCopy } from "@/components/settings-provider";
 import type { Copy } from "@/lib/copy";
+import { stepMessage } from "@/lib/step-message";
 
 /* Step keys are the machine's; every label and message comes from useCopy.
    Failure copy shown here is presentation only — the REPORTED message stays
@@ -26,36 +28,26 @@ const STEP_LABEL: Record<StepKey, (copy: Copy) => string> = {
   signing: (copy) => copy.stepSign,
 };
 
-const STEP_MESSAGE: Record<StepKey, (copy: Copy) => string> = {
-  building: (copy) => copy.stepMsgBuilding,
-  approving: (copy) => copy.stepMsgApproving,
-  signing: (copy) => copy.stepMsgSigning,
-};
-
-/**
- * The line under the dots. Approving is still one step when the wallet asks
- * twice (a token like USDT clearing an old allowance first): the message
- * says so, the dots do not double.
- */
-export function stepMessage(step: StepKey, copy: Copy, approveTwice = false): string {
-  if (step === "approving" && approveTwice) return copy.stepMsgApprovingTwice;
-  return STEP_MESSAGE[step](copy);
-}
-
 /**
  * The order stepper: Build → Approve → Sign. `approveNeeded={false}`
  * (withdrawals, native tokens) keeps the Approve dot visible but marks it as
- * skipped. `approveTwice` only changes the approve step's message.
+ * skipped. `headless`: the embedded wallet sends with Privy paying the fee
+ * and no wallet screen (lib/gas-sponsor), so the steps say what Berth is
+ * doing instead of asking for a confirmation nobody can give.
+ * `approveTwice` (a token like USDT clearing an old allowance first) only
+ * changes the approve step's message; the dots do not double.
  */
 export function ActionStepper({
   step,
   approveNeeded = true,
   approveTwice = false,
+  headless = false,
   className,
 }: {
   step: VaultActionStep;
   approveNeeded?: boolean;
   approveTwice?: boolean;
+  headless?: boolean;
   className?: string;
 }) {
   const copy = useCopy();
@@ -98,15 +90,17 @@ export function ActionStepper({
                       "border-border bg-muted text-muted-foreground",
                   )}
                 >
-                  {done && !skipped ? <Check className="size-4" /> : index + 1}
-                  {active && (
-                    <span
-                      data-step-ring
-                      className="absolute inset-0 rounded-full border-2 border-primary opacity-40"
-                      style={{
-                        animation: "ring-breathe 1.8s var(--ease-tea) infinite",
-                      }}
-                    />
+                  {done && !skipped ? (
+                    <Check className="size-4" />
+                  ) : active ? (
+                    // The one animated status element the brand allows,
+                    // standing in for the number only while this step is
+                    // actually running; the circle itself never resizes, so
+                    // nothing around it jumps when the orb mounts or the
+                    // step moves on.
+                    <ThinkingOrb state="working" size={20} decorative fallback={index + 1} />
+                  ) : (
+                    index + 1
                   )}
                 </div>
                 <span
@@ -131,7 +125,7 @@ export function ActionStepper({
       </div>
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-sm font-medium text-foreground">
-          {stepMessage(STEP_KEYS[activeIndex], copy, approveTwice)}
+          {stepMessage(STEP_KEYS[activeIndex], copy, { headless, approveTwice })}
         </p>
         <p className="text-xs text-muted-foreground">{copy.keepThisOpen}</p>
       </div>

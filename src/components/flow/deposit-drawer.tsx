@@ -752,6 +752,7 @@ export function DepositDrawer({
                 step={action.step}
                 approveNeeded={action.approveRequired ?? true}
                 approveTwice={action.approveTwice}
+                headless={mode === "email" && gas.sponsored(srcChainKey)}
               />
             </div>
           ) : listing && limit.reviewing && token && buildAmount && limitMin ? (

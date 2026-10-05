@@ -1,5 +1,6 @@
 import { runHoldCheck, type HoldRunSummary } from "@/lib/server/holds";
 import { runCampaignStep, type CampaignStepSummary } from "@/lib/server/campaigns/eligibility";
+import { runInviteXpStep, type InviteXpSummary } from "@/lib/server/invite-xp";
 import { retryPendingSends, type RetrySummary } from "@/lib/server/email/send";
 import { runWeeklySummaries, type WeeklyRunSummary } from "@/lib/server/weekly";
 import { runBudgetAlerts, type BudgetAlertSummary } from "@/lib/server/staff/budgets";
@@ -13,10 +14,15 @@ import { runBudgetAlerts, type BudgetAlertSummary } from "@/lib/server/staff/bud
  *
  * 1. Holds: the thirty day hold check (lib/server/holds), then the
  *    campaign step inside the same stage's turn (lib/server/campaigns
- *    eligibility): open claims advanced, and holding claims that are due
- *    judged, holding to qualified. Never a payment: staff approve and
+ *    eligibility, database only): invite claims whose stay is over
+ *    judged, holding to qualified, then open claims advanced. Never a payment: staff approve and
  *    David pays by hand. Its own budget; a failure is logged and never
  *    fails the run (it pays nobody, so tomorrow's step loses nothing).
+ * 1b. Invite XP (lib/server/invite-xp, database only): invited friends seen
+ *    set up are recorded, and a week later the inviter earns friend_stayed
+ *    for each one still opening Berth. Its own small budget; a failure is
+ *    logged and never fails the run (tomorrow's step picks up where it
+ *    left off: nothing is lost, nothing pays twice).
  * 2. Emails: every notice left pending, sent again (lib/server/email).
  * 3. Weekly: the weekly summary (lib/server/weekly), on Monday, and on
  *    Tuesday to Thursday for whoever it did not reach, to the people who
@@ -39,10 +45,12 @@ import { runBudgetAlerts, type BudgetAlertSummary } from "@/lib/server/staff/bud
  */
 
 export const HOLDS_BUDGET_MS = 18_000;
-/** The campaign step's most, taken from the holds' turn: hold windows read on Sonic, four at a time, then the open claims while time is left. */
 /** The hold check stops judging new buys this long before its budget ends, so it answers on its own. */
 export const HOLDS_MARGIN_MS = 2_000;
+/** The campaign step's most, taken from the holds' turn: the stays judged, then the open claims while time is left. */
 export const CAMPAIGNS_BUDGET_MS = 8_000;
+/** The invite XP step's most: a few reads and writes per friend. */
+export const INVITE_XP_BUDGET_MS = 4_000;
 export const EMAILS_BUDGET_MS = 10_000;
 /** The weekly stage's most; it gets less when the stages before it ran long (RUN_BUDGET_MS). */
 export const WEEKLY_BUDGET_MS = 10_000;
@@ -58,6 +66,7 @@ export type Stage<T> = { ok: true; result: T } | { ok: false; error: string };
 export type MorningSummary = {
   holds: Stage<HoldRunSummary>;
   campaigns: Stage<CampaignStepSummary>;
+  inviteXp: Stage<InviteXpSummary>;
   emails: Stage<RetrySummary>;
   weekly: Stage<WeeklyRunSummary>;
   budgets: Stage<BudgetAlertSummary>;
@@ -85,6 +94,7 @@ export async function runMorning({
   now = new Date(),
   holds = () => runHoldCheck({ now, deadline: Date.now() + HOLDS_BUDGET_MS - HOLDS_MARGIN_MS }),
   campaigns = () => runCampaignStep({ now, deadline: Date.now() + CAMPAIGNS_BUDGET_MS - 1_500 }),
+  inviteXp = () => runInviteXpStep({ now, deadline: Date.now() + INVITE_XP_BUDGET_MS - 1_000 }),
   emails = () => retryPendingSends(),
   weekly = (budgetMs) => runWeeklySummaries({ now, deadline: Date.now() + budgetMs - WEEKLY_MARGIN_MS }),
   budgetAlerts = () => runBudgetAlerts({ now }),
@@ -94,16 +104,18 @@ export async function runMorning({
   now?: Date;
   holds?: () => Promise<HoldRunSummary>;
   campaigns?: () => Promise<CampaignStepSummary>;
+  inviteXp?: () => Promise<InviteXpSummary>;
   emails?: () => Promise<RetrySummary>;
   /** Given its budget, so it stops starting new summaries in time. */
   weekly?: (budgetMs: number) => Promise<WeeklyRunSummary>;
   budgetAlerts?: () => Promise<BudgetAlertSummary>;
-  budgets?: { holds: number; campaigns?: number; emails: number; weekly: number; run?: number };
+  budgets?: { holds: number; campaigns?: number; inviteXp?: number; emails: number; weekly: number; run?: number };
   clock?: () => number;
 } = {}): Promise<MorningSummary> {
   const started = clock();
   const holdStage = await stage(holds, budgets.holds);
   const campaignStage = await stage(campaigns, budgets.campaigns ?? CAMPAIGNS_BUDGET_MS);
+  const inviteXpStage = await stage(inviteXp, budgets.inviteXp ?? INVITE_XP_BUDGET_MS);
   const emailStage = await stage(emails, budgets.emails);
   // After the retry, never beside it; with whatever time the run has left,
   // less the budget alerts' share, which come last.
@@ -119,8 +131,9 @@ export async function runMorning({
     budgetAlertsBudget > 0 ? await stage(budgetAlerts, budgetAlertsBudget) : { ok: false, error: "no time left" };
   if (!holdStage.ok) console.warn("[cron/morning] hold check failed:", holdStage.error);
   if (!campaignStage.ok) console.warn("[cron/morning] campaign step failed:", campaignStage.error);
+  if (!inviteXpStage.ok) console.warn("[cron/morning] invite xp step failed:", inviteXpStage.error);
   if (!emailStage.ok) console.warn("[cron/morning] email retry failed:", emailStage.error);
   if (!weeklyStage.ok) console.warn("[cron/morning] weekly summary failed:", weeklyStage.error);
   if (!budgetStage.ok) console.warn("[cron/morning] budget alerts failed:", budgetStage.error);
-  return { holds: holdStage, campaigns: campaignStage, emails: emailStage, weekly: weeklyStage, budgets: budgetStage, failed: !holdStage.ok };
+  return { holds: holdStage, campaigns: campaignStage, inviteXp: inviteXpStage, emails: emailStage, weekly: weeklyStage, budgets: budgetStage, failed: !holdStage.ok };
 }

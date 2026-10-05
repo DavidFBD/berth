@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { WalletDrawer } from "@/components/wallet";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { useInterruptedMerge, useLinkInProgress } from "@/hooks/use-link-email";
+import { useStaffSignInRunning } from "@/components/staff/entry";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { useCopy } from "@/components/settings-provider";
 import { COPY } from "@/lib/copy";
@@ -50,6 +51,8 @@ export function AuthGate({
   const privy = usePrivyEmbeddedWallet();
   const connected = useConnectedChains();
   const linking = useLinkInProgress();
+  // The Staff entry's email sign in holds its session until the page goes to /staff (components/staff/entry).
+  const staffSignIn = useStaffSignInRunning();
   const copy = useCopy();
   const refusedForSanctions = useRefusedForSanctions();
   const mergeInterrupted = useCallback(() => toast(copy.mergeInterrupted), [copy.mergeInterrupted]);
@@ -61,7 +64,7 @@ export function AuthGate({
   // the email of a wallet account; neither has a screen here, because the
   // money is on a wallet this browser may not hold. End it, and say why when
   // there is no wallet to fall back on.
-  const stray = PRIVY_ENABLED && privy.ready && privy.walletAccountSession && !linking;
+  const stray = PRIVY_ENABLED && privy.ready && privy.walletAccountSession && !linking && !staffSignIn;
   const { logout } = privy;
   const noWallet = connected.status !== "loading" && connected.total === 0;
   useEffect(() => {

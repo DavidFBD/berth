@@ -90,10 +90,13 @@ function easterSunday(year: number): { month: number; day: number } {
   return { month: Math.floor(total / 31), day: (total % 31) + 1 };
 }
 
-const holidayCache = new Map<number, ReadonlySet<IsoDate>>();
+const holidayCache = new Map<number, ReadonlyMap<IsoDate, string>>();
 
-/** Every day the US stock market is closed in a given year, besides weekends. */
-export function marketHolidays(year: number): ReadonlySet<IsoDate> {
+/**
+ * Every day the US stock market is closed in a given year, besides
+ * weekends, with the holiday's name, as a person would say it.
+ */
+export function marketHolidayNames(year: number): ReadonlyMap<IsoDate, string> {
   const cached = holidayCache.get(year);
   if (cached) return cached;
 
@@ -104,24 +107,29 @@ export function marketHolidays(year: number): ReadonlySet<IsoDate> {
     .toISOString()
     .slice(0, 10);
 
-  const days = [
+  const days: [IsoDate, string][] = [
     // New Year's Day never closes the market on the Friday before: when
     // January 1 falls on a Saturday, December 31 stays a full session.
-    weekday(year, 1, 1) === 0 ? iso(year, 1, 2) : iso(year, 1, 1),
-    nthWeekdayOf(year, 1, 1, 3), // Martin Luther King Jr. Day
-    nthWeekdayOf(year, 2, 1, 3), // Washington's Birthday
-    goodFriday,
-    lastWeekdayOf(year, 5, 1), // Memorial Day
-    observed(year, 6, 19), // Juneteenth
-    observed(year, 7, 4), // Independence Day
-    nthWeekdayOf(year, 9, 1, 1), // Labor Day
-    nthWeekdayOf(year, 11, 4, 4), // Thanksgiving
-    observed(year, 12, 25), // Christmas
+    [weekday(year, 1, 1) === 0 ? iso(year, 1, 2) : iso(year, 1, 1), "New Year's Day"],
+    [nthWeekdayOf(year, 1, 1, 3), "Martin Luther King Jr. Day"],
+    [nthWeekdayOf(year, 2, 1, 3), "Washington's Birthday"],
+    [goodFriday, "Good Friday"],
+    [lastWeekdayOf(year, 5, 1), "Memorial Day"],
+    [observed(year, 6, 19), "Juneteenth"],
+    [observed(year, 7, 4), "Independence Day"],
+    [nthWeekdayOf(year, 9, 1, 1), "Labor Day"],
+    [nthWeekdayOf(year, 11, 4, 4), "Thanksgiving"],
+    [observed(year, 12, 25), "Christmas"],
   ];
 
-  const set: ReadonlySet<IsoDate> = new Set(days);
-  holidayCache.set(year, set);
-  return set;
+  const map: ReadonlyMap<IsoDate, string> = new Map(days);
+  holidayCache.set(year, map);
+  return map;
+}
+
+/** Every day the US stock market is closed in a given year, besides weekends. */
+export function marketHolidays(year: number): ReadonlySet<IsoDate> {
+  return new Set(marketHolidayNames(year).keys());
 }
 
 /** Whether the US stock market was open on a given UTC calendar day. */
@@ -130,7 +138,7 @@ export function isTradingDay(date: IsoDate): boolean {
   if (!year || !month || !day) return false;
   const weekdayIndex = weekday(year, month, day);
   if (weekdayIndex === 0 || weekdayIndex === 6) return false;
-  return !marketHolidays(year).has(date);
+  return !marketHolidayNames(year).has(date);
 }
 
 const earlyCloseCache = new Map<number, ReadonlySet<IsoDate>>();

@@ -65,6 +65,8 @@ const FORECAST = [
   /\d+(\.\d+)?\s?% (upside|downside|gain|return|rally|potential)\b/,
   /\b(stock|share|price) (forecasts?|predictions?|projections?)\b|\bpredicts? (the |its )?(stock|shares|price)\b|\boutlook for (the |its )?(stock|shares)\b/,
   /\b(going to|gonna) \$?\d/,
+  // A relayed prediction about worth or a milestone: "will be worth more than Apple", "will hit $1 trillion".
+  /\bwill (be worth|hit|reach|double|triple|overtake|surpass|top|eclipse|dethrone)\b|\bworth more than\b/,
   /\bmulti-?baggers?\b|\b\d+-?baggers?\b|\b\d+x (your money|returns?|gains?)\b|\b(double|triple) your money\b/,
 ];
 

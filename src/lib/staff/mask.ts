@@ -13,14 +13,12 @@
  * including the audit's own `detail` (scrubPersonal).
  */
 
+import { WEBMAIL_DOMAINS } from "@/lib/webmail";
+
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+$/;
 
-/** Mail providers shared by millions: their name says nothing about a person, so it is shown whole. */
-const WEBMAIL = new Set([
-  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "yahoo.com", "ymail.com",
-  "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com", "pm.me", "aol.com", "gmx.com", "gmx.de",
-  "gmx.net", "web.de", "mail.com", "zoho.com", "fastmail.com", "hey.com", "example.com",
-]);
+/** Mail providers shared by millions (lib/webmail, one list): their name says nothing about a person, so it is shown whole. */
+const WEBMAIL = WEBMAIL_DOMAINS;
 
 /**
  * "d***@gmail.com", "d***@s****.com": the first character of the local

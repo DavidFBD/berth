@@ -1,13 +1,19 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setSqlClient, type SqlClient } from "../db";
 import { makeTestDb } from "../pglite-test-db";
 import { awardXp, bindReferral, ensureReferralCode, getOrCreateUser, type UserRow } from "../accounts";
-import { attributeCampaign, campaignForLanding } from "./store";
+import { attributeSignup, campaignForLanding, claimById } from "./store";
 
 /**
- * Campaign attribution against the real schema: only a new account, on its
- * first sync, only through an active campaign inside its dates, once per
- * account; and an invite code arriving with it still binds as before.
+ * Campaign attribution against the real schema: a claim only for a new
+ * account whose first sync carries the exact code of a live signup
+ * campaign, opened inside its dates, once per account. A personal invite
+ * never makes a claim, with or without a campaign live; a wrong, inactive,
+ * ended or retired code makes none and falls back to nothing; an account
+ * that already existed makes none; and the invite binding itself is left
+ * as it was.
  */
 
 let sql: SqlClient;
@@ -32,87 +38,148 @@ async function account(): Promise<UserRow> {
   return result!.user;
 }
 
-async function campaign(code: string, { active = true, startsInDays = -1, endsInDays = 30 } = {}): Promise<string> {
+async function campaign(
+  code: string,
+  { active = true, startsInDays = -1, endsInDays = 30, kind = "signup" }: { active?: boolean; startsInDays?: number; endsInDays?: number; kind?: string } = {},
+): Promise<string> {
   const rows = (await sql.query(
-    `insert into campaigns (code, title, starts_at, ends_at, active)
-     values ($1, $1, now() + make_interval(days => $2), now() + make_interval(days => $3), $4) returning id`,
-    [code, startsInDays, endsInDays, active],
+    `insert into campaigns (code, title, kind, starts_at, ends_at, active)
+     values ($1, $1, $5, now() + make_interval(days => $2), now() + make_interval(days => $3), $4) returning id`,
+    [code, startsInDays, endsInDays, active, kind],
   )) as { id: string }[];
   return rows[0].id;
 }
 
-describe("attribution", () => {
-  it("attributes a new account through an active campaign, once", async () => {
-    const id = await campaign("launch-one");
-    const user = await account();
-    const claim = await attributeCampaign(user.id, "Launch-One ");
-    expect(claim).toBeTruthy();
-    const rows = (await sql.query(`select campaign_id, state from campaign_claims where user_id = $1`, [user.id])) as {
-      campaign_id: string;
-      state: string;
-    }[];
-    expect(rows).toEqual([{ campaign_id: id, state: "attributed" }]);
-    expect(await attributeCampaign(user.id, "launch-one")).toBeNull();
+/** A new account invited by `inviter` with a personal invite, bound as the first sync binds it. */
+async function invitedBy(inviter: UserRow): Promise<UserRow> {
+  const withCode = await ensureReferralCode(inviter);
+  const friend = await account();
+  expect(await bindReferral(friend.id, withCode.referral_code!)).toBe(inviter.id);
+  return { ...friend, referred_by: inviter.id };
+}
+
+const claimsOf = async (userId: string) => (await sql.query(`select id from campaign_claims where user_id = $1`, [userId])) as unknown[];
+
+const pause = async () => sql.query(`update campaigns set active = false`);
+
+describe("signup attribution", () => {
+  it("makes one claim for a new account that arrived with a live campaign's code, naming no inviter", async () => {
+    await pause();
+    const id = await campaign("attr-live");
+    const signup = await account();
+    const claimId = await attributeSignup(signup.id, "attr-live");
+    const claim = (await claimById(claimId!))!;
+    expect(claim).toMatchObject({ campaign_id: id, user_id: signup.id, inviter_id: null, state: "attributed" });
+    expect(await attributeSignup(signup.id, "attr-live")).toBeNull();
   });
 
-  it("is created inactive by default and an inactive campaign attributes nobody", async () => {
-    const rows = (await sql.query(
-      `insert into campaigns (code, title, starts_at, ends_at) values ('quiet-one', 'q', now() - interval '1 day', now() + interval '1 day') returning active, amount_usd::float8 as a, budget_usd::float8 as b, max_claims, min_buy_usd::float8 as m, hold_days`,
-    )) as Record<string, unknown>[];
-    expect(rows[0]).toEqual({ active: false, a: 5, b: 100, max_claims: 20, m: 10, hold_days: 7 });
-    const user = await account();
-    expect(await attributeCampaign(user.id, "quiet-one")).toBeNull();
-    expect(await campaignForLanding("quiet-one")).toBeNull();
+  it("takes the code as the pocket carries it, in any case", async () => {
+    await pause();
+    const id = await campaign("attr-case");
+    const claimId = await attributeSignup((await account()).id, " Attr-Case ");
+    expect((await claimById(claimId!))!.campaign_id).toBe(id);
   });
 
-  it("attributes nobody before the start or after the end", async () => {
-    await campaign("not-yet", { startsInDays: 2, endsInDays: 10 });
-    await campaign("all-over", { startsInDays: -10, endsInDays: -1 });
-    const user = await account();
-    expect(await attributeCampaign(user.id, "not-yet")).toBeNull();
-    expect(await attributeCampaign(user.id, "all-over")).toBeNull();
-    expect(await campaignForLanding("all-over")).toBeNull();
+  it("makes nothing for a personal invite, with or without a campaign live", async () => {
+    await pause();
+    const friend = await invitedBy(await account());
+    expect(await attributeSignup(friend.id, undefined)).toBeNull();
+    await campaign("attr-personal");
+    const another = await invitedBy(await account());
+    expect(await attributeSignup(another.id, undefined)).toBeNull();
+    expect(await attributeSignup(another.id, null)).toBeNull();
+    expect(await claimsOf(another.id)).toHaveLength(0);
   });
 
-  it("never attributes an account that already synced", async () => {
-    await campaign("old-hand");
-    const user = await account();
-    await awardXp(user.id, "account_created", null);
-    expect(await attributeCampaign(user.id, "old-hand")).toBeNull();
+  it("makes nothing for a wrong code, and never falls back to another live campaign", async () => {
+    await pause();
+    await campaign("attr-real");
+    const signup = await account();
+    expect(await attributeSignup(signup.id, "attr-nope")).toBeNull();
+    expect(await attributeSignup(signup.id, "x")).toBeNull();
+    expect(await claimsOf(signup.id)).toHaveLength(0);
   });
 
-  it("never attributes an account older than 72 hours", async () => {
-    await campaign("too-old");
-    const user = await account();
-    await sql.query(`update users set created_at = now() - interval '4 days' where id = $1`, [user.id]);
-    expect(await attributeCampaign(user.id, "too-old")).toBeNull();
+  it("makes nothing while the campaign is inactive, ended or not begun, and nothing for a retired buy or invite campaign", async () => {
+    await pause();
+    await campaign("attr-inactive", { active: false });
+    await campaign("attr-ended", { startsInDays: -10, endsInDays: -1 });
+    await campaign("attr-later", { startsInDays: 1, endsInDays: 10 });
+    await campaign("attr-buy", { kind: "buy" });
+    await campaign("attr-invite", { kind: "invite" });
+    const signup = await account();
+    for (const code of ["attr-inactive", "attr-ended", "attr-later", "attr-buy", "attr-invite"]) {
+      expect(await attributeSignup(signup.id, code), code).toBeNull();
+    }
+    expect(await claimsOf(signup.id)).toHaveLength(0);
   });
 
-  it("refuses codes that are not codes, and unknown codes", async () => {
-    const user = await account();
-    expect(await attributeCampaign(user.id, "../etc")).toBeNull();
-    expect(await attributeCampaign(user.id, "no-such-campaign")).toBeNull();
-    expect(await attributeCampaign(user.id, 42)).toBeNull();
+  it("makes nothing for an account opened before the campaign started, or older than 72 hours", async () => {
+    await pause();
+    await campaign("attr-dates", { startsInDays: -1 });
+    const early = await account();
+    await sql.query(`update users set created_at = now() - interval '2 days' where id = $1`, [early.id]);
+    expect(await attributeSignup(early.id, "attr-dates")).toBeNull();
+    await campaign("attr-old", { startsInDays: -10 });
+    const old = await account();
+    await sql.query(`update users set created_at = now() - interval '4 days' where id = $1`, [old.id]);
+    expect(await attributeSignup(old.id, "attr-old")).toBeNull();
   });
 
-  it("holds one claim per account, whichever campaign comes second", async () => {
-    await campaign("first-come");
-    await campaign("second-come");
-    const user = await account();
-    expect(await attributeCampaign(user.id, "first-come")).toBeTruthy();
-    expect(await attributeCampaign(user.id, "second-come")).toBeNull();
+  it("makes nothing for an account that already had its first sync: visiting the link later is not new", async () => {
+    await pause();
+    await campaign("attr-synced");
+    const existing = await account();
+    await awardXp(existing.id, "account_created", null);
+    expect(await attributeSignup(existing.id, "attr-synced")).toBeNull();
   });
 
-  it("leaves the invite code's binding as it was", async () => {
-    await campaign("with-friend");
-    const referrer = await ensureReferralCode(await account());
-    const user = await account();
-    expect(await attributeCampaign(user.id, "with-friend")).toBeTruthy();
-    expect(await bindReferral(user.id, referrer.referral_code!)).toBe(referrer.id);
+  it("makes nothing for an account merged into another", async () => {
+    await pause();
+    await campaign("attr-merged");
+    const signup = await account();
+    const survivor = await account();
+    await sql.query(`update users set retired_into = $2 where id = $1`, [signup.id, survivor.id]);
+    expect(await attributeSignup(signup.id, "attr-merged")).toBeNull();
   });
 
-  it("the landing shows an active campaign's promise", async () => {
-    await campaign("show-me");
-    expect(await campaignForLanding("show-me")).toEqual({ code: "show-me", amountUsd: 5, minBuyUsd: 10, holdDays: 7 });
+  it("counts a personally invited account only through the campaign link, and leaves the invite binding as it was", async () => {
+    await pause();
+    await campaign("attr-friends");
+    const inviter = await account();
+    const friend = await invitedBy(inviter);
+    const claimId = await attributeSignup(friend.id, "attr-friends");
+    expect((await claimById(claimId!))!).toMatchObject({ user_id: friend.id, inviter_id: null });
+    const rows = (await sql.query(`select referred_by from users where id = $1`, [friend.id])) as { referred_by: string }[];
+    expect(rows[0].referred_by).toBe(inviter.id);
+    expect(await claimsOf(inviter.id)).toHaveLength(0);
+  });
+
+  it("the landing shows only a live signup campaign's promise", async () => {
+    await pause();
+    await campaign("land-signup");
+    await campaign("land-buy", { kind: "buy" });
+    await campaign("land-invite", { kind: "invite" });
+    expect(await campaignForLanding("Land-Signup")).toEqual({ code: "land-signup", amountUsd: 5, stayDays: 7 });
+    expect(await campaignForLanding("land-buy")).toBeNull();
+    expect(await campaignForLanding("land-invite")).toBeNull();
+    expect(await campaignForLanding("nope!")).toBeNull();
+  });
+});
+
+describe("the migration of an invite campaign", () => {
+  it("turns an invite campaign that never made a claim into a switched off signup one, and leaves one that did retired", async () => {
+    const fresh = await campaign("mig-fresh", { kind: "invite", active: true });
+    const used = await campaign("mig-used", { kind: "invite", active: false });
+    await sql.query(`insert into campaign_claims (campaign_id, user_id, state) values ($1, $2, 'expired')`, [used, (await account()).id]);
+    // The statement exactly as db:push runs it, from db/schema.sql.
+    const schema = readFileSync(join(process.cwd(), "db/schema.sql"), "utf8");
+    const statement = schema.split(/;\s*\n/).find((text) => text.includes("update campaigns c set kind = 'signup'"));
+    expect(statement).toBeTruthy();
+    await sql.query(statement!);
+    const kinds = (await sql.query(`select id, kind, active from campaigns where id = any($1::uuid[])`, [[fresh, used]])) as { id: string; kind: string; active: boolean }[];
+    expect(Object.fromEntries(kinds.map((row) => [row.id, row.kind]))).toEqual({ [fresh]: "signup", [used]: "invite" });
+    // Switched off: it goes live under the new rules only through the activation gates again.
+    expect(kinds.find((row) => row.id === fresh)!.active).toBe(false);
   });
 });

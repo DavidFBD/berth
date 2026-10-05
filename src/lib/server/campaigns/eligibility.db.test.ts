@@ -1,22 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setSqlClient, type SqlClient } from "../db";
 import { makeTestDb } from "../pglite-test-db";
-import { getOrCreateUser } from "../accounts";
-import { markNoXp } from "../no-xp";
-import { CASH_LISTING } from "@/lib/listings";
 import { claimById } from "./store";
-import { campaignProgress, ownBuy, runCampaignStep } from "./eligibility";
-import { advance, arrival, buy, campaign, DAY, DEPS, hex, hubOf, next, state, verifier } from "./test-kit";
-import type { HoldVerifier } from "./hold-window";
+import { activeFrom, campaignProgress, campaignSetUp, onboarded, runCampaignStep, sameHands, stillActive, stillEligible } from "./eligibility";
+import { advance, campaign, DAY, heldWallet, joined, person, qualifiedClaim, seen, state, username } from "./test-kit";
 
 /**
- * Every eligibility rule against the real schema (PGlite): the verified
- * email, a new customer, the first qualifying buy (a market buy of a stock
- * or fund, at least the minimum, not cash, not a no XP buy, after the claim
- * and inside the dates, delivered to and paid from the person's own
- * wallets), the slot reserved atomically under the budget and max_claims
- * (two racing for the last slot, a waiting line), one per person across
- * merged accounts, one per wallet, the hold window, the deadline.
+ * Every signup campaign rule against the real schema (PGlite): set up
+ * (email, username, wallet), the farming guards (an account that was on
+ * Berth before; staff marked; an email already on another account), one
+ * payout per real person by wallet and email, the budget and places with a
+ * waiting line, the deadline, the stay judged from signed in visits, the
+ * retired buy and invite campaigns, and the account's own progress. No
+ * rule reads an order: nobody buys anything in these tests.
  */
 
 let sql: SqlClient;
@@ -36,356 +32,287 @@ afterAll(async () => {
 
 const later = (days: number) => new Date(Date.now() + days * DAY);
 
-describe("the verified email", () => {
-  it("keeps an account without one attributed, and moves one with it to buying", async () => {
-    await campaign("email-rule");
-    const without = await arrival("email-rule", { email: false });
-    await buy(without.user);
-    expect(await advance(without.claimId)).toBe("attributed");
-    const withEmail = await arrival("email-rule");
-    expect(await advance(withEmail.claimId)).toBe("buying");
-  });
-});
-
-describe("the first qualifying buy", () => {
-  it("is a filled market buy of a stock or fund worth at least the minimum", async () => {
-    await campaign("buy-rule");
-    const { user, claimId } = await arrival("buy-rule");
-    await buy(user, { usd: 9.99 });
-    expect(await advance(claimId)).toBe("buying");
-    await buy(user, { usd: 50, listing: CASH_LISTING.address });
-    expect(await advance(claimId)).toBe("buying");
-    await buy(user, { usd: null });
-    expect(await advance(claimId)).toBe("buying");
-    await buy(user, { usd: 40, direction: "sell" });
-    expect(await advance(claimId)).toBe("buying");
-    await buy(user, { usd: 40, orderType: "limit" });
-    expect(await advance(claimId)).toBe("buying");
-    const noXp = await buy(user, { usd: 40 });
-    await markNoXp(noXp.intentTx);
-    expect(await advance(claimId)).toBe("buying");
-    const real = await buy(user, { usd: 10 });
-    expect(await advance(claimId)).toBe("holding");
+describe("set up", () => {
+  it("keeps a new account attributed until the email, the username and the wallet are all there, then reserves a place", async () => {
+    await campaign("setup-rule", { stayDays: 14 });
+    const { user, claimId } = await joined({ email: false });
+    expect(await advance(claimId)).toBe("attributed");
+    await username(user);
+    expect(await advance(claimId)).toBe("attributed");
+    await sql.query(`update users set email = 'setup-friend@example.com' where id = $1`, [user.id]);
+    const now = later(0.001);
+    expect(await advance(claimId, now)).toBe("holding");
     const claim = (await claimById(claimId))!;
-    expect(claim.intent_tx).toBe(real.intentTx);
-    expect(claim.buy_usd).toBe(10);
-    expect(claim.eligible_at!.getTime() - claim.holding_since!.getTime()).toBe(7 * DAY);
+    expect(claim.onboarded_at!.toISOString()).toBe(now.toISOString());
+    expect(claim.eligible_at!.getTime()).toBe(now.getTime() + 14 * DAY);
+    expect(claim.inviter_id).toBeNull();
   });
 
-  it("must be delivered to the person's own hub wallet, and paid from their own EVM wallet", async () => {
-    await campaign("own-buy");
-    const { user, claimId } = await arrival("own-buy");
-    await buy(user, { payer: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV", deliveredTo: hubOf(hex(0xdead01)) });
-    expect(await advance(claimId)).toBe("buying");
-    await buy(user, { payer: hex(0xdead02) });
-    expect(await advance(claimId)).toBe("buying");
-    await buy(user, { payer: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV" });
+  it("needs a wallet: an account with no home address stays attributed", async () => {
+    await campaign("wallet-rule");
+    const { user, claimId } = await joined();
+    await username(user);
+    await sql.query(`update users set wallet_address = null, privy_did = coalesce(privy_did, 'did:privy:nowallet') where id = $1`, [user.id]);
+    expect(await advance(claimId)).toBe("attributed");
+  });
+
+  it("needs an EVM home wallet, to be paid on Base: a Solana home stays attributed", async () => {
+    await campaign("evm-rule");
+    const { user, claimId } = await joined();
+    await username(user);
+    await sql.query(`update users set wallet_address = '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV' where id = $1`, [user.id]);
+    expect(await advance(claimId)).toBe("attributed");
+    // Invite XP's own set up rule is unchanged: any wallet counts there.
+    expect(await onboarded(user.id)).toBe(true);
+    expect(await campaignSetUp(user.id)).toBe(false);
+    await sql.query(`update users set wallet_address = $2 where id = $1`, [user.id, user.home]);
     expect(await advance(claimId)).toBe("holding");
   });
 
-  it("counts a linked wallet only while it was linked", () => {
-    const wallet = { address: hex(0xaa), since: Date.parse("2026-10-06T00:00:00Z"), until: null, hub: hubOf(hex(0xaa)) };
-    const order = { deliveredTo: hubOf(hex(0xaa)), payer: hex(0xaa), effectiveAt: new Date("2026-10-05T00:00:00Z") };
-    expect(ownBuy(order, [wallet])).toBe(false);
-    const after = { ...order, effectiveAt: new Date("2026-10-07T00:00:00Z") };
-    expect(ownBuy(after, [wallet])).toBe(true);
-    expect(ownBuy(after, [{ ...wallet, until: Date.parse("2026-10-06T12:00:00Z") }])).toBe(false);
-  });
-
-  it("waits while the campaign is paused, and carries on once it is active again", async () => {
-    const id = await campaign("paused-one");
-    const { user, claimId } = await arrival("paused-one");
-    await sql.query(`update campaigns set active = false where id = $1`, [id]);
-    await buy(user);
-    expect(await advance(claimId)).toBe("inactive");
-    expect((await state(claimId)).state).toBe("buying");
-    await sql.query(`update campaigns set active = true where id = $1`, [id]);
-    expect(await advance(claimId)).toBe("holding");
-  });
-
-  it("expires after the deadline (the end plus the hold's days) without one", async () => {
-    const id = await campaign("ends-soon");
-    const { claimId } = await arrival("ends-soon");
-    await sql.query(`update campaigns set ends_at = now() - interval '1 minute' where id = $1`, [id]);
-    expect(await advance(claimId)).toBe("buying");
-    expect(await advance(claimId, later(8))).toBe("expired");
-    expect(await state(claimId)).toEqual({ state: "expired", reason: "ended" });
+  it("never asks for a buy: an account with no order at all reaches qualified", async () => {
+    await campaign("no-buy");
+    const { claimId, user } = await qualifiedClaim("no-buy");
+    const orders = (await sql.query(`select count(*)::int as n from orders where user_id = $1`, [user.id])) as { n: number }[];
+    expect(orders[0].n).toBe(0);
+    expect((await state(claimId)).state).toBe("qualified");
   });
 });
 
-describe("a new customer", () => {
-  it("refuses a person whose account has an order from before the claim", async () => {
-    await campaign("old-order");
-    const { user, claimId } = await arrival("old-order");
-    await buy(user, { filledAt: new Date(Date.now() - DAY) });
-    await buy(user);
+describe("sameHands, kept for invite XP", () => {
+  it("is pure: one person, a shared wallet or a shared folded email", () => {
+    const a = { accounts: ["a"], wallets: ["0x1"], emails: ["a@x.com"] };
+    expect(sameHands(a, { accounts: ["a"], wallets: [], emails: [] })).toBe(true);
+    expect(sameHands(a, { accounts: ["b"], wallets: ["0x1"], emails: [] })).toBe(true);
+    expect(sameHands(a, { accounts: ["b"], wallets: [], emails: ["a@x.com"] })).toBe(true);
+    expect(sameHands(a, { accounts: ["b"], wallets: ["0x2"], emails: ["b@x.com"] })).toBe(false);
+  });
+});
+
+describe("new accounts only", () => {
+  it("rejects an account merged into one that was on Berth before", async () => {
+    await campaign("merged-old");
+    const old = await person();
+    await sql.query(`update users set created_at = now() - interval '30 days' where id = $1`, [old.id]);
+    const { user, claimId } = await joined();
+    await sql.query(`update users set retired_into = $2 where id = $1`, [user.id, old.id]);
     expect(await advance(claimId)).toBe("existing_customer");
-    expect(await state(claimId)).toEqual({ state: "rejected", reason: "existing_customer" });
+  });
+
+  it("rejects an account whose email is already on another account", async () => {
+    await campaign("email-elsewhere");
+    await person({ email: "second.life@example.com" });
+    const { user, claimId } = await joined({ email: "second.life+new@example.com" });
+    await username(user);
+    expect(await advance(claimId)).toBe("email_used");
   });
 });
 
 describe("staff marked not eligible", () => {
-  it("refuses a claim of an account staff marked (users.campaign_ineligible_at), before any place is reserved", async () => {
-    await campaign("marked");
-    const { user, claimId } = await arrival("marked");
-    await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [user.id]);
-    await buy(user);
-    expect(await advance(claimId)).toBe("staff_ineligible");
-    expect(await state(claimId)).toEqual({ state: "rejected", reason: "staff_ineligible" });
-    expect((await sql.query(`select 1 from campaign_claim_wallets where claim_id = $1`, [claimId])) as unknown[]).toHaveLength(0);
+  it("rejects a claim whose account staff marked", async () => {
+    await campaign("staff-mark");
+    const second = await joined();
+    await username(second.user);
+    await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [second.user.id]);
+    expect(await advance(second.claimId)).toBe("staff_ineligible");
   });
 });
 
-describe("the budget and max_claims", () => {
-  it("gives the last slot to one of two claims racing for it, and the other waits", async () => {
-    await campaign("last-slot", { maxClaims: 1 });
-    const a = await arrival("last-slot");
-    const b = await arrival("last-slot");
-    await buy(a.user);
-    await buy(b.user);
-    const outcomes = await Promise.all([advance(a.claimId), advance(b.claimId)]);
-    expect([...outcomes].sort()).toEqual(["holding", "waitlisted"]);
-    const states = [await state(a.claimId), await state(b.claimId)].map((s) => s.state).sort();
-    expect(states).toEqual(["buying", "holding"]);
+describe("one payout per real person", () => {
+  it("refuses a second claim standing on a wallet that already counted", async () => {
+    await campaign("one-wallet");
+    const first = await joined();
+    await username(first.user);
+    expect(await advance(first.claimId)).toBe("holding");
+    const second = await joined();
+    await username(second.user);
+    await heldWallet(second.user, first.user.home);
+    expect(await advance(second.claimId)).toBe("wallet_used");
+    expect(await state(second.claimId)).toEqual({ state: "rejected", reason: "wallet_used" });
   });
 
-  it("counts dollars against the budget, reserved and paid alike", async () => {
-    await campaign("ten-dollars", { budget: 10, amount: 5 });
-    const claims = [await arrival("ten-dollars"), await arrival("ten-dollars"), await arrival("ten-dollars")];
-    for (const claim of claims) await buy(claim.user);
-    expect(await advance(claims[0].claimId)).toBe("holding");
-    await sql.query(`update campaign_claims set state = 'paid', paid_at = now() where id = $1`, [claims[0].claimId]);
-    expect(await advance(claims[1].claimId)).toBe("holding");
-    expect(await advance(claims[2].claimId)).toBe("waitlisted");
+  it("counts across campaigns: the marks are global", async () => {
+    await campaign("marks-a");
+    const first = await joined({ code: "marks-a" });
+    await username(first.user);
+    expect(await advance(first.claimId)).toBe("holding");
+    await campaign("marks-b");
+    const second = await joined({ code: "marks-b" });
+    await username(second.user);
+    await heldWallet(second.user, first.user.home);
+    expect(await advance(second.claimId)).toBe("wallet_used");
   });
 
-  it("gives a freed slot to the claim that waited longest, and expires the rest as full only after the deadline", async () => {
-    const id = await campaign("freed-slot", { maxClaims: 1 });
-    const a = await arrival("freed-slot");
-    const b = await arrival("freed-slot");
-    const c = await arrival("freed-slot");
-    for (const claim of [a, b, c]) await buy(claim.user);
+  it("is asked again at approval: a wallet linked after the place was taken refuses it", async () => {
+    await campaign("late-link");
+    const a = await qualifiedClaim("late-link");
+    const b = await joined({ code: "late-link" });
+    await username(b.user);
+    expect(await advance(b.claimId)).toBe("holding");
+    await heldWallet(b.user, a.user.home);
+    expect(await stillEligible((await claimById(b.claimId))!)).toBe("wallet_used");
+    // The first to stand on the wallet keeps it.
+    expect(await stillEligible((await claimById(a.claimId))!)).toBeNull();
+  });
+});
+
+describe("no per inviter cap", () => {
+  it("lets every new account of a campaign take a place, up to the places, whoever shared the link", async () => {
+    await campaign("no-cap", { maxClaims: 5 });
+    const outcomes: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const signup = await joined({ code: "no-cap" });
+      await username(signup.user);
+      outcomes.push(String(await advance(signup.claimId)));
+    }
+    expect(outcomes).toEqual(["holding", "holding", "holding", "holding"]);
+  });
+});
+
+describe("the budget and the places", () => {
+  it("lets a claim that found every place taken wait, gives it the place that frees, and expires it as full after the deadline", async () => {
+    const id = await campaign("places", { maxClaims: 1, endsInDays: 2, stayDays: 7 });
+    const a = await joined({ code: "places" });
+    const b = await joined({ code: "places" });
+    await username(a.user);
+    await username(b.user);
     expect(await advance(a.claimId)).toBe("holding");
     expect(await advance(b.claimId)).toBe("waitlisted");
-    expect(await advance(c.claimId, later(0.01))).toBe("waitlisted");
     await sql.query(`update campaign_claims set state = 'rejected', reject_reason = 'abuse' where id = $1`, [a.claimId]);
-    expect(await advance(c.claimId, later(0.02))).toBe("waitlisted");
-    expect(await advance(b.claimId, later(0.02))).toBe("holding");
-    await sql.query(`update campaigns set ends_at = now() + interval '5 seconds' where id = $1`, [id]);
-    expect(await advance(c.claimId, later(1))).toBe("waitlisted");
-    expect(await advance(c.claimId, later(9))).toBe("expired");
+    expect(await advance(b.claimId)).toBe("holding");
+    const c = await joined({ code: "places" });
+    await username(c.user);
+    expect(await advance(c.claimId)).toBe("waitlisted");
+    expect(await advance(c.claimId, later(10))).toBe("expired");
     expect(await state(c.claimId)).toEqual({ state: "expired", reason: "full" });
+    expect(id).toBeTruthy();
   });
-});
 
-describe("one per person, one per wallet", () => {
-  it("counts accounts merged into one as one person", async () => {
-    await campaign("merged-pair");
-    const a = await arrival("merged-pair");
-    const b = await arrival("merged-pair");
-    await buy(a.user);
+  it("counts dollars against the budget", async () => {
+    await campaign("dollars", { amount: 5, budget: 5, maxClaims: 10 });
+    const a = await joined({ code: "dollars" });
+    const b = await joined({ code: "dollars" });
+    await username(a.user);
+    await username(b.user);
     expect(await advance(a.claimId)).toBe("holding");
-    await buy(b.user, { deliveredTo: hubOf(a.home), payer: a.home });
-    await sql.query(`update orders set user_id = $1 where user_id = $2`, [a.user.id, b.user.id]);
-    await sql.query(`update users set retired_into = $1, privy_did = 'merged:' || privy_did, wallet_address = null where id = $2`, [
-      a.user.id,
-      b.user.id,
-    ]);
-    expect(await advance(b.claimId)).toBe("one_per_person");
-    expect(await state(b.claimId)).toEqual({ state: "rejected", reason: "one_per_person" });
-    expect((await campaignProgress(a.user.id, new Date(), DEPS))?.state).toBe("holding");
+    expect(await advance(b.claimId)).toBe("waitlisted");
   });
 
-  it("refuses a person whose linked wallet, even one since unlinked, stood on another claim", async () => {
-    await campaign("linked-wallet");
-    const a = await arrival("linked-wallet");
-    const b = await arrival("linked-wallet");
-    await buy(a.user);
-    expect(await advance(a.claimId)).toBe("holding");
-    await sql.query(
-      `insert into user_identities (user_id, kind, value, family, proof, unlinked_at)
-       values ($1, 'wallet', $2, 'solana', 'siws', now() - interval '30 days')`,
-      [b.user.id, "solana:7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV"],
-    );
-    await sql.query(
-      `insert into campaign_claim_wallets (campaign_id, wallet, claim_id)
-       select campaign_id, '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV', id from campaign_claims where id = $1`,
-      [a.claimId],
-    );
-    await buy(b.user);
-    expect(await advance(b.claimId)).toBe("wallet_used");
-  });
-});
-
-describe("the hold window", () => {
-  async function holding(code: string) {
-    await campaign(code);
-    const arrived = await arrival(code);
-    await buy(arrived.user);
-    expect(await advance(arrived.claimId)).toBe("holding");
-    return arrived;
-  }
-
-  it("judges nothing before the hold days are over", async () => {
-    const { claimId } = await holding("not-due");
-    const check = verifier(() => "held");
-    await runCampaignStep({ verifyHold: check, deps: DEPS });
-    expect((await state(claimId)).state).toBe("holding");
-    expect(check.asked).toHaveLength(0);
-  });
-
-  it("qualifies a buy kept the whole hold, rejects one sold on the way, and reads the window to its end", async () => {
-    const kept = await holding("kept-it");
-    const sold = await holding("sold-it");
-    const soldWallet = hubOf(sold.home);
-    const check = verifier((query) => (query.holder === soldWallet ? "not_held" : "held"));
-    const summary = await runCampaignStep({ now: later(8), verifyHold: check, deps: DEPS });
-    expect(await state(kept.claimId)).toEqual({ state: "qualified", reason: null });
-    expect(await state(sold.claimId)).toEqual({ state: "rejected", reason: "not_held" });
-    expect(summary.qualified).toBeGreaterThanOrEqual(1);
-    expect(summary.notHeld).toBeGreaterThanOrEqual(1);
-    const asked = check.asked.find((query) => query.holder === hubOf(kept.home))!;
-    expect(asked.quantity).toBe("0.05");
-    expect(asked.until.getTime()).toBe((await claimById(kept.claimId))!.eligible_at!.getTime());
-    const evidence = (await claimById(kept.claimId))!.hold_evidence as Record<string, unknown>;
-    expect(evidence).toMatchObject({ needed: "0.05", lowestRaw: "50000000000000000", outflows: 0 });
-  });
-
-  it("retries a window it could not read, never judging on doubt", async () => {
-    const { claimId } = await holding("unread");
-    await runCampaignStep({ now: later(8), verifyHold: verifier(() => "unknown"), deps: DEPS });
-    const claim = (await claimById(claimId))!;
-    expect(claim.state).toBe("holding");
-    expect(claim.hold_attempted_at).not.toBeNull();
-  });
-
-  it("waits for a hold that ended too recently to read behind the confirmations, without calling it unreadable", async () => {
-    const { claimId } = await holding("just-ended");
-    const pending = (async () => ({ verdict: "unknown", error: "hold end not yet confirmed", pending: true }) as const) as HoldVerifier;
-    await runCampaignStep({ now: later(8), verifyHold: pending, deps: DEPS });
-    const claim = (await claimById(claimId))!;
-    expect(claim).toMatchObject({ state: "holding", hold_unreadable_since: null });
-    expect(claim.hold_attempted_at).not.toBeNull();
-  });
-
-  it("hands its deadline to the hold read, and a read cut there is retried without ever counting as unreadable", async () => {
-    const { claimId } = await holding("cut-short");
-    const deadline = Date.now() + 60_000;
-    const seen: (number | undefined)[] = [];
-    const cut = (async (_query, options) => {
-      seen.push(options?.deadline);
-      return { verdict: "unknown", error: "deadline passed", pending: true } as const;
-    }) as HoldVerifier;
-    await runCampaignStep({ now: later(8), verifyHold: cut, deadline, deps: DEPS });
-    expect(seen.length).toBeGreaterThan(0);
-    expect(new Set(seen)).toEqual(new Set([deadline]));
-    const claim = (await claimById(claimId))!;
-    expect(claim).toMatchObject({ state: "holding", hold_unreadable_since: null });
-    expect(claim.hold_attempted_at).not.toBeNull();
-    // Cut every morning for well past the seven day release: still holding.
-    for (const day of [9, 12, 16, 20]) await runCampaignStep({ now: later(day), verifyHold: cut, deadline, deps: DEPS });
-    expect(await claimById(claimId)).toMatchObject({ state: "holding", hold_unreadable_since: null });
-  });
-
-  it("rotates: claims cut by the deadline go behind the ones not reached, which come first the next morning", async () => {
-    for (let index = 0; index < 8; index += 1) await holding(`rotate-${index}`);
-    const morning = () => {
-      let over = false;
-      const asked: string[] = [];
-      const cut = (async (query) => {
-        asked.push(query.holder);
-        over = true;
-        return { verdict: "unknown", error: "deadline passed", pending: true } as const;
-      }) as HoldVerifier;
-      return { asked, cut, clock: () => (over ? 2 : 0) };
-    };
-    const first = morning();
-    await runCampaignStep({ now: later(30), verifyHold: first.cut, deadline: 1, clock: first.clock, deps: DEPS });
-    const second = morning();
-    await runCampaignStep({ now: later(31), verifyHold: second.cut, deadline: 1, clock: second.clock, deps: DEPS });
-    expect(first.asked.length).toBeGreaterThan(0);
-    expect(second.asked.length).toBeGreaterThan(0);
-    expect(second.asked.filter((holder) => first.asked.includes(holder))).toEqual([]);
-  });
-
-  it("flags a window unread for three days and lets its slot go after seven", async () => {
-    const { claimId } = await holding("long-unread");
-    const unread = verifier(() => "unknown");
-    await runCampaignStep({ now: later(8), verifyHold: unread, deps: DEPS });
-    expect((await claimById(claimId))!.hold_unreadable_since).not.toBeNull();
-    await runCampaignStep({ now: later(12), verifyHold: unread, deps: DEPS });
-    expect((await state(claimId)).state).toBe("holding");
-    await runCampaignStep({ now: later(15.5), verifyHold: unread, deps: DEPS });
-    expect(await state(claimId)).toEqual({ state: "rejected", reason: "hold_unreadable" });
-  });
-
-  it("clears the unread mark once the window reads", async () => {
-    const { claimId } = await holding("read-again");
-    await runCampaignStep({ now: later(8), verifyHold: verifier(() => "unknown"), deps: DEPS });
-    await runCampaignStep({ now: later(9), verifyHold: verifier(() => "held"), deps: DEPS });
-    expect((await claimById(claimId))!).toMatchObject({ state: "qualified", hold_unreadable_since: null });
-  });
-
-  it("never qualifies a buy marked no XP after its slot was reserved", async () => {
-    const { claimId } = await holding("late-mark");
-    await markNoXp((await claimById(claimId))!.intent_tx!);
-    await runCampaignStep({ now: later(8), verifyHold: verifier(() => "held"), deps: DEPS });
-    expect(await state(claimId)).toEqual({ state: "rejected", reason: "not_held" });
-  });
-
-  it("closes a claim whose order is gone instead of retrying it forever", async () => {
-    const { claimId } = await holding("gone-order");
-    await sql.query(`delete from orders where id = (select order_id from campaign_claims where id = $1)`, [claimId]);
-    await runCampaignStep({ now: later(8), verifyHold: verifier(() => "held"), deps: DEPS });
-    expect(await state(claimId)).toEqual({ state: "rejected", reason: "order_missing" });
-  });
-
-  it("judges first, so a pile of open claims cannot starve the held ones", async () => {
-    const { claimId } = await holding("judged-first");
-    for (let i = 0; i < 3; i += 1) await arrival("judged-first");
-    let ticks = 0;
-    const summary = await runCampaignStep({
-      now: later(8),
-      verifyHold: verifier(() => "held"),
-      deps: DEPS,
-      deadline: 1,
-      clock: () => (ticks++ === 0 ? 0 : 2),
-    });
-    expect((await state(claimId)).state).toBe("qualified");
-    expect(summary.advanced).toBe(0);
-  });
-});
-
-describe("the person's progress", () => {
-  it("answers nothing for an account that came through no campaign", async () => {
-    const user = (await getOrCreateUser({ did: `did:privy:none-${next()}`, wallet: null }))!.user;
-    expect(await campaignProgress(user.id)).toBeNull();
-  });
-
-  it("advances on read and says the dates while holding", async () => {
-    await campaign("on-read");
-    const { user } = await arrival("on-read");
-    expect(await campaignProgress(user.id, new Date(), DEPS)).toMatchObject({ state: "buying", amountUsd: 5, minBuyUsd: 10, holdDays: 7 });
-    await buy(user);
-    const progress = await campaignProgress(user.id, new Date(Date.now() + 2_000), DEPS);
-    expect(progress?.state).toBe("holding");
-    expect(new Date(progress!.eligibleAt!).getTime() - new Date(progress!.holdingSince!).getTime()).toBe(7 * DAY);
-  });
-
-  it("says nothing for an expiry with no buy, and nothing while the campaign is paused", async () => {
-    const id = await campaign("quiet-close");
-    const { user, claimId } = await arrival("quiet-close");
+  it("reserves nobody while paused, and expires an open claim as ended after the deadline", async () => {
+    const id = await campaign("paused", { endsInDays: 1, stayDays: 7 });
+    const a = await joined({ code: "paused" });
+    await username(a.user);
     await sql.query(`update campaigns set active = false where id = $1`, [id]);
-    expect(await campaignProgress(user.id, new Date(), DEPS)).toBeNull();
-    await sql.query(`update campaign_claims set state = 'expired', expire_reason = 'ended', expired_at = now() where id = $1`, [claimId]);
-    expect(await campaignProgress(user.id, new Date(), DEPS)).toBeNull();
+    expect(await advance(a.claimId)).toBe("inactive");
+    expect(await advance(a.claimId, later(9))).toBe("expired");
+    expect(await state(a.claimId)).toEqual({ state: "expired", reason: "ended" });
+  });
+});
+
+describe("still using Berth", () => {
+  it("is pure: a visit in the last week of the stay, on a later day than the set up", () => {
+    const onboarded = new Date("2026-10-01T10:00:00Z");
+    const claim = { onboarded_at: onboarded, eligible_at: new Date(onboarded.getTime() + 14 * DAY) };
+    expect(activeFrom(claim).toISOString()).toBe(new Date(onboarded.getTime() + 7 * DAY).toISOString());
+    expect(stillActive(claim, new Date(onboarded.getTime() + 8 * DAY))).toBe(true);
+    expect(stillActive(claim, new Date(onboarded.getTime() + 6 * DAY))).toBe(false);
+    expect(stillActive(claim, null)).toBe(false);
+    const short = { onboarded_at: onboarded, eligible_at: new Date(onboarded.getTime() + 7 * DAY) };
+    expect(activeFrom(short).getTime()).toBe(onboarded.getTime() + DAY);
+    expect(stillActive(short, new Date(onboarded.getTime() + 3_600_000))).toBe(false);
   });
 
-  it("shows a closed line for fourteen days, then nothing", async () => {
-    await campaign("closed-line");
-    const { user, claimId } = await arrival("closed-line");
-    await sql.query(`update campaign_claims set state = 'rejected', reject_reason = 'not_held', rejected_at = now() where id = $1`, [claimId]);
-    expect((await campaignProgress(user.id, new Date(), DEPS))?.state).toBe("rejected");
-    expect(await campaignProgress(user.id, later(15), DEPS)).toBeNull();
+  it("judges nothing before the stay is over, then qualifies an account that came back and rejects one that did not", async () => {
+    await campaign("stay", { stayDays: 14 });
+    const back = await joined({ code: "stay" });
+    const gone = await joined({ code: "stay" });
+    for (const signup of [back, gone]) {
+      await username(signup.user);
+      expect(await advance(signup.claimId)).toBe("holding");
+    }
+    const eligible = (await claimById(back.claimId))!.eligible_at!;
+    await seen(back.user, new Date(eligible.getTime() - 2 * DAY));
+    await seen(gone.user, new Date(eligible.getTime() - 10 * DAY));
+    await runCampaignStep({ now: new Date(eligible.getTime() - DAY) });
+    expect((await state(back.claimId)).state).toBe("holding");
+    const summary = await runCampaignStep({ now: new Date(eligible.getTime() + 3_600_000) });
+    expect(summary.qualified).toBeGreaterThanOrEqual(1);
+    expect(summary.notActive).toBeGreaterThanOrEqual(1);
+    expect(await state(back.claimId)).toEqual({ state: "qualified", reason: null });
+    expect(await state(gone.claimId)).toEqual({ state: "rejected", reason: "not_active" });
+    expect((await claimById(back.claimId))!.hold_evidence).toMatchObject({ lastSeenAt: expect.any(String) });
+  });
+
+  it("counts a visit on any account merged into the one paid", async () => {
+    await campaign("stay-merged", { stayDays: 7 });
+    const signup = await joined({ code: "stay-merged" });
+    await username(signup.user);
+    expect(await advance(signup.claimId)).toBe("holding");
+    const eligible = (await claimById(signup.claimId))!.eligible_at!;
+    const absorbed = await person();
+    await sql.query(`update users set retired_into = $2, last_seen_at = $3 where id = $1`, [absorbed.id, signup.user.id, new Date(eligible.getTime() - DAY).toISOString()]);
+    await runCampaignStep({ now: new Date(eligible.getTime() + 60_000) });
+    expect((await state(signup.claimId)).state).toBe("qualified");
+  });
+});
+
+describe("the retired buy and invite campaigns", () => {
+  it("attribute nobody, and an open claim of one expires on the next run", async () => {
+    for (const kind of ["buy", "invite"] as const) {
+      const id = await campaign(`old-${kind}`, { kind });
+      const signup = await joined({ code: `old-${kind}`, expectClaim: false });
+      expect(signup.claimId).toBe("");
+      const legacy = await person();
+      const rows = (await sql.query(`insert into campaign_claims (campaign_id, user_id, state) values ($1, $2, 'attributed') returning id`, [id, legacy.id])) as { id: string }[];
+      expect(await advance(rows[0].id)).toBe("expired");
+    }
+  });
+});
+
+describe("the account's own progress", () => {
+  it("walks setting up, staying, qualified and paid for the account that arrived, and nothing about a buy", async () => {
+    await campaign("progress", { stayDays: 14, amount: 5 });
+    const signup = await joined({ code: "progress" });
+    expect(await campaignProgress(signup.user.id)).toMatchObject({ status: "setting_up", amountUsd: 5, stayDays: 14, eligibleAt: null });
+    await username(signup.user);
+    // Read advances it: the account is set up now.
+    const staying = await campaignProgress(signup.user.id);
+    expect(staying).toMatchObject({ status: "staying" });
+    expect(staying!.eligibleAt).toBe((await claimById(signup.claimId))!.eligible_at!.toISOString());
+    expect(Object.keys(staying!).some((key) => /buy|hold|invit/i.test(key))).toBe(false);
+    await sql.query(`update campaign_claims set state = 'approved' where id = $1`, [signup.claimId]);
+    expect(await campaignProgress(signup.user.id)).toMatchObject({ status: "qualified" });
+    await sql.query(`update campaign_claims set state = 'paid', paid_at = now() where id = $1`, [signup.claimId]);
+    expect(await campaignProgress(signup.user.id)).toMatchObject({ status: "paid" });
+    await sql.query(`update campaign_claims set state = 'rejected', reject_reason = 'abuse' where id = $1`, [signup.claimId]);
+    expect(await campaignProgress(signup.user.id)).toBeNull();
+  });
+
+  it("says waiting to an account set up while every place is taken, and paused while the campaign is paused", async () => {
+    const id = await campaign("progress-full", { maxClaims: 1 });
+    const first = await joined({ code: "progress-full" });
+    await username(first.user);
+    expect(await advance(first.claimId)).toBe("holding");
+    const second = await joined({ code: "progress-full" });
+    expect(await campaignProgress(second.user.id)).toMatchObject({ status: "setting_up", deadline: null });
+    await username(second.user);
+    const waiting = await campaignProgress(second.user.id);
+    expect(waiting).toMatchObject({ status: "waiting" });
+    const row = (await sql.query(`select ends_at, hold_days from campaigns where id = $1`, [id])) as { ends_at: Date; hold_days: number }[];
+    expect(waiting!.deadline).toBe(new Date(new Date(row[0].ends_at).getTime() + row[0].hold_days * DAY).toISOString());
+    const paused = await campaign("progress-paused", { active: true });
+    const third = await joined({ code: "progress-paused" });
+    await sql.query(`update campaigns set active = false where id = $1`, [paused]);
+    expect(await campaignProgress(third.user.id)).toMatchObject({ status: "paused", deadline: null });
+    await username(third.user);
+    expect(await campaignProgress(third.user.id)).toMatchObject({ status: "paused" });
+  });
+
+  it("answers nothing to anyone else: an account with no claim, or one whose invitee arrived through the link", async () => {
+    await campaign("progress-other");
+    const inviter = await person();
+    const signup = await joined({ code: "progress-other" });
+    await sql.query(`update users set referred_by = $2 where id = $1`, [signup.user.id, inviter.id]);
+    expect(await campaignProgress(inviter.id)).toBeNull();
+    expect(await campaignProgress((await person()).id)).toBeNull();
   });
 });

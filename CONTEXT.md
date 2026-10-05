@@ -121,12 +121,20 @@ a round that changes behaviour.
   person signed, removed because a reminder is not a true recurring buy.
   The tables stay, unread. True recurring would need Privy session signers
   and counsel's clearance, as its own decision record.
-- **Campaign** — a reward link, `/c/<code>` (`lib/campaigns`,
-  `lib/server/campaigns`, docs/plans/campaigns.md): a new account that
-  arrives through it, buys at least the minimum of a stock or fund and
-  keeps it the stated days earns a stated USDC amount. A **claim** walks
-  attributed, buying, holding, qualified, approved, paid (or rejected,
-  expired). Berth computes eligibility; staff approve on `/staff/campaigns`
+- **Campaign** — a paid welcome through a campaign's own link
+  (`lib/campaigns`, `lib/server/campaigns`, docs/plans/campaigns.md; kind
+  'signup' since 2026-10-05): the person who opens a NEW account through
+  /c/<code> inside the campaign's dates, sets it up (verified email,
+  username, wallet) and still uses Berth the stated days later earns a
+  stated USDC amount on Base, paid to that account's own home address, one
+  per person. A personal invite (/r/<code>) never earns money, campaign or
+  not. Never a condition on buying, holding or trading; the buy campaigns
+  and the short lived invite campaigns (which paid the inviter) are
+  retired, read only. Staff may delete a campaign while it is inactive and
+  no claim of it holds a place or was paid. A **claim** is that new
+  account's row and walks attributed,
+  holding (set up, waiting out the days), qualified, approved, paid (or
+  rejected, expired). Berth computes eligibility; staff approve on `/staff/campaigns`
   (`lib/server/staff-auth`, STAFF_ADMIN_IDS); David pays by hand. Never
   automatic money, never an XP trigger.
 - **Morning run** — the 06:00 UTC cron (`/api/cron/morning`,
@@ -139,7 +147,8 @@ a round that changes behaviour.
 
 Load-bearing decisions live in `docs/adr/` (base-voice rewards copy, the
 level-3 invite gate, no leaderboard of strangers, referral pays at first
-verified order, the friends board on capped points, referral is friendship;
+verified order (the inviter's side superseded on 2026-10-05: invite XP,
+`friend_stayed`, is for a friend who sets up and stays a week), the friends board on capped points, referral is friendship;
 ADR-0007, recurring buys as reminders, is superseded: the feature was
 removed on 2026-10-04)
 and in `docs/research/2026-09-16-colosseum-pivot-deep-dive.md` (the pivot,

@@ -87,7 +87,7 @@ export async function planMerge(requester: string, other: string): Promise<Merge
      select
        ((select coalesce(sum(amount), 0) from xp_events e, ids
           where e.user_id = $1
-            and not (e.kind = 'friend_poured' and e.ref = $2::text)
+            and not (e.kind in ('friend_poured', 'friend_stayed') and e.ref = $2::text)
             and not (e.kind = 'invite_accepted' and ids.s_ref is not distinct from $2::uuid))
         + (select coalesce(sum(amount), 0) from xp_events e
           where e.user_id = $2 and e.ref like $2::text || ':%'
@@ -95,7 +95,7 @@ export async function planMerge(requester: string, other: string): Promise<Merge
         + (select coalesce(sum(amount), 0) from xp_events e, ids
           where e.user_id = $2
             and coalesce(e.ref, '') not like $2::text || ':%'
-            and not (e.kind = 'friend_poured' and e.ref = $1::text)
+            and not (e.kind in ('friend_poured', 'friend_stayed') and e.ref = $1::text)
             and not (e.kind = 'invite_accepted' and ids.a_ref is not distinct from $1::uuid)
             and (e.ref is not null or not exists (
                   select 1 from xp_events x where x.user_id = $1 and x.kind = e.kind and x.ref is null

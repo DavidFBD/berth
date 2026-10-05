@@ -13,8 +13,9 @@ import { SHOWN_SQL, type SocialViewer } from "@/lib/server/social/people";
  *          + min(Salutes first given this month and still standing, 10)
  *
  * Order XP is `pour_in` + `pour_out`, capped so the board cannot rank how
- * often someone trades. Referral XP is `friend_poured` + `invite_accepted`,
- * capped so the board cannot rank how many people someone signed up. A friend whose card is hidden drops off; the viewer
+ * often someone trades. Referral XP is `friend_poured` (retired),
+ * `friend_stayed` and `invite_accepted`, capped so the board cannot rank
+ * how many people someone signed up. A friend whose card is hidden drops off; the viewer
  * is always on it. Blocks already ended any friendship they touched.
  */
 
@@ -22,7 +23,7 @@ export const ORDER_XP_CAP = 300;
 export const SALUTE_POINTS_CAP = 10;
 export const REFERRAL_XP_CAP = 250;
 export const ORDER_KINDS = ["pour_in", "pour_out"] as const;
-export const REFERRAL_KINDS = ["friend_poured", "invite_accepted"] as const;
+export const REFERRAL_KINDS = ["friend_poured", "friend_stayed", "invite_accepted"] as const;
 
 /** The calendar month `now` falls in, in UTC: [start, end) and its "2026-09" label. */
 export function boardMonth(now: Date): { start: string; end: string; label: string } {

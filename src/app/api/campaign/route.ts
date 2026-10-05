@@ -5,11 +5,12 @@ import { AVAILABLE } from "@/lib/server/availability";
 import type { CampaignResponse } from "@/lib/campaigns";
 
 /**
- * The caller's own campaign claim, for the home's quiet progress line
- * (lib/campaigns campaignLine), advanced on the way (database only; the
- * hold check stays the morning run's). `{ campaign: null }` for anyone who
- * did not arrive through a campaign, for anyone asking from where Berth is
- * not available, and while the tables are not there.
+ * The caller's own campaign reward (lib/campaigns campaignLine): where the
+ * claim of an account that opened through a campaign's link stands, its
+ * open claim advanced on the way (database only; the stay is judged by the
+ * morning run). `{ campaign: null }` when the caller holds no open or paid
+ * claim, for anyone asking from where Berth is not available, and while
+ * the tables are not there.
  */
 export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);
@@ -23,6 +24,7 @@ export async function POST(request: NextRequest) {
     campaign = await campaignProgress(resolved.user.id);
   } catch (error) {
     console.warn("[campaigns] progress read failed", error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: "campaign_unavailable" }, { status: 503 });
   }
   return NextResponse.json({ campaign } satisfies CampaignResponse);
 }

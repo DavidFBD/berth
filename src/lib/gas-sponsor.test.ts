@@ -22,6 +22,11 @@ import {
   outcomeHoldUntil,
   resetOutcomeHold,
   SponsoredOutcomeUnknown,
+  LATE_HOLD_CAP_MS,
+  holdAfterUnknownOutcome,
+  lateSponsoredSends,
+  SPONSORED_SEND_DEADLINE_MS,
+  subscribeSponsoredStall,
   sponsorFallbackAllowed,
   sponsorRefusals,
   sponsoredChainNames,
@@ -510,6 +515,180 @@ describe("an unknown outcome", () => {
       .request(args)
       .catch(() => null);
     expect(outcomeHoldUntil()).toBeGreaterThanOrEqual(before + OUTCOME_HOLD_MS);
+  });
+});
+
+describe("a sponsored send past its deadline", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    resetOutcomeHold();
+  });
+  const args = { method: "eth_sendTransaction", params: [{ from: "0xa", to: "0xb", data: "0x12" }] };
+
+  function setup(pending: () => Promise<{ hash: string }>, sendDeadlineMs?: number) {
+    const inner = { request: vi.fn(async () => "0xordinary") };
+    const onFallback = vi.fn();
+    const sponsored = vi.fn(pending);
+    const provider = withGasSponsor(inner, {
+      chainId: 8453,
+      address: "0xa",
+      active: () => true,
+      sendSponsored: sponsored,
+      onFallback,
+      sendDeadlineMs,
+    });
+    return { inner, onFallback, sponsored, provider };
+  }
+
+  function deferred() {
+    let resolve!: (value: { hash: string }) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<{ hash: string }>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("waits about ninety seconds by default, and caps a kept hold at ten minutes", () => {
+    expect(SPONSORED_SEND_DEADLINE_MS).toBe(90_000);
+    expect(LATE_HOLD_CAP_MS).toBe(600_000);
+  });
+
+  it("at the deadline: tells the order screen, holds, and keeps waiting for Privy", async () => {
+    vi.useFakeTimers();
+    const privy = deferred();
+    const stalled = vi.fn();
+    const off = subscribeSponsoredStall(stalled);
+    const { inner, onFallback, sponsored, provider } = setup(() => privy.promise);
+    let settled = false;
+    void provider.request(args).finally(() => (settled = true)).catch(() => {});
+    await vi.advanceTimersByTimeAsync(SPONSORED_SEND_DEADLINE_MS - 1);
+    expect(stalled).not.toHaveBeenCalled();
+    expect(outcomeHoldUntil()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(stalled).toHaveBeenCalledOnce();
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+    expect(lateSponsoredSends()).toBe(1);
+    expect(settled).toBe(false);
+    expect(sponsored).toHaveBeenCalledOnce();
+    expect(inner.request).not.toHaveBeenCalled();
+    expect(onFallback).not.toHaveBeenCalled();
+    off();
+  });
+
+  it("keeps the hold past a minute while Privy is silent, then a late hash goes on as a sent order", async () => {
+    vi.useFakeTimers();
+    const privy = deferred();
+    const { inner, sponsored, provider } = setup(() => privy.promise);
+    const answer = provider.request(args);
+    await vi.advanceTimersByTimeAsync(SPONSORED_SEND_DEADLINE_MS);
+    // Three minutes on, far past OUTCOME_HOLD_MS, still held.
+    await vi.advanceTimersByTimeAsync(3 * OUTCOME_HOLD_MS);
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+    privy.resolve({ hash: HASH });
+    await expect(answer).resolves.toBe(HASH);
+    expect(lateSponsoredSends()).toBe(0);
+    // A fresh minute from the late answer, then nothing renews it.
+    expect(outcomeHoldUntil()).toBe(Date.now() + OUTCOME_HOLD_MS);
+    await vi.advanceTimersByTimeAsync(2 * OUTCOME_HOLD_MS);
+    expect(outcomeHoldUntil()).toBeLessThan(Date.now());
+    expect(sponsored).toHaveBeenCalledOnce();
+    expect(inner.request).not.toHaveBeenCalled();
+  });
+
+  it("a late refusal lifts the hold, and is never sent again, sponsored or paid", async () => {
+    vi.useFakeTimers();
+    const privy = deferred();
+    const { inner, onFallback, sponsored, provider } = setup(() => privy.promise);
+    const answer = provider.request(args).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(SPONSORED_SEND_DEADLINE_MS + 30_000);
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+    // Even a refusal Privy words as "no credits", which before the deadline would fall back to a paid send.
+    privy.reject(Object.assign(new Error("Insufficient balance for gas sponsorship"), { status: 402 }));
+    const error = await answer;
+    expect(isSponsoredOutcomeUnknown(error)).toBe(true);
+    expect(outcomeHoldUntil()).toBe(0);
+    expect(sponsored).toHaveBeenCalledOnce();
+    expect(inner.request).not.toHaveBeenCalled();
+    expect(onFallback).not.toHaveBeenCalled();
+  });
+
+  it("a late refusal keeps an ordinary hold another unknown outcome set meanwhile", async () => {
+    vi.useFakeTimers();
+    const privy = deferred();
+    const { provider } = setup(() => privy.promise);
+    const answer = provider.request(args).catch(() => null);
+    await vi.advanceTimersByTimeAsync(SPONSORED_SEND_DEADLINE_MS);
+    // Another send's outcome turns unknown meanwhile: its minute stands.
+    holdAfterUnknownOutcome();
+    const theirs = outcomeHoldUntil();
+    await vi.advanceTimersByTimeAsync(10_000);
+    privy.reject(Object.assign(new Error("Forbidden"), { status: 403 }));
+    await answer;
+    expect(outcomeHoldUntil()).toBe(theirs);
+  });
+
+  it("a late answer that may still land (a timeout, a 5xx) holds a fresh minute, never frees the buttons", async () => {
+    vi.useFakeTimers();
+    const privy = deferred();
+    const { inner, onFallback, sponsored, provider } = setup(() => privy.promise);
+    const answer = provider.request(args).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(SPONSORED_SEND_DEADLINE_MS + 30_000);
+    privy.reject(Object.assign(new Error("Request timed out"), { status: 504 }));
+    const error = await answer;
+    expect(isSponsoredOutcomeUnknown(error)).toBe(true);
+    expect(outcomeHoldUntil()).toBe(Date.now() + OUTCOME_HOLD_MS);
+    expect(sponsored).toHaveBeenCalledOnce();
+    expect(inner.request).not.toHaveBeenCalled();
+    expect(onFallback).not.toHaveBeenCalled();
+  });
+
+  it("stops renewing at the cap even if Privy never answers", async () => {
+    vi.useFakeTimers();
+    const { provider } = setup(() => new Promise(() => {}));
+    void provider.request(args).catch(() => {});
+    await vi.advanceTimersByTimeAsync(SPONSORED_SEND_DEADLINE_MS + LATE_HOLD_CAP_MS + 2 * OUTCOME_HOLD_MS);
+    expect(outcomeHoldUntil()).toBeLessThan(Date.now());
+  });
+
+  it("bounds the retry after a 429 the same way, and never falls back", async () => {
+    vi.useFakeTimers();
+    const tooMany = Object.assign(new Error("Too many requests"), { name: "PrivyApiError", status: 429 });
+    const privy = deferred();
+    const sponsored = vi.fn().mockRejectedValueOnce(tooMany).mockReturnValueOnce(privy.promise);
+    const inner = { request: vi.fn(async () => "0xordinary") };
+    const onFallback = vi.fn();
+    const stalled = vi.fn();
+    const off = subscribeSponsoredStall(stalled);
+    const provider = withGasSponsor(inner, {
+      chainId: 8453,
+      address: "0xa",
+      active: () => true,
+      sendSponsored: sponsored,
+      onFallback,
+      sleep: async () => {},
+      sendDeadlineMs: 5,
+    });
+    const answer = provider.request(args).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(stalled).toHaveBeenCalledOnce();
+    privy.reject(new Error("gone"));
+    expect(isSponsoredOutcomeUnknown(await answer)).toBe(true);
+    expect(sponsored).toHaveBeenCalledTimes(2);
+    expect(inner.request).not.toHaveBeenCalled();
+    expect(onFallback).not.toHaveBeenCalled();
+    off();
+  });
+
+  it("does not touch a send that answers in time", async () => {
+    const stalled = vi.fn();
+    const off = subscribeSponsoredStall(stalled);
+    const { provider } = setup(async () => ({ hash: HASH }), 50);
+    await expect(provider.request(args)).resolves.toBe(HASH);
+    expect(stalled).not.toHaveBeenCalled();
+    expect(outcomeHoldUntil()).toBe(0);
+    off();
   });
 });
 

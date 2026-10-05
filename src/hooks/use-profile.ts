@@ -1,5 +1,6 @@
 "use client";
 
+import { isStaffAnswer } from "@/lib/staff/entry";
 import { isUnavailableResponse, noteUnavailable, unavailableReasonOf } from "@/lib/unavailable-refusal";
 import { reportWithRetry } from "@/lib/pour-retry";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
@@ -326,8 +327,6 @@ function useProfileMutation<TVars>(
       // A pour is also a new order row (lib/server/orders), and a new
       // flow in the portfolio's line.
       void queryClient.invalidateQueries({ queryKey: ["orders", key] });
-      // A buy can be a campaign's qualifying buy: the line moves to holding.
-      void queryClient.invalidateQueries({ queryKey: ["campaign", key] });
       void queryClient.invalidateQueries({ queryKey: ["portfolio-history", key] });
     },
   });
@@ -622,9 +621,9 @@ export function useCloseFirstStock() {
 }
 
 /**
- * The account's own campaign claim (app/api/campaign), for the home's quiet
- * line. Null for anyone who did not arrive through a campaign; a route not
- * deployed reads the same.
+ * The account's own campaign reward (app/api/campaign), for the home's
+ * quiet line. Null when the account holds no open or paid claim; a route
+ * not deployed reads the same.
  */
 export function useCampaignProgress(enabled: boolean) {
   return useRewardsQuery<CampaignResponse, CampaignProgress | null>("campaign", "/api/campaign", {
@@ -672,6 +671,19 @@ export function useAccountWallets(enabled = true) {
     staleTime: 5 * 60_000,
     // Not deployed yet: nothing linked beyond what the session proves.
     notFound: { wallets: [], signedInWith: null },
+  });
+}
+
+/**
+ * Whether this account gets the drawer's quiet Staff entry (lib/staff/entry):
+ * the server's yes for an account on a staff list, false for everyone else.
+ */
+export function useStaffEntry(enabled = true) {
+  return useRewardsQuery<unknown, boolean>("staff-entry", "/api/account/staff", {
+    enabled,
+    staleTime: 10 * 60_000,
+    notFound: {},
+    select: isStaffAnswer,
   });
 }
 

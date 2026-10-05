@@ -1,22 +1,24 @@
 import { getSql } from "@/lib/server/db";
-import { normalizeCampaignCode, type ClaimState } from "@/lib/campaigns";
+import { normalizeCampaignCode, type CampaignKind, type ClaimState } from "@/lib/campaigns";
 
 /**
  * Campaign rows and attribution (db/schema.sql, campaigns and
- * campaign_claims). Attribution is the invite code's birth certificate
- * rule (lib/server/accounts bindReferral), stated for campaigns: only a new
- * account, on its first sync (the welcome reward not yet paid), young
- * (72 hours), never poured, not merged into another, and never where Berth
- * is not available (the profile route asks before calling). An account
- * holds one claim, ever. A campaign attributes only while it is active and
- * inside its dates. Attribution never touches referred_by or friends: an
- * account may arrive with an invite and a campaign, and both bind.
+ * campaign_claims). A claim is made for a NEW account that arrived through
+ * a campaign's own link (/c/<code>, pocketed before sign in and carried by
+ * the account's first profile sync), when that exact code is a live signup
+ * campaign: active, now inside its dates, and the account opened inside
+ * them too. The account is young (72 hours), has not had its first sync
+ * yet (no welcome XP), is not merged into another, and the sync comes from
+ * where Berth is available (the profile route asks before calling). The
+ * account itself is the one paid. An account holds one claim, ever. A
+ * personal invite (users.referred_by) has nothing to do with it.
  */
 
 export type CampaignRow = {
   id: string;
   code: string;
   title: string;
+  kind: CampaignKind;
   amount_usd: number;
   budget_usd: number;
   max_claims: number;
@@ -29,13 +31,16 @@ export type CampaignRow = {
   created_at: Date;
 };
 
-export const CAMPAIGN_COLUMNS = `id, code, title, amount_usd::float8 as amount_usd, budget_usd::float8 as budget_usd,
+export const CAMPAIGN_COLUMNS = `id, code, title, kind, amount_usd::float8 as amount_usd, budget_usd::float8 as budget_usd,
   max_claims, min_buy_usd::float8 as min_buy_usd, hold_days, starts_at, ends_at, active, activated_at, created_at`;
 
 export type ClaimRow = {
   id: string;
   campaign_id: string;
   user_id: string;
+  /** Retired with the invite rules: never written since 5 October 2026, null on every signup claim. */
+  inviter_id: string | null;
+  onboarded_at: Date | null;
   state: ClaimState;
   order_id: string | null;
   intent_tx: string | null;
@@ -65,7 +70,7 @@ export type ClaimRow = {
   created_at: Date;
 };
 
-export const CLAIM_COLUMNS = `id, campaign_id, user_id, state, order_id, intent_tx, buy_usd::float8 as buy_usd,
+export const CLAIM_COLUMNS = `id, campaign_id, user_id, inviter_id, onboarded_at, state, order_id, intent_tx, buy_usd::float8 as buy_usd,
   holding_since, eligible_at, hold_checked_at, hold_attempted_at, hold_unreadable_since, hold_evidence, qualified_at,
   approved_at, approved_by, rejected_at, rejected_by, reject_reason, expired_at, expire_reason, waitlisted_at,
   payout_address, payout_chain, paid_at, paid_by, paid_tx, paid_verified, paid_check, created_at`;
@@ -90,6 +95,7 @@ export function toCampaign(row: Record<string, unknown>): CampaignRow {
 export function toClaim(row: Record<string, unknown>): ClaimRow {
   const out = { ...(row as unknown as ClaimRow) };
   for (const key of [
+    "onboarded_at",
     "holding_since",
     "eligible_at",
     "hold_checked_at",
@@ -120,26 +126,23 @@ export async function claimById(id: string): Promise<ClaimRow | undefined> {
 }
 
 /**
- * What the /c/<code> landing may say: the campaign's promise, only while it
- * is active and inside its dates. Anything else (unknown, inactive, over,
- * or a database that cannot be read) is no campaign at all.
+ * What the /c/<code> landing may say: a signup campaign's promise, only
+ * while it is active and inside its dates. Anything else (unknown,
+ * inactive, over, a retired campaign, or a database that cannot be read)
+ * is no campaign at all.
  */
-export async function campaignForLanding(
-  raw: string,
-): Promise<{ code: string; amountUsd: number; minBuyUsd: number; holdDays: number } | null> {
+export async function campaignForLanding(raw: string): Promise<{ code: string; amountUsd: number; stayDays: number } | null> {
   const code = normalizeCampaignCode(raw);
   if (!code) return null;
   try {
     const rows = (await getSql().query(
-      `select code, amount_usd::float8 as amount_usd, min_buy_usd::float8 as min_buy_usd, hold_days
+      `select code, amount_usd::float8 as amount_usd, hold_days
          from campaigns
-        where code = $1 and active and now() >= starts_at and now() <= ends_at`,
+        where code = $1 and kind = 'signup' and active and now() >= starts_at and now() <= ends_at`,
       [code],
-    )) as { code: string; amount_usd: number; min_buy_usd: number; hold_days: number }[];
+    )) as { code: string; amount_usd: number; hold_days: number }[];
     const row = rows[0];
-    return row
-      ? { code: row.code, amountUsd: Number(row.amount_usd), minBuyUsd: Number(row.min_buy_usd), holdDays: Number(row.hold_days) }
-      : null;
+    return row ? { code: row.code, amountUsd: Number(row.amount_usd), stayDays: Number(row.hold_days) } : null;
   } catch (error) {
     console.warn("[campaigns] landing read failed", error instanceof Error ? error.message : error);
     return null;
@@ -147,26 +150,31 @@ export async function campaignForLanding(
 }
 
 /**
- * Attributes a new account to the campaign whose code it arrived with.
- * Returns the claim id, or null when nothing was written (not new, already
- * attributed, no such campaign, not active, outside its dates).
+ * Makes the claim of a new account that arrived through a campaign's link.
+ * Only the exact code the account carries counts, and only while that
+ * campaign is a live signup campaign that covers the moment the account was
+ * opened; there is no other campaign to fall back on, and a personal invite
+ * counts for nothing. Returns the claim id, or null when nothing was
+ * written: no code, an unknown, inactive, retired or ended campaign, an
+ * account not new (older than 72 hours, already synced once, or opened
+ * outside the campaign's dates), merged into another, or a claim already
+ * made.
  */
-export async function attributeCampaign(userId: string, raw: unknown): Promise<string | null> {
-  const code = normalizeCampaignCode(raw);
+export async function attributeSignup(userId: string, rawCode: unknown): Promise<string | null> {
+  const code = normalizeCampaignCode(rawCode);
   if (!code) return null;
   const rows = (await getSql().query(
     `insert into campaign_claims (campaign_id, user_id, state)
      select c.id, u.id, 'attributed'
-       from campaigns c, users u
-      where c.code = $2
-        and c.active and now() >= c.starts_at and now() <= c.ends_at
-        and u.id = $1
+       from users u
+       join campaigns c
+         on c.code = $2 and c.kind = 'signup' and c.active
+        and now() >= c.starts_at and now() <= c.ends_at
+        and u.created_at >= c.starts_at and u.created_at <= c.ends_at
+      where u.id = $1
         and u.retired_into is null
         and u.created_at > now() - interval '72 hours'
-        and not exists (
-          select 1 from xp_events e
-           where e.user_id = u.id and e.kind in ('account_created', 'pour_in', 'pour_out')
-        )
+        and not exists (select 1 from xp_events x where x.user_id = u.id and x.kind = 'account_created')
      on conflict (user_id) do nothing
      returning id`,
     [userId, code],

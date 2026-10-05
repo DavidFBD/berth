@@ -21,6 +21,7 @@ import {
 } from "@/lib/chains";
 import { resolveAccount } from "@/lib/account";
 import { useAccountSession } from "@/hooks/use-account";
+import { useGasSponsored } from "@/hooks/use-gas-sponsor";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { isDust } from "@/lib/dust";
 import {
@@ -237,6 +238,7 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
   // to cover its own pour is not a holding, it's noise — showing €0.03 of
   // BNB just invites a doomed pour attempt. Top the token up and it crosses
   // the line and reappears. Unpriced holdings stay: unknown is not dust.
+  const sponsored = useGasSponsored();
   const holdings = swept.holdings
     .map((holding) => ({
       ...holding,
@@ -263,7 +265,8 @@ export function useEmbeddedHoldings(): EmbeddedHoldingsResult {
     holdings,
     erroredChains: swept.erroredChains,
     slowChains: swept.slowChains,
-    gasShortChains: swept.gasShortChains,
+    // A chain whose fee Privy pays for this person needs no native coin (lib/gas-sponsor).
+    gasShortChains: swept.gasShortChains.filter((chainKey) => !sponsored(chainKey)),
     nativeBalances: swept.nativeBalances,
     totalUsd,
   };

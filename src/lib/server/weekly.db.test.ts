@@ -186,7 +186,8 @@ describe("weeklyNotice", () => {
       account: {
         worth: "$165.00",
         change: `+${((growth - 1) * 100).toFixed(2)}%`,
-        benchmark: { name: "S&P 500 ETF", change: "+1.00%" },
+        // The same money in the fund, time weighted: the half bought at 502 on Tuesday earned nothing that day.
+        benchmark: { name: "S&P 500 ETF", change: `+${(((501 / 500) * ((0.2 * 502 + 52) / (0.2 * 501 + 52)) * (505 / 502) - 1) * 100).toFixed(2)}%` },
       },
       holdings: [{ name: "NVIDIA", worth: "$165.00", move: "+10.00%" }],
       holdingsRest: null,
@@ -327,7 +328,7 @@ describe("runWeeklySummaries", () => {
     expect(sent[0].to).toBe("sailor@example.com");
     expect(sent[0].subject).toBe("Your Berth week of 21 September");
     expect(sent[0].text).toContain("Worth at the close: $165.00");
-    expect(sent[0].text).toContain("S&P 500 ETF, same days: +1.00%");
+    expect(sent[0].text).toContain("S&P 500 ETF, same days: +0.93%");
     // One name for the fund in the whole email.
     expect(sent[0].text).not.toContain("S&P 500 fund");
     expect(sent[0].headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");

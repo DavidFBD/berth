@@ -61,11 +61,15 @@ export type ReferralPanel = {
     taps: number;
     /** Accounts born holding this account's code. */
     seated: number;
-    /** Of those, how many have poured a first verified cup. */
-    poured: number;
-    /** friend_poured XP actually banked. */
+    /**
+     * Of those, how many have earned this account its invite XP: set up and
+     * stayed a week (friend_stayed), or, before 2026-10-05, a first buy
+     * (friend_poured, retired).
+     */
+    settled: number;
+    /** Invite XP actually banked (friend_stayed and the retired friend_poured). */
     earnedXp: number;
-    /** XP waiting on seated friends who have not poured yet. */
+    /** XP waiting on seated friends who have not set up and stayed yet. */
     steepingXp: number;
   };
 };

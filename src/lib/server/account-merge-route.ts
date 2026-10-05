@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { sendNotice } from "@/lib/server/email/send";
+import { sendNotice } from "@/lib/server/email/notify";
 import { accountForDid, accountForWallet, normalizeWallet } from "@/lib/server/accounts";
 import { doneMerge, mergeAccounts, planMerge, type MergePlan } from "@/lib/server/account-merge";
 import { accountOf, asProof, NOT_VERIFIED, privyFresh, signerOf, spend } from "@/lib/server/account-wallets-route";

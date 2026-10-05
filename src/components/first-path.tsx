@@ -9,6 +9,8 @@ import { useCopy } from "@/components/settings-provider";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { NamePicker, NamePickerView, type PickerStatus } from "@/components/social/name-picker";
 import { AddEmailBlock } from "@/components/rewards-panel";
+import { XMark } from "@/components/x-mark";
+import { BERTH_X_URL } from "@/lib/berth-x";
 import { useShareFriendLink } from "@/components/social/social-section";
 import { PRIMARY, StepCard, type StepFrame } from "@/components/home-next-step";
 import { useFirstPathRecord, useFirstPathWrite, useProfile } from "@/hooks/use-profile";
@@ -354,9 +356,9 @@ export function HomePathCard({ slots, footnote }: { slots: HomePathSlots; footno
 }
 
 /**
- * A quiet line under every path card (a campaign's rules or progress,
- * components/board/campaign-line), so a campaign never reads as a second
- * next step and never goes missing while the path is on screen.
+ * A quiet line under every path card. The home passes none since
+ * 2026-10-05: a campaign's line never stands beside the first buy
+ * step (components/board/campaign-line shows once the path is done).
  */
 function Footnote({ children }: { children?: ReactNode }) {
   if (!children) return null;
@@ -513,6 +515,16 @@ function SetUpCard({ compact = false, footnote }: { compact?: boolean; footnote?
         <Button className={compact ? "w-full" : PRIMARY} onClick={path.finish}>
           {copy.setUpClose}
         </Button>
+        {/* Not a step: a quiet way to Berth's own account on X, earning nothing and counting toward nothing. */}
+        <a
+          href={BERTH_X_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-9 items-center gap-1.5 self-center text-xs text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground"
+        >
+          <XMark className="size-3" />
+          {copy.followOnX}
+        </a>
         {footnote}
       </div>
     </Panel>

@@ -233,7 +233,7 @@ export async function getOrCreateUser({
          where w.wallet_address = $1 and w.privy_did is null
            and not exists (
              select 1 from xp_events e
-             where e.user_id = $2 and e.kind in ('pour_in', 'pour_out', 'friend_poured')
+             where e.user_id = $2 and e.kind in ('pour_in', 'pour_out', 'friend_poured', 'friend_stayed')
            )
            and not exists (select 1 from users r where r.referred_by = $2)`,
         [wallet, user.id],
@@ -323,7 +323,7 @@ export async function awardXp(
   options: {
     /**
      * false parks the reward as unseen news: pass it when the award lands
-     * during someone ELSE's request (friend_poured), so the owner's next
+     * during someone ELSE's request or the morning run (friend_stayed), so the owner's next
      * profile sync can flush it into a visible ceremony.
      */
     announced?: boolean;
@@ -447,9 +447,11 @@ export async function bindReferral(
 
 /**
  * The late-claim rule, stated ONCE: unclaimed, young (72 hours), and never
- * poured — the payout moment IS the first verified pour, so a post-pour
- * claim would bind a referral that can never pay out (and would invite
- * retro-claiming settled accounts). Both the write (claimReferral) and the
+ * poured. The friend's own invite_accepted lands at their first verified
+ * pour, so a post-pour claim would bind a referral whose welcome can never
+ * pay out, and would invite retro-claiming settled accounts; the inviter's
+ * friend_stayed (lib/server/invite-xp) is judged on set up and stay, never
+ * on a pour. Both the write (claimReferral) and the
  * read (referralPanel's canClaim) ask this exact text, on the database's
  * clock, so the hatch the UI offers is the hatch the server honours.
  */
@@ -540,10 +542,10 @@ export async function referralPanel(user: UserRow): Promise<ReferralPanel> {
   const outbound = (await sql.query(
     `select
        (select count(*) from users where referred_by = $1)::int as seated,
-       (select count(*) from xp_events where user_id = $1 and kind = 'friend_poured')::int as poured,
-       (select coalesce(sum(amount), 0) from xp_events where user_id = $1 and kind = 'friend_poured')::int as earned`,
+       (select count(*) from xp_events where user_id = $1 and kind in ('friend_poured', 'friend_stayed'))::int as settled,
+       (select coalesce(sum(amount), 0) from xp_events where user_id = $1 and kind in ('friend_poured', 'friend_stayed'))::int as earned`,
     [user.id],
-  )) as { seated: number; poured: number; earned: number }[];
+  )) as { seated: number; settled: number; earned: number }[];
 
   const clicks = user.referral_code
     ? ((await sql.query(
@@ -561,9 +563,9 @@ export async function referralPanel(user: UserRow): Promise<ReferralPanel> {
     [user.id],
   )) as { can: boolean }[];
 
-  const { seated, poured, earned } = outbound[0] ?? {
+  const { seated, settled, earned } = outbound[0] ?? {
     seated: 0,
-    poured: 0,
+    settled: 0,
     earned: 0,
   };
 
@@ -573,10 +575,10 @@ export async function referralPanel(user: UserRow): Promise<ReferralPanel> {
     stats: {
       taps: clicks[0]?.taps ?? 0,
       seated,
-      poured,
+      settled,
       earnedXp: earned,
       steepingXp:
-        Math.max(0, seated - poured) * XP_ACTIONS.friend_poured.amount,
+        Math.max(0, seated - settled) * XP_ACTIONS.friend_stayed.amount,
     },
   };
 }

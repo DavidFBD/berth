@@ -937,7 +937,7 @@ declare
   -- to name the survivor, and stays behind when the survivor already has
   -- it. A once per account kind the survivor already has stays on the
   -- absorbed row, kept for the record and never paid twice. XP one side
-  -- earned for inviting the other (friend_poured, and the invitee's
+  -- earned for inviting the other (friend_poured or friend_stayed, and the invitee's
   -- invite_accepted) was a person inviting themselves: it rests on the
   -- retired row, whichever side it was paid to. Both totals are then
   -- summed afresh from the events, never added together.
@@ -945,7 +945,7 @@ declare
   -- 'self:<survivor>' on the way, so the absorbed row can hold it beside
   -- any invite_accepted of its own.)
   ; update xp_events set user_id = a, ref = coalesce(ref, 'self:' || s::text)
-      where user_id = s and ((kind = 'friend_poured' and ref = a::text)
+      where user_id = s and ((kind in ('friend_poured', 'friend_stayed') and ref = a::text)
         or (kind = 'invite_accepted' and ref is null and s_row.referred_by is not distinct from a))
   ; update xp_events e set user_id = s, ref = s::text || substr(e.ref, length(a::text) + 1)
       where e.user_id = a and e.ref like a::text || ':%'
@@ -954,7 +954,7 @@ declare
   ; update xp_events e set user_id = s
       where e.user_id = a
         and coalesce(e.ref, '') not like a::text || ':%'
-        and not (e.kind = 'friend_poured' and coalesce(e.ref, '') in (s::text, a::text))
+        and not (e.kind in ('friend_poured', 'friend_stayed') and coalesce(e.ref, '') in (s::text, a::text))
         and not (e.kind = 'invite_accepted' and (coalesce(e.ref, '') = 'self:' || s::text or (e.ref is null and a_row.referred_by is not distinct from s)))
         and (e.ref is not null or not exists (select 1 from xp_events x where x.user_id = s and x.kind = e.kind and x.ref is null))
   ; get diagnostics n = row_count
@@ -1319,17 +1319,73 @@ create table if not exists x_read_budget (
   requests int not null default 0
 );
 
+-- Berth's own automatic posts on X (lib/x-autopost, lib/server/x-autopost).
+--
+-- x_oauth_tokens: the one OAuth 2.0 user token pair of @berthmarkets
+-- (lib/server/x-oauth). X rotates the refresh token on every use, so the
+-- newest pair lives here, sealed with a key derived from X_CLIENT_SECRET,
+-- seeded from the environment only while there is no row (or when the
+-- stored pair is dead and the environment carries a new one, told apart by
+-- `seed_fingerprint`, a hash). `refreshing_at` is the refresh lease: one
+-- run at a time may spend the refresh token.
+create table if not exists x_oauth_tokens (
+  id int primary key check (id = 1),
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz,
+  refreshing_at timestamptz,
+  refreshed_at timestamptz,
+  dead boolean not null default false,
+  last_error text,
+  seed_fingerprint text,
+  updated_at timestamptz not null default now()
+);
+
+-- x_autopost_log: every attempt to post and how it ended. `sending` is
+-- written before the request, so a run that dies mid-post is never retried
+-- blind; `unknown` is a request whose answer never came (it may be live).
+-- Both count as posted for the schedule and for `key`, which is a story, a
+-- holiday or a week (once ever). One live post per UTC day at most.
+create table if not exists x_autopost_log (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  day text not null,
+  source text check (source in ('campaign', 'calendar', 'news', 'milestone')),
+  key text,
+  symbol text,
+  campaign_code text,
+  text text,
+  status text not null check (status in ('sending', 'posted', 'unknown', 'failed', 'skipped')),
+  tweet_id text,
+  detail text
+);
+
+create index if not exists x_autopost_log_at_idx on x_autopost_log (at desc);
+create unique index if not exists x_autopost_log_live_day_idx
+  on x_autopost_log (day) where status in ('sending', 'posted', 'unknown');
+create unique index if not exists x_autopost_log_live_key_idx
+  on x_autopost_log (key) where status in ('sending', 'posted', 'unknown');
+
 -- The first stock's card (lib/first-stock): "Got it" closes it for good on
 -- the account, on every device. The first close is kept; null is open.
 alter table users add column if not exists first_stock_closed_at timestamptz;
 
--- Reward campaigns (lib/server/campaigns, docs/plans/campaigns.md). A
--- campaign is a link (/c/<code>) and a promise: "Buy at least $10 of any
--- stock or fund through this link, keep it for 7 days, and we add $5 in
--- USDC." Berth never sends the money: David pays each approved claim by
--- hand from the staff page, and records the transaction here. Created
--- inactive; only the staff page activates one, after counsel review. XP
--- and ranks stay the fun layer and are never the trigger.
+-- Reward campaigns (lib/server/campaigns, docs/plans/campaigns.md). Since
+-- 5 October 2026 a campaign rewards a new account opened through its own
+-- link (/c/<code>), never a buy: the person who opens a new account through
+-- the link inside the campaign's dates, finishes setting it up and still
+-- uses Berth `hold_days` days later earns the campaign's USDC, paid to that
+-- account's own address (lib/server/campaigns/eligibility has every rule).
+-- A personal invite (/r/<code>) never earns money. Nothing anywhere asks
+-- for a buy, a holding or a volume.
+-- Berth never sends the money: David pays each approved claim by hand from
+-- the staff page, and records the transaction here. Created inactive; only
+-- the staff page activates one, after counsel review. XP and ranks stay the
+-- fun layer and are never the trigger.
+-- The first campaigns (kind 'buy': "buy at least $10 and keep it 7 days")
+-- are retired: they can no longer be created or activated, and their rows
+-- stay, read only, with the columns that described them (min_buy_usd, the
+-- claim's order and hold columns).
 create table if not exists campaigns (
   id uuid primary key default gen_random_uuid(),
   code text not null unique check (code ~ '^[a-z0-9][a-z0-9-]{2,31}$'),
@@ -1348,10 +1404,11 @@ create table if not exists campaigns (
   constraint campaigns_budget_covers_one check (amount_usd <= budget_usd)
 );
 
--- One row per account that arrived through a campaign link, written on the
--- account's first sync (the same birth certificate rule as an invite
--- code), so one account has at most one claim, ever. `state` walks
--- attributed (arrived, no verified email yet) -> buying (waiting for the
+-- One row per account a campaign is about, so one account has at most one
+-- claim, ever. For an invite campaign that is the invited friend's account
+-- (inviter_id and the invite states are below). For the retired buy
+-- campaigns, read only: the account that arrived through the link, whose
+-- `state` walked attributed (arrived, no verified email yet) -> buying (waiting for the
 -- first qualifying buy) -> holding (the buy is in, a slot is reserved,
 -- eligible_at says when the hold is judged) -> qualified (still held) ->
 -- approved (by staff) -> paid (by David, by hand); or rejected (with a
@@ -1418,15 +1475,70 @@ create index if not exists campaign_claims_campaign_state_idx on campaign_claims
 create index if not exists campaign_claims_paid_tx_idx
   on campaign_claims (lower(paid_tx)) where paid_tx is not null;
 
--- Every wallet a claim stood on when its slot was reserved: the account's
--- linked wallets (unlinked ones too), its home, the buy's payer and where
--- the buy was delivered. A wallet takes part in a campaign once.
+-- Retired with the buy campaigns, kept read only: every wallet a buy claim
+-- stood on when its slot was reserved. Invite claims use
+-- campaign_invitee_marks (below) instead.
 create table if not exists campaign_claim_wallets (
   campaign_id uuid not null references campaigns(id),
   wallet text not null,
   claim_id uuid not null references campaign_claims(id) on delete cascade,
   created_at timestamptz not null default now(),
   primary key (campaign_id, wallet)
+);
+
+-- Campaign kinds. `kind` says which rules a campaign runs: 'signup' (every
+-- new one since 5 October 2026: the account opened through the campaign's
+-- link is the one paid), 'invite' (retired the same day, unused: it paid
+-- whoever had invited the account) or 'buy' (retired, the first rows).
+-- `hold_days` is, for a signup campaign, how many days after setting up the
+-- account must still be using Berth. `max_per_inviter` is inert since the
+-- signup rules: nothing reads it, and it stays only so the column is never
+-- dropped under a reader.
+alter table campaigns add column if not exists kind text not null default 'buy';
+alter table campaigns drop constraint if exists campaigns_kind_check;
+alter table campaigns add constraint campaigns_kind_check check (kind in ('buy', 'invite', 'signup'));
+alter table campaigns alter column kind set default 'signup';
+alter table campaigns add column if not exists max_per_inviter int not null default 3;
+alter table campaigns drop constraint if exists campaigns_max_per_inviter_check;
+alter table campaigns add constraint campaigns_max_per_inviter_check check (max_per_inviter between 1 and 100);
+-- A retired buy campaign never runs again.
+update campaigns set active = false where kind = 'buy' and active;
+
+-- An invite claim is the INVITED account's row (user_id, one per account,
+-- ever). Until 5 October 2026 it named who invited it (`inviter_id`), who
+-- was the one paid. Since then a claim is the account that opened through
+-- the campaign's link, and that account is the one paid: inviter_id is
+-- never written, and only a retired invite claim could carry one.
+-- `onboarded_at` is when the account was first seen set up
+-- (lib/server/campaigns/eligibility), which reserved the place; eligible_at
+-- is that plus the campaign's hold_days.
+-- state, for a signup claim: attributed (arrived, not set up yet) ->
+-- holding (set up, a place reserved, waiting out the days) -> qualified
+-- (still using Berth) -> approved -> paid; or rejected, or expired.
+alter table campaign_claims add column if not exists inviter_id uuid references users(id);
+alter table campaign_claims add column if not exists onboarded_at timestamptz;
+create index if not exists campaign_claims_inviter_idx on campaign_claims (campaign_id, inviter_id) where inviter_id is not null;
+
+-- An invite campaign whose rules paid the inviter becomes a signup
+-- campaign, as long as it never made a claim under the old rules: its dates,
+-- amount, budget and places stay as they were, and it is switched off, so
+-- it goes live under the new rules only through the activation gates again.
+-- One that did make a claim stays 'invite', retired, read only, like the
+-- buy campaigns.
+update campaigns c set kind = 'signup', active = false
+ where c.kind = 'invite'
+   and not exists (select 1 from campaign_claims cl where cl.campaign_id = c.id);
+
+-- One payout per real person, across every campaign: each paid
+-- person's wallets ('wallet:<address>') and folded email ('email:<address>',
+-- a plus tag dropped, Gmail's dots too) once their claim takes a place. A
+-- later claim of anyone standing on one of them is rejected (wallet_used,
+-- email_used). Rows are never removed by the rules: a person refused once
+-- does not come back on a new account.
+create table if not exists campaign_invitee_marks (
+  mark text primary key,
+  claim_id uuid not null references campaign_claims(id) on delete cascade,
+  created_at timestamptz not null default now()
 );
 
 
@@ -1560,22 +1672,26 @@ create index if not exists email_sends_sent_idx on email_sends (created_at) wher
 create index if not exists staff_audit_action_idx on staff_audit (staff_user_id, action, at desc);
 
 
--- Reserving a slot, in one transaction (lib/server/campaigns/eligibility):
--- the campaign row is locked first, so two claims racing for the last slot
--- are taken one after the other and only one gets it. Then the rules that
--- need every other claim in view: one per person (the claims of every
--- account merged into this one count as this person's), one per wallet,
--- and the budget and max_claims, counted over the claims holding a slot
--- plus the waitlisted claims ahead of this one. A claim that finds no
--- place waits (waitlisted_at) until the deadline (the end plus the hold's
--- days), and a place that frees goes to the claim that has waited
--- longest; only after the deadline is it expired as full. Answers 'holding', or why not: 'stale' (moved
--- already), 'inactive', 'outside' (the buy is not inside the campaign's
--- dates), 'one_per_person', 'wallet_used' (both keep the buy as evidence),
--- 'waitlisted', 'full'. Its
+-- The buy campaigns' slot reservation, retired with them (5 October 2026).
+drop function if exists campaign_reserve(uuid, uuid, uuid, text, numeric, timestamptz, text[], timestamptz);
+
+-- Reserving a place for a signup claim, in one transaction
+-- (lib/server/campaigns/eligibility): the campaign row is locked first, so
+-- two claims racing for the last place are taken one after the other. Then
+-- the rules that need every other claim in view: one payout per person
+-- (any of p_marks, the person's wallets and folded email, already standing
+-- on another claim: wallet_used or email_used), and the budget and
+-- max_claims, counted over the claims holding a place plus the waitlisted
+-- claims ahead of this one. A claim that finds no place waits
+-- (waitlisted_at) until the deadline (the end plus hold_days); only after
+-- it is it expired as full. Answers 'holding', or why not: 'stale',
+-- 'inactive', 'wallet_used', 'email_used', 'waitlisted', 'full'. Its
 -- statements begin with their semicolon, so that db:push, which splits at
--- a semicolon ending a line, keeps it whole.
-create or replace function campaign_reserve(p_claim uuid, p_person uuid, p_order uuid, p_intent text, p_buy_usd numeric, p_since timestamptz, p_wallets text[], p_now timestamptz) returns text language plpgsql as $$
+-- a semicolon ending a line, keeps it whole. The invite rules' version,
+-- which also capped each inviter, is dropped.
+drop function if exists campaign_reserve_invite(uuid, uuid, text[], timestamptz);
+
+create or replace function campaign_reserve_signup(p_claim uuid, p_marks text[], p_now timestamptz) returns text language plpgsql as $$
 declare
   c record
   ; cl record
@@ -1587,32 +1703,28 @@ declare
   ; end if
   ; select * into c from campaigns where id = cl.campaign_id for update
   ; select * into cl from campaign_claims where id = p_claim for update
-  ; if cl.state not in ('attributed', 'buying') then return 'stale'
+  ; if cl.state <> 'attributed' or c.kind <> 'signup' then return 'stale'
   ; end if
   ; if not c.active then return 'inactive'
   ; end if
-  ; if p_since < c.starts_at or p_since > c.ends_at then return 'outside'
-  ; end if
   ; if exists (
-      select 1 from campaign_claims o join users u on u.id = o.user_id
-       where o.campaign_id = c.id and o.id <> cl.id
-         and coalesce(u.retired_into, u.id) = p_person
-         and o.state in ('holding', 'qualified', 'approved', 'paid')
+      select 1 from campaign_invitee_marks m join campaign_claims o on o.id = m.claim_id
+       where m.mark = any(p_marks) and m.mark like 'wallet:%' and m.claim_id <> cl.id and o.state <> 'expired'
     ) then
-    update campaign_claims set state = 'rejected', reject_reason = 'one_per_person', order_id = p_order, intent_tx = p_intent, buy_usd = p_buy_usd, rejected_at = p_now, updated_at = p_now where id = cl.id
-    ; return 'one_per_person'
-  ; end if
-  ; if exists (
-      select 1 from campaign_claim_wallets w
-       where w.campaign_id = c.id and w.wallet = any(p_wallets) and w.claim_id <> cl.id
-    ) then
-    update campaign_claims set state = 'rejected', reject_reason = 'wallet_used', order_id = p_order, intent_tx = p_intent, buy_usd = p_buy_usd, rejected_at = p_now, updated_at = p_now where id = cl.id
+    update campaign_claims set state = 'rejected', reject_reason = 'wallet_used', rejected_at = p_now, updated_at = p_now where id = cl.id
     ; return 'wallet_used'
+  ; end if
+  ; if exists (
+      select 1 from campaign_invitee_marks m join campaign_claims o on o.id = m.claim_id
+       where m.mark = any(p_marks) and m.mark like 'email:%' and m.claim_id <> cl.id and o.state <> 'expired'
+    ) then
+    update campaign_claims set state = 'rejected', reject_reason = 'email_used', rejected_at = p_now, updated_at = p_now where id = cl.id
+    ; return 'email_used'
   ; end if
   ; select count(*) into n from campaign_claims
      where campaign_id = c.id and state in ('holding', 'qualified', 'approved', 'paid')
   ; select count(*) into ahead from campaign_claims
-     where campaign_id = c.id and id <> cl.id and state in ('attributed', 'buying')
+     where campaign_id = c.id and id <> cl.id and state = 'attributed'
        and waitlisted_at is not null
        and (cl.waitlisted_at is null or waitlisted_at < cl.waitlisted_at or (waitlisted_at = cl.waitlisted_at and id < cl.id))
   ; if n + ahead >= c.max_claims or (n + ahead + 1) * c.amount_usd > c.budget_usd then
@@ -1623,12 +1735,12 @@ declare
     ; update campaign_claims set waitlisted_at = coalesce(waitlisted_at, p_now), updated_at = p_now where id = cl.id
     ; return 'waitlisted'
   ; end if
-  ; insert into campaign_claim_wallets (campaign_id, wallet, claim_id)
-    select c.id, w, cl.id from unnest(p_wallets) as w where w is not null
+  ; insert into campaign_invitee_marks (mark, claim_id)
+    select m, cl.id from unnest(p_marks) as m where m is not null
     on conflict do nothing
   ; update campaign_claims
-       set state = 'holding', order_id = p_order, intent_tx = p_intent, buy_usd = p_buy_usd,
-           holding_since = p_since, eligible_at = p_since + make_interval(days => c.hold_days),
+       set state = 'holding', onboarded_at = p_now, holding_since = p_now,
+           eligible_at = p_now + make_interval(days => c.hold_days),
            waitlisted_at = null, updated_at = p_now
      where id = cl.id
   ; return 'holding'
@@ -1690,6 +1802,55 @@ declare
   ; insert into staff_audit (staff_user_id, action, target, detail)
     values (p_staff, p_action, p_claim::text, p_detail || jsonb_build_object('outcome', 'done'))
   ; return 'paid'
+; end $$;
+
+-- Deleting a campaign (lib/server/campaigns actions deleteCampaign), in one
+-- transaction: the campaign row is locked first, so no claim can take a
+-- place while it is judged. Allowed only for a signup campaign that is
+-- inactive and that never took on money or a person's marks: no claim of
+-- it holds or ever held a place (holding, qualified, approved, paid, or
+-- onboarded_at or holding_since set), none has a payment hash, and none
+-- stands on a campaign_invitee_marks row. Money history and the one payout
+-- per person record are never erased. What goes with it: its open,
+-- rejected and expired claims that never held a place, and its payout
+-- sources. The audit row (with the staff member's reason, in p_detail)
+-- commits with the delete, and the code is free for a new campaign.
+-- Answers 'deleted', or why not: 'not_found', 'retired', 'active',
+-- 'has_places'. Its statements begin with their semicolon, so that db:push,
+-- which splits at a semicolon ending a line, keeps it whole.
+create or replace function campaign_delete(p_campaign uuid, p_staff uuid, p_detail jsonb) returns text language plpgsql as $$
+declare
+  c record
+  ; claims int
+  ; sources int
+; begin
+  select * into c from campaigns where id = p_campaign for update
+  ; if not found then return 'not_found'
+  ; end if
+  ; if c.kind <> 'signup' then return 'retired'
+  ; end if
+  ; if c.active then return 'active'
+  ; end if
+  ; if exists (
+      select 1 from campaign_claims
+       where campaign_id = c.id
+         and (state in ('holding', 'qualified', 'approved', 'paid')
+              or onboarded_at is not null or holding_since is not null
+              or paid_tx is not null or paid_at is not null)
+    ) or exists (
+      select 1 from campaign_invitee_marks m join campaign_claims cl on cl.id = m.claim_id where cl.campaign_id = c.id
+    ) then return 'has_places'
+  ; end if
+  ; delete from campaign_claim_wallets where campaign_id = c.id
+  ; delete from campaign_claims where campaign_id = c.id
+  ; get diagnostics claims = row_count
+  ; delete from campaign_payout_sources where campaign_id = c.id
+  ; get diagnostics sources = row_count
+  ; delete from campaigns where id = c.id
+  ; insert into staff_audit (staff_user_id, action, target, detail)
+    values (p_staff, 'campaign.delete', p_campaign::text,
+            p_detail || jsonb_build_object('code', c.code, 'title', c.title, 'claimsRemoved', claims, 'sourcesRemoved', sources, 'outcome', 'done'))
+  ; return 'deleted'
 ; end $$;
 
 -- The guided first path (lib/first-path, lib/server/first-path): one row per
@@ -1946,3 +2107,27 @@ create table if not exists home_last_known (
   snapshot jsonb not null,
   as_of timestamptz not null default now()
 );
+
+-- Invite XP (lib/server/invite-xp, the morning run): an invited friend
+-- (users.referred_by) seen set up, as the invite campaign defines it (a
+-- verified email, a username and a home wallet). A week after set_up_at,
+-- if the friend opened Berth at least six days after set_up_at, the inviter
+-- is paid friend_stayed once (xp_events, ref = the friend's id) and
+-- settled_at closes the row. A friend whose inviter was already paid
+-- friend_poured, the retired first buy rule, is closed as 'paid_before'
+-- and pays nothing more. The campaign's guards close a row unpaid too:
+-- 'self_invite' (one person, a shared wallet or folded email) and
+-- 'existing_customer' (on Berth before the invite). An inviter is paid for
+-- at most ten friends a UTC calendar month; the rest wait for the next.
+create table if not exists invite_setups (
+  friend_id uuid primary key references users(id) on delete cascade,
+  set_up_at timestamptz not null default now(),
+  -- The last morning that judged it and found it waiting: the oldest
+  -- looked at first, so a long tail of friends who never came back cannot
+  -- starve the newer ones.
+  checked_at timestamptz,
+  settled_at timestamptz,
+  outcome text check (outcome in ('paid', 'paid_before', 'self_invite', 'existing_customer'))
+);
+
+create index if not exists invite_setups_open_idx on invite_setups (checked_at nulls first, set_up_at) where settled_at is null;

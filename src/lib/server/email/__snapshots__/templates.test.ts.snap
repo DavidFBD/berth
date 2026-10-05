@@ -58,7 +58,7 @@ exports[`notice templates > campaign-paid renders HTML and text without personal
 
 Your offer was paid
 
-$5 in USDC was sent to your Berth account on Base, for keeping your first buy through the offer.
+$5 in USDC was sent to your Berth account on Base, for opening your account through a Berth offer and staying.
 It is yours to keep, spend or take out, like any other money in your wallet.
 
 Open Berth: https://www.berthmarkets.com/
@@ -122,7 +122,7 @@ exports[`notice templates > payout-source-added renders HTML and text without pe
 
 A payout wallet was added
 
-0x5aAe…eAed may now pay claims of Autumn first buy. Mark paid accepts USDC from it from now on.
+0x5aAe…eAed can now pay rewards for Autumn first buy. When you record a reward as paid, Berth accepts USDC sent from this wallet.
 
 Reason given: The house wallet for October
 

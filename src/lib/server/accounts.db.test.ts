@@ -156,13 +156,13 @@ describe("awardXp", () => {
 
   it("parks unannounced awards until the owner's next sync flushes them once", async () => {
     const user = await freshUser();
-    await awardXp(user.id, "friend_poured", "some-friend-id", {
+    await awardXp(user.id, "friend_stayed", "some-friend-id", {
       announced: false,
     });
     const news = await flushUnannounced(user.id);
     const again = await flushUnannounced(user.id);
     expect(news).toEqual([
-      { kind: "friend_poured", amount: XP_ACTIONS.friend_poured.amount },
+      { kind: "friend_stayed", amount: XP_ACTIONS.friend_stayed.amount },
     ]);
     expect(again).toEqual([]);
   });
@@ -218,16 +218,17 @@ describe("referral binding", () => {
 });
 
 describe("referralPanel", () => {
-  it("counts seats, pours, banked and steeping XP, and link taps", async () => {
+  it("counts seats, friends who stayed (and the retired first buy rule), banked and pending XP, and link taps", async () => {
     const referrer = await ensureReferralCode(await freshUser());
     const poured = await freshUser();
-    const steeping = await freshUser();
+    const stayed = await freshUser();
+    const waiting = await freshUser();
     await bindReferral(poured.id, referrer.referral_code!);
-    await bindReferral(steeping.id, referrer.referral_code!);
-    // The poured friend's first cup pays the referrer (as xp/pour does).
-    await awardXp(referrer.id, "friend_poured", poured.id, {
-      announced: false,
-    });
+    await bindReferral(stayed.id, referrer.referral_code!);
+    await bindReferral(waiting.id, referrer.referral_code!);
+    // One paid under the retired first buy rule, one under the stay rule.
+    await awardXp(referrer.id, "friend_poured", poured.id, { announced: false });
+    await awardXp(referrer.id, "friend_stayed", stayed.id, { announced: false });
     await recordReferralClick(referrer.referral_code!);
     await recordReferralClick(referrer.referral_code!);
     await recordReferralClick("zzzzzzzz"); // unknown code: no row
@@ -235,10 +236,10 @@ describe("referralPanel", () => {
     const panel = await referralPanel(referrer);
     expect(panel.stats).toEqual({
       taps: 2,
-      seated: 2,
-      poured: 1,
-      earnedXp: XP_ACTIONS.friend_poured.amount,
-      steepingXp: XP_ACTIONS.friend_poured.amount,
+      seated: 3,
+      settled: 2,
+      earnedXp: XP_ACTIONS.friend_poured.amount + XP_ACTIONS.friend_stayed.amount,
+      steepingXp: XP_ACTIONS.friend_stayed.amount,
     });
   });
 

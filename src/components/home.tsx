@@ -6,6 +6,7 @@ import type { LeverageYieldVault } from "@sodax/dapp-kit";
 import { WalletDrawer } from "@/components/wallet";
 import { AccountButton, AddMoneyDrawer, useAssistantReachable, useEmailSession } from "@/components/account-button";
 import { BerthMark } from "@/components/berth-mark";
+import { BetaPill } from "@/components/ui/beta-pill";
 import { InfoDrawer } from "@/components/info-drawer";
 import { useCopy } from "@/components/settings-provider";
 import {
@@ -511,8 +512,9 @@ function SignedInHome() {
             waiting: pathWaiting,
             card: (
               <HomePathCard
-                // A campaign's line, under every path card while the path holds the page.
-                footnote={stage !== undefined && holdings.settled ? <CampaignLine enabled={hasAccount} bare /> : null}
+                // No campaign line under the path's cards: the path carries the first buy step, and a
+                // campaign's reward never stands beside a buy (lib/campaigns). It shows once the path is done.
+                footnote={null}
                 slots={{
                   money: (frame, title) => (
                     <AddMoneyStep
@@ -599,7 +601,7 @@ function SignedInHome() {
                 onParkCash={() => openBuy(CASH_LISTING)}
                 onOpenAccount={() => openAccount()}
               />
-              {/* Only for an account that arrived through a campaign link (lib/campaigns). Last, and only once the
+              {/* The campaign line, for an account that opened through a campaign's link (lib/campaigns). Last, and only once the
                   step and the holdings are settled, so it never lands above anything and pushes it down. */}
               {stage !== undefined && holdings.settled && !pathShown && !pathWaiting && <CampaignLine enabled={hasAccount} />}
             </>
@@ -844,6 +846,7 @@ export function HomeHeader({ onOpenChat, children }: { onOpenChat?: () => void; 
       <div className="flex shrink-0 items-center gap-2">
         <BerthMark className="size-[22px]" />
         <h1 className="font-wordmark text-[19px] leading-none text-foreground">{copy.brand}</h1>
+        <BetaPill />
       </div>
       <div className="flex min-w-0 items-center gap-2">
         {onOpenChat && <ChatButton onOpen={onOpenChat} />}

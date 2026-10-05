@@ -6,22 +6,22 @@ import { getOrCreateUser, type UserRow } from "../accounts";
 import { requireFreshStaff, requireStaff, staffAdminIds } from "../staff-auth";
 import { createStaffSession } from "../staff-sessions";
 import { mintStaffCookie, staffCookieName, staffSessionKey } from "../staff-session";
-import { STOCK_LISTINGS } from "@/lib/listings";
-import { attributeCampaign, claimById } from "./store";
-import { advanceClaim, runCampaignStep } from "./eligibility";
+import { claimById } from "./store";
 import { campaignById } from "./store";
-import { addPayoutSource, approveClaim, createCampaign, markClaimPaid, rejectClaim, setCampaignActive } from "./actions";
+import { addPayoutSource, approveClaim, createCampaign, deleteCampaign, markClaimPaid, rejectClaim, setCampaignActive } from "./actions";
 
 const FUNDING_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 import { deriveSignals, foldEmail, revealClaim, staffQueue } from "./queue";
 import { TRANSFER_TOPIC, USDC_BASE, type Receipt } from "./usdc";
-import { DEPS, hubOf, verifier } from "./test-kit";
+import { advance, heldWallet, joined, qualifiedClaim, username } from "./test-kit";
 
 /**
  * The staff side against the real schema: the gate (STAFF_ADMIN_IDS, never
  * the @sodax.com rule), every action audited, activation only with counsel
- * review confirmed, approval fixing the payout address, mark paid checked
- * against a mocked Base RPC, and the queue's evidence, signals and meter.
+ * review confirmed and never for a retired campaign, approval fixing the
+ * payout address to the signup's own home wallet, mark paid checked against
+ * a mocked Base RPC, deleting a campaign that never took on money, and the
+ * queue's evidence, signals and meter.
  */
 
 vi.mock("@/lib/server/privy", async () => {
@@ -179,6 +179,17 @@ describe("requireStaff", () => {
     const stale = await POST(request(cookie, { action: "approve", claimId: "00000000-0000-4000-8000-000000000000" }));
     expect(stale.status).toBe(401);
     expect(await stale.json()).toEqual({ error: "stale" });
+    // Deleting a campaign is a fresh sign in act too.
+    const draft = (await sql.query(
+      `insert into campaigns (code, title, kind, starts_at, ends_at) values ('route-del', 'x', 'signup', now(), now() + interval '9 days') returning id`,
+    )) as { id: string }[];
+    const staleDelete = await POST(request(cookie, { action: "delete", campaignId: draft[0].id, reason: "Test" }));
+    expect(staleDelete.status).toBe(401);
+    expect(await campaignById(draft[0].id)).toBeDefined();
+    const fresh = await sessionCookie(staff.id, 1);
+    const deleted = await POST(request(fresh, { action: "delete", campaignId: draft[0].id, reason: "Test" }));
+    expect(((await deleted.json()) as { result: unknown }).result).toEqual({ ok: true, detail: { code: "route-del" } });
+    expect(await campaignById(draft[0].id)).toBeUndefined();
   });
 
   it("refuses a write from another origin or none, even with a fresh staff session, and writes nothing", async () => {
@@ -210,8 +221,7 @@ describe("campaigns", () => {
       amountUsd: 5,
       budgetUsd: 100,
       maxClaims: 20,
-      minBuyUsd: 10,
-      holdDays: 7,
+      stayDays: 14,
       startsAt: new Date(Date.now() - 1000).toISOString(),
       endsAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     });
@@ -255,20 +265,36 @@ describe("campaigns", () => {
       amountUsd: 5,
       budgetUsd: 100,
       maxClaims: 20,
-      minBuyUsd: 10,
-      holdDays: 7,
+      stayDays: 14,
       startsAt: new Date().toISOString(),
       endsAt: new Date(Date.now() + 86_400_000).toISOString(),
     };
     expect(await createCampaign(staff.id, { ...base, code: "x" })).toMatchObject({ ok: false, refusal: "bad_input" });
     expect(await createCampaign(staff.id, { ...base, code: "ok-code", amountUsd: 500 })).toMatchObject({ ok: false, refusal: "bad_input" });
     expect(await createCampaign(staff.id, { ...base, code: "ok-code", endsAt: base.startsAt })).toMatchObject({ ok: false, refusal: "bad_input" });
-    expect(await createCampaign(staff.id, { ...base, code: "long-hold", holdDays: 31 })).toMatchObject({ ok: false, refusal: "hold_too_long" });
-    expect((await createCampaign(staff.id, { ...base, code: "month-hold", holdDays: 30 })).ok).toBe(true);
+    expect(await createCampaign(staff.id, { ...base, code: "long-stay", stayDays: 61 })).toMatchObject({ ok: false, refusal: "stay_out_of_range" });
+    expect(await createCampaign(staff.id, { ...base, code: "short-stay", stayDays: 6 })).toMatchObject({ ok: false, refusal: "stay_out_of_range" });
+    expect((await createCampaign(staff.id, { ...base, code: "month-stay", stayDays: 60 })).ok).toBe(true);
+    expect(await createCampaign(staff.id, { ...base, code: "over-budget", maxClaims: 21 })).toMatchObject({ ok: false, refusal: "places_over_budget" });
     expect((await createCampaign(staff.id, { ...base, code: "ok-code" })).ok).toBe(true);
     expect(await createCampaign(staff.id, { ...base, code: "ok-code" })).toMatchObject({ ok: false, refusal: "code_taken" });
     expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("code_taken");
-    expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("hold_too_long");
+    expect((await audits("campaign.create")).map((entry) => entry.detail.outcome)).toContain("stay_out_of_range");
+    const made = ((await sql.query(`select kind, hold_days from campaigns where code = 'month-stay'`)) as Record<string, unknown>[])[0];
+    expect(made).toEqual({ kind: "signup", hold_days: 60 });
+  });
+
+  it("never activates a retired buy or invite campaign", async () => {
+    const staff = await person();
+    for (const kind of ["buy", "invite"]) {
+      const rows = (await sql.query(
+        `insert into campaigns (code, title, kind, starts_at, ends_at, active) values ($1, 'Old', $2, now(), now() + interval '9 days', false) returning id`,
+        [`old-${kind}`, kind],
+      )) as { id: string }[];
+      await addPayoutSource(staff.id, rows[0].id, FUNDING_WALLET, "A wallet");
+      expect(await setCampaignActive(staff.id, rows[0].id, true, true, true)).toEqual({ ok: false, refusal: "retired" });
+      expect((await campaignById(rows[0].id))!.active).toBe(false);
+    }
   });
 
   it("creates a campaign with its funding wallet as its first payout source, and refuses a bad one first", async () => {
@@ -278,8 +304,7 @@ describe("campaigns", () => {
       amountUsd: 5,
       budgetUsd: 100,
       maxClaims: 20,
-      minBuyUsd: 10,
-      holdDays: 7,
+      stayDays: 14,
       startsAt: new Date().toISOString(),
       endsAt: new Date(Date.now() + 86_400_000).toISOString(),
     };
@@ -300,7 +325,6 @@ describe("campaigns", () => {
 });
 
 describe("a claim from qualified to paid", () => {
-  const STOCK = STOCK_LISTINGS[0];
   const HOUSE = hex(0xc0ffee);
   const ENV = { STAFF_PAYOUT_ADDRESSES: HOUSE };
   const pad = (address: string) => `0x${address.slice(2).padStart(64, "0")}`;
@@ -309,7 +333,6 @@ describe("a claim from qualified to paid", () => {
     blockNumber: "0x1",
     logs: pays.map(([to, raw]) => ({ address: USDC_BASE, topics: [TRANSFER_TOPIC, pad(from), pad(to)], data: `0x${raw.toString(16)}` })),
   });
-  const held = { verifyHold: verifier(() => "held") };
 
   async function qualified(code: string) {
     await sql.query(
@@ -317,45 +340,72 @@ describe("a claim from qualified to paid", () => {
        on conflict (code) do nothing`,
       [code],
     );
-    const user = await person();
-    const claimId = (await attributeCampaign(user.id, code))!;
-    seq += 1;
-    await sql.query(
-      `insert into orders (user_id, wallet_address, intent_tx, direction, listing_symbol, listing_address, quantity, usd_value, delivered_to, filled_at)
-       values ($1, $2, $3, 'buy', $4, $5, '0.05', 12, $6, now() + interval '1 second')`,
-      [user.id, user.wallet_address, `0x${seq.toString(16).padStart(64, "0")}`, STOCK.symbol, STOCK.address, hubOf(user.wallet_address!)],
-    );
-    const claim = (await claimById(claimId))!;
-    expect(await advanceClaim(claim, (await campaignById(claim.campaign_id))!, new Date(Date.now() + 2_000), DEPS)).toBe("holding");
-    await runCampaignStep({ now: new Date(Date.now() + 8 * 86_400_000), verifyHold: verifier(() => "held"), deps: DEPS });
-    expect((await claimById(claimId))!.state).toBe("qualified");
-    return { user, claimId };
+    return qualifiedClaim(code);
   }
 
   async function approved(code: string) {
     const staff = await person();
     const arrived = await qualified(code);
-    expect((await approveClaim(staff.id, arrived.claimId, held)).ok).toBe(true);
+    expect((await approveClaim(staff.id, arrived.claimId)).ok).toBe(true);
     return { staff, ...arrived, to: (await claimById(arrived.claimId))!.payout_address! };
   }
 
-  it("approves, fixing the person's own home address on Base, with the audit row in the same write", async () => {
+  it("approves, fixing the signup's own home address on Base, with the audit row in the same write", async () => {
     const staff = await person();
     const { user, claimId } = await qualified("pay-me");
-    expect((await approveClaim(staff.id, claimId, held)).ok).toBe(true);
+    // Whoever invited the account personally is never the one paid.
+    const inviter = await person();
+    await sql.query(`update users set referred_by = $2 where id = $1`, [user.id, inviter.id]);
+    expect((await approveClaim(staff.id, claimId)).ok).toBe(true);
     const claim = (await claimById(claimId))!;
-    expect(claim).toMatchObject({ state: "approved", payout_address: user.wallet_address, payout_chain: "base", approved_by: staff.id });
+    expect(claim).toMatchObject({ state: "approved", payout_address: user.wallet_address, payout_chain: "base", approved_by: staff.id, inviter_id: null });
+    expect(claim.payout_address).not.toBe(inviter.wallet_address);
+    expect((await audits("claim.approve")).find((entry) => entry.target === claimId)?.detail).toMatchObject({ paidTo: "signup" });
     expect((await audits("claim.approve")).filter((entry) => entry.target === claimId).map((entry) => entry.detail.outcome)).toEqual(["done"]);
-    expect(await approveClaim(staff.id, claimId, held)).toEqual({ ok: false, refusal: "wrong_state" });
+    expect(await approveClaim(staff.id, claimId)).toEqual({ ok: false, refusal: "wrong_state" });
   });
 
-  it("refuses to approve or pay a claim of an account staff marked not eligible", async () => {
+  it("writes the person's marks and the payout address at approval, in the same statement", async () => {
+    const staff = await person();
+    const { user, claimId } = await qualified("approve-marks");
+    // A wallet linked after the place was taken: approval stands on it too.
+    const late = hex(0x1a7e1a7e);
+    await heldWallet(user, late);
+    expect((await approveClaim(staff.id, claimId)).ok).toBe(true);
+    const marks = ((await sql.query(`select mark from campaign_invitee_marks where claim_id = $1 order by mark`, [claimId])) as { mark: string }[]).map((row) => row.mark);
+    expect(marks).toEqual(expect.arrayContaining([`wallet:${user.wallet_address}`, `wallet:${late}`, `email:${user.email}`]));
+  });
+
+  it("warns in the queue before sending, and records a payment already sent whatever the checks say now", async () => {
+    const staff = await person();
+    const a = await approved("paid-recheck");
+    const b = await approved("paid-recheck");
+    // After both approvals, b links a wallet a already counted on.
+    await heldWallet(b.user, a.to);
+    const queued = (await staffQueue()).claims.find((claim) => claim.id === b.claimId)!;
+    expect(queued.eligibilityNow).toBe("wallet_used");
+    expect((await staffQueue()).claims.find((claim) => claim.id === a.claimId)!.eligibilityNow).toBeNull();
+    const hash = `0x${"5e".repeat(32)}`;
+    const pad = (address: string) => `0x${address.slice(2).padStart(64, "0")}`;
+    const house = hex(0xc0ffee);
+    const receipt = async (): Promise<Receipt> => ({
+      status: "0x1",
+      blockNumber: "0x1",
+      logs: [{ address: USDC_BASE, topics: [TRANSFER_TOPIC, pad(house), pad(b.to)], data: `0x${(5_000_000n).toString(16)}` }],
+    });
+    expect(await markClaimPaid(staff.id, b.claimId, hash, receipt, { STAFF_PAYOUT_ADDRESSES: house })).toEqual({ ok: true, detail: { verified: true } });
+    expect((await claimById(b.claimId))!.state).toBe("paid");
+    const audit = (await audits("claim.mark_paid")).filter((entry) => entry.target === b.claimId).at(-1)!;
+    expect(audit.detail).toMatchObject({ outcome: "done", eligibilityNow: "wallet_used" });
+  });
+
+  it("refuses to approve or pay a claim whose account staff marked not eligible", async () => {
     const staff = await person();
     const { user, claimId } = await qualified("marked-later");
     await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [user.id]);
-    expect(await approveClaim(staff.id, claimId, held)).toMatchObject({ ok: false, refusal: "staff_ineligible" });
+    expect(await approveClaim(staff.id, claimId)).toMatchObject({ ok: false, refusal: "staff_ineligible" });
     await sql.query(`update users set campaign_ineligible_at = null where id = $1`, [user.id]);
-    expect((await approveClaim(staff.id, claimId, held)).ok).toBe(true);
+    expect((await approveClaim(staff.id, claimId)).ok).toBe(true);
     await sql.query(`update users set campaign_ineligible_at = now() where id = $1`, [user.id]);
     expect(await markClaimPaid(staff.id, claimId, `0x${"ab".repeat(32)}`)).toMatchObject({ ok: false, refusal: "staff_ineligible" });
     // The queue says so on the approved claim, before anyone pays by hand.
@@ -366,27 +416,32 @@ describe("a claim from qualified to paid", () => {
     expect((await staffQueue()).claims.find((claim) => claim.id === claimId)!.staffIneligibleAt).toBeNull();
   });
 
-  it("reads the hold again at approval, and refuses one no longer kept or unreadable", async () => {
+  it("asks the guards again at approval: an account merged since into one that was on Berth before is refused", async () => {
     const staff = await person();
-    const { claimId } = await qualified("approve-recheck");
-    expect(await approveClaim(staff.id, claimId, { verifyHold: verifier(() => "unknown") })).toMatchObject({ ok: false, refusal: "hold_unknown" });
-    expect(await approveClaim(staff.id, claimId, { verifyHold: verifier(() => "not_held") })).toMatchObject({ ok: false, refusal: "not_held" });
-    expect((await claimById(claimId))!.state).toBe("qualified");
+    const { user, claimId } = await qualified("approve-merged");
+    const older = await person();
+    await sql.query(`update users set created_at = now() - interval '30 days' where id = $1`, [older.id]);
+    await sql.query(`update users set retired_into = $1, privy_did = 'merged:' || privy_did, wallet_address = null where id = $2`, [older.id, user.id]);
+    expect(await approveClaim(staff.id, claimId)).toEqual({ ok: false, refusal: "existing_customer" });
   });
 
-  it("asks one per person again at approval: a claim merged into another claimant since is refused", async () => {
-    const staff = await person();
-    const a = await qualified("approve-merged");
-    const b = await qualified("approve-merged");
-    await sql.query(`update users set retired_into = $1, privy_did = 'merged:' || privy_did, wallet_address = null where id = $2`, [a.user.id, b.user.id]);
-    expect(await approveClaim(staff.id, b.claimId, held)).toEqual({ ok: false, refusal: "one_per_person" });
-  });
-
-  it("refuses to approve an account with no home address", async () => {
+  it("refuses to approve when the account has no home address", async () => {
     const staff = await person();
     const { user, claimId } = await qualified("no-home");
     await sql.query(`update users set wallet_address = null where id = $1`, [user.id]);
-    expect(await approveClaim(staff.id, claimId, held)).toEqual({ ok: false, refusal: "no_payout_address" });
+    expect(await approveClaim(staff.id, claimId)).toEqual({ ok: false, refusal: "no_payout_address" });
+  });
+
+  it("never approves a claim of a retired buy campaign", async () => {
+    const staff = await person();
+    const friend = await person();
+    const rows = (await sql.query(
+      `insert into campaigns (code, title, kind, starts_at, ends_at, active) values ('retired-claim', 'Old', 'buy', now() - interval '9 days', now(), false) returning id`,
+    )) as { id: string }[];
+    const claim = (await sql.query(`insert into campaign_claims (campaign_id, user_id, state) values ($1, $2, 'qualified') returning id`, [rows[0].id, friend.id])) as {
+      id: string;
+    }[];
+    expect(await approveClaim(staff.id, claim[0].id)).toEqual({ ok: false, refusal: "retired" });
   });
 
   it("marks paid only after a verified transfer from a house wallet, and refuses everything else", async () => {
@@ -451,7 +506,7 @@ describe("a claim from qualified to paid", () => {
     expect(await rejectClaim(staff.id, claimId, "abuse", "")).toMatchObject({ ok: false, refusal: "wrong_state" });
   });
 
-  it("masks emails and wallets in the queue, and reveals one claim's in full", async () => {
+  it("masks the email and wallets in the queue, and reveals one claim's in full", async () => {
     const { user, claimId } = await qualified("masked");
     const claim = (await staffQueue()).claims.find((entry) => entry.id === claimId)!;
     expect(claim.email).toBe(`${user.email!.slice(0, 1)}•••@example.com`);
@@ -465,12 +520,14 @@ describe("a claim from qualified to paid", () => {
     const { user, claimId } = await qualified("evidence");
     const queue = await staffQueue();
     const claim = queue.claims.find((entry) => entry.id === claimId)!;
-    expect(claim).toMatchObject({ state: "qualified", userId: user.id, campaignCode: "evidence" });
-    expect(claim.buy).toMatchObject({ listing: STOCK.name, usd: 12, quantity: "0.05" });
-    expect(claim.hold).toMatchObject({ needed: "0.05", balanceRaw: "50000000000000000", lowestRaw: "50000000000000000", outflows: 0 });
+    expect(claim).toMatchObject({ state: "qualified", userId: user.id, campaignCode: "evidence", campaignKind: "signup" });
+    expect(claim.payout.address).toBe(`${user.wallet_address!.slice(0, 6)}…${user.wallet_address!.slice(-4)}`);
+    const stored = (await claimById(claimId))!;
+    expect(claim.onboardedAt).toBe(stored.onboarded_at!.toISOString());
+    expect(claim.lastSeenAt).toBe(new Date(stored.eligible_at!.getTime() - 86_400_000).toISOString());
     expect(claim.payout).toMatchObject({ chain: "Base", token: "USDC", amountUsd: 5 });
     const meter = queue.campaigns.find((campaign) => campaign.code === "evidence")!;
-    expect(meter).toMatchObject({ slots: 1, reservedUsd: 5, paidUsd: 0, budgetUsd: 100, maxClaims: 20 });
+    expect(meter).toMatchObject({ slots: 1, reservedUsd: 5, paidUsd: 0, budgetUsd: 100, maxClaims: 20, deletable: false });
   });
 });
 
@@ -481,21 +538,140 @@ describe("signals", () => {
     expect(foldEmail(null)).toBeNull();
   });
 
-  it("flags shared payers, aliases, close signups, invites and shared wallets within one campaign only", () => {
-    const base = { campaignId: "c1", referredBy: null, deliveredTo: null, wallets: [] as string[] };
+  it("flags aliases, close signups and shared wallets within one campaign only", () => {
+    const base = { campaignId: "c1", wallets: [] as string[] };
     const signals = deriveSignals([
-      { ...base, id: "1", userId: "u1", email: "ann.lee@gmail.com", signupAt: 0, payer: "0xp", wallets: ["0xw"] },
-      { ...base, id: "2", userId: "u2", email: "annlee+2@gmail.com", signupAt: 5 * 60_000, payer: "0xp", referredBy: "u1" },
-      { ...base, id: "3", userId: "u3", email: "bob@example.com", signupAt: 3 * 3_600_000, payer: "0xq", wallets: ["0xw"] },
-      { ...base, campaignId: "c2", id: "4", userId: "u4", email: "ann.lee@gmail.com", signupAt: 0, payer: "0xp" },
+      { ...base, id: "1", userId: "u1", email: "ann.lee@gmail.com", signupAt: 0, wallets: ["0xw"] },
+      { ...base, id: "2", userId: "u2", email: "annlee+2@gmail.com", signupAt: 5 * 60_000 },
+      { ...base, id: "3", userId: "u3", email: "bob@example.com", signupAt: 3 * 3_600_000, wallets: ["0xw"] },
+      { ...base, campaignId: "c2", id: "4", userId: "u4", email: "ann.lee@gmail.com", signupAt: 0 },
     ]);
-    expect(signals.get("2")).toEqual(["same_payer", "email_alias", "close_signup", "referred_by_claimant"]);
+    expect(signals.get("2")).toEqual(["email_alias", "close_signup"]);
     expect(signals.get("3")).toEqual(["shared_wallet"]);
     expect(signals.get("4")).toEqual([]);
     const payouts = deriveSignals([
-      { ...base, id: "5", userId: "u5", email: null, signupAt: 0, payer: null, payout: "0xpay" },
-      { ...base, id: "6", userId: "u6", email: null, signupAt: 9e9, payer: null, payout: "0xpay" },
+      { ...base, id: "5", userId: "u5", email: null, signupAt: 0, payout: "0xpay" },
+      { ...base, id: "6", userId: "u6", email: null, signupAt: 9e9, payout: "0xpay" },
+      { ...base, id: "8", userId: "u8", email: null, signupAt: 5e9, payout: "0xown" },
     ]);
+    const domains = deriveSignals([
+      { ...base, id: "d1", userId: "d1", email: "a@acme-farm.io", signupAt: 0 },
+      { ...base, id: "d2", userId: "d2", email: "b+x@acme-farm.io", signupAt: 9e9 },
+      { ...base, id: "d3", userId: "d3", email: "c@gmail.com", signupAt: 0 },
+      { ...base, id: "d4", userId: "d4", email: "d@gmail.com", signupAt: 9e9 },
+      { ...base, id: "d5", userId: "d5", email: "e@solo.example", signupAt: 5e9 },
+      { ...base, campaignId: "c9", id: "d6", userId: "d6", email: "f@solo.example", signupAt: 5e9 },
+    ]);
+    expect(domains.get("d1")).toContain("same_email_domain");
+    expect(domains.get("d2")).toContain("same_email_domain");
+    // A public mail provider, or a domain shared only across campaigns, says nothing.
+    expect(domains.get("d3")).not.toContain("same_email_domain");
+    expect(domains.get("d5")).not.toContain("same_email_domain");
+    // Each claim pays its own account: two people at one address is the signal.
     expect(payouts.get("5")).toEqual(["same_payout"]);
+    expect(payouts.get("8")).toEqual([]);
+  });
+});
+
+describe("deleting a campaign", () => {
+  async function draft(code: string, { active = false, kind = "signup" } = {}) {
+    const rows = (await sql.query(
+      `insert into campaigns (code, title, kind, starts_at, ends_at, active) values ($1, $1, $3, now() - interval '1 day', now() + interval '30 days', $2) returning id`,
+      [code, active, kind],
+    )) as { id: string }[];
+    return rows[0].id;
+  }
+  const WHY = "Set up again with the right dates";
+
+  it("deletes a draft with its payout wallets, audited with the reason in the same transaction, and frees its code", async () => {
+    const staff = await person();
+    const id = await draft("del-draft");
+    expect((await addPayoutSource(staff.id, id, FUNDING_WALLET, "The sponsor")).ok).toBe(true);
+    expect(await deleteCampaign(staff.id, id, WHY)).toEqual({ ok: true, detail: { code: "del-draft" } });
+    expect(await campaignById(id)).toBeUndefined();
+    expect(await sql.query(`select 1 from campaign_payout_sources where campaign_id = $1`, [id])).toHaveLength(0);
+    const audit = (await audits("campaign.delete")).find((entry) => entry.target === id)!;
+    expect(audit.detail).toMatchObject({ code: "del-draft", title: "del-draft", reason: WHY, neverActivated: true, sourcesRemoved: 1, claimsRemoved: 0, outcome: "done" });
+    // The code is free: a new campaign takes it.
+    const again = await createCampaign(staff.id, {
+      code: "del-draft",
+      title: "Again",
+      amountUsd: 5,
+      budgetUsd: 100,
+      maxClaims: 20,
+      stayDays: 14,
+      startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    expect(again.ok).toBe(true);
+  });
+
+  it("asks for a reason, audited", async () => {
+    const staff = await person();
+    const id = await draft("del-why");
+    expect(await deleteCampaign(staff.id, id, "  ")).toMatchObject({ ok: false, refusal: "no_delete_reason" });
+    expect(await deleteCampaign(staff.id, id, undefined)).toMatchObject({ ok: false, refusal: "no_delete_reason" });
+    expect(await campaignById(id)).toBeDefined();
+    expect((await audits("campaign.delete")).filter((entry) => entry.target === id).map((entry) => entry.detail.outcome)).toEqual(["no_delete_reason", "no_delete_reason"]);
+  });
+
+  it("refuses while the campaign is active, and for a retired buy or invite campaign", async () => {
+    const staff = await person();
+    const id = await draft("del-active", { active: true });
+    expect(await deleteCampaign(staff.id, id, WHY)).toMatchObject({ ok: false, refusal: "active" });
+    expect(await campaignById(id)).toBeDefined();
+    expect((await audits("campaign.delete")).find((entry) => entry.target === id)?.detail.outcome).toBe("active");
+    for (const kind of ["buy", "invite"]) {
+      const old = await draft(`del-${kind}`, { kind });
+      expect(await deleteCampaign(staff.id, old, WHY)).toMatchObject({ ok: false, refusal: "retired" });
+      expect(await campaignById(old)).toBeDefined();
+      expect((await staffQueue()).campaigns.find((campaign) => campaign.id === old)).toMatchObject({ deletable: false });
+    }
+  });
+
+  it("deletes a paused campaign whose claims never held a place, with those claims", async () => {
+    const staff = await person();
+    const id = await draft("del-open", { active: true });
+    const open = await joined({ code: "del-open" });
+    const gone = await joined({ code: "del-open" });
+    await sql.query(`update campaign_claims set state = 'rejected', reject_reason = 'abuse' where id = $1`, [gone.claimId]);
+    await setCampaignActive(staff.id, id, false, undefined);
+    expect((await staffQueue()).campaigns.find((campaign) => campaign.id === id)).toMatchObject({ deletable: true, draft: true });
+    expect((await deleteCampaign(staff.id, id, WHY)).ok).toBe(true);
+    expect(await claimById(open.claimId)).toBeUndefined();
+    expect(await claimById(gone.claimId)).toBeUndefined();
+  });
+
+  it("refuses once any claim holds or ever held a place, was paid, or stands on marks: money history is never erased", async () => {
+    const staff = await person();
+    const holding = await draft("del-holding", { active: true });
+    const signup = await joined({ code: "del-holding" });
+    await username(signup.user);
+    expect(await advance(signup.claimId)).toBe("holding");
+    await setCampaignActive(staff.id, holding, false, undefined);
+    expect((await staffQueue()).campaigns.find((campaign) => campaign.id === holding)).toMatchObject({ deletable: false });
+    expect(await deleteCampaign(staff.id, holding, WHY)).toMatchObject({ ok: false, refusal: "has_places" });
+    for (const state of ["qualified", "approved", "paid"]) {
+      await sql.query(`update campaign_claims set state = $2 where id = $1`, [signup.claimId, state]);
+      expect(await deleteCampaign(staff.id, holding, WHY)).toMatchObject({ ok: false, refusal: "has_places" });
+    }
+    // Rejected after it held a place: the place it once held still keeps the campaign.
+    await sql.query(`update campaign_claims set state = 'rejected', reject_reason = 'not_active' where id = $1`, [signup.claimId]);
+    expect(await deleteCampaign(staff.id, holding, WHY)).toMatchObject({ ok: false, refusal: "has_places" });
+    expect((await staffQueue()).campaigns.find((campaign) => campaign.id === holding)).toMatchObject({ deletable: false });
+    expect(await claimById(signup.claimId)).toBeDefined();
+    expect(await campaignById(holding)).toBeDefined();
+    // A claim that never held a place but stands on a mark keeps it too.
+    const marked = await draft("del-marked");
+    const other = await person();
+    const claim = (await sql.query(`insert into campaign_claims (campaign_id, user_id, state) values ($1, $2, 'rejected') returning id`, [marked, other.id])) as { id: string }[];
+    await sql.query(`insert into campaign_invitee_marks (mark, claim_id) values ('email:marked@example.com', $1)`, [claim[0].id]);
+    expect((await staffQueue()).campaigns.find((campaign) => campaign.id === marked)).toMatchObject({ deletable: false });
+    expect(await deleteCampaign(staff.id, marked, WHY)).toMatchObject({ ok: false, refusal: "has_places" });
+  });
+
+  it("answers not found for a campaign that is not there", async () => {
+    const staff = await person();
+    expect(await deleteCampaign(staff.id, "00000000-0000-4000-8000-000000000000", WHY)).toMatchObject({ ok: false, refusal: "not_found" });
   });
 });

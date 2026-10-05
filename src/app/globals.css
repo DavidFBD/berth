@@ -203,20 +203,6 @@
   }
 }
 
-/* The active step breathes in place — scale and fade, never a sideways
-   wobble (a ring sliding off its dot reads as misalignment). */
-@keyframes ring-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.4;
-  }
-  50% {
-    transform: scale(1.12);
-    opacity: 0.15;
-  }
-}
-
 /* The portfolio chart's lines draw in from the left once, on first render
    and on a new range or benchmark. Never idle; off for reduced motion. */
 @keyframes chart-draw {
@@ -237,7 +223,6 @@
   [data-chart-draw] {
     animation: none !important;
   }
-  [data-step-ring],
   [data-slot="spinner"] circle {
     animation: none !important;
   }

@@ -200,7 +200,7 @@ export function finishedStep(previous: PathView, next: PathView): PathStep | nul
  * itself pays nothing, so nothing is ever paid twice. The first avatar pays
  * avatar_set, the first username username_set; the first buy pays pour_in, and invite_accepted too for an
  * account that came on a friend's invite. The invite step shares the friend
- * link, which pays no XP (friend_links); friend_poured belongs to the invite
+ * link, which pays no XP (friend_links); friend_stayed belongs to the invite
  * code, which opens at level 3 (ADR-0002, ADR-0004), so the step promises
  * none. Adding money pays nothing.
  */

@@ -205,7 +205,7 @@ describe("what the path pays and says", () => {
     expect(stepXp("money", { referred: false })).toBeNull();
     expect(stepXp("firstBuy", { referred: false })).toBe(XP_ACTIONS.pour_in.amount);
     expect(stepXp("firstBuy", { referred: true })).toBe(XP_ACTIONS.pour_in.amount + XP_ACTIONS.invite_accepted.amount);
-    // The friend link pays nothing; friend_poured is the level 3 invite code's.
+    // The friend link pays nothing; friend_stayed is the level 3 invite code's.
     expect(stepXp("invite", { referred: false })).toBeNull();
   });
 

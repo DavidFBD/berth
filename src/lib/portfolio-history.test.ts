@@ -79,7 +79,7 @@ describe("one buy, held", () => {
   it("draws both lines in dollars from the first day, the benchmark bought at the close before the order", () => {
     const result = portfolioHistory(input, "since");
     // 100 dollars at Monday's close of 50 is 2 units of the fund.
-    expect(result.days).toEqual([
+    expect(result.days).toMatchObject([
       { day: "2026-09-15", value: 100, benchmark: 102 },
       { day: "2026-09-16", value: 110, benchmark: 104 },
       { day: "2026-09-17", value: 99, benchmark: 98 },
@@ -105,7 +105,7 @@ describe("one buy, held", () => {
     };
     const result = portfolioHistory(late, "since");
     // Tuesday's close (51) is the last one before the order: 2 units.
-    expect(result.days[0]).toEqual({ day: "2026-09-16", value: 104, benchmark: 104 });
+    expect(result.days[0]).toMatchObject({ day: "2026-09-16", value: 104, benchmark: 104 });
     expect(result.since).toBe("2026-09-16");
   });
 });
@@ -459,6 +459,27 @@ describe("windows", () => {
     expect(result.tradingDays).toBe(5);
   });
 
+  const without = (day: string): Marks => {
+    const all = long.benchmarkMarks;
+    const keep = all.dates.map((date, index) => [date, all.values[index]] as const).filter(([date]) => date !== day);
+    return { dates: keep.map(([date]) => date), values: keep.map(([, value]) => value) };
+  };
+
+  it("starts a window whose first day has no benchmark close from the close before it", () => {
+    // No close on Thursday the 17th, the week's first day: Wednesday's 52 stands in.
+    const result = portfolioHistory({ ...long, benchmarkMarks: without("2026-09-17") }, "1w");
+    expect(result.benchmarkStatus).toBe("ok");
+    expect(result.days[0].benchmarkReturnPct).toBe(0);
+    expect(result.benchmarkPct).toBeCloseTo((54 / 52 - 1) * 100, 10);
+  });
+
+  it("ends on the close before the last stored day when that day has none and nothing is live", () => {
+    // No close on Thursday the 24th: Wednesday's 53 ends the line, so the legend compares the same day.
+    const result = portfolioHistory({ ...long, benchmarkMarks: without("2026-09-24") }, "1w");
+    expect(result.days.at(-1)!.benchmarkReturnPct).not.toBeNull();
+    expect(result.benchmarkPct).toBeCloseTo((53 / 49 - 1) * 100, 10);
+  });
+
   it("starts at the first day with a value when the range reaches further back", () => {
     const result = portfolioHistory(long, "1m");
     expect(result.since).toBe("2026-09-14");
@@ -507,7 +528,7 @@ describe("today, live", () => {
     );
     // 100 dollars at Monday 21's close of 51.
     const units = 100 / 51;
-    expect(result.days.at(-1)).toEqual({ day: "2026-09-25", value: 120, benchmark: units * 55 });
+    expect(result.days.at(-1)).toMatchObject({ day: "2026-09-25", value: 120, benchmark: units * 55 });
     // Measured from the fund's price at the order, Monday 21's close of 51 here.
     expect(result.benchmarkPct).toBeCloseTo((55 / 51 - 1) * 100, 10);
     expect(result.changePct).toBeCloseTo(20, 10);
@@ -519,7 +540,7 @@ describe("today, live", () => {
       "since",
     );
     expect(result.days).toHaveLength(2);
-    expect(result.days[1]).toEqual({ day: "2026-09-24", value: 111, benchmark: (100 / 51) * 54 });
+    expect(result.days[1]).toMatchObject({ day: "2026-09-24", value: 111, benchmark: (100 / 51) * 54 });
   });
 
   it("counts an order placed today in today's live point", () => {
@@ -685,5 +706,122 @@ describe("the join between days rebuilt from the orders and days read on chain",
       "since",
     );
     expect(result).toMatchObject({ rebasedFrom: "2026-09-18", recordFrom: null });
+  });
+});
+
+describe("the percent line", () => {
+  const input: HistoryInput = {
+    days: days({ "2026-09-15": 100, "2026-09-16": 160, "2026-09-17": 176 }),
+    // 50 more dollars went in on Wednesday: money in, not a gain.
+    orders: [buy("2026-09-15T15:00:00Z", 100), buy("2026-09-16T15:00:00Z", 50)],
+    benchmarkSymbol: "SPY",
+    benchmarkMarks: SPY,
+  };
+
+  it("chains the return day by day with buys set aside, ending on changePct", () => {
+    const result = portfolioHistory(input, "since");
+    const returns = result.days.map((point) => point.returnPct!);
+    expect(returns[0]).toBeCloseTo(0, 10);
+    expect(returns[1]).toBeCloseTo((160 / 150 - 1) * 100, 10);
+    expect(returns[2]).toBeCloseTo(((160 / 150) * (176 / 160) - 1) * 100, 10);
+    expect(returns[2]).toBeCloseTo(result.changePct!, 10);
+  });
+
+  it("indexes the benchmark to its price at the first buy, ending on benchmarkPct", () => {
+    const result = portfolioHistory(input, "since");
+    // The fund stood at 50 at the order (the close before it), then 51, 52, 49.
+    const returns = result.days.map((point) => point.benchmarkReturnPct!);
+    expect(returns[0]).toBeCloseTo(2, 10);
+    expect(returns[1]).toBeCloseTo(4, 10);
+    expect(returns[2]).toBeCloseTo(-2, 10);
+    expect(returns[2]).toBeCloseTo(result.benchmarkPct!, 10);
+  });
+
+  it("starts a fixed range at 0 for both lines", () => {
+    const long: HistoryInput = {
+      ...input,
+      days: days({
+        "2026-09-14": 100,
+        "2026-09-15": 102,
+        "2026-09-16": 160,
+        "2026-09-17": 176,
+        "2026-09-18": 170,
+        "2026-09-21": 172,
+        "2026-09-22": 180,
+      }),
+      orders: [buy("2026-09-11T15:00:00Z", 100, 1, "NVDA", 50), buy("2026-09-16T15:00:00Z", 50)],
+      benchmarkMarks: SPY_BEFORE,
+    };
+    const result = portfolioHistory(long, "1w");
+    expect(result.since).toBe("2026-09-15");
+    expect(result.days[0].returnPct).toBe(0);
+    expect(result.days[0].benchmarkReturnPct).toBe(0);
+    expect(result.days.at(-1)!.returnPct).toBeCloseTo(result.changePct!, 10);
+    expect(result.days.at(-1)!.benchmarkReturnPct).toBeCloseTo(result.benchmarkPct!, 10);
+  });
+
+  // A listing that is the benchmark itself, bought at the same prices: the
+  // shadow is the account, so the two returns must agree exactly.
+  const asBenchmark = (orders: OrderFacts[], dates: string[]) => {
+    const value = (day: string) => {
+      let units = 0;
+      for (const order of orders) {
+        if (dayOfClose(order.placedAt) > day) continue;
+        units += order.direction === "buy" ? order.quantity! : -order.quantity!;
+      }
+      return units * SPY.values[SPY.dates.indexOf(day)];
+    };
+    return portfolioHistory(
+      {
+        days: dates.map((day) => ({ day, value: value(day) })),
+        orders,
+        benchmarkSymbol: "SPY",
+        benchmarkMarks: SPY,
+        listingCloses: { NVDA: SPY },
+      },
+      "since",
+    );
+  };
+  /** The day whose 21:30 close first comes after an order. */
+  const dayOfClose = (placedAt: string) => {
+    const date = placedAt.slice(0, 10);
+    return Date.parse(placedAt) > Date.parse(markAsOf(date)) ? "9999" : date;
+  };
+
+  it("weighs a later, larger buy as your side does: same money, same days", () => {
+    // $100 on Monday at 50, then $1,000 more on Thursday at 52 (Wednesday's close).
+    const result = asBenchmark(
+      [buy("2026-09-14T15:00:00Z", 100, 2), buy("2026-09-17T15:00:00Z", 1000, 1000 / 52)],
+      ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"],
+    );
+    expect(result.benchmarkStatus).toBe("ok");
+    expect(result.benchmarkPct).toBeCloseTo(result.changePct!, 10);
+    result.days.forEach((point) => expect(point.benchmarkReturnPct).toBeCloseTo(point.returnPct!, 10));
+  });
+
+  it("earns the benchmark nothing while the money is out of the market", () => {
+    // In at 50 on Monday, all sold on Wednesday at 52, back in on Friday at 49.
+    const result = asBenchmark(
+      [
+        buy("2026-09-14T15:00:00Z", 100, 2),
+        sell("2026-09-16T15:00:00Z", 2),
+        buy("2026-09-18T15:00:00Z", 104, 104 / 49),
+      ],
+      ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"],
+    );
+    // 52 on 50 while in, then 51 on 49 once back: the fall to 49 in between is missed.
+    const expected = ((52 / 50) * (51 / 49) - 1) * 100;
+    expect(result.changePct).toBeCloseTo(expected, 10);
+    expect(result.benchmarkPct).toBeCloseTo(expected, 10);
+    // The price alone, 50 to 51, would have said +2%.
+    expect(result.benchmarkPct).not.toBeCloseTo(2, 1);
+  });
+
+  it("has no percent line where the time-weighted return cannot be told, and keeps the dollars", () => {
+    const unpriced = { ...input, orders: [buy("2026-09-15T15:00:00Z", null), buy("2026-09-16T15:00:00Z", 50)] };
+    const result = portfolioHistory(unpriced, "since");
+    expect(result.changePct).toBeNull();
+    expect(result.days.every((point) => point.returnPct === null && point.benchmarkReturnPct === null)).toBe(true);
+    expect(result.days.map((point) => point.value)).toEqual([100, 160, 176]);
   });
 });

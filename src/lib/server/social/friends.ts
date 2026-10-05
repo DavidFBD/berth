@@ -3,7 +3,7 @@ import { CODE_ALPHABET } from "@/lib/invite-code";
 import { lookupKey } from "@/lib/handle";
 import type { CardAnswer, FriendAction, FriendsList, Person } from "@/lib/social-types";
 import { socialAudit } from "@/lib/server/social/audit";
-import { sendNotice } from "@/lib/server/email/send";
+import { sendNotice } from "@/lib/server/email/notify";
 import { NOT_FOUND, readCardOf, relationTo, SIGN_IN } from "@/lib/server/social/cards";
 import { anyTarget, hasVerifiedEmail, SHOWN_SQL, visibleTarget, type SocialViewer } from "@/lib/server/social/people";
 

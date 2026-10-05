@@ -71,7 +71,7 @@ function seededClient(level: number): QueryClient {
   const referral: ReferralPanel = {
     invitedBy: null,
     canClaim: false,
-    stats: { taps: 0, seated: 0, poured: 0, earnedXp: 0, steepingXp: 0 },
+    stats: { taps: 0, seated: 0, settled: 0, earnedXp: 0, steepingXp: 0 },
   };
   client.setQueryData(["profile", null], profile);
   client.setQueryData(["xp-history", null], level === 1 ? [] : history);

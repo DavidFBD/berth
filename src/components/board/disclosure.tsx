@@ -9,11 +9,12 @@ import { cn } from "@/lib/utils";
 /**
  * Whether one of the board's "All" disclosures is open. Remembered per
  * viewer in this browser only (useStoredChoice wraps storage that throws);
- * the server never hears of it.
+ * the server never hears of it. `openByDefault` is how it starts for a
+ * viewer who never chose; an explicit choice, open or hidden, always wins.
  */
-export function useDisclosure(name: string): [boolean, () => void, string] {
+export function useDisclosure(name: string, openByDefault = false): [boolean, () => void, string] {
   const [stored, store] = useStoredChoice(`berth.board.open.${name}`);
-  const open = stored === "1";
+  const open = stored === null ? openByDefault : stored === "1";
   const id = useId();
   return [open, () => store(open ? "0" : "1"), id];
 }

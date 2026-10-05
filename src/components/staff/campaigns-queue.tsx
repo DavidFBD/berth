@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { usePrivy } from "@privy-io/react-auth";
-import { campaignUsd, REJECT_REASONS } from "@/lib/campaigns";
-import { cn } from "@/lib/utils";
+import { activationGaps, campaignUsd, normalizeCampaignCode, REJECT_REASONS } from "@/lib/campaigns";
+import { cn, scrollIntoViewGently } from "@/lib/utils";
 import type { StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
 import type { CampaignMeter, QueueClaim } from "@/lib/server/campaigns/queue";
 import { judgePayoutAddress } from "@/lib/campaign-funding";
@@ -28,13 +28,17 @@ export type StaffAction =
   | { action: "paid"; claimId: string; txHash: string }
   | { action: "activate"; campaignId: string; counselReviewed: true; fundingChecked: true }
   | { action: "pause"; campaignId: string }
+  | { action: "delete"; campaignId: string; reason: string }
   | { action: "create"; campaign: Record<string, string> }
   | { action: "reveal"; claimId: string; field: "email" | "wallets" }
   | { action: "add_source"; campaignId: string; address: string; reason: string }
   | { action: "remove_source"; sourceId: string; reason: string };
 
 /** Fields shown in full after an audited reveal, by claim. */
-export type Revealed = Record<string, { email?: string | null; wallets?: QueueClaim["wallets"]; payout?: string | null; payer?: string | null; deliveredTo?: string | null }>;
+export type Revealed = Record<
+  string,
+  { email?: string | null; wallets?: QueueClaim["wallets"]; payout?: string | null }
+>;
 
 type Fetched = { status: "missing" } | { status: "stale" } | { status: "ready"; data: StaffCampaignsResponse };
 
@@ -46,6 +50,10 @@ export function StaffCampaigns() {
   const [message, setMessage] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [revealed, setRevealed] = useState<Revealed>({});
+  /** The campaign a create just made, so its own card can say so instead of a message out of view. */
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
+  /** Bumped after a successful create to remount the form closed and empty. */
+  const [createFormKey, setCreateFormKey] = useState(0);
   const privy = usePrivy();
 
   const post = async (body: Record<string, unknown>): Promise<Fetched> => {
@@ -67,7 +75,7 @@ export function StaffCampaigns() {
   });
   const act = useMutation({
     mutationFn: (action: StaffAction) => post(action),
-    onSuccess: (answer) => {
+    onSuccess: (answer, action) => {
       if (answer.status === "stale") {
         setStale(true);
         setMessage(copy.refusals.fresh_session);
@@ -80,7 +88,21 @@ export function StaffCampaigns() {
         const { claimId, values } = result.detail as { claimId: string; values: Revealed[string] };
         setRevealed((previous) => ({ ...previous, [claimId]: { ...previous[claimId], ...values } }));
       }
-      setMessage(result && !result.ok ? (copy.refusals[result.refusal] ?? result.refusal) : null);
+      // A created campaign says so on its own card, scrolled into view, rather
+      // than in a message at the top of a long page the person has scrolled past.
+      if (action.action === "create" && result?.ok) {
+        setJustCreatedId(typeof result.detail?.id === "string" ? (result.detail.id as string) : null);
+        setCreateFormKey((value) => value + 1);
+        setMessage(null);
+        return;
+      }
+      setMessage(
+        result && !result.ok
+          ? (copy.refusals[result.refusal] ?? result.refusal)
+          : result?.ok && action.action === "delete"
+            ? copy.deleted(String(result.detail?.code ?? ""))
+            : null,
+      );
     },
     onError: () => setMessage(copy.failed),
   });
@@ -94,6 +116,8 @@ export function StaffCampaigns() {
       busy={act.isPending}
       message={message}
       revealed={revealed}
+      justCreatedId={justCreatedId}
+      createFormResetKey={createFormKey}
       onSignInAgain={
         stale
           ? () => {
@@ -128,6 +152,8 @@ export function CampaignsQueueView({
   onSignInAgain,
   onAction,
   createPrefill,
+  justCreatedId = null,
+  createFormResetKey = 0,
 }: {
   queue: StaffCampaignsResponse;
   /** The dev gallery opens the create form prefilled, to show its Funding block. */
@@ -137,8 +163,20 @@ export function CampaignsQueueView({
   busy?: boolean;
   message?: string | null;
   onAction: (action: StaffAction) => void;
+  /** The campaign to show the "just created" line on. The real page tracks this itself; the dev gallery can force it with ?created=. */
+  justCreatedId?: string | null;
+  /** Bumped by the caller after a successful create, to remount the create form closed and empty. */
+  createFormResetKey?: number;
 }) {
   const copy = useCopy().campaign.staff;
+  const messageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Any message (success or refusal) says something where the person is,
+    // not only at the top of a page they may have scrolled away from.
+    if (!message) return;
+    scrollIntoViewGently(messageRef.current);
+    messageRef.current?.focus({ preventScroll: true });
+  }, [message]);
   const groups = {
     qualified: queue.claims.filter((claim) => claim.state === "qualified"),
     approved: queue.claims.filter((claim) => claim.state === "approved"),
@@ -153,7 +191,12 @@ export function CampaignsQueueView({
         <p className="mt-1 text-sm text-muted-foreground">{copy.lede}</p>
       </header>
       {message && (
-        <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-foreground">
+        <div
+          ref={messageRef}
+          role="status"
+          tabIndex={-1}
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-foreground outline-none"
+        >
           <span className="min-w-0 flex-1">{message}</span>
           {onSignInAgain && (
             <Button size="xs" onClick={onSignInAgain}>
@@ -168,9 +211,9 @@ export function CampaignsQueueView({
         </div>
       )}
       {queue.campaigns.map((campaign) => (
-        <CampaignCard key={campaign.id} campaign={campaign} busy={busy} onAction={onAction} />
+        <CampaignCard key={campaign.id} campaign={campaign} busy={busy} onAction={onAction} justCreated={campaign.id === justCreatedId} />
       ))}
-      <CreateCampaign busy={busy} onAction={onAction} prefill={createPrefill} />
+      <CreateCampaign key={createFormResetKey} busy={busy} onAction={onAction} prefill={createPrefill} />
       {(Object.keys(groups) as (keyof typeof groups)[]).map((group) => (
         <div key={group} className="flex flex-col gap-3">
           <h2 className="text-sm font-medium text-foreground">
@@ -187,110 +230,174 @@ export function CampaignsQueueView({
   );
 }
 
-function CampaignCard({ campaign, busy, onAction }: { campaign: CampaignMeter; busy: boolean; onAction: (action: StaffAction) => void }) {
+function CampaignCard({
+  campaign,
+  busy,
+  onAction,
+  justCreated = false,
+}: {
+  campaign: CampaignMeter;
+  busy: boolean;
+  onAction: (action: StaffAction) => void;
+  /** This campaign is the one a create just made this session. */
+  justCreated?: boolean;
+}) {
   const copy = useCopy().campaign.staff;
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
   const [reviewed, setReviewed] = useState(false);
   const [fundingChecked, setFundingChecked] = useState(false);
   const fundingCopy = useCopy().campaign.staff.funding;
   const wallet = campaign.payoutSources[0]?.address ?? null;
   const reservedPct = Math.min(100, (campaign.reservedUsd / campaign.budgetUsd) * 100);
   const paidPct = Math.min(100 - reservedPct, (campaign.paidUsd / campaign.budgetUsd) * 100);
+  const gaps = activationGaps({ wallet, fundingChecked, reviewed });
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Bring the new campaign's own card to the person, rather than leaving
+    // them to find it in a list they have already scrolled past.
+    if (justCreated) scrollIntoViewGently(cardRef.current);
+  }, [justCreated]);
   return (
-    <Panel className="flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-base text-foreground">{campaign.title}</p>
-          <p className="font-mono text-xs text-muted-foreground">
-            /c/{campaign.code} · {copy.span(when(campaign.startsAt), when(campaign.endsAt))}
+    <div ref={cardRef} data-testid="campaign-card" data-campaign-code={campaign.code}>
+      <Panel className="flex flex-col gap-3 p-4">
+        {justCreated && (
+          <p role="status" className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" data-testid="created-status">
+            {copy.create.createdLine(campaign.title)}
           </p>
-        </div>
-        <span
-          className={cn(
-            "rounded-full border px-2.5 py-0.5 text-xs",
-            campaign.active ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground",
-          )}
-        >
-          {campaign.active ? copy.active : copy.inactive}
-        </span>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        {copy.terms(campaignUsd(campaign.amountUsd), campaignUsd(campaign.minBuyUsd), campaign.holdDays)}
-      </p>
-      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
-        <div className="h-full bg-primary" style={{ width: `${paidPct}%` }} />
-        <div className="h-full bg-primary/40" style={{ width: `${reservedPct}%` }} />
-      </div>
-      <p className="text-sm text-foreground" data-testid="budget-meter">
-        {copy.meter(
-          campaignUsd(campaign.reservedUsd),
-          campaignUsd(campaign.paidUsd),
-          campaignUsd(campaign.budgetUsd),
-          campaign.slots,
-          campaign.maxClaims,
         )}
-      </p>
-      <p className="text-xs text-muted-foreground">{copy.waiting(campaign.counts.attributed, campaign.counts.buying)}</p>
-      <FundingBlock
-        address={wallet}
-        amountUsd={campaign.amountUsd}
-        budgetUsd={campaign.budgetUsd}
-        paidUsd={campaign.paidUsd}
-        otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
-      />
-      <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
-      {campaign.active ? (
-        <div>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
-            {copy.deactivate}
-          </Button>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-base text-foreground">{campaign.title}</p>
+            <p className="font-mono text-xs text-muted-foreground">
+              /c/{campaign.code} · {copy.span(when(campaign.startsAt), when(campaign.endsAt))}
+            </p>
+          </div>
+          <span
+            className={cn(
+              "rounded-full border px-2.5 py-0.5 text-xs",
+              campaign.active ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground",
+            )}
+          >
+            {campaign.active ? copy.active : copy.inactive}
+          </span>
         </div>
-      ) : confirming ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="activate-confirm">
-          <p className="text-sm text-foreground">{copy.activateConfirm(campaign.title)}</p>
-          <label className="flex items-start gap-2 text-sm text-foreground">
-            <input type="checkbox" className="mt-0.5" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
-            {copy.activateCheck}
-          </label>
-          {wallet ? (
-            <label className="flex items-start gap-2 text-sm text-foreground" data-testid="funding-check">
-              <input type="checkbox" className="mt-0.5" checked={fundingChecked} onChange={(event) => setFundingChecked(event.target.checked)} />
-              <span>
-                {fundingCopy.fundingCheck}
-                <span className="mt-0.5 block font-mono text-xs break-all text-muted-foreground">
-                  {checksummedOrSame(wallet)}
-                </span>
-              </span>
-            </label>
-          ) : (
-            <p className="text-sm text-muted-foreground">{copy.refusals.no_funding_wallet}</p>
+        <p className="text-sm text-muted-foreground">
+          {campaign.kind === "signup" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays) : copy.retired}
+        </p>
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
+          <div className="h-full bg-primary" style={{ width: `${paidPct}%` }} />
+          <div className="h-full bg-primary/40" style={{ width: `${reservedPct}%` }} />
+        </div>
+        <p className="text-sm text-foreground" data-testid="budget-meter">
+          {copy.meter(
+            campaignUsd(campaign.reservedUsd),
+            campaignUsd(campaign.paidUsd),
+            campaignUsd(campaign.budgetUsd),
+            campaign.slots,
+            campaign.maxClaims,
           )}
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              disabled={busy || !reviewed || !fundingChecked || !wallet}
-              onClick={() => {
-                onAction({ action: "activate", campaignId: campaign.id, counselReviewed: true, fundingChecked: true });
-                setConfirming(false);
-                setReviewed(false);
-                setFundingChecked(false);
-              }}
-            >
-              {copy.confirm}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-              {copy.cancel}
+        </p>
+        <p className="text-xs text-muted-foreground">{copy.waiting(campaign.counts.attributed)}</p>
+        <FundingBlock
+          address={wallet}
+          amountUsd={campaign.amountUsd}
+          budgetUsd={campaign.budgetUsd}
+          paidUsd={campaign.paidUsd}
+          otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
+        />
+        <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
+        {campaign.kind !== "signup" ? null : campaign.active ? (
+          <div>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
+              {copy.deactivate}
             </Button>
           </div>
-        </div>
-      ) : (
-        <div>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
-            {copy.activate}
-          </Button>
-        </div>
-      )}
-    </Panel>
+        ) : confirming ? (
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="activate-confirm">
+            <p className="text-sm text-foreground">{copy.activateConfirm(campaign.title)}</p>
+            <label className="flex items-start gap-2 text-sm text-foreground">
+              <input type="checkbox" className="mt-0.5" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
+              {copy.activateCheck}
+            </label>
+            {wallet ? (
+              <label className="flex items-start gap-2 text-sm text-foreground" data-testid="funding-check">
+                <input type="checkbox" className="mt-0.5" checked={fundingChecked} onChange={(event) => setFundingChecked(event.target.checked)} />
+                <span>
+                  {fundingCopy.fundingCheck}
+                  <span className="mt-0.5 block font-mono text-xs break-all text-muted-foreground">
+                    {checksummedOrSame(wallet)}
+                  </span>
+                </span>
+              </label>
+            ) : (
+              <p className="text-sm text-muted-foreground">{copy.refusals.no_funding_wallet}</p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={busy || gaps.length > 0}
+                onClick={() => {
+                  onAction({ action: "activate", campaignId: campaign.id, counselReviewed: true, fundingChecked: true });
+                  setConfirming(false);
+                  setReviewed(false);
+                  setFundingChecked(false);
+                }}
+              >
+                {copy.confirm}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                {copy.cancel}
+              </Button>
+            </div>
+            {gaps.includes("reviewed") && <p className="text-xs text-muted-foreground">{copy.activateNeedsReviewed}</p>}
+            {gaps.includes("funding") && <p className="text-xs text-muted-foreground">{copy.activateNeedsFunding}</p>}
+          </div>
+        ) : (
+          <div>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
+              {copy.activate}
+            </Button>
+          </div>
+        )}
+        {campaign.deletable && !confirming && deleting && (
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="delete-confirm">
+            <p className="text-sm text-foreground">{copy.deleteConfirm(campaign.title, campaign.code)}</p>
+            <Input
+              aria-label={copy.deleteReason}
+              placeholder={copy.deleteReason}
+              value={deleteReason}
+              onChange={(event) => setDeleteReason(event.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={busy || !deleteReason.trim()}
+                onClick={() => {
+                  onAction({ action: "delete", campaignId: campaign.id, reason: deleteReason.trim() });
+                  setDeleting(false);
+                  setDeleteReason("");
+                }}
+              >
+                {copy.delete}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>
+                {copy.cancel}
+              </Button>
+            </div>
+          </div>
+        )}
+        {campaign.deletable && !confirming && !deleting && (
+          <div>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDeleting(true)}>
+              {copy.delete}
+            </Button>
+          </div>
+        )}
+      </Panel>
+    </div>
   );
 }
 
@@ -307,7 +414,6 @@ function withRevealed(claim: QueueClaim, shown: Revealed[string] | undefined): Q
     email: shown.email !== undefined ? shown.email : claim.email,
     wallets: shown.wallets ?? claim.wallets,
     payout: shown.payout !== undefined ? { ...claim.payout, address: shown.payout } : claim.payout,
-    buy: claim.buy && shown.wallets ? { ...claim.buy, payer: shown.payer ?? null, deliveredTo: shown.deliveredTo ?? null } : claim.buy,
   };
 }
 
@@ -377,6 +483,20 @@ function PayoutSources({ campaign, busy, onAction }: { campaign: CampaignMeter; 
   );
 }
 
+function WalletList({ wallets }: { wallets: QueueClaim["wallets"] }) {
+  const copy = useCopy().campaign.staff;
+  if (wallets.length === 0) return <>{copy.empty}</>;
+  return (
+    <>
+      {wallets.map((wallet) => (
+        <span key={wallet.address} className="block">
+          <Mono>{wallet.address}</Mono> <span className="text-xs text-muted-foreground">{wallet.family}{wallet.linked ? "" : `, ${copy.unlinked}`}</span>
+        </span>
+      ))}
+    </>
+  );
+}
+
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-[9rem_1fr] sm:gap-3">
@@ -427,46 +547,19 @@ function ClaimCard({
         <Fact label={copy.labels.signup}>
           {copy.signupLine(when(claim.signupAt), when(claim.attributedAt))}
         </Fact>
-        {claim.buy && (
-          <Fact label={copy.labels.order}>
-            {copy.buyLine(
-              claim.buy.usd === null ? "?" : campaignUsd(Math.round(claim.buy.usd * 100) / 100),
-              claim.buy.listing,
-              claim.buy.quantity ?? "?",
-              when(claim.buy.filledAt),
-            )}
-            <br />
-            <Mono>{claim.buy.intentTx}</Mono>
-            <br />
-            <span className="text-xs text-muted-foreground">
-              {copy.paidFrom} <Mono>{claim.buy.payer ?? "?"}</Mono>, {copy.deliveredTo} <Mono>{claim.buy.deliveredTo ?? "?"}</Mono>
-            </span>
+        {claim.onboardedAt && (
+          <Fact label={copy.labels.setUp}>
+            {copy.setUpLine(when(claim.onboardedAt), when(claim.eligibleAt))}
           </Fact>
         )}
-        {claim.holdingSince && (
-          <Fact label={copy.labels.holding}>
-            {copy.span(when(claim.holdingSince), when(claim.eligibleAt))}
-          </Fact>
-        )}
-        {claim.unreadableSince && <Fact label={copy.labels.holdCheck}>{copy.unreadableSince(when(claim.unreadableSince))}</Fact>}
-        {claim.hold && (
-          <Fact label={copy.labels.holdCheck}>
-            {when(claim.hold.checkedAt)}. {copy.holdSeen(claim.hold.lowestRaw ?? claim.hold.balanceRaw ?? copy.unread, claim.hold.needed ?? "?", claim.hold.outflows ?? 0)}
-          </Fact>
-        )}
+        <Fact label={copy.labels.lastSeen}>{claim.lastSeenAt ? when(claim.lastSeenAt) : copy.empty}</Fact>
         <Fact label={copy.labels.wallets}>
           {revealed?.wallets === undefined && claim.wallets.length > 0 && (
             <Button size="xs" variant="ghost" className="mb-1 text-muted-foreground" disabled={busy} onClick={() => onAction({ action: "reveal", claimId: claim.id, field: "wallets" })}>
               {copy.revealWallets}
             </Button>
           )}
-          {claim.wallets.length === 0
-            ? copy.empty
-            : claim.wallets.map((wallet) => (
-                <span key={wallet.address} className="block">
-                  <Mono>{wallet.address}</Mono> <span className="text-xs text-muted-foreground">{wallet.family}{wallet.linked ? "" : `, ${copy.unlinked}`}</span>
-                </span>
-              ))}
+          <WalletList wallets={claim.wallets} />
         </Fact>
         <Fact label={copy.labels.signals}>
           {claim.signals.length === 0 ? copy.noSignals : claim.signals.map((signal) => <span key={signal} className="block">{copy.signals[signal]}</span>)}
@@ -509,6 +602,11 @@ function ClaimCard({
       {claim.staffIneligibleAt && (claim.state === "approved" || claim.state === "qualified" || claim.state === "holding") && (
         <p role="alert" data-testid="claim-ineligible" className="rounded-md border border-warn/50 bg-warn-soft px-3 py-2 text-sm font-medium text-foreground">
           {copy.ineligibleClaim(when(claim.staffIneligibleAt))}
+        </p>
+      )}
+      {claim.state === "approved" && claim.eligibilityNow && (
+        <p role="alert" data-testid="claim-since-approval" className="rounded-md border border-warn/50 bg-warn-soft px-3 py-2 text-sm font-medium text-foreground">
+          {copy.sinceApproval[claim.eligibilityNow]}
         </p>
       )}
       {claim.state === "approved" && <p className="text-xs text-muted-foreground">{copy.batchNote}</p>}
@@ -573,6 +671,7 @@ function ClaimCard({
 
 function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: (action: StaffAction) => void; prefill?: Record<string, string> }) {
   const copy = useCopy().campaign.staff.create;
+  const domain = useCopy().og.domain;
   const fundingCopy = useCopy().campaign.staff.funding;
   const [fields, setFields] = useState<Record<string, string>>({
     code: "",
@@ -580,8 +679,7 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
     amountUsd: "5",
     budgetUsd: "100",
     maxClaims: "20",
-    minBuyUsd: "10",
-    holdDays: "7",
+    stayDays: "14",
     startsAt: "",
     endsAt: "",
     payoutAddress: "",
@@ -589,27 +687,47 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
   });
   const judged = judgePayoutAddress(fields.payoutAddress);
   const number = (value: string) => (Number.isFinite(Number(value)) ? Number(value) : 0);
-  const field = (name: string, label: string, type = "text") => (
+  const code = normalizeCampaignCode(fields.code);
+  const places = Math.max(0, Math.floor(number(fields.maxClaims)));
+  const total = Math.round(number(fields.amountUsd) * 100) * places;
+  const overBudget = total > Math.round(number(fields.budgetUsd) * 100);
+  const field = (name: string, label: string, hint: string, type = "text", extra?: ReactNode) => (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-      {label}
+      <span className="text-foreground">{label}</span>
       <Input type={type} value={fields[name]} onChange={(event) => setFields({ ...fields, [name]: event.target.value })} />
+      <span>{hint}</span>
+      {extra}
     </label>
   );
   return (
-    <details className="rounded-lg border border-border bg-card p-4" open={prefill ? true : undefined}>
+    <details className="rounded-lg border border-border bg-card p-4" open={prefill ? true : undefined} data-testid="create-campaign">
       <summary className="cursor-pointer text-sm text-foreground">{copy.heading}</summary>
       <p className="mt-2 text-xs text-muted-foreground">{copy.note}</p>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {field("code", copy.code)}
-        {field("title", copy.title)}
-        {field("amountUsd", copy.amount, "number")}
-        {field("budgetUsd", copy.budget, "number")}
-        {field("maxClaims", copy.maxClaims, "number")}
-        {field("minBuyUsd", copy.minBuy, "number")}
-        {field("holdDays", copy.holdDays, "number")}
-        <span />
-        {field("startsAt", copy.starts, "datetime-local")}
-        {field("endsAt", copy.ends, "datetime-local")}
+      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {field(
+          "code",
+          copy.code,
+          copy.hints.code,
+          "text",
+          code ? <span className="font-mono text-foreground">{copy.link(`${domain}/c/${code}`)}</span> : null,
+        )}
+        {field("title", copy.title, copy.hints.title)}
+        {field("amountUsd", copy.amount, copy.hints.amount, "number")}
+        {field(
+          "budgetUsd",
+          copy.budget,
+          copy.hints.budget,
+          "number",
+          places > 0 && total > 0 ? (
+            <span className={overBudget ? "text-foreground" : undefined} data-testid="budget-check">
+              {overBudget ? copy.overBudget(campaignUsd(total / 100)) : copy.fits(campaignUsd(total / 100), places)}
+            </span>
+          ) : null,
+        )}
+        {field("maxClaims", copy.maxClaims, copy.hints.maxClaims, "number")}
+        {field("stayDays", copy.stayDays, copy.hints.stayDays, "number")}
+        {field("startsAt", copy.starts, copy.hints.starts, "datetime-local")}
+        {field("endsAt", copy.ends, copy.hints.ends, "datetime-local")}
         <PayoutAddressField value={fields.payoutAddress} onChange={(payoutAddress) => setFields({ ...fields, payoutAddress })} />
       </div>
       <div className="mt-3">
@@ -623,7 +741,7 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
       <Button
         size="sm"
         className="mt-3"
-        disabled={busy || judged.kind !== "ok"}
+        disabled={busy || judged.kind !== "ok" || overBudget}
         onClick={() =>
           onAction({
             action: "create",
@@ -638,6 +756,7 @@ function CreateCampaign({ busy, onAction, prefill }: { busy: boolean; onAction: 
       >
         {copy.submit}
       </Button>
+      <p className="mt-1.5 text-xs text-muted-foreground">{copy.submitHint}</p>
     </details>
   );
 }

@@ -18,6 +18,9 @@ import {
   type SnapshotBase,
 } from "@/lib/portfolio-days";
 import { historyRanges, type PortfolioDay } from "@/lib/portfolio-history";
+import { withStory } from "@/lib/portfolio-story";
+import type { MoveNews } from "@/app/api/moves/route";
+import { isNewAccount } from "@/components/board/account-total";
 import MARKS_JSON from "./portfolio-marks.json";
 
 /**
@@ -34,7 +37,13 @@ import MARKS_JSON from "./portfolio-marks.json";
  *   /dev/account?portfolio=moved          money moved without an order; compared from the next snapshot
  *   /dev/account?portfolio=moved-today    money moved since the last snapshot; nothing to compare yet
  *   /dev/account?portfolio=record-late    bought before the first stored day, and the gap could not be rebuilt
- *   /dev/account?portfolio=first-day      bought today, nothing to draw yet
+ *   /dev/account?portfolio=first-day      bought today, one point: what was paid to what it is worth
+ *   /dev/account?portfolio=day-1          two buys today at the morning's price, valued at the close
+ *   /dev/account?portfolio=day-3          a first buy three market days ago and a second since
+ *   /dev/account?portfolio=day-7          the first seven market days, full, with news on the last
+ *   /dev/account?portfolio=one-month      a month with several buys and a sell
+ *   /dev/account?portfolio=down-week      a week in which most days fell
+ *   /dev/account?portfolio=narrow         a double-digit day and an unmarked name, for a 320px check
  *   /dev/account?portfolio=empty          nothing held
  *   /dev/account?portfolio=loading        the query still out
  *
@@ -58,20 +67,37 @@ export const PORTFOLIO_STATES = [
   "moved-today",
   "record-late",
   "first-day",
+  "day-1",
+  "day-3",
+  "day-7",
+  "one-month",
+  "down-week",
+  "narrow",
   "empty",
   "loading",
 ] as const;
 export type PortfolioState = (typeof PORTFOLIO_STATES)[number];
 
-const MARKS = MARKS_JSON as Record<string, Marks>;
+const MARKS: Record<string, Marks> = {
+  ...(MARKS_JSON as Record<string, Marks>),
+  // Dev only: Microsoft has no stored closes here and no pinned mark, so
+  // the narrow scene borrows Tesla's swings to show a long unmarked name
+  // on a double-digit day. Not Microsoft's prices.
+  MSFT: (MARKS_JSON as Record<string, Marks>).TSLA,
+};
 const FEE = 0.003;
 
-type Buy = { symbol: string; day: string; usd: number; unpriced?: boolean };
+/** `priceDay`: the day whose close the buy was filled at, when not its own (a morning buy). */
+type Buy = { symbol: string; day: string; usd: number; unpriced?: boolean; priceDay?: string };
 type Sell = { symbol: string; day: string; share: number };
 /** A share of a holding that left the account without an order. */
 type Moved = { symbol: string; day: string; share: number };
 type Scene = {
   from: string;
+  /** The last day drawn; the stored closes' last day when absent. */
+  to?: string;
+  /** A large move with news on the last day (a made up post; dev only). */
+  move?: { symbol: string; author: string };
   buys: Buy[];
   sells: Sell[];
   moved?: Moved[];
@@ -151,6 +177,60 @@ const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
     buys: [{ symbol: "AAPL", day: "2026-09-24", usd: 15 }],
     sells: [],
   },
+  "day-1": {
+    from: "2026-09-24",
+    buys: [
+      { symbol: "NVDA", day: "2026-09-24", usd: 15, priceDay: "2026-09-23" },
+      { symbol: "TSLA", day: "2026-09-24", usd: 10, priceDay: "2026-09-23" },
+    ],
+    sells: [],
+  },
+  "day-3": {
+    from: "2026-09-22",
+    buys: [
+      { symbol: "NVDA", day: "2026-09-22", usd: 20, priceDay: "2026-09-21" },
+      { symbol: "AAPL", day: "2026-09-23", usd: 10 },
+    ],
+    sells: [],
+  },
+  "day-7": {
+    from: "2026-09-16",
+    buys: [
+      { symbol: "NVDA", day: "2026-09-16", usd: 25 },
+      { symbol: "TSLA", day: "2026-09-16", usd: 15 },
+      { symbol: "AAPL", day: "2026-09-21", usd: 10 },
+    ],
+    sells: [],
+    move: { symbol: "NVDA", author: "Harbour Wire" },
+  },
+  "one-month": {
+    from: "2026-08-25",
+    buys: [
+      { symbol: "NVDA", day: "2026-08-25", usd: 30 },
+      { symbol: "AAPL", day: "2026-09-02", usd: 15 },
+      { symbol: "TSLA", day: "2026-09-10", usd: 12 },
+      { symbol: "NVDA", day: "2026-09-17", usd: 10 },
+    ],
+    sells: [{ symbol: "AAPL", day: "2026-09-21", share: 0.4 }],
+  },
+  narrow: {
+    from: "2026-06-26",
+    to: "2026-07-08",
+    buys: [
+      { symbol: "MSFT", day: "2026-06-26", usd: 20 },
+      { symbol: "NVDA", day: "2026-06-26", usd: 5 },
+    ],
+    sells: [],
+  },
+  "down-week": {
+    from: "2026-09-02",
+    to: "2026-09-15",
+    buys: [
+      { symbol: "NVDA", day: "2026-09-02", usd: 30 },
+      { symbol: "TSLA", day: "2026-09-02", usd: 8 },
+    ],
+    sells: [],
+  },
 };
 
 function closeOnOrBefore(marks: Marks, day: string): number {
@@ -172,13 +252,16 @@ function build(scene: Scene) {
   ].sort((a, b) => a.day.localeCompare(b.day));
 
   const held = new Map<string, number>();
-  const calendar = MARKS.NVDA.dates.filter((day) => day >= scene.from);
+  const calendar = MARKS.NVDA.dates.filter((day) => day >= scene.from && (!scene.to || day <= scene.to));
   const days: (PortfolioDay & SnapshotBase & { source: "snapshot" })[] = [];
   let next = 0;
   for (const day of calendar) {
     for (; next < events.length && events[next].day <= day; next += 1) {
       const event = events[next];
-      const price = closeOnOrBefore(MARKS[event.symbol], event.day);
+      const price = closeOnOrBefore(
+        MARKS[event.symbol],
+        event.kind === "buy" && event.priceDay ? event.priceDay : event.day,
+      );
       if (event.kind === "buy") {
         const quantity = (event.usd * (1 - FEE)) / price;
         held.set(event.symbol, (held.get(event.symbol) ?? 0) + quantity);
@@ -247,7 +330,7 @@ function build(scene: Scene) {
 export function seededPortfolioClient(
   state: PortfolioState,
   { xp }: { xp?: number } = {},
-): { client: QueryClient; rows: HoldingRow[] } {
+): { client: QueryClient; rows: HoldingRow[]; young: boolean } {
   const client = new QueryClient({
     defaultOptions: { queries: { staleTime: Infinity, retry: false } },
   });
@@ -257,7 +340,7 @@ export function seededPortfolioClient(
   }
   if (state === "empty" || state === "loading") {
     const rows = state === "loading" ? build(SCENES["four-days"]).rows : [];
-    return { client, rows };
+    return { client, rows, young: false };
   }
   const scene = SCENES[state];
   const { orders, days, rows } = build(scene);
@@ -285,18 +368,42 @@ export function seededPortfolioClient(
     const response: PortfolioHistoryResponse = {
       benchmark: { symbol: benchmark.symbol, name: benchmark.name },
       benchmarks: BENCHMARKS.map(({ symbol, name }) => ({ symbol, name })),
-      ranges,
+      // Each day's story, as the server adds it (lib/server/portfolio-view).
+      ranges: withStory(ranges, { days, orders, listingCloses: MARKS }, { rebased: Boolean(base) }),
       available,
       updatedAt: `${days.at(-1)!.day}T21:30:00.000Z`,
       todaySource: null,
     };
     client.setQueryData(["portfolio-history", null, benchmark.symbol], response);
   }
-  return { client, rows };
+  // The board's moves (/api/moves), seeded: a made up post on the scene's last day.
+  client.setQueryData(["listings", "moves"], scene.move ? [sceneMove(scene.move, newest.day)] : []);
+  // As the board judges it (AccountTotal), with the scene's last day as now.
+  const young = isNewAccount(orders, Date.parse(markAsOf(newest.day)));
+  return { client, rows, young };
+}
+
+/** A made up post beside the day's real move, to lay out the news line. Dev only. */
+function sceneMove(move: NonNullable<Scene["move"]>, day: string): MoveNews {
+  const marks = MARKS[move.symbol];
+  const at = marks.dates.indexOf(day);
+  const changePct = at > 0 ? (marks.values[at] / marks.values[at - 1] - 1) * 100 : 0;
+  return {
+    asOf: day,
+    symbol: move.symbol,
+    changePct,
+    post: {
+      url: "https://x.com/berthmarkets",
+      name: move.author,
+      username: "berthmarkets",
+      publishedAt: Date.parse(`${day}T14:00:00Z`),
+      text: "A made up post, for the gallery only.",
+    },
+  };
 }
 
 export function PortfolioGallery({ state }: { state: PortfolioState }) {
-  const [{ client, rows }] = useState(() => seededPortfolioClient(state));
+  const [{ client, rows, young }] = useState(() => seededPortfolioClient(state));
   const total = rows.reduce((sum, row) => sum + (row.worth ?? 0), 0);
   return (
     <QueryClientProvider client={client}>
@@ -319,6 +426,7 @@ export function PortfolioGallery({ state }: { state: PortfolioState }) {
             funds: 0,
             holdsAnything: state !== "empty",
           }}
+          compareOpenByDefault={young}
         />
         <Panel>
           <HoldingsView

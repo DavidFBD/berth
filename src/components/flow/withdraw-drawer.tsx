@@ -149,6 +149,11 @@ export function WithdrawDrawer({
   // What the typed amount means: the user's display currency (default, when
   // the share price is known) or raw shares for the exact-amount crowd.
   const [denom, setDenom] = useState<"money" | "token">("money");
+  // What Max wrote, and the holding it saw when pressed: while the field
+  // still shows that text, the order is exactly that many shares (lib/
+  // pour-amount pourAmounts `max`). A snapshot, so a holding that grows
+  // meanwhile (a buy filling in another tab) never sells more than shown.
+  const [maxed, setMaxed] = useState<{ text: string; amount: bigint } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   // Optional: send to somebody else's address (e.g. an exchange deposit
   // address — the no-bank-rails cash-out path). null = own wallet.
@@ -293,6 +298,7 @@ export function WithdrawDrawer({
     denom,
     SHARE_DECIMALS,
     entryPrice,
+    maxed ?? undefined,
   );
   // Under the floor the solver answers "no path" for a pair that routes
   // fine, so it isn't asked: the field gets the real reason instead.
@@ -368,6 +374,7 @@ export function WithdrawDrawer({
   const finish = () => {
     action.reset();
     setAmount("");
+    setMaxed(null);
     setCustomRecipient(null);
   };
 
@@ -379,15 +386,15 @@ export function WithdrawDrawer({
 
   const handleMax = () => {
     if (availableShares <= 0n) return;
-    setAmount(
-      amountText(
-        availableShares,
-        SHARE_DECIMALS,
-        moneyMode,
-        entryPrice,
-        money.fractionDigits,
-      ),
+    const text = amountText(
+      availableShares,
+      SHARE_DECIMALS,
+      moneyMode,
+      entryPrice,
+      money.fractionDigits,
     );
+    setAmount(text);
+    setMaxed({ text, amount: availableShares });
   };
 
   // Flip the entry denomination, carrying the current value across so the
@@ -396,15 +403,16 @@ export function WithdrawDrawer({
     if (entryPrice === undefined) return;
     setDenom(moneyMode ? "token" : "money");
     if (buildAmount) {
-      setAmount(
-        amountText(
-          buildAmount,
-          SHARE_DECIMALS,
-          !moneyMode,
-          entryPrice,
-          money.fractionDigits,
-        ),
+      const text = amountText(
+        buildAmount,
+        SHARE_DECIMALS,
+        !moneyMode,
+        entryPrice,
+        money.fractionDigits,
       );
+      setAmount(text);
+      // Max flipped is still Max: the same whole holding, in the other unit.
+      if (maxed && amount === maxed.text) setMaxed({ text, amount: maxed.amount });
     }
   };
 
@@ -686,7 +694,11 @@ export function WithdrawDrawer({
             </div>
           ) : listing && action.pending ? (
             <div className="p-4">
-              <ActionStepper step={action.step} approveNeeded={false} />
+              <ActionStepper
+                step={action.step}
+                approveNeeded={false}
+                headless={mode === "email" && signGas.sponsored(srcChainKey)}
+              />
             </div>
           ) : listing && limit.reviewing && outputToken && dstChainKey && buildAmount && limitMin ? (
             <div className="flex flex-col gap-4 overflow-y-auto p-4">
@@ -737,6 +749,7 @@ export function WithdrawDrawer({
                       onChange={(event) => {
                         // Typing consumes a draft, so it never lands over the person's number.
                         setPrefilled(true);
+                        setMaxed(null);
                         setAmount(event.target.value);
                       }}
                       inputMode="decimal"

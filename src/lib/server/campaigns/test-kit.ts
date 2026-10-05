@@ -1,86 +1,106 @@
 import { expect } from "vitest";
 import { getSql } from "../db";
 import { getOrCreateUser, type UserRow } from "../accounts";
-import { STOCK_LISTINGS } from "@/lib/listings";
-import { attributeCampaign, campaignById, claimById } from "./store";
-import { advanceClaim, type EligibilityDeps } from "./eligibility";
-import type { HoldQuery, HoldVerifier } from "./hold-window";
+import { toCaip10 } from "@/lib/identity/caip";
+import { attributeSignup, campaignById, claimById } from "./store";
+import { advanceClaim, runCampaignStep } from "./eligibility";
 
 /**
- * Test-only fixtures for the campaign tests (PGlite): campaigns, arrivals,
- * buys delivered to the person's own hub wallet, a hub derivation that
- * needs no chain, and hold verifiers that answer without one.
+ * Test-only fixtures for the campaign tests (PGlite): campaigns, new
+ * accounts that arrived through a campaign's link, the three set up facts,
+ * visits, and a claim walked all the way to qualified.
  */
 
-export const STOCK = STOCK_LISTINGS[0];
 export const DAY = 86_400_000;
 let seq = 0;
+/** The campaign made last: joined() arrives through its link unless told otherwise. */
+let lastCode: string | undefined;
 export const next = () => (seq += 1);
 export const hex = (n: number) => `0x${n.toString(16).padStart(40, "0")}`;
 
-/** A stand-in for the SDK's hub derivation: deterministic, distinct from the spoke. */
-export const hubOf = (spoke: string) => `0xb${spoke.toLowerCase().slice(3)}`;
-export const DEPS: EligibilityDeps = { deriveHubWallet: async (spoke) => hubOf(spoke) };
-
 export async function campaign(
   code: string,
-  { active = true, maxClaims = 20, budget = 100, amount = 5, startsInDays = -1, endsInDays = 30, holdDays = 7 } = {},
+  {
+    active = true,
+    maxClaims = 20,
+    budget = 100,
+    amount = 5,
+    startsInDays = -1,
+    endsInDays = 30,
+    stayDays = 14,
+    kind = "signup",
+  }: {
+    active?: boolean;
+    maxClaims?: number;
+    budget?: number;
+    amount?: number;
+    startsInDays?: number;
+    endsInDays?: number;
+    stayDays?: number;
+    kind?: "signup" | "invite" | "buy";
+  } = {},
 ): Promise<string> {
   const rows = (await getSql().query(
-    `insert into campaigns (code, title, starts_at, ends_at, active, max_claims, budget_usd, amount_usd, hold_days)
-     values ($1, $1, now() + make_interval(days => $2), now() + make_interval(days => $3), $4, $5, $6, $7, $8) returning id`,
-    [code, startsInDays, endsInDays, active, maxClaims, budget, amount, holdDays],
+    `insert into campaigns (code, title, kind, starts_at, ends_at, active, max_claims, budget_usd, amount_usd, hold_days)
+     values ($1, $1, $9, now() + make_interval(days => $2), now() + make_interval(days => $3), $4, $5, $6, $7, $8) returning id`,
+    [code, startsInDays, endsInDays, active, maxClaims, budget, amount, stayDays, kind],
   )) as { id: string }[];
+  lastCode = code;
   return rows[0].id;
 }
 
-/** A new account with a verified email (unless asked not to), attributed to `code`. */
-export async function arrival(code: string, { email = true } = {}): Promise<{ user: UserRow; claimId: string; home: string }> {
+/** An account with a home wallet and, unless asked not to, a verified email. */
+export async function person({ email = true }: { email?: boolean | string } = {}): Promise<UserRow & { home: string }> {
   const n = next();
   const home = hex(0x100000 + n);
   const user = (await getOrCreateUser({ did: `did:privy:kit-${n}`, wallet: home }))!.user;
-  if (email) await getSql().query(`update users set email = $2 where id = $1`, [user.id, `p${n}@example.com`]);
-  const claimId = await attributeCampaign(user.id, code);
-  expect(claimId).toBeTruthy();
-  return { user: { ...user, email: email ? `p${n}@example.com` : null }, claimId: claimId!, home };
+  const address = typeof email === "string" ? email : email ? `p${n}@example.com` : null;
+  if (address) await getSql().query(`update users set email = $2 where id = $1`, [user.id, address]);
+  return { ...user, email: address, home };
 }
 
-export async function buy(
-  user: Pick<UserRow, "id" | "wallet_address">,
-  {
-    usd = 12,
-    listing = STOCK.address,
-    quantity = "0.05",
-    payer = user.wallet_address ?? hex(0x900000 + next()),
-    deliveredTo = hubOf(user.wallet_address ?? hex(0x500000 + next())),
-    filledAt = new Date(Date.now() + 1_000),
-    direction = "buy",
-    orderType = "market",
-  }: {
-    usd?: number | null;
-    listing?: string;
-    quantity?: string;
-    payer?: string;
-    deliveredTo?: string;
-    filledAt?: Date;
-    direction?: string;
-    orderType?: string;
-  } = {},
-): Promise<{ intentTx: string; deliveredTo: string; orderId: string }> {
+/**
+ * A new account that arrived through a campaign's link (`code`, the
+ * campaign made last unless told), its claim made as the first profile
+ * sync makes it. `expectClaim: false` for the cases where none should be.
+ */
+export async function joined(
+  { email = true, code = lastCode, expectClaim = true }: { email?: boolean | string; code?: string; expectClaim?: boolean } = {},
+): Promise<{ user: UserRow & { home: string }; claimId: string }> {
+  const user = await person({ email });
+  const claimId = await attributeSignup(user.id, code);
+  if (expectClaim) expect(claimId).toBeTruthy();
+  return { user, claimId: claimId ?? "" };
+}
+
+/** The username, the last of the three set up facts (the email and the wallet come with person()). */
+export async function username(user: Pick<UserRow, "id">): Promise<void> {
   const n = next();
-  const intentTx = `0x${n.toString(16).padStart(64, "0")}`;
-  const rows = (await getSql().query(
-    `insert into orders (user_id, wallet_address, src_address, intent_tx, direction, listing_symbol, listing_address, quantity, usd_value, delivered_to, filled_at, placed_at, order_type)
-     values ($1, $2, $3, $4, $5, 'X', $6, $7, $8, $9, $10, $10, $11) returning id`,
-    // As lib/orders readOrder stores them: wallet_address only for an EVM payer, src_address always.
-    [user.id, /^0x[0-9a-f]{40}$/i.test(payer) ? payer.toLowerCase() : null, payer, intentTx, direction, listing, quantity, usd, deliveredTo, filledAt.toISOString(), orderType],
-  )) as { id: string }[];
-  return { intentTx, deliveredTo, orderId: rows[0].id };
+  await getSql().query(`insert into handles (user_id, handle, handle_norm) values ($1, $2, $2) on conflict do nothing`, [user.id, `kit${n}x`]);
+}
+
+/** A signed in visit at `at` (users.last_seen_at). */
+export async function seen(user: Pick<UserRow, "id">, at: Date): Promise<void> {
+  await getSql().query(`update users set last_seen_at = $2 where id = $1`, [user.id, at.toISOString()]);
+}
+
+/**
+ * An EVM wallet `user` also holds. A wallet is on one account at a time
+ * (user_identities_kind_value), so one already on another account is moved
+ * here, as relinking it elsewhere does; that account's users.wallet_address
+ * keeps naming it, so both people stand on it.
+ */
+export async function heldWallet(user: Pick<UserRow, "id">, address: string): Promise<void> {
+  const value = toCaip10("evm", address);
+  const moved = (await getSql().query(`update user_identities set user_id = $1, is_home = false where kind = 'wallet' and value = $2 returning 1`, [user.id, value])) as unknown[];
+  if (moved.length === 0) {
+    await getSql().query(`insert into user_identities (user_id, kind, value, family, is_home, proof) values ($1, 'wallet', $2, 'evm', false, 'siwe')`, [user.id, value]);
+  }
 }
 
 export async function advance(claimId: string, now = new Date(Date.now() + 2_000)) {
   const claim = (await claimById(claimId))!;
-  return advanceClaim(claim, (await campaignById(claim.campaign_id))!, now, DEPS);
+  return advanceClaim(claim, (await campaignById(claim.campaign_id))!, now);
 }
 
 export async function state(claimId: string) {
@@ -88,16 +108,18 @@ export async function state(claimId: string) {
   return { state: claim.state, reason: claim.reject_reason ?? claim.expire_reason ?? null };
 }
 
-/** A verifier answering from the query alone: `verdict(query)`, with made up but consistent evidence. */
-export function verifier(verdict: (query: HoldQuery) => "held" | "not_held" | "unknown"): HoldVerifier & { asked: HoldQuery[] } {
-  const asked: HoldQuery[] = [];
-  const fn = (async (query: HoldQuery) => {
-    asked.push(query);
-    const answer = verdict(query);
-    if (answer === "unknown") return { verdict: "unknown", error: "rpc down" } as const;
-    const raw = answer === "held" ? "50000000000000000" : "0";
-    return { verdict: answer, balanceRaw: raw, lowestRaw: raw, outflows: answer === "held" ? 0 : 1, fromBlock: "1", toBlock: "2" } as const;
-  }) as HoldVerifier & { asked: HoldQuery[] };
-  fn.asked = asked;
-  return fn;
+/**
+ * A claim walked to qualified: a new account through the link, set up, a
+ * place reserved, a visit inside the last week of the stay, and the
+ * morning step run after it. `user` is the one paid.
+ */
+export async function qualifiedClaim(code: string): Promise<{ claimId: string; user: UserRow & { home: string } }> {
+  const { user, claimId } = await joined({ code });
+  await username(user);
+  expect(await advance(claimId)).toBe("holding");
+  const claim = (await claimById(claimId))!;
+  await seen(user, new Date(claim.eligible_at!.getTime() - DAY));
+  await runCampaignStep({ now: new Date(claim.eligible_at!.getTime() + 60_000) });
+  expect((await claimById(claimId))!.state).toBe("qualified");
+  return { claimId, user };
 }
