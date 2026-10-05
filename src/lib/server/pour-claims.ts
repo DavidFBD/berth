@@ -1,6 +1,6 @@
 import { EvmSolverService, IntentsAbi, type Intent, type IntentResponse } from "@sodax/sdk";
 import { forgoHold, isNoXp, markNoXp, pourPaid } from "@/lib/server/no-xp";
-import { isRobinhoodBuy, settleRobinhoodClaim } from "@/lib/server/delivery-gate";
+import { isRobinhoodBuy, settleRobinhoodClaim, type ClaimDelivery } from "@/lib/server/delivery-gate";
 import { parseEventLogs, type Log } from "viem";
 import { awardXp } from "@/lib/server/accounts";
 import { getSql } from "@/lib/server/db";
@@ -186,16 +186,33 @@ export async function savePourClaim(
      * not answer never stands in the owner's way.
      */
     proven = true,
-  }: { proven?: boolean } = {},
+    /**
+     * A buy delivered on Robinhood Chain, or one whose intent could not be
+     * read yet (lib/server/delivery-gate): its delivery decision (null
+     * while a read kept it open) and the facts it was made from, written in
+     * this one statement so no evening pass ever reads the claim without
+     * them. A decision once written stands, and so do the facts first kept.
+     * Absent on a hub claim, whose statement names none of these columns.
+     */
+    delivery,
+  }: { proven?: boolean; delivery?: ClaimDelivery } = {},
 ): Promise<void> {
   const tx = intentTx.toLowerCase();
   const sql = getSql();
   // A proven claim: the unproven claims other accounts made on this intent give way.
   if (proven) await sql.query(`delete from pour_claims where intent_tx = $1 and user_id <> $2 and settled_at is null and not proven`, [tx, userId]);
+  const columns = delivery ? ", delivery_ok, delivery_signer, delivery_place_ok" : "";
+  const values = delivery ? ", $7, $8, $9" : "";
+  const updates = delivery
+    ? `,
+         delivery_ok = coalesce(pour_claims.delivery_ok, excluded.delivery_ok),
+         delivery_signer = case when pour_claims.delivery_place_ok is null then excluded.delivery_signer else pour_claims.delivery_signer end,
+         delivery_place_ok = coalesce(pour_claims.delivery_place_ok, excluded.delivery_place_ok)`
+    : "";
   try {
     await sql.query(
-      `insert into pour_claims (intent_tx, user_id, direction, fill_tx, listing_symbol, proven)
-       select $1, $2, $3, $4, $5, $6
+      `insert into pour_claims (intent_tx, user_id, direction, fill_tx, listing_symbol, proven${columns})
+       select $1, $2, $3, $4, $5, $6${values}
         where not exists (
           -- Another account's proven or settled claim stands: never a second.
           select 1 from pour_claims o where o.intent_tx = $1 and o.user_id <> $2
@@ -204,8 +221,10 @@ export async function savePourClaim(
        on conflict (intent_tx, user_id) do update set
          fill_tx = coalesce(pour_claims.fill_tx, excluded.fill_tx),
          listing_symbol = coalesce(pour_claims.listing_symbol, excluded.listing_symbol),
-         proven = pour_claims.proven or excluded.proven`,
-      [tx, userId, direction, fillTx, listingSymbol, proven],
+         proven = pour_claims.proven or excluded.proven${updates}`,
+      delivery
+        ? [tx, userId, direction, fillTx, listingSymbol, proven, delivery.ok, delivery.signer, delivery.placeOk]
+        : [tx, userId, direction, fillTx, listingSymbol, proven],
     );
   } catch (error) {
     // Two proven claims racing: the one-proven index lets the first stand.
@@ -231,6 +250,8 @@ export type SettledClaim = {
   wallet_address?: string | null;
   /** A no XP buy (lib/server/no-xp): record the order, pay nothing. Absent reads as false. */
   no_xp?: boolean;
+  /** When the claim was kept; a Robinhood Chain claim's delivery decision waits on it (lib/server/delivery-gate). */
+  created_at?: string | Date;
 };
 
 /**
@@ -256,8 +277,8 @@ export type ClaimPayDeps = {
   readIntent: (intentTx: string) => Promise<Intent | null>;
   prove: (claim: SettledClaim, intent: Intent) => Promise<OwnershipVerdict>;
   record: (claim: SettledClaim, intent: Intent) => Promise<void>;
-  /** A claim on a buy delivered on Robinhood Chain: paid only if the pour route allowed its destination (lib/server/delivery-gate). */
-  settleRobinhood?: (claim: SettledClaim) => Promise<unknown>;
+  /** A claim on a buy delivered on Robinhood Chain: paid only once its delivery is allowed (lib/server/delivery-gate). */
+  settleRobinhood?: (claim: SettledClaim, intent: Intent) => Promise<"allowed" | "refused" | "settled" | "wait">;
 };
 
 export function defaultClaimPayDeps(): ClaimPayDeps {
@@ -301,12 +322,15 @@ export async function payClaim(
   // never paid (lib/server/no-xp), which payRecordedClaim reads below. A
   // buy already paid is a replay and is never marked after the fact.
   if (!owned.ok && !(await pourPaid(claim.intent_tx))) await markNoXp(claim.intent_tx, "unproven_source");
-  // Delivered on Robinhood Chain: no request here to judge the destination
-  // from, so it pays only on the pour route's recorded allowance, and is
-  // otherwise marked to pay nothing (payRecordedClaim reads that below).
-  if (isRobinhoodBuy(claim.direction, intent)) await (deps.settleRobinhood ?? settleRobinhoodClaim)(claim);
+  // Delivered on Robinhood Chain: paid only once its delivery is allowed,
+  // decided from what the claim stored (lib/server/delivery-gate). A
+  // refusal marks it to pay nothing (payRecordedClaim reads that below); a
+  // decision still open records the order and leaves the claim for the
+  // next night.
+  const delivery = isRobinhoodBuy(claim.direction, intent) ? await (deps.settleRobinhood ?? settleRobinhoodClaim)(claim, intent) : null;
   await deps.record(claim, intent);
   if (!(await orderExists(claim.intent_tx))) return false;
+  if (delivery === "wait") return false;
   return payRecordedClaim(claim);
 }
 

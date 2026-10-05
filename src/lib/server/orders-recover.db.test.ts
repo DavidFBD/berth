@@ -294,6 +294,8 @@ describe("recovering orders", () => {
     expect(await sql.query(`select holding_chain, listing_address, delivered_to from orders where intent_tx = $1`, [tx(0x401)])).toEqual([
       { holding_chain: "robinhood", listing_address: NVDA.address.toLowerCase(), delivered_to: "0x7777777777777777777777777777777777777777" },
     ]);
+    // No report means no delivery decision: it pays nothing, then or ever.
+    expect(await sql.query(`select reason from no_xp_intents where intent_tx = $1`, [tx(0x401)])).toEqual([{ reason: "delivery_refused" }]);
   });
 
   it("names the hub on every other recovered row", async () => {

@@ -4,7 +4,7 @@ import { flushUnannounced } from "@/lib/server/accounts";
 import { awardFilledPour, closePourClaim, fillVerdict, savePourClaim } from "@/lib/server/pour-claims";
 import { forgoHold, isNoXp, markNoXp, pourPaid } from "@/lib/server/no-xp";
 import { requestCountry } from "@/lib/server/availability";
-import { gateRobinhoodBuy, markDeliveryOk } from "@/lib/server/delivery-gate";
+import { gateRobinhoodBuy, isRobinhoodBuy, requestDelivery } from "@/lib/server/delivery-gate";
 import { orderListingSymbol, recordOrder } from "@/lib/server/orders";
 import { accountOwnedWallets } from "@/lib/server/pour-ownership";
 import { verifyPourTx } from "@/lib/server/pour-verify";
@@ -74,12 +74,24 @@ export async function POST(request: NextRequest) {
       ? read.caller.body.fillTxHash
       : null;
   const direction = kind === "pour_out" ? "sell" : "buy";
+  // What the delivery decision of a buy on Robinhood Chain is made from
+  // (lib/server/delivery-gate), from this request.
+  const deliveryInputs = {
+    userId: user.id,
+    usersWallet: user.wallet_address,
+    signer: read.caller.wallet,
+    availability,
+    country: requestCountry(request.headers, { url: request.url }),
+  };
 
   if (!verified.ok && verified.reason === "not yet known") {
     // A read did not answer (an RPC error, a timeout): nothing is refused,
     // marked or paid on it. When the intent itself was read, a claim is kept
     // so the evening pass proves it later, and the client asks again with a
     // backoff (lib/pour-retry).
+    // A buy delivered on Robinhood Chain, or one whose intent is not read
+    // yet, keeps what only this request knows for its delivery decision,
+    // which the evening pass makes once the intent is proven.
     if (verified.intent && verified.sodax) {
       await savePourClaim(
         user.id,
@@ -87,13 +99,16 @@ export async function POST(request: NextRequest) {
         direction,
         claimedFill,
         orderListingSymbol(verified.sodax, verified.intent, direction),
-        { proven: false },
+        { proven: false, delivery: isRobinhoodBuy(direction, verified.intent) ? requestDelivery(deliveryInputs) : undefined },
       );
     } else if (verified.intentCreated) {
       // The receipt shows a real intent the SDK could not read: kept on its
       // hash and side alone, so the evening pass finishes it even when every
       // retry from the page also finds the chain silent.
-      await savePourClaim(user.id, txHash, direction, claimedFill, null, { proven: false });
+      await savePourClaim(user.id, txHash, direction, claimedFill, null, {
+        proven: false,
+        delivery: direction === "buy" ? requestDelivery(deliveryInputs) : undefined,
+      });
     }
     return NextResponse.json({ error: verified.reason, retry: true }, { status: 503, headers: { "retry-after": "10" } });
   }
@@ -106,21 +121,13 @@ export async function POST(request: NextRequest) {
   // earns only when it answers Robinhood Chain to the very wallet it went
   // to (lib/server/delivery-gate). A refused one is still recorded, held
   // on Robinhood Chain, and pays nothing, then or ever. A read that did not
-  // answer refuses nothing: the claim is kept and the client asks again.
-  const gate = await gateRobinhoodBuy({
-    intentTx: txHash,
-    direction,
-    intent: verified.intent,
-    inputs: {
-      userId: user.id,
-      usersWallet: user.wallet_address,
-      signer: read.caller.wallet,
-      availability,
-      country: requestCountry(request.headers, { url: request.url }),
-    },
-  });
-  if (gate === "unknown") {
-    await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction));
+  // answer refuses nothing: the claim keeps what this request knows, the
+  // client asks again, and the evening pass decides it if no retry does.
+  const gate = await gateRobinhoodBuy({ intentTx: txHash, direction, intent: verified.intent, inputs: deliveryInputs });
+  if (gate.outcome === "unknown") {
+    await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction), {
+      delivery: gate.delivery,
+    });
     return NextResponse.json({ error: "not yet known", retry: true }, { status: 503, headers: { "retry-after": "10" } });
   }
 
@@ -160,10 +167,11 @@ export async function POST(request: NextRequest) {
   // stopped at maxDuration while they wait on a hung endpoint, the evening
   // pass records and pays it (lib/server/pour-claims payClaim). Closed below
   // once paid or recorded.
-  await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction));
-  // The evening pass cannot judge a Robinhood Chain destination (it has no
-  // request), so the claim carries this route's allowance to it.
-  if (gate === "allowed") await markDeliveryOk(txHash, user.id);
+  // A Robinhood Chain claim carries the gate's decision, true or false, in
+  // the same statement, so the evening pass never reads it without one.
+  const listingSymbol = orderListingSymbol(verified.sodax, verified.intent, direction);
+  if (gate.delivery) await savePourClaim(user.id, txHash, direction, claimedFill, listingSymbol, { delivery: gate.delivery });
+  else await savePourClaim(user.id, txHash, direction, claimedFill, listingSymbol);
   // An unknown verdict stops at the claim: the evening pass confirms it.
   if (verdict === "filled" && noXp) {
     await recordOrder({

@@ -126,7 +126,11 @@ describe("a read that did not answer", () => {
   it("the receipt holds an IntentCreated the SDK could not read: 503, and an unproven claim on the hash and side alone (n1)", async () => {
     verifyPourTx.mockResolvedValue({ ok: false, reason: "not yet known", intentCreated: true });
     expect((await buy()).status).toBe(503);
-    expect(claims.savePourClaim).toHaveBeenCalledWith("u1", TX, "buy", null, null, { proven: false });
+    // Its delivery chain is not known yet, so it keeps what only this request knows for a Robinhood Chain decision.
+    expect(claims.savePourClaim).toHaveBeenCalledWith("u1", TX, "buy", null, null, {
+      proven: false,
+      delivery: { ok: null, signer: expect.any(String), placeOk: false },
+    });
     expect(recordOrder).not.toHaveBeenCalled();
     expect(noXp.markNoXp).not.toHaveBeenCalled();
   });

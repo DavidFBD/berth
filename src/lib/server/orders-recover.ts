@@ -6,6 +6,7 @@ import { listListings } from "@/lib/listings";
 import { PARTNER_FEE } from "@/lib/sodax-config";
 import { getSql } from "@/lib/server/db";
 import { markNoXp } from "@/lib/server/no-xp";
+import { settleRecoveredRobinhoodBuy } from "@/lib/server/delivery-gate";
 import type { WalletFamily } from "@/lib/identity/caip";
 import { accountOwnedWallets } from "@/lib/server/pour-ownership";
 import { buildOrder, recordOrderMarks } from "@/lib/server/orders";
@@ -307,6 +308,11 @@ export async function recoverAccountOrders(
       // is written, and the intent never pays (lib/server/no-xp).
       // One whose XP was already paid is history, never marked after the fact.
       if (verified.unprovenSource && !xpPaid.has(candidate.intentTx)) await markNoXp(candidate.intentTx, "unproven_source");
+      // A buy delivered on Robinhood Chain that no report brought: nothing
+      // to decide its destination from, so it earns nothing, then or ever,
+      // unless an open claim carries a report's facts to the evening pass
+      // (lib/server/delivery-gate).
+      if (order.direction === "buy" && order.holdingChain === "robinhood") await settleRecoveredRobinhoodBuy(candidate.intentTx);
       const id = await insertRecoveredOrder(account.id, order);
       if (id) {
         report.written += 1;

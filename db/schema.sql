@@ -307,13 +307,18 @@ alter table pour_claims add constraint pour_claims_outcome_check
 -- Null on claims kept before this column; those hold back nothing.
 alter table pour_claims add column if not exists listing_symbol text;
 
--- true: the claim is a buy delivered on Robinhood Chain whose destination
--- the pour route re-checked from the request and allowed (switched on, a
--- country Robinhood offers its tokens in, the session's own plain EVM key;
--- lib/server/delivery-gate). The evening pass has no request to check
--- from, so it pays such a claim only when this is true; null on every
--- other claim, and written only for Robinhood Chain buys.
+-- A claim on a buy delivered on Robinhood Chain (lib/server/delivery-gate).
+-- delivery_ok is the server's decision on its destination (switched on, a
+-- country Robinhood offers its tokens in, the session's own plain EVM key):
+-- true pays, false never does, written by the pour route in the statement
+-- that keeps the claim; null while a read kept it open, when the evening
+-- pass decides it again from the two facts only the request knew, the
+-- session's signing wallet (delivery_signer) and the place's yes or no
+-- (delivery_place_ok, never the country), and refuses it after seven days.
+-- Null on every hub claim.
 alter table pour_claims add column if not exists delivery_ok boolean;
+alter table pour_claims add column if not exists delivery_signer text;
+alter table pour_claims add column if not exists delivery_place_ok boolean;
 
 -- Daily closes per listing and benchmark (lib/marks), kept past DefiLlama's
 -- ninety day reach so a portfolio can be drawn for as long as it existed.
