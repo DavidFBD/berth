@@ -214,7 +214,7 @@ export type Copy = {
     addTitleCash: string;
     /** Money the oracle cannot price yet: the buy drawer reads it per token. */
     firstReadyUnpriced: string;
-    /** The card and bank row inside the Add money drawer. */
+    /** The card row inside the Add money drawer. */
     cardRowTitle: string;
     pickLabel: string;
     firstChoose: string;
@@ -242,8 +242,6 @@ export type Copy = {
     stepCrypto: string;
     /** Under the step's action: who handles the payment. */
     stepNote: string;
-    /** The card row's subline, in the Add money drawer and the account drawer. */
-    cardSub: string;
     waitingTitle: string;
     waitingLine: string;
     slowLine: string;
@@ -2798,11 +2796,10 @@ export const COPY: Copy = {
     stepCardAction: "Pay by card",
     stepCrypto: "Send crypto instead",
     stepNote: "The payment is handled by the provider you choose, not by Berth. It may ask for ID.",
-    cardSub: "Card, Apple Pay or Google Pay. The provider handles the payment and may ask for ID.",
     waitingTitle: "Your money is on its way",
     waitingLine: "It arrives in your account as digital dollars (USDC). A card payment usually takes a few minutes.",
     slowLine:
-      "This is taking longer than usual. A card payment can take up to half an hour, a bank transfer a day or more. If the provider asked for anything more, finish it in their window.",
+      "This is taking longer than usual. A card payment can take up to half an hour. If the provider asked for anything more, finish it in their window.",
     closeLine: "You can close this. Your money shows on your home when it lands.",
     stoppedTitle: "Not here yet",
     stoppedLine:
@@ -3527,7 +3524,7 @@ export const COPY: Copy = {
         : `${name} filed a report with the SEC on ${date}.`,
   eventReadOnSec: "Read it on sec.gov",
 
-  nudgeAddFunds: "Your account is empty. Add money by card, bank or crypto whenever you are ready.",
+  nudgeAddFunds: "Your account is empty. Add money by card or crypto whenever you are ready.",
   nudgeAddFundsAction: "Add money",
   nudgeFirstBuy: "Your funds have arrived. Choose any name on the board when you are ready.",
   nudgeHeldNews: (name) => `There is news about ${name} today.`,

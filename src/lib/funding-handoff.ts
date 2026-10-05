@@ -4,14 +4,13 @@ import { MIN_ORDER_USD } from "@/lib/order-minimum";
  * From adding money to the buy (2026-10-05). Privy's funding window
  * (useAddFunds) answers once the person is done with the provider, which is
  * when the payment was made, not when the money is in the account: a card
- * payment lands as USDC on Base minutes later, a bank transfer can take a
- * day. So the handoff watches the destination's USDC balance and moves on
+ * payment lands as USDC on Base minutes later. So the handoff watches the destination's USDC balance and moves on
  * only once it has actually risen. This module is the rulebook, pure, so
  * every turn is a unit test; components/funding-handoff draws it.
  *
  *   waiting   the money is on its way: the thinking orb, a calm line
  *   slow      past SLOW_AFTER_MS: still watching, and says how long a
- *             card or a bank transfer can take
+ *             card payment can take
  *   stopped   past STOP_AFTER_MS: no more reads; the money shows on the
  *             home when it lands, and the provider can say where it is
  *   arrived   the balance rose: the buy opens with that USDC to pay with
