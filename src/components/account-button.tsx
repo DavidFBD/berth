@@ -6,8 +6,8 @@ import { toast } from "@/lib/toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
 import { useStaffSignInRunning } from "@/components/staff/entry";
 import { AnimatePresence, motion } from "motion/react";
-import { useAddFunds } from "@privy-io/react-auth";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
+import { useXAccount } from "@sodax/wallet-sdk-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Copy,
@@ -29,6 +29,9 @@ import { ConnectButton } from "@/components/wallet";
 import { RankChip } from "@/components/rewards-panel";
 import { ADD_EMAIL_ANCHOR } from "@/components/social/social-section";
 import { useCopy } from "@/components/settings-provider";
+import { ArrivalPanel, useAddMoney } from "@/components/funding-handoff";
+import { useAvailability } from "@/components/availability/availability-context";
+import type { ArrivalView } from "@/lib/funding-handoff";
 import { useMounted } from "@/hooks/use-mounted";
 import { useAccountWallets } from "@/hooks/use-profile";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
@@ -52,6 +55,7 @@ export function AccountButton({
   assistant = null,
   focusEmail = false,
   focusFriends = false,
+  focusMoney = false,
 }: {
   /** Optional controlled open state so the page (the funds module's top-up button) can open the account drawer. */
   open?: boolean;
@@ -62,6 +66,8 @@ export function AccountButton({
   focusEmail?: boolean;
   /** Opened from the social notice: the profile and friends screen. */
   focusFriends?: boolean;
+  /** A wallet account's Add money: opened on the wallets screen (components/account-button WalletAddMoney). */
+  focusMoney?: boolean;
 } = {}) {
   const privy = usePrivyEmbeddedWallet();
   const linking = useLinkInProgress();
@@ -75,7 +81,7 @@ export function AccountButton({
   useScrollToAddEmail(accountOpen && focusEmail);
   // Back from a friend's profile opened in the drawer: open again, on that screen.
   const pending = useDrawerReturn(() => setAccountOpen(true), accountOpen);
-  const start = initialScreen({ assistant: assistant !== null, focusEmail, friends: focusFriends, pending });
+  const start = initialScreen({ assistant: assistant !== null, focusEmail, friends: focusFriends, money: focusMoney, pending });
 
   if (!PRIVY_ENABLED) return <ConnectButton />;
 
@@ -182,7 +188,7 @@ export function EmailDrawerBody({
         <Panel className="divide-y divide-border">
           {address ? (
             <>
-              <FundButton address={address} />
+              <FundButton address={address} surface="account" />
               <ReceiveRow
                 title={copy.receiveEvmTitle}
                 description={copy.receiveEvmBody}
@@ -291,7 +297,16 @@ export function useEmailSession(): boolean {
  * account's own addresses to send crypto to), so a new account's first
  * step is one tap and one choice rather than a search through the drawer.
  */
-export function AddMoneyDrawer({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function AddMoneyDrawer({
+  open,
+  onOpenChange,
+  arrival,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** A card payment went through: the wait for its money, and what follows, in the ways to pay's place. */
+  arrival?: AddMoneyArrival | null;
+}) {
   const privy = usePrivyEmbeddedWallet();
   const mounted = useMounted();
   const copy = useCopy();
@@ -305,13 +320,27 @@ export function AddMoneyDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{copy.calmHome.addMoneyTitle}</DrawerTitle>
-          <DrawerDescription>{copy.calmHome.addMoneySub}</DrawerDescription>
+          <DrawerDescription className={arrival ? "sr-only" : undefined}>
+            {arrival ? copy.funding.closeLine : copy.calmHome.addMoneySub}
+          </DrawerDescription>
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 *:shrink-0 pb-[max(env(safe-area-inset-bottom),1rem)]">
+          {arrival ? (
+            <Panel className="p-3">
+              <ArrivalPanel
+                view={arrival.view}
+                target={arrival.target}
+                listingName={arrival.listingName}
+                onChoose={arrival.onChoose}
+                onPayAnotherWay={arrival.onPayAnotherWay}
+                onClose={() => onOpenChange(false)}
+              />
+            </Panel>
+          ) : (
           <Panel className="divide-y divide-border">
             {address ? (
               <>
-                <FundButton address={address} title={copy.calmHome.cardRowTitle} />
+                <FundButton address={address} title={copy.calmHome.cardRowTitle} surface="add-money" />
                 <ReceiveRow
                   title={copy.receiveEvmTitle}
                   description={copy.receiveEvmBody}
@@ -332,11 +361,22 @@ export function AddMoneyDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
               <p className="px-3 py-3 text-sm text-muted-foreground">{copy.ctaOpeningAccount}</p>
             )}
           </Panel>
+          )}
         </div>
       </DrawerContent>
     </Drawer>
   );
 }
+
+/** What the Add money drawer shows once a card payment went through (components/funding-handoff). */
+export type AddMoneyArrival = {
+  view: ArrivalView;
+  target: "buy" | "choose" | "none";
+  listingName?: string;
+  onChoose: () => void;
+  /** Stops the wait and shows the ways to pay again (the drawer stays open). */
+  onPayAnotherWay: () => void;
+};
 
 /**
  * Opened from the email nudge: bring the add-email row (inside RewardsPanel)
@@ -399,10 +439,65 @@ function ExternalAccountEntry({
             // Settings for a wallet account too: appearance, currency and
             // the analytics switch (no key export: that needs an embedded wallet).
             onOpenSettings={() => {}}
+            money={<WalletAddMoney />}
           />
         </DrawerContent>
       </Drawer>
     </div>
+  );
+}
+
+/**
+ * Adding money for a wallet account. Privy's card window needs a Privy
+ * sign in, which a wallet account does not keep (hooks/use-privy-evm-wallet
+ * isWalletAccountUser), so Berth cannot open it here. What it can say
+ * honestly: card payments work with an email account, the wallet's own
+ * app may sell crypto by card, and these are the wallet's own addresses:
+ * on Base for an EVM wallet, on Solana or Bitcoin for those, each on its own network.
+ */
+export function WalletAddMoney({ address: demoAddress }: { address?: string }) {
+  const copy = useCopy();
+  const evm = useXAccount({ xChainType: "EVM" });
+  const solana = useXAccount({ xChainType: "SOLANA" });
+  const bitcoin = useXAccount({ xChainType: "BITCOIN" });
+  const address = demoAddress ?? evm.address;
+  // A Solana or Bitcoin only wallet account is shown its own address on its own network, never an empty panel.
+  const solanaAddress = demoAddress ? undefined : solana.address;
+  const bitcoinAddress = demoAddress ? undefined : bitcoin.address;
+  const none = !address && !solanaAddress && !bitcoinAddress;
+  return (
+    <Panel className="divide-y divide-border">
+      <div className="flex flex-col gap-1 px-3 py-3">
+        <span className="text-sm font-medium text-foreground">{copy.funding.walletTitle}</span>
+        <span className="text-xs leading-[1.5] text-muted-foreground">
+          {address ? copy.funding.walletLine : none ? copy.funding.walletNone : copy.funding.walletLineOther}
+        </span>
+      </div>
+      {address && (
+        <ReceiveRow
+          title={copy.funding.walletReceiveTitle}
+          description={copy.funding.walletReceiveBody}
+          address={address}
+          copyToast={copy.funding.walletReceiveToast}
+        />
+      )}
+      {solanaAddress && (
+        <ReceiveRow
+          title={copy.funding.walletSolanaTitle}
+          description={copy.funding.walletSolanaBody}
+          address={solanaAddress}
+          copyToast={copy.funding.walletSolanaToast}
+        />
+      )}
+      {bitcoinAddress && (
+        <ReceiveRow
+          title={copy.funding.walletBitcoinTitle}
+          description={copy.funding.walletBitcoinBody}
+          address={bitcoinAddress}
+          copyToast={copy.funding.walletBitcoinToast}
+        />
+      )}
+    </Panel>
   );
 }
 
@@ -444,7 +539,7 @@ function SolanaReceive() {
  * row (no drawer-on-drawer), and a copy whose toast confirms the shortened
  * form so you can double-check what landed in the clipboard.
  */
-function ReceiveRow({
+export function ReceiveRow({
   title,
   description,
   address,
@@ -519,42 +614,33 @@ function ReceiveRow({
   );
 }
 
-/** USDC on Base — cheap, every onramp speaks it; the default landing asset. */
-const FUND_DESTINATION_CHAIN = "eip155:8453" as const;
-const FUND_DESTINATION_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-
 /**
- * Privy's unified funding modal (useAddFunds): surfaces every method enabled
- * in the dashboard — card/Apple/Google Pay onramps (incl. Stripe), external
- * wallet transfer, cross-chain deposit — no code changes when toggles flip.
+ * Privy's funding window (components/funding-handoff useAddMoney): card,
+ * Apple Pay and Google Pay through whichever onramps the dashboard enables,
+ * landing USDC on Base, and the wait for it before the buy.
  */
-function FundButton({ address, title }: { address: string; title?: string }) {
-  const { addFunds } = useAddFunds();
+function FundButton({ address, title, surface }: { address: string; title?: string; surface: string }) {
+  const addMoney = useAddMoney(surface);
   const copy = useCopy();
+  // Card payments only where Berth takes new buys (lib/availability), as on the path's step.
+  const available = useAvailability().available;
+
+  if (!available) {
+    return (
+      <div className="flex min-h-14 w-full items-center gap-3 px-3 py-3">
+        <PlusCircle className="size-5 text-muted-foreground" aria-hidden />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-muted-foreground">{copy.funding.cardNotHereTitle}</span>
+          <span className="text-xs text-muted-foreground">{copy.funding.cardNotHereLine}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <button
       type="button"
-      onClick={() => {
-        addFunds({
-          destination: {
-            address,
-            chain: FUND_DESTINATION_CHAIN,
-            asset: FUND_DESTINATION_ASSET,
-          },
-          fiat: {},
-          crypto: {},
-        })
-          .then(() => {
-            toast.success(copy.fundsAddedTitle, {
-              description: copy.fundsAddedBody,
-            });
-          })
-          .catch(() => {
-            // Rejection includes plain user exit — stay quiet unless nothing
-            // is configured, which Privy surfaces inside its own modal.
-          });
-      }}
+      onClick={() => addMoney(address)}
       className="flex min-h-14 w-full items-center gap-3 px-3 py-3 text-left transition-[background-color] duration-150 ease-lift hover:bg-muted/60 active:bg-muted"
     >
       <PlusCircle className="size-5 text-primary" />

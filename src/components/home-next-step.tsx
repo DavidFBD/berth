@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { CaretRight, Check, Plus } from "@phosphor-icons/react";
+import { CaretRight, Check, CreditCard, Plus } from "@phosphor-icons/react";
+import { useAddMoney } from "@/components/funding-handoff";
+import { moneyStepOffer } from "@/lib/funding-handoff";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TickerTile } from "@/components/board/holdings-list";
 import { useCopy, useMoney } from "@/components/settings-provider";
+import { useAvailability } from "@/components/availability/availability-context";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useFirstLook } from "@/hooks/use-first-look";
@@ -90,7 +93,17 @@ export function AddMoneyStep({
   frame,
   title: titleOverride,
   note,
+  cardAddress,
+  demoPayByCard,
 }: {
+  /**
+   * The email account's wallet: with it the step offers the card payment
+   * itself (components/funding-handoff), and sending crypto as the quiet
+   * way. Without it (the wallet still being made) it opens Add money.
+   */
+  cardAddress?: string;
+  /** Dev galleries only: stands in for Privy's card window. */
+  demoPayByCard?: () => void;
   /** A quiet line under the action (a campaign's rules, inside the guided path). */
   note?: ReactNode;
   walletAccount: boolean;
@@ -102,8 +115,11 @@ export function AddMoneyStep({
   /** The guided path names the step itself. */
   title?: string;
 }) {
-  const copy = useCopy().calmHome;
+  const words = useCopy();
+  const copy = words.calmHome;
+  const available = useAvailability().available;
   const money = useMoney();
+  const card = moneyStepOffer({ walletAccount, canPayByCard: Boolean(cardAddress || demoPayByCard), aside: Boolean(aside) }) === "card";
   const title = titleOverride ?? (walletAccount ? copy.walletAddTitle : aside ? copy.addTitleCash : copy.addTitle);
   const line =
     aside?.kind === "vault"
@@ -114,14 +130,32 @@ export function AddMoneyStep({
           : copy.firstFromCash
         : walletAccount
           ? copy.walletAddLine
-          : copy.addLine;
+          : card
+            ? words.funding.stepLine
+            : available
+              ? copy.addLine
+              : copy.addLineNoCard;
   return (
     <StepCard title={title} line={line} frame={frame}>
       <div className="flex flex-col gap-1 px-[18px] pb-3 lg:px-6 lg:pb-4">
         {walletAccount ? (
-          <Button className={PRIMARY} onClick={onBrowse}>
-            {copy.walletAddAction}
-          </Button>
+          <>
+            <Button className={PRIMARY} onClick={onBrowse}>
+              {copy.walletAddAction}
+            </Button>
+            {/* Its own wallet's address on Base, and what a card can and cannot do for it. */}
+            <QuietLink onClick={onAddMoney}>{words.funding.walletAction}</QuietLink>
+          </>
+        ) : card ? (
+          <>
+            {demoPayByCard ? (
+              <PayByCardView onClick={demoPayByCard} />
+            ) : (
+              <PayByCard address={cardAddress!} />
+            )}
+            <QuietLink onClick={onAddMoney}>{words.funding.stepCrypto}</QuietLink>
+            <p className="text-center text-xs text-muted-foreground">{words.funding.stepNote}</p>
+          </>
         ) : (
           <>
             <Button className={PRIMARY} onClick={onAddMoney}>
@@ -134,6 +168,22 @@ export function AddMoneyStep({
         {note}
       </div>
     </StepCard>
+  );
+}
+
+/** The step's card payment: Privy's funding window, then the wait for the money (components/funding-handoff). */
+function PayByCard({ address }: { address: string }) {
+  const addMoney = useAddMoney("path");
+  return <PayByCardView onClick={() => addMoney(address)} />;
+}
+
+function PayByCardView({ onClick }: { onClick: () => void }) {
+  const copy = useCopy().funding;
+  return (
+    <Button className={PRIMARY} onClick={onClick}>
+      <CreditCard weight="duotone" aria-hidden className="size-4.5" />
+      {copy.stepCardAction}
+    </Button>
   );
 }
 

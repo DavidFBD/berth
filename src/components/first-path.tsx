@@ -6,6 +6,7 @@ import { CheckCircle, ShareNetwork } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
+import { useAvailability } from "@/components/availability/availability-context";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { NamePicker, NamePickerView, type PickerStatus } from "@/components/social/name-picker";
 import { AddEmailBlock } from "@/components/rewards-panel";
@@ -557,6 +558,7 @@ function AnimatedSwap({ id, children }: { id: string; children: ReactNode }) {
 export function DrawerPathStep() {
   const path = useFirstPath();
   const copy = useCopy();
+  const available = useAvailability().available;
   const words = copy.firstPath;
   if (!path) return null;
   const { view } = path;
@@ -574,7 +576,9 @@ export function DrawerPathStep() {
     view.step === "money"
       ? path.account === "wallet"
         ? copy.calmHome.walletAddLine
-        : copy.calmHome.addLine
+        : available
+          ? copy.calmHome.addLine
+          : copy.calmHome.addLineNoCard
       : view.step === "firstBuy"
         ? (path.buy ?? UNFUNDED).unfunded
           ? words.firstUnfunded

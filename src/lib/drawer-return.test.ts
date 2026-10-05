@@ -78,6 +78,9 @@ describe("backMode", () => {
 });
 
 describe("initialScreen", () => {
+  it("opens a wallet account's Add money on the wallets screen", () => {
+    expect(initialScreen({ assistant: false, focusEmail: false, money: true, pending: NO_RETURN })).toEqual({ view: "money", scroll: null });
+  });
   const pending = { view: "friends" as const, scroll: 240 };
   it("starts on a pending return", () => {
     expect(initialScreen({ assistant: false, focusEmail: false, pending })).toEqual(pending);

@@ -28,9 +28,11 @@ import { EASE_LIFT } from "@/lib/motion";
 import {
   DEPOSIT_SOURCE_CHAINS,
   getChainName,
+  getDepositTokens,
   getNativeGasToken,
   toBalanceReadToken,
 } from "@/lib/chains";
+import { preferPayChoice, type PreferPay } from "@/lib/funding-handoff";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
 import { formatTokenAmount, formatUsd } from "@/lib/format";
@@ -109,6 +111,7 @@ export function DepositDrawer({
   onTopUp,
   onPoured,
   prefill,
+  preferPay,
   devHoldings,
   devLimit,
   confirmTerms,
@@ -136,6 +139,12 @@ export function DepositDrawer({
    * priced, so it is always read as money; never submitted.
    */
   prefill?: { usd?: number; limit?: LimitPrefill } | null;
+  /**
+   * Optional: the pay token to start from, once per opening, over whatever
+   * the sweep would pick: money that just arrived from a card payment
+   * (lib/funding-handoff), USDC on Base. The person can still change it.
+   */
+  preferPay?: PreferPay | null;
   /**
    * Dev galleries only: stands in for the wallet sweep, so the drawer's
    * waiting and picked states can be reviewed without a session.
@@ -232,6 +241,36 @@ export function DepositDrawer({
       (privy.authenticated && !privy.embedded && !privy.walletAccountSession));
   const pickWaitOver = useOpenFor(open, PICK_WAIT_MS);
   const findTimedOut = useOpenFor(open, FIND_TIMEOUT_MS);
+  // Money that just arrived goes in the slot first, once per opening.
+  // Render-time state adjustment, per house pattern.
+  const [preferTaken, setPreferTaken] = useState(false);
+  if (!open && preferTaken) setPreferTaken(false);
+  // Only while fresh, and only once the sweep shows it still held (lib/funding-handoff preferPayChoice).
+  const preferChoice =
+    open && preferPay && !preferTaken
+      ? preferPayChoice({
+          prefer: preferPay,
+          loading: holdingsLoading,
+          holdings: sweptHoldings.map((holding) => ({
+            chainKey: holding.chainKey,
+            address: holding.token.address,
+            balance: holding.balance,
+          })),
+        })
+      : "wait";
+  if (open && preferPay && !preferTaken && preferChoice !== "wait") {
+    setPreferTaken(true);
+    const preferred =
+      preferChoice === "use"
+        ? getDepositTokens(preferPay.chainKey as SpokeChainKey).find(
+            (candidate) => candidate.address.toLowerCase() === preferPay.address.toLowerCase(),
+          )
+        : undefined;
+    if (preferred) {
+      setSrcChainKey(preferPay.chainKey as SpokeChainKey);
+      setToken(preferred);
+    }
+  }
   const payState = payTokenState({
     hasToken: !!token,
     connected,

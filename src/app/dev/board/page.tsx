@@ -70,7 +70,10 @@ import {
  *                                       &share=open with its sheet open
  *   /dev/board?home=path                the guided first path, walked live from
  *                                       fixtures (path-gallery.tsx: &account=wallet,
- *                                       &at=, &skipped=, &drawer=1, &done=)
+ *                                       &at=, &skipped=, &drawer=1, &done=,
+ *                                       &funding=waiting|slow|stopped|unknown|arrived|buy|away
+ *                                       the Add money drawer's wait and arrival;
+ *                                       Pay by card on the money step walks it live)
  *   /dev/board?proof=1                  the social counts from fixtures
  *                                       (social-proof-fixtures.ts): most bought
  *                                       and most held on Berth (&news=NVDA for
@@ -124,6 +127,7 @@ function Galleries() {
         drawer={params.get("drawer") === "1"}
         done={params.get("done")}
         campaign={LINE_FIXTURES[params.get("campaign") ?? ""]}
+        funding={params.get("funding")}
       />
     );
   }

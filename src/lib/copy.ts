@@ -195,6 +195,8 @@ export type Copy = {
   calmHome: {
     addTitle: string;
     addLine: string;
+    /** The money step where Berth takes no new buys (lib/availability): no card offered. */
+    addLineNoCard: string;
     addAction: string;
     /** A wallet account pays from the wallet it connected, so its next step is choosing. */
     walletAddLine: string;
@@ -214,7 +216,7 @@ export type Copy = {
     addTitleCash: string;
     /** Money the oracle cannot price yet: the buy drawer reads it per token. */
     firstReadyUnpriced: string;
-    /** The card and bank row inside the Add money drawer. */
+    /** The card row inside the Add money drawer. */
     cardRowTitle: string;
     pickLabel: string;
     firstChoose: string;
@@ -229,6 +231,59 @@ export type Copy = {
     moreBoardSub: string;
     moreNewsSub: string;
     moreAiSub: string;
+  };
+  /**
+   * Adding money by card through Privy's funding window, and the wait for
+   * it to land before the buy (lib/funding-handoff, components/funding-handoff).
+   * The payment is the provider's, never Berth's, and it may ask for ID.
+   */
+  funding: {
+    /** The path's money step: what the step offers. */
+    stepLine: string;
+    stepCardAction: string;
+    stepCrypto: string;
+    /** Under the step's action: who handles the payment. */
+    stepNote: string;
+    waitingTitle: string;
+    waitingLine: string;
+    slowLine: string;
+    closeLine: string;
+    stoppedTitle: string;
+    stoppedLine: string;
+    /** The balance before the payment could not be read, so its arrival cannot be told apart. */
+    unknownTitle: string;
+    unknownLine: string;
+    /** While waiting: stop the wait and show the ways to pay again. */
+    payAnotherWay: string;
+    payAnotherWayLine: string;
+    arrivedTitle: string;
+    arrivedLine: (amount: string) => string;
+    /** Arrived, and an order asked for it: the buy reopens on its own. */
+    arrivedOpening: (name: string) => string;
+    arrivedChoose: string;
+    /** Arrived where Berth takes no order (lib/availability). */
+    arrivedAway: string;
+    close: string;
+    /** The card row where Berth takes no new buys (lib/availability): shown, calmly, not offered. */
+    cardNotHereTitle: string;
+    cardNotHereLine: string;
+    /** A wallet account: Privy's card window needs an email sign in, so the wallet's own address is offered. */
+    walletTitle: string;
+    walletLine: string;
+    walletReceiveTitle: string;
+    walletReceiveBody: string;
+    walletReceiveToast: string;
+    /** A wallet account with no EVM wallet: its own Solana or Bitcoin address, on its own network. */
+    walletLineOther: string;
+    walletSolanaTitle: string;
+    walletSolanaBody: string;
+    walletSolanaToast: string;
+    walletBitcoinTitle: string;
+    walletBitcoinBody: string;
+    walletBitcoinToast: string;
+    /** No wallet address in hand yet. */
+    walletNone: string;
+    walletAction: string;
   };
   /** The guided first path (lib/first-path, components/first-path): one step at a time, then "You're set up". */
   firstPath: FirstPathCopy;
@@ -2652,7 +2707,7 @@ export const COPY: Copy = {
   receiveShowQr: (what) => `Show ${what} as a QR code`,
   receiveCopyLabel: (what) => `Copy ${what}`,
   receiveCopied: "Address copied",
-  topUpSub: "Card, bank, or crypto from any network.",
+  topUpSub: "Card, Apple Pay or Google Pay. The provider handles the payment and may ask for ID.",
 
   walletsTitle: "Wallets",
   walletsSub: "Connect a wallet for each network you want to pay from.",
@@ -2726,7 +2781,8 @@ export const COPY: Copy = {
   },
   calmHome: {
     addTitle: "Add money to begin",
-    addLine: "Pay by card or bank, or send crypto you already hold. Then choose a stock.",
+    addLine: "Pay by card, Apple Pay or Google Pay, or send crypto you already hold. Then choose a stock.",
+    addLineNoCard: "Send crypto you already hold to your account. Paying by card is not offered where you are.",
     addAction: "Add money",
     walletAddLine:
       "Berth pays from the wallet you connected. If it holds nothing yet, send it stablecoins, ETH, SOL or Bitcoin first.",
@@ -2742,7 +2798,7 @@ export const COPY: Copy = {
       `Your earlier vault position${amount ? `, worth ${amount},` : ""} is just below and can be withdrawn. Then choose a stock or fund.`,
     addTitleCash: "Add money to buy",
     firstReadyUnpriced: "Your wallet holds crypto Berth can pay with. Choose one to start, or look through them all.",
-    cardRowTitle: "Card or bank",
+    cardRowTitle: "Pay by card",
     pickLabel: "Some well known names",
     firstChoose: "Choose one above",
     firstBuy: (name) => `Buy ${name}`,
@@ -2756,6 +2812,50 @@ export const COPY: Copy = {
     moreBoardSub: "Every stock and fund, with today's moves.",
     moreNewsSub: "Stories about the stocks on Berth.",
     moreAiSub: "Let Claude, ChatGPT or Grok read your account.",
+  },
+  funding: {
+    stepLine: "Pay by card, Apple Pay or Google Pay, or send crypto you already hold. Then choose your first stock.",
+    stepCardAction: "Pay by card",
+    stepCrypto: "Send crypto instead",
+    stepNote: "The payment is handled by the provider you choose, not by Berth. It may ask for ID.",
+    waitingTitle: "Your money is on its way",
+    waitingLine: "It arrives in your account as digital dollars (USDC). A card payment usually takes a few minutes.",
+    slowLine:
+      "This is taking longer than usual. A card payment can take up to half an hour. If the provider asked for anything more, finish it in their window.",
+    closeLine: "You can close this. Your money shows on your home when it lands.",
+    stoppedTitle: "Not here yet",
+    stoppedLine:
+      "When it lands it shows on your home, ready to buy with. If it does not arrive, the provider you paid can tell you where it is.",
+    unknownTitle: "Your payment is with the provider",
+    unknownLine:
+      "Berth could not read your balance before you paid, so it cannot tell here when your money lands. When it does, it shows on your home, ready to buy with.",
+    payAnotherWay: "Pay another way",
+    payAnotherWayLine:
+      "Paying another way stops this wait. If the card payment still goes through, it shows on your home. You can also close this.",
+    arrivedTitle: "Your money has arrived",
+    arrivedLine: (amount) => `Your account holds ${amount} more than before, ready to buy with.`,
+    arrivedOpening: (name) => `Opening your order for ${name}.`,
+    arrivedChoose: "Choose what to buy",
+    arrivedAway: "It stays in your account. Berth does not take orders where you are.",
+    close: "Close",
+    cardNotHereTitle: "Pay by card",
+    cardNotHereLine: "Not offered where you are. You can still send crypto you hold to the addresses below.",
+    walletTitle: "Add money to your wallet",
+    walletLine:
+      "Paying by card in Berth works with an email account. Your wallet app may sell crypto by card itself: buy USDC on Base there, or send it to your wallet below, and it pays here.",
+    walletReceiveTitle: "Your wallet on Base",
+    walletReceiveBody: "Send USDC on Base here, with a little ETH for the network fee.",
+    walletReceiveToast: "Your own wallet. Send only on Base.",
+    walletLineOther:
+      "Paying by card in Berth works with an email account. Your wallet app may sell crypto by card itself: buy there, or send crypto you hold to your wallet below, on its own network, and it pays here.",
+    walletSolanaTitle: "Your wallet on Solana",
+    walletSolanaBody: "Send SOL or USDC on Solana here, with a little SOL for the network fee.",
+    walletSolanaToast: "Your own wallet. Send only on Solana.",
+    walletBitcoinTitle: "Your wallet on Bitcoin",
+    walletBitcoinBody: "Send Bitcoin here, on the Bitcoin network.",
+    walletBitcoinToast: "Your own wallet. Send only Bitcoin.",
+    walletNone: "Your wallet's address shows here once it is connected.",
+    walletAction: "Add money",
   },
   firstPath: {
     progress: (index, total) => `Step ${index} of ${total}`,
@@ -3463,7 +3563,7 @@ export const COPY: Copy = {
         : `${name} filed a report with the SEC on ${date}.`,
   eventReadOnSec: "Read it on sec.gov",
 
-  nudgeAddFunds: "Your account is empty. Add money by card, bank or crypto whenever you are ready.",
+  nudgeAddFunds: "Your account is empty. Add money by card or crypto whenever you are ready.",
   nudgeAddFundsAction: "Add money",
   nudgeFirstBuy: "Your funds have arrived. Choose any name on the board when you are ready.",
   nudgeHeldNews: (name) => `There is news about ${name} today.`,
@@ -4036,6 +4136,7 @@ export const COPY: Copy = {
           "Resend, which delivers our emails. It receives your email address, the notice's content (such as a listing's name, an amount, a price, or a friend's username, and in a weekly summary you turned on, your account's value and holdings, what filled, and how many new friends and Salutes you had) and whether the email was delivered, bounced or reported as spam.",
           "TypeSafe, which provides a news-relevance model that helps choose the one line shown at the top of the app, such as news about something you own. It receives headlines, and which listings your account holds and whether it has cash to spend, never your name, email or address.",
           "SODAX, the protocol whose service, solvers and relayers price, route and fill your orders. They receive the addresses, amounts and transactions needed to fill them.",
+          "Stripe and MoonPay, if you add money by card. You pay them in their own window, under their own terms and privacy policies: they receive your payment details and anything they ask for to check who you are, and Privy passes them the address your money goes to. Berth never sees your card details.",
           "Blockchain networks and the companies that run their nodes, such as PublicNode, dRPC and the networks' own public endpoints. Your browser reads balances and sends transactions through them, so they see your IP address and the addresses it asks about. A Bitcoin order links to mempool.space so you can follow it there.",
           "WalletConnect, if you connect a wallet through it. It relays the connection between Berth and your wallet.",
           "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
@@ -4051,6 +4152,7 @@ export const COPY: Copy = {
         body: [
           "Some of these services process data outside the European Economic Area, mostly in the United States: among them Privy, Vercel, GitHub, OpenAI, Resend, X and node providers. PostHog keeps analytics in Frankfurt.",
           "Where data leaves the European Economic Area, it is protected by the European Commission's standard contractual clauses in each provider's data processing terms. You can ask us for a copy.",
+          "The card provider you choose to add money with, such as Stripe or MoonPay, handles your data as its own, under its own terms and privacy policy, including where it transfers it.",
         ],
       },
       {
@@ -4355,6 +4457,7 @@ export const COPY: Copy = {
         heading: "Services run by others",
         body: [
           "Berth works only because services run by others work: SODAX and its solvers and relayers, Privy, the issuers of the tokens, the blockchain networks and bridges, wallets, card providers, and AI apps such as Claude, ChatGPT and Grok. Their own terms and privacy policies apply to your use of them.",
+          "Adding money by card is a service of the card provider you pay, such as Stripe or MoonPay, not of Berth. They decide whether to take the payment, may ask for ID, and set their own fees and limits.",
           "We do not control them. If one fails, pauses, changes its terms or is attacked, an order can fail or be delayed, and what you hold can lose value or become hard to reach. To the extent the law allows, we are not responsible for what they do, fail to do or say.",
         ],
       },
