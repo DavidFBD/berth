@@ -99,7 +99,7 @@ describe("dailyStory", () => {
     expect(orders.map((order) => [order.day, order.direction, order.usd])).toEqual([
       ["2026-09-14", "buy", 200],
       ["2026-09-14", "buy", 50],
-      ["2026-09-15", "sell", null],
+      ["2026-09-15", "sell", 90],
     ]);
   });
 

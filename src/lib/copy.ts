@@ -417,8 +417,40 @@ export type Copy = {
   /** The chooser's menu heading, and the description its button carries. */
   portfolioCompareWith: string;
   portfolioChooserHint: string;
-  /** One day stored and nothing to draw yet. */
+  /** One day stored: the line runs from what was paid to what it is worth now. */
   portfolioFirstDay: string;
+  /** Nothing to draw yet at all: no point today (a closed market) or no price for it. */
+  portfolioFirstDayWait: string;
+  /** The first day's line, scrubbed: its start and its end. */
+  portfolioWhenBought: string;
+  portfolioNow: string;
+  /** After "You" and the first day's percentage: what it counts from. */
+  portfolioSinceBuy: string;
+  /** A day in the week strip and the day line when it is the live point. */
+  portfolioToday: string;
+  /**
+   * Over the week strip: the last seven market days, or, while there are
+   * fewer, how far into the first seven the account is.
+   */
+  portfolioWeekLabel: string;
+  portfolioFirstWeek: (day: number) => string;
+  /**
+   * A day of the strip for a screen reader: the date, the day's change
+   * ("up 1.2%, $0.42"), and the holding that moved most, when known.
+   */
+  portfolioDayAria: (date: string, change: string | null, mover: string | null) => string;
+  portfolioDayUp: (pct: string, usd: string) => string;
+  portfolioDayDown: (pct: string, usd: string) => string;
+  portfolioDayFlat: string;
+  /** The day line: the first day, counted from what was paid. */
+  portfolioFromBuy: string;
+  /** The day line when a price for the day is missing. */
+  portfolioDayUnknown: string;
+  /** The day line: an order that landed that day. The amount follows in figures. */
+  portfolioBought: (name: string) => string;
+  portfolioSold: (name: string) => string;
+  /** After the orders the day line names, how many more there were. */
+  portfolioMoreOrders: (count: number) => string;
   /**
    * Why the benchmark line is not drawn, one sentence each. `name` is the
    * chooser with its article ("the S&P 500 fund", "Gold").
@@ -2899,7 +2931,7 @@ export const COPY: Copy = {
   moveInTheNews: (source) => `In the news: ${source}`,
   moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
-    "The line is your money each day at the close, and today at the live price, beside the same money put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
+    "The line is your money each day at the close, and today at the live price, beside the same money put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. Each day under the line is what your holdings made or lost that day, with buys and sells set aside, and the holding that moved most. A ringed dot on the line is a buy, a hollow ring a sell. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
   portfolioSince: (date, days) => `Since ${date}, ${marketDays(days)}.`,
   portfolioYou: "You",
   portfolioSameDollarsIn: {
@@ -2911,7 +2943,25 @@ export const COPY: Copy = {
   },
   portfolioCompareWith: "Compare with",
   portfolioChooserHint: "What your money is compared with. Choose another.",
-  portfolioFirstDay: "Your first day. The line starts once the next market day's prices are in.",
+  portfolioFirstDay:
+    "Your first day, from what you paid, fee included, to what it is worth now. Daily values start after the next close.",
+  portfolioFirstDayWait: "Your first day. The line starts once the next market day's prices are in.",
+  portfolioWhenBought: "When you bought",
+  portfolioNow: "Now",
+  portfolioSinceBuy: "since you bought",
+  portfolioToday: "Today",
+  portfolioWeekLabel: "Your last seven market days",
+  portfolioFirstWeek: (day) => `Your first seven market days. Day ${day}.`,
+  portfolioDayAria: (date, change, mover) =>
+    [date, change ?? "No figure for this day", mover ? `Moved most: ${mover}` : null].filter(Boolean).join(". ") + ".",
+  portfolioDayUp: (pct, usd) => `Up ${pct}, ${usd}`,
+  portfolioDayDown: (pct, usd) => `Down ${pct}, ${usd}`,
+  portfolioDayFlat: "Unchanged",
+  portfolioFromBuy: "Since you bought",
+  portfolioDayUnknown: "No figure for this day, a price is missing.",
+  portfolioBought: (name) => `You bought ${name}`,
+  portfolioSold: (name) => `You sold ${name}`,
+  portfolioMoreOrders: (count) => `and ${count} more ${count === 1 ? "order" : "orders"}`,
   portfolioNoBenchmark: {
     unpriced_orders: (name) =>
       `A buy was paid in a coin we could not price, so ${name} cannot be set beside it.`,

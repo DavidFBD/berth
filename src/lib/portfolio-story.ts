@@ -73,7 +73,11 @@ export type StoryOrder = {
   at: string;
   symbol: string;
   direction: "buy" | "sell";
-  /** Dollars paid, fee included, for a buy; null when unpriced or a sell. */
+  /**
+   * Dollars paid, fee included, for a buy; for a sell, the quantity sold at
+   * the day's price (its proceeds are paid on another chain and not read).
+   * Null when it cannot be priced.
+   */
   usd: number | null;
 };
 
@@ -199,21 +203,6 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
     .filter((order) => Number.isFinite(order.at))
     .sort((a, b) => a.at - b.at);
 
-  const landed: (typeof sorted)[] = points.map(() => []);
-  const orders: StoryOrder[] = [];
-  for (const order of sorted) {
-    const index = points.findIndex((point) => point.asOf >= order.at);
-    if (index === -1) continue;
-    landed[index].push(order);
-    orders.push({
-      day: points[index].day,
-      at: order.placedAt,
-      symbol: order.symbol,
-      direction: order.direction,
-      usd: order.direction === "buy" ? order.usd : null,
-    });
-  }
-
   const priceAt = (point: Point, symbol: string): number | undefined => {
     const own = point.held.get(symbol)?.price;
     if (own !== undefined && own > 0) return own;
@@ -224,6 +213,28 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
     }
     return closeOn(closes, point.day);
   };
+
+  const landed: (typeof sorted)[] = points.map(() => []);
+  const orders: StoryOrder[] = [];
+  for (const order of sorted) {
+    const index = points.findIndex((point) => point.asOf >= order.at);
+    if (index === -1) continue;
+    landed[index].push(order);
+    // A sell is told at the day's price, as the line values its proceeds.
+    const price = order.direction === "sell" ? priceAt(points[index], order.symbol) : undefined;
+    orders.push({
+      day: points[index].day,
+      at: order.placedAt,
+      symbol: order.symbol,
+      direction: order.direction,
+      usd:
+        order.direction === "buy"
+          ? order.usd
+          : order.quantity !== null && price !== undefined
+            ? order.quantity * price
+            : null,
+    });
+  }
 
   const stories: DayStory[] = points.map((point, index) => {
     const before = index > 0 ? points[index - 1] : undefined;
