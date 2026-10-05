@@ -2,6 +2,7 @@ import { Sodax, type Intent } from "@sodax/sdk";
 import { sodaxConfig } from "@/lib/sodax-config";
 import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
 import { listListings } from "@/lib/listings";
+import { listingOfIntent, type IntentListing } from "@/lib/orders";
 import {
   proveOwnership,
   sodaxOwnershipReads,
@@ -77,23 +78,22 @@ export type VerifiedPour =
 /**
  * The pure listing test, separated from the RPC fetch so it can be tested
  * without a chain: the intent must buy a listing (its output) or sell one
- * (its input). Whose it is, is lib/server/pour-ownership's question.
+ * (its input), by its Sonic address on the hub or by its hub asset on
+ * Robinhood Chain, each only on its own chain (lib/orders listingOfIntent,
+ * the same reading the order record makes). Whose it is, is
+ * lib/server/pour-ownership's question.
  */
 export function judgePour({
   direction,
   intent,
-  vaultAddresses,
+  listings,
 }: {
   direction: "in" | "out";
-  intent: Pick<Intent, "inputToken" | "outputToken">;
-  /** Lowercased addresses of every listing (the cups and the tokens). */
-  vaultAddresses: ReadonlySet<string>;
+  intent: Pick<Intent, "inputToken" | "outputToken"> & { srcChain?: bigint | number | string; dstChain?: bigint | number | string };
+  /** Every listing (lib/listings listListings): the cups and the tokens. */
+  listings: readonly IntentListing[];
 }): PourVerdict {
-  const touched =
-    direction === "in"
-      ? intent.outputToken.toLowerCase()
-      : intent.inputToken.toLowerCase();
-  return vaultAddresses.has(touched) ? { ok: true } : { ok: false, reason: "not a pour" };
+  return listingOfIntent(listings, intent, direction === "in" ? "buy" : "sell") ? { ok: true } : { ok: false, reason: "not a pour" };
 }
 
 /** A hub read through the failover list (lib/server/hub-rpc): the result, null when the node has none, or UNKNOWN. */
@@ -232,13 +232,9 @@ export async function verifyPourTx({
   const intent = result.value;
 
   // Every listing counts, not only the cups: a stock or SGOV bought through
-  // the house is a pour for the ledger too (lib/listings).
-  const vaultAddresses = new Set(
-    listListings(sodax.leverageYield.listVaults()).map((listing) =>
-      listing.address.toLowerCase(),
-    ),
-  );
-  const listed = judgePour({ direction, intent, vaultAddresses });
+  // the house is a pour for the ledger too (lib/listings), and so is one
+  // delivered as the native token on Robinhood Chain.
+  const listed = judgePour({ direction, intent, listings: listListings(sodax.leverageYield.listVaults()) });
   if (!listed.ok) return listed;
   const owned = await ownsIntent({ sodax, intent, direction, wallets, txHash, blockNumber: receipt.blockNumber, receipt });
   if (owned.ok) return { ok: true, intent, sodax };

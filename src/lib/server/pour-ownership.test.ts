@@ -769,3 +769,80 @@ describe("the intent's time is read once (n5)", () => {
     expect(intentAt).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("a buy delivered on Robinhood Chain (plan P2a)", () => {
+  const RH = 21071;
+  const arbitrum: OwnedWallet = { family: "evm", address: F.arbitrum.address, linkedAt: null };
+  const reads = (over: Partial<OwnershipReads> = {}): OwnershipReads => ({
+    funding: vi.fn(async () => PAID_BY_ALL),
+    isHubAsset: () => true,
+    sourceHub: vi.fn(async (chain: bigint) => (chain === 23n ? F.arbitrum.creator.toLowerCase() : chain === 21n ? F.sui.creator.toLowerCase() : NOBODY)),
+    homeHub: vi.fn(async () => NOBODY),
+    intentAt: vi.fn(async () => 7_000),
+    ...over,
+  });
+
+  it("is the account's when it lands in one of the account's own EVM wallets, any casing", () => {
+    const wallets = [arbitrum, home];
+    expect(judgeOwnership(facts({ intent: buyFrom(F.arbitrum, HOME, RH), wallets, homeHubs: [] }))).toEqual({
+      ok: true,
+      payer: { family: "evm", address: F.arbitrum.address },
+    });
+    const upper = buyFrom(F.arbitrum, F.arbitrum.address.toUpperCase().replace("0X", "0x"), RH);
+    expect(judgeOwnership(facts({ intent: upper, wallets, homeHubs: [] })).ok).toBe(true);
+  });
+
+  it("a stranger's address, or the account's own hub wallet named on Robinhood Chain, is not delivered to the account", () => {
+    const wallets = [arbitrum, home];
+    expect(judgeOwnership(facts({ intent: buyFrom(F.arbitrum, STRANGER, RH), wallets }))).toEqual({ ok: false, why: "not delivered to account" });
+    // A hub wallet is a contract on Sonic, nobody's on Robinhood Chain.
+    expect(judgeOwnership(facts({ intent: buyFrom(F.arbitrum, HOME_HUB, RH), wallets }))).toEqual({ ok: false, why: "not delivered to account" });
+  });
+
+  it("a Solana-only account has no EVM wallet for it to land in", () => {
+    const wallets: OwnedWallet[] = [{ family: "solana", address: F.solana.address, linkedAt: null }];
+    expect(judgeOwnership(facts({ intent: buyFrom(F.solana, HOME, RH), wallets }))).toEqual({ ok: false, why: "not delivered to account" });
+  });
+
+  it("a wallet linked after the intent proves nothing; one linked before does", () => {
+    const late: OwnedWallet = { family: "evm", address: HOME, linkedAt: 9_000 };
+    expect(judgeOwnership(facts({ intent: buyFrom(F.arbitrum, HOME, RH), wallets: [arbitrum, late], intentAt: 8_000 }))).toEqual({
+      ok: false,
+      why: "payer linked later",
+    });
+    expect(judgeOwnership(facts({ intent: buyFrom(F.arbitrum, HOME, RH), wallets: [arbitrum, late], intentAt: 9_500 })).ok).toBe(true);
+  });
+
+  it("proveOwnership reads no home hub wallet for it, and reads the time for a destination linked later", async () => {
+    const used = reads();
+    const late: OwnedWallet = { family: "evm", address: HOME, linkedAt: 6_000 };
+    expect((await proveOwnership({ direction: "buy", intent: buyFrom(F.arbitrum, HOME, RH), wallets: [arbitrum, late], reads: used })).ok).toBe(true);
+    expect(used.homeHub).not.toHaveBeenCalled();
+    expect(used.intentAt).toHaveBeenCalledTimes(1);
+    const early = reads({ intentAt: vi.fn(async () => 5_000) });
+    expect(await proveOwnership({ direction: "buy", intent: buyFrom(F.arbitrum, HOME, RH), wallets: [arbitrum, late], reads: early })).toEqual({
+      ok: false,
+      why: "payer linked later",
+    });
+  });
+
+  it("an unproven payer counts as delivered only when it landed in an EVM wallet the account held then", async () => {
+    const used = reads();
+    expect(await proveOwnership({ direction: "buy", intent: buyFrom(F.sui, HOME, RH), wallets: [home], reads: used })).toEqual({
+      ok: false,
+      why: "family not linkable",
+      deliveredToAccount: true,
+    });
+    expect(await proveOwnership({ direction: "buy", intent: buyFrom(F.sui, STRANGER, RH), wallets: [home], reads: used })).toEqual({
+      ok: false,
+      why: "family not linkable",
+    });
+    const late: OwnedWallet = { family: "evm", address: HOME, linkedAt: 8_000 };
+    expect(await proveOwnership({ direction: "buy", intent: buyFrom(F.sui, HOME, RH), wallets: [late], reads: used })).toEqual({
+      ok: false,
+      why: "family not linkable",
+    });
+    const unread = reads({ intentAt: vi.fn(async (): Promise<typeof UNKNOWN> => UNKNOWN) });
+    expect(await proveOwnership({ direction: "buy", intent: buyFrom(F.sui, HOME, RH), wallets: [late], reads: unread })).toMatchObject({ ok: false, unknown: true });
+  });
+});

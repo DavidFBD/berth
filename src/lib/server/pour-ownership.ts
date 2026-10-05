@@ -7,6 +7,7 @@ import {
   type Sodax,
 } from "@sodax/sdk";
 import { HOME_CHAIN } from "@/lib/account";
+import { ROBINHOOD_RELAY_CHAIN_ID } from "@/lib/orders";
 import { sdkAddress } from "@/lib/chains";
 import { normalizeAddress, type WalletFamily } from "@/lib/identity/caip";
 import { getSql } from "@/lib/server/db";
@@ -55,7 +56,8 @@ import { linkedWallets } from "@/lib/server/identities";
  *    creator), the creator is the home chain hub wallet of one of the
  *    account's EVM wallets;
  * 2. a buy is delivered on Sonic to the creator or to one of the account's
- *    home chain hub wallets. A sell pays out wherever the person sent it,
+ *    home chain hub wallets, or on Robinhood Chain (plan P2a) to one of the
+ *    account's own EVM wallets. A sell pays out wherever the person sent it,
  *    a typed cash out address included, so its delivery proves nothing and
  *    is not asked;
  * 3. every wallet the proof leans on was on the account when the intent was
@@ -127,7 +129,8 @@ export type OwnershipVerdict =
       /**
        * Set by proveOwnership on a buy whose payer is not proven but which
        * was delivered on Sonic to one of the account's own home chain hub
-       * wallets: the stock is the account's, so the ledger records it, with
+       * wallets, or on Robinhood Chain to one of its own EVM wallets: the
+       * stock is the account's, so the ledger records it, with
        * no XP and no hold (lib/server/no-xp, 'unproven_source'). Never set
        * for a sell.
        */
@@ -395,8 +398,15 @@ export function judgeOwnership({ direction, intent, wallets, sourceHub, homeHubs
   }
 
   // 3. Where a buy went: to its own (proven) creator, as a cup's deposit
-  // does, or to one of the account's home chain hub wallets.
-  if (direction === "buy") {
+  // does, or to one of the account's home chain hub wallets; on Robinhood
+  // Chain, to one of the account's own EVM wallets, on the account when the
+  // intent was placed (a wallet linked later proves nothing, as for a payer).
+  if (direction === "buy" && BigInt(intent.dstChain) === ROBINHOOD_RELAY_CHAIN_ID) {
+    const own = robinhoodRecipient(intent, wallets);
+    if (own.length === 0) return { ok: false, why: "not delivered to account" };
+    const late = timely(own);
+    if (late) return late;
+  } else if (direction === "buy") {
     if (BigInt(intent.dstChain) !== HUB_RELAY_CHAIN_ID) return { ok: false, why: "not delivered to account" };
     const dst = lower(intent.dstAddress);
     if (dst !== creator) {
@@ -407,6 +417,16 @@ export function judgeOwnership({ direction, intent, wallets, sourceHub, homeHubs
     }
   }
   return { ok: true, payer };
+}
+
+/**
+ * The account's EVM wallets (each span) a Robinhood Chain buy was delivered
+ * to: its dstAddress is the 20 bytes of an EVM address there, compared as
+ * user_identities stores it, lowercased.
+ */
+function robinhoodRecipient(intent: Pick<IntentParties, "dstAddress">, wallets: readonly OwnedWallet[]): OwnedWallet[] {
+  const dst = lower(intent.dstAddress);
+  return wallets.filter((wallet) => wallet.family === "evm" && lower(wallet.address) === dst);
 }
 
 /** Failures that leave the intent genuine (funded by its creator, from the source it names): only these may still count as delivered to the account. */
@@ -481,7 +501,8 @@ export async function proveOwnership({
   const funding = await reads.funding();
   if (funding === UNKNOWN) return UNKNOWN_VERDICT;
   const sourceHub = selfMade ? null : await reads.sourceHub(BigInt(intent.srcChain), intent.srcAddress);
-  const needsHomeHubs = selfMade || (direction === "buy" && lower(intent.dstAddress) !== lower(intent.creator));
+  const toHub = BigInt(intent.dstChain) === HUB_RELAY_CHAIN_ID;
+  const needsHomeHubs = selfMade || (direction === "buy" && toHub && lower(intent.dstAddress) !== lower(intent.creator));
   const homeHubs = needsHomeHubs ? await homeHubsOf(wallets, reads) : [];
   const facts: OwnershipFacts = { direction, intent, wallets, sourceHub, homeHubs, funding, inputIsHubAsset: reads.isHubAsset(intent.inputToken) };
   // The intent's time, read at most once, and only when a span needs it.
@@ -491,8 +512,17 @@ export async function proveOwnership({
   if (!verdict.ok && verdict.why === "payer linked later") verdict = judgeOwnership({ ...facts, intentAt: await intentAt() });
   if (verdict.ok || verdict.unknown || direction !== "buy" || !GENUINE_BUT_NOT_THEIRS.has(verdict.why)) return verdict;
   // Genuine but not proven the account's: it may still have been delivered
-  // to the account, to a hub wallet that was the account's when it was placed.
-  if (BigInt(intent.dstChain) !== HUB_RELAY_CHAIN_ID) return verdict;
+  // to the account, to a hub wallet that was the account's when it was
+  // placed, or on Robinhood Chain to an EVM wallet that was.
+  if (BigInt(intent.dstChain) === ROBINHOOD_RELAY_CHAIN_ID) {
+    const own = robinhoodRecipient(intent, wallets);
+    if (own.length === 0) return verdict;
+    const at = heldAt(own, undefined) === true ? undefined : await intentAt();
+    const timely = heldAt(own, at);
+    if (timely === UNKNOWN) return UNKNOWN_VERDICT;
+    return timely ? { ...verdict, deliveredToAccount: true } : verdict;
+  }
+  if (!toHub) return verdict;
   const hubs = needsHomeHubs ? homeHubs : await homeHubsOf(wallets, reads);
   const dst = lower(intent.dstAddress);
   const landed = knownHubs(hubs).filter((hub) => lower(hub.address) === dst);

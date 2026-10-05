@@ -5,7 +5,7 @@ import { holdsIntentCreated, judgePour, readReceipt } from "./pour-verify";
 const VAULT = "0xd09de2f5070699a909c0fd32fb5a909d3886701d";
 const OTHER_TOKEN = "0x4effb5813271699683c25c734f4dabc45b363709";
 
-const vaultAddresses = new Set([VAULT]);
+const listings = [{ address: VAULT, rhHubAsset: "0xa754bf15f0289b539aae5ce1a453e28898b7704e" }];
 
 function intent(overrides: { inputToken?: string; outputToken?: string }) {
   return {
@@ -16,25 +16,32 @@ function intent(overrides: { inputToken?: string; outputToken?: string }) {
 
 describe("judgePour", () => {
   it("accepts a buy whose output is a listing", () => {
-    expect(judgePour({ direction: "in", intent: intent({}), vaultAddresses })).toEqual({ ok: true });
+    expect(judgePour({ direction: "in", intent: intent({}), listings })).toEqual({ ok: true });
   });
 
   it("accepts either casing of the listing address", () => {
-    expect(judgePour({ direction: "in", intent: intent({ outputToken: VAULT.toUpperCase().replace("0X", "0x") }), vaultAddresses })).toEqual({
+    expect(judgePour({ direction: "in", intent: intent({ outputToken: VAULT.toUpperCase().replace("0X", "0x") }), listings })).toEqual({
       ok: true,
     });
   });
 
   it("rejects an intent that never touches a listing: any successful tx is no longer enough", () => {
-    expect(judgePour({ direction: "in", intent: intent({ outputToken: OTHER_TOKEN }), vaultAddresses })).toEqual({
+    expect(judgePour({ direction: "in", intent: intent({ outputToken: OTHER_TOKEN }), listings })).toEqual({
       ok: false,
       reason: "not a pour",
     });
   });
 
+  it("accepts a buy delivered on Robinhood Chain by the listing's hub asset there, and only on that chain", () => {
+    const rh = { ...intent({ outputToken: listings[0].rhHubAsset }), srcChain: 30n, dstChain: 21071n };
+    expect(judgePour({ direction: "in", intent: rh, listings })).toEqual({ ok: true });
+    expect(judgePour({ direction: "in", intent: { ...rh, dstChain: 146n }, listings })).toEqual({ ok: false, reason: "not a pour" });
+    expect(judgePour({ direction: "in", intent: { ...rh, outputToken: VAULT }, listings })).toEqual({ ok: false, reason: "not a pour" });
+  });
+
   it("rejects a buy hash claimed as a sell (and vice versa)", () => {
-    expect(judgePour({ direction: "out", intent: intent({}), vaultAddresses })).toEqual({ ok: false, reason: "not a pour" });
-    expect(judgePour({ direction: "out", intent: intent({ inputToken: VAULT, outputToken: OTHER_TOKEN }), vaultAddresses })).toEqual({
+    expect(judgePour({ direction: "out", intent: intent({}), listings })).toEqual({ ok: false, reason: "not a pour" });
+    expect(judgePour({ direction: "out", intent: intent({ inputToken: VAULT, outputToken: OTHER_TOKEN }), listings })).toEqual({
       ok: true,
     });
   });
