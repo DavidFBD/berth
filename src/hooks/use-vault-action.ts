@@ -11,6 +11,7 @@ import {
   useSwapApprove,
 } from "@sodax/dapp-kit";
 import {
+  ChainKeys,
   DEFAULT_RELAY_TX_TIMEOUT,
   HUB_CHAIN_KEY,
   getChainType,
@@ -88,6 +89,10 @@ import { useAwardPour } from "@/hooks/use-profile";
 import { useRecordLimitOrder } from "@/hooks/use-limit-orders";
 import { addPending } from "@/lib/limit-pending";
 import { chainFamily, failureReason, track, type OrderType } from "@/lib/analytics";
+import type { Delivery } from "@/lib/delivery";
+import { asksAgain, buyDestination, robinhoodParams } from "@/lib/delivery-client";
+import { readRobinhoodBalances, robinhoodClient } from "@/lib/robinhood-chain";
+import { DELIVERY_QUERY_KEY } from "@/hooks/use-delivery";
 
 // Re-exported so existing consumers keep one import site for error copy and
 // the step union.
@@ -175,6 +180,17 @@ export interface RunDepositArgs {
    * "0x"), so nothing else in the payload depends on it.
    */
   deliverTo?: string;
+  /**
+   * Robinhood Chain delivery (plan P2b), for a market stock buy: where the
+   * drawer quoted to and said it would arrive (`quoted`, from
+   * hooks/use-delivery), the listing's token there, and `ask`, the route
+   * asked fresh. Only when `quoted` is Robinhood Chain is the route asked
+   * again, as the order starts; the buy then goes there only if the fresh
+   * answer says the same (lib/delivery-client buyDestination), else it
+   * stops before anything is signed. Unset, or quoted to the hub: the hub,
+   * exactly as before, with no request made.
+   */
+  delivery?: { quoted: Delivery; rhAddress: Address | undefined; ask: () => Promise<Delivery> };
   /** Set for a limit buy; see LimitRun. */
   limit?: LimitRun;
   /**
@@ -272,6 +288,13 @@ export interface UseVaultActionResult {
   earlierOrder: { spokeTxHash: string; spokeTxUrl?: string } | null;
   /** Set when a limit order rests on the hub but its record did not save; the page retries on its next load. */
   limitUnsaved: boolean;
+  /**
+   * Set while the order in hand is a buy delivered to Robinhood Chain:
+   * the wallet it goes to, the token, and that token's balance there as the
+   * order started (undefined until read, or when the read failed), so the
+   * arrival can be seen (hooks/use-robinhood-arrival). Null for every other order.
+   */
+  robinhood: RobinhoodRun | null;
   /** True mid-pipeline: between first tap and signature. */
   pending: boolean;
   /** True while the drawer must refuse dismissal. */
@@ -280,6 +303,9 @@ export interface UseVaultActionResult {
   runWithdraw: (args: RunWithdrawArgs) => Promise<boolean>;
   reset: () => void;
 }
+
+/** A buy delivered to Robinhood Chain, as the screen follows it. */
+export type RobinhoodRun = { address: Address; rhAddress: Address; baseline?: bigint };
 
 /** Everything the machine remembers about the run in flight. */
 type ActivePour = {
@@ -394,6 +420,7 @@ export function useVaultAction(options?: {
   const inFlightRef = useRef<InFlight | null>(null);
   const [approveRequired, setApproveRequired] = useState<boolean | null>(null);
   const [approveTwice, setApproveTwice] = useState(false);
+  const [robinhood, setRobinhood] = useState<RobinhoodRun | null>(null);
   const runningRef = useRef(false);
   const { reportState, report, resetReport } = useErrorReporter();
   /** Read by slow orders, which outlive the render that started them. */
@@ -1350,6 +1377,7 @@ export function useVaultAction(options?: {
       setSent(null);
       setApproveRequired(null);
       setApproveTwice(false);
+      setRobinhood(null);
       firedRef.current = null;
       unsettledSentRef.current = null;
       lastStatusRef.current = undefined;
@@ -1397,6 +1425,41 @@ export function useVaultAction(options?: {
           // (lib/limit-orders limitTokenOk); the drawer never offers it here.
           fail(COPY.errCouldNotPrepare);
           return false;
+        }
+        // Where the buy is delivered (plan P2b). Asked again only when the
+        // drawer quoted and showed Robinhood Chain; a buy quoted to the hub
+        // goes to the hub with no request, as every buy did before.
+        let toRobinhood: { address: Address; rhAddress: Address } | null = null;
+        if (args.delivery && asksAgain(args.delivery.quoted, !!args.limit)) {
+          const run = runRef.current;
+          const destination = buyDestination({
+            quoted: args.delivery.quoted,
+            fresh: await args.delivery.ask(),
+            rhAddress: args.delivery.rhAddress,
+          });
+          if (runRef.current !== run) return false;
+          if (destination.kind === "changed") {
+            // Not a bug and nothing sent: the drawer reads the answer again and requotes.
+            void queryClient.invalidateQueries({ queryKey: DELIVERY_QUERY_KEY });
+            fail(COPY.rhChain.destinationChanged, undefined, { report: false });
+            return false;
+          }
+          if (destination.kind === "robinhood") {
+            toRobinhood = { address: destination.address, rhAddress: destination.rhAddress };
+            // Auto-filed issues show the delivery chain (lib/server/issue-body).
+            if (pourRef.current) pourRef.current.context.dstChainKey = ChainKeys.ROBINHOOD_MAINNET;
+            const delivered = toRobinhood;
+            setRobinhood(delivered);
+            // The token's balance there before the order, so its arrival
+            // can be seen by balance when the relay's own record is slow.
+            // A read, never awaited, never in the order's way.
+            void readRobinhoodBalances(robinhoodClient(), [{ rhAddress: delivered.rhAddress }], [delivered.address])
+              .then(([baseline]) => {
+                if (runRef.current !== run || baseline === undefined) return;
+                setRobinhood((current) => (current && current.address === delivered.address && current.rhAddress === delivered.rhAddress ? { ...current, baseline } : current));
+              })
+              .catch((e: unknown) => console.warn("[vault-action] Robinhood Chain balance before the buy", e));
+          }
         }
         if (slow) {
           try {
@@ -1544,12 +1607,16 @@ export function useVaultAction(options?: {
         // 4. Execute: one signature on the spoke chain, then verify → relay → notify solver.
         advance("signing");
         if (!(await onRightChain())) return false;
-        const payload = args.deliverTo
-          ? {
-              ...built.value,
-              params: { ...built.value.params, dstAddress: sdkAddress(HUB_CHAIN_KEY, args.deliverTo) },
-            }
-          : built.value;
+        // Robinhood Chain: three params replaced, after the last build, as
+        // the hub's `deliverTo` is (lib/delivery-client robinhoodParams).
+        const payload = toRobinhood
+          ? { ...built.value, params: robinhoodParams(built.value.params, toRobinhood) }
+          : args.deliverTo
+            ? {
+                ...built.value,
+                params: { ...built.value.params, dstAddress: sdkAddress(HUB_CHAIN_KEY, args.deliverTo) },
+              }
+            : built.value;
         if (slow) {
           return await sendSlow({
             payload,
@@ -1576,7 +1643,7 @@ export function useVaultAction(options?: {
         runningRef.current = false;
       }
     },
-    [advance, approve, buildDeposit, fail, failStalled, resetReport, sendLimit, sendMarket, sendSlow, sodax, waitForAllowance],
+    [advance, approve, buildDeposit, fail, failStalled, queryClient, resetReport, sendLimit, sendMarket, sendSlow, sodax, waitForAllowance],
   );
 
   const runWithdraw = useCallback(
@@ -1587,6 +1654,7 @@ export function useVaultAction(options?: {
       setError(null);
       resetReport();
       setSent(null);
+      setRobinhood(null);
       firedRef.current = null;
       unsettledSentRef.current = null;
       lastStatusRef.current = undefined;
@@ -1708,6 +1776,7 @@ export function useVaultAction(options?: {
     setSent(null);
     setApproveRequired(null);
     setApproveTwice(false);
+    setRobinhood(null);
     firedRef.current = null;
     unsettledSentRef.current = null;
     lastStatusRef.current = undefined;
@@ -1727,6 +1796,7 @@ export function useVaultAction(options?: {
     spokeTxUrl: sent?.spokeTxUrl,
     spokeTxHash: sent?.spokeTxUrl ? sent.spokeTxHash : undefined,
     limitUnsaved,
+    robinhood,
     earlierOrder: earlierOrder
       ? { spokeTxHash: earlierOrder.spokeTxHash, spokeTxUrl: earlierOrder.spokeTxUrl }
       : null,

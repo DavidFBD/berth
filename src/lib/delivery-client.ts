@@ -91,6 +91,16 @@ export async function askDelivery({
   }
 }
 
+/**
+ * Whether the order machine asks the route again as a buy starts: only
+ * for a market buy the drawer quoted to Robinhood Chain. Every other buy
+ * (quoted to the hub, a limit buy, a vault deposit) makes no request and
+ * goes where it always went.
+ */
+export function asksAgain(quoted: Delivery | undefined, limit: boolean): boolean {
+  return !limit && quoted?.chainKey === "robinhood";
+}
+
 /** Where one buy goes, as the order machine settles it. */
 export type BuyDestination =
   | { kind: "hub" }

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { getAddress, type Address } from "viem";
 import { hubDelivery, type Delivery } from "./delivery";
-import { askDelivery, buyDestination, onTheSwitch, readDeliveryAnswer, robinhoodParams } from "./delivery-client";
+import { askDelivery, asksAgain, buyDestination, onTheSwitch, readDeliveryAnswer, robinhoodParams } from "./delivery-client";
 
 const WALLET = getAddress("0xbe59d5bf40ac4a349bd748e0d7c19ef27ad3ca23");
 const OTHER = getAddress("0x1111111111111111111111111111111111111111");
@@ -120,5 +120,18 @@ describe("robinhoodParams", () => {
     expect(out).toEqual({ ...params, dstChainKey: "robinhood", outputToken: RH_TOKEN, dstAddress: WALLET });
     // Exactly the address the route answered, not a re-encoding of it.
     expect(out.dstAddress).toBe(WALLET);
+  });
+});
+
+describe("asksAgain", () => {
+  it("asks the route again only for a market buy quoted to Robinhood Chain", () => {
+    expect(asksAgain(ROBINHOOD, false)).toBe(true);
+  });
+
+  it("makes no request for a hub buy, a limit buy, or a buy with no delivery at all", () => {
+    expect(asksAgain(hubDelivery("not_listed"), false)).toBe(false);
+    expect(asksAgain(hubDelivery("read_failed"), false)).toBe(false);
+    expect(asksAgain(ROBINHOOD, true)).toBe(false);
+    expect(asksAgain(undefined, false)).toBe(false);
   });
 });
