@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TickerTile } from "@/components/board/holdings-list";
 import { useCopy, useMoney } from "@/components/settings-provider";
+import { useAvailability } from "@/components/availability/availability-context";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useFirstLook } from "@/hooks/use-first-look";
@@ -116,6 +117,7 @@ export function AddMoneyStep({
 }) {
   const words = useCopy();
   const copy = words.calmHome;
+  const available = useAvailability().available;
   const money = useMoney();
   const card = moneyStepOffer({ walletAccount, canPayByCard: Boolean(cardAddress || demoPayByCard), aside: Boolean(aside) }) === "card";
   const title = titleOverride ?? (walletAccount ? copy.walletAddTitle : aside ? copy.addTitleCash : copy.addTitle);
@@ -130,7 +132,9 @@ export function AddMoneyStep({
           ? copy.walletAddLine
           : card
             ? words.funding.stepLine
-            : copy.addLine;
+            : available
+              ? copy.addLine
+              : copy.addLineNoCard;
   return (
     <StepCard title={title} line={line} frame={frame}>
       <div className="flex flex-col gap-1 px-[18px] pb-3 lg:px-6 lg:pb-4">

@@ -30,6 +30,7 @@ import { RankChip } from "@/components/rewards-panel";
 import { ADD_EMAIL_ANCHOR } from "@/components/social/social-section";
 import { useCopy } from "@/components/settings-provider";
 import { ArrivalPanel, useAddMoney } from "@/components/funding-handoff";
+import { useAvailability } from "@/components/availability/availability-context";
 import type { ArrivalView } from "@/lib/funding-handoff";
 import { useMounted } from "@/hooks/use-mounted";
 import { useAccountWallets } from "@/hooks/use-profile";
@@ -595,6 +596,20 @@ export function ReceiveRow({
 function FundButton({ address, title, surface }: { address: string; title?: string; surface: string }) {
   const addMoney = useAddMoney(surface);
   const copy = useCopy();
+  // Card payments only where Berth takes new buys (lib/availability), as on the path's step.
+  const available = useAvailability().available;
+
+  if (!available) {
+    return (
+      <div className="flex min-h-14 w-full items-center gap-3 px-3 py-3">
+        <PlusCircle className="size-5 text-muted-foreground" aria-hidden />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-muted-foreground">{copy.funding.cardNotHereTitle}</span>
+          <span className="text-xs text-muted-foreground">{copy.funding.cardNotHereLine}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <button

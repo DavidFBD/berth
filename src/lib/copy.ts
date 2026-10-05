@@ -195,6 +195,8 @@ export type Copy = {
   calmHome: {
     addTitle: string;
     addLine: string;
+    /** The money step where Berth takes no new buys (lib/availability): no card offered. */
+    addLineNoCard: string;
     addAction: string;
     /** A wallet account pays from the wallet it connected, so its next step is choosing. */
     walletAddLine: string;
@@ -262,6 +264,9 @@ export type Copy = {
     /** Arrived where Berth takes no order (lib/availability). */
     arrivedAway: string;
     close: string;
+    /** The card row where Berth takes no new buys (lib/availability): shown, calmly, not offered. */
+    cardNotHereTitle: string;
+    cardNotHereLine: string;
     /** A wallet account: Privy's card window needs an email sign in, so the wallet's own address is offered. */
     walletTitle: string;
     walletLine: string;
@@ -2767,6 +2772,7 @@ export const COPY: Copy = {
   calmHome: {
     addTitle: "Add money to begin",
     addLine: "Pay by card, Apple Pay or Google Pay, or send crypto you already hold. Then choose a stock.",
+    addLineNoCard: "Send crypto you already hold to your account. Paying by card is not offered where you are.",
     addAction: "Add money",
     walletAddLine:
       "Berth pays from the wallet you connected. If it holds nothing yet, send it stablecoins, ETH, SOL or Bitcoin first.",
@@ -2822,6 +2828,8 @@ export const COPY: Copy = {
     arrivedChoose: "Choose what to buy",
     arrivedAway: "It stays in your account. Berth does not take orders where you are.",
     close: "Close",
+    cardNotHereTitle: "Pay by card",
+    cardNotHereLine: "Not offered where you are. You can still send crypto you hold to the addresses below.",
     walletTitle: "Add money to your wallet",
     walletLine:
       "Paying by card in Berth works with an email account. Your wallet app may sell crypto by card itself: buy USDC on Base there, or send it to your wallet below, and it pays here.",
