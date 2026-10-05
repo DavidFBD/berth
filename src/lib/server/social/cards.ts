@@ -58,7 +58,7 @@ export async function relationTo(viewerId: string, targetId: string): Promise<Re
   return "none";
 }
 
-async function answer(viewer: SocialViewer, row: CardRow | null): Promise<CardAnswer> {
+async function answer(viewer: SocialViewer, row: CardRow | null, now: Date): Promise<CardAnswer> {
   if (!row) return NOT_FOUND;
   const created = new Date(row.created_at);
   const card = {
@@ -82,7 +82,7 @@ async function answer(viewer: SocialViewer, row: CardRow | null): Promise<CardAn
       .query(`select 1 from profiles where user_id = $1 and share_holdings`, [viewer.id])
       .then((rows) => (rows as unknown[]).length > 0),
   ]);
-  const holds = relation === "friends" ? await friendHolds(viewer, row.user_id) : null;
+  const holds = relation === "friends" ? await friendHolds(viewer, row.user_id, now) : null;
   return {
     found: true,
     card,
@@ -91,16 +91,19 @@ async function answer(viewer: SocialViewer, row: CardRow | null): Promise<CardAn
   };
 }
 
-/** The card behind a username as typed or as it sits in a URL. */
-export async function readCard(viewer: SocialViewer | null, handle: unknown): Promise<CardAnswer> {
+/**
+ * The card behind a username as typed or as it sits in a URL. `now` dates
+ * the friend's holdings read (a daily value must be recent); tests pin it.
+ */
+export async function readCard(viewer: SocialViewer | null, handle: unknown, now = new Date()): Promise<CardAnswer> {
   if (!viewer) return SIGN_IN;
   const norm = lookupKey(handle);
   if (!norm) return NOT_FOUND;
-  return answer(viewer, await cardRow(viewer.id, "h.handle_norm = $1", norm));
+  return answer(viewer, await cardRow(viewer.id, "h.handle_norm = $1", norm), now);
 }
 
 /** The card of a known account, by the same visibility rule. */
-export async function readCardOf(viewer: SocialViewer | null, userId: string): Promise<CardAnswer> {
+export async function readCardOf(viewer: SocialViewer | null, userId: string, now = new Date()): Promise<CardAnswer> {
   if (!viewer) return SIGN_IN;
-  return answer(viewer, await cardRow(viewer.id, "h.user_id = $1::uuid", userId));
+  return answer(viewer, await cardRow(viewer.id, "h.user_id = $1::uuid", userId), now);
 }

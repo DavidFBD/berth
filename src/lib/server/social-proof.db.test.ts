@@ -305,17 +305,17 @@ describe("what friends hold", () => {
     await befriend(me, friend);
     await holds(friend, [{ symbol: "TSLA", quantity: 1, price: 400 }, { symbol: "NVDA", quantity: 1, price: 180 }]);
     await holds(stranger, [{ symbol: "NVDA", quantity: 1, price: 180 }]);
-    const card = await readCard(as(me), "cardfriend");
+    const card = await readCard(as(me), "cardfriend", NOW);
     expect(card.found && card.holds).toEqual(["NVDA", "TSLA"]);
-    const strangerCard = await readCard(as(me), "cardstranger");
+    const strangerCard = await readCard(as(me), "cardstranger", NOW);
     expect(strangerCard.found && "holds" in strangerCard).toBe(false);
     // The viewer shares: their card of anyone says so, for the note beside Add friend and Accept.
     expect(strangerCard.found && strangerCard.viewer.sharesHoldings).toBe(true);
     await setShareHoldings(as(friend), false);
-    const off = await readCard(as(me), "cardfriend");
+    const off = await readCard(as(me), "cardfriend", NOW);
     expect(off.found && "holds" in off).toBe(false);
     await setShareHoldings(as(me), false);
-    const quiet = await readCard(as(me), "cardstranger");
+    const quiet = await readCard(as(me), "cardstranger", NOW);
     expect(quiet.found && "sharesHoldings" in quiet.viewer).toBe(false);
   });
 
