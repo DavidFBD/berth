@@ -452,25 +452,51 @@ function ExternalAccountEntry({
  * sign in, which a wallet account does not keep (hooks/use-privy-evm-wallet
  * isWalletAccountUser), so Berth cannot open it here. What it can say
  * honestly: card payments work with an email account, the wallet's own
- * app may sell crypto by card, and this is the wallet's address on Base.
+ * app may sell crypto by card, and these are the wallet's own addresses:
+ * on Base for an EVM wallet, on Solana or Bitcoin for those, each on its own network.
  */
 export function WalletAddMoney({ address: demoAddress }: { address?: string }) {
   const copy = useCopy();
   const evm = useXAccount({ xChainType: "EVM" });
+  const solana = useXAccount({ xChainType: "SOLANA" });
+  const bitcoin = useXAccount({ xChainType: "BITCOIN" });
   const address = demoAddress ?? evm.address;
-  if (!address) return null;
+  // A Solana or Bitcoin only wallet account is shown its own address on its own network, never an empty panel.
+  const solanaAddress = demoAddress ? undefined : solana.address;
+  const bitcoinAddress = demoAddress ? undefined : bitcoin.address;
+  const none = !address && !solanaAddress && !bitcoinAddress;
   return (
     <Panel className="divide-y divide-border">
       <div className="flex flex-col gap-1 px-3 py-3">
         <span className="text-sm font-medium text-foreground">{copy.funding.walletTitle}</span>
-        <span className="text-xs leading-[1.5] text-muted-foreground">{copy.funding.walletLine}</span>
+        <span className="text-xs leading-[1.5] text-muted-foreground">
+          {address ? copy.funding.walletLine : none ? copy.funding.walletNone : copy.funding.walletLineOther}
+        </span>
       </div>
-      <ReceiveRow
-        title={copy.funding.walletReceiveTitle}
-        description={copy.funding.walletReceiveBody}
-        address={address}
-        copyToast={copy.funding.walletReceiveToast}
-      />
+      {address && (
+        <ReceiveRow
+          title={copy.funding.walletReceiveTitle}
+          description={copy.funding.walletReceiveBody}
+          address={address}
+          copyToast={copy.funding.walletReceiveToast}
+        />
+      )}
+      {solanaAddress && (
+        <ReceiveRow
+          title={copy.funding.walletSolanaTitle}
+          description={copy.funding.walletSolanaBody}
+          address={solanaAddress}
+          copyToast={copy.funding.walletSolanaToast}
+        />
+      )}
+      {bitcoinAddress && (
+        <ReceiveRow
+          title={copy.funding.walletBitcoinTitle}
+          description={copy.funding.walletBitcoinBody}
+          address={bitcoinAddress}
+          copyToast={copy.funding.walletBitcoinToast}
+        />
+      )}
     </Panel>
   );
 }

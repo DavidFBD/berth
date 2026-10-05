@@ -273,6 +273,16 @@ export type Copy = {
     walletReceiveTitle: string;
     walletReceiveBody: string;
     walletReceiveToast: string;
+    /** A wallet account with no EVM wallet: its own Solana or Bitcoin address, on its own network. */
+    walletLineOther: string;
+    walletSolanaTitle: string;
+    walletSolanaBody: string;
+    walletSolanaToast: string;
+    walletBitcoinTitle: string;
+    walletBitcoinBody: string;
+    walletBitcoinToast: string;
+    /** No wallet address in hand yet. */
+    walletNone: string;
     walletAction: string;
   };
   /** The guided first path (lib/first-path, components/first-path): one step at a time, then "You're set up". */
@@ -2836,6 +2846,15 @@ export const COPY: Copy = {
     walletReceiveTitle: "Your wallet on Base",
     walletReceiveBody: "Send USDC on Base here, with a little ETH for the network fee.",
     walletReceiveToast: "Your own wallet. Send only on Base.",
+    walletLineOther:
+      "Paying by card in Berth works with an email account. Your wallet app may sell crypto by card itself: buy there, or send crypto you hold to your wallet below, on its own network, and it pays here.",
+    walletSolanaTitle: "Your wallet on Solana",
+    walletSolanaBody: "Send SOL or USDC on Solana here, with a little SOL for the network fee.",
+    walletSolanaToast: "Your own wallet. Send only on Solana.",
+    walletBitcoinTitle: "Your wallet on Bitcoin",
+    walletBitcoinBody: "Send Bitcoin here, on the Bitcoin network.",
+    walletBitcoinToast: "Your own wallet. Send only Bitcoin.",
+    walletNone: "Your wallet's address shows here once it is connected.",
     walletAction: "Add money",
   },
   firstPath: {
