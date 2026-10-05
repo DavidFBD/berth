@@ -348,7 +348,10 @@ function DayLine({
 /** The strip's days from story points: names, labels and which is today. */
 function useStripDays(points: readonly StoryPoint[], liveDay: string | null): StripDay[] {
   const copy = useCopy();
-  const signed = useSignedMoney();
+  const money = useMoney();
+  // After "Up" or "Down" the figures are plain sizes: no sign to contradict the word.
+  const size = (pct: number) =>
+    new Intl.NumberFormat("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(Math.abs(pct)) + "%";
   return points.map((point) => {
     const today = point.day === liveDay;
     const moverName = point.mover ? nameOf(point.mover.symbol) : null;
@@ -358,10 +361,7 @@ function useStripDays(points: readonly StoryPoint[], liveDay: string | null): St
         ? null
         : Math.abs(pct) < 0.05
           ? copy.portfolioDayFlat
-          : (pct > 0 ? copy.portfolioDayUp : copy.portfolioDayDown)(
-              formatPercentChange(Math.abs(pct), 1),
-              signed(Math.abs(point.change)),
-            );
+          : (pct > 0 ? copy.portfolioDayUp : copy.portfolioDayDown)(size(pct), money.format(Math.abs(point.change)));
     const date = today ? copy.portfolioToday : longDayName(point.day);
     return { ...point, moverName, today, label: copy.portfolioDayAria(date, change, moverName) };
   });
