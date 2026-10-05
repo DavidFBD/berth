@@ -123,6 +123,16 @@ alter table orders add column if not exists delivered_to text;
 -- starve the ones behind it.
 alter table orders add column if not exists hold_attempted_at timestamptz;
 
+-- The chain a buy was delivered on (docs/plans/2026-10-05-robinhood-chain-
+-- delivery): null or 'sonic' is the hub, where every buy has landed so far;
+-- 'robinhood' is the person's own wallet on Robinhood Chain (chain 4663),
+-- for accounts on the ROBINHOOD_DELIVERY_USERS switch. Null means sonic, so
+-- no existing row is rewritten and an upsert can still fill it in later.
+-- The hold check reads Sonic balances only, so it never judges a row whose
+-- chain is not sonic (lib/server/holds).
+alter table orders add column if not exists delivered_chain text
+  check (delivered_chain in ('sonic', 'robinhood'));
+
 -- The cron's candidate query filters unchecked buys by the same effective
 -- date expression it indexes here; the partial index keeps that a short
 -- range scan however long the order book grows.

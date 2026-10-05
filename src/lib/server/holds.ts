@@ -30,7 +30,9 @@ import type { Hold } from "@/lib/profile-types";
  *
  * A buy with no recorded delivery wallet, or of an address that is no
  * listing this build knows (neither a token listing nor a vault in the SDK
- * registry), is unverifiable and never judged or listed.
+ * registry), is unverifiable and never judged or listed. So is a buy
+ * delivered on any chain but Sonic (`orders.delivered_chain`, null meaning
+ * sonic), since the balance read below is on Sonic only (see ON_SONIC).
  * Held: `held_30_days` is awarded once, deduped by the buy's intent tx,
  * parked unannounced so the toast fires the next time the person looks,
  * and the order is stamped 'paid'. Not held: the order is stamped 'forfeit'
@@ -61,7 +63,18 @@ const LISTING_DECIMALS = 18;
 const EFFECTIVE_AT = "coalesce(o.filled_at, o.placed_at, o.created_at)";
 
 /**
- * A filled buy with a known delivery wallet. Quantity on a buy is what the
+ * Delivered on the hub, where readDeliveredBalances looks: `delivered_chain`
+ * null (every row before Robinhood Chain delivery) or 'sonic'. A buy
+ * delivered to Robinhood Chain sits in the person's own wallet there, so a
+ * Sonic balanceOf would read zero and forfeit it for good. Until the check
+ * can read the delivery chain (plan P1b, before 4 November, the first day
+ * such a buy could fall due), it is neither judged, nor listed as waiting,
+ * nor counted as paid toward another buy.
+ */
+const ON_SONIC = (alias: string) => `coalesce(${alias}.delivered_chain, 'sonic') = 'sonic'`;
+
+/**
+ * A filled buy with a known delivery wallet, on Sonic. Quantity on a buy is what the
  * fill delivered (lib/orders readOrder); a buy whose fill was never read has
  * no quantity, is not judged, and waits for saveOrder to complete it. A no
  * XP buy (lib/server/no-xp, reported from where Berth is not available) is
@@ -73,7 +86,8 @@ const FILLED_UNCHECKED_BUY = `o.direction = 'buy'
   and o.quantity is not null
   and o.quantity > 0
   and o.delivered_to is not null
-  and o.delivered_to ~ '^0x[0-9a-f]{40}$'`;
+  and o.delivered_to ~ '^0x[0-9a-f]{40}$'
+  and ${ON_SONIC("o")}`;
 
 /**
  * Who owns an order: the account that placed it, or, only for a row that
@@ -191,6 +205,7 @@ export const CANDIDATES_SQL = `select o.id, o.intent_tx, u.id as user_id,
            and p.hold_outcome = 'paid'
            and lower(p.listing_address) = lower(o.listing_address)
            and p.delivered_to = o.delivered_to
+           and ${ON_SONIC("p")}
            and (p.user_id = u.id
                 or (p.user_id is null and p.wallet_address = u.wallet_address))
        ) as paid_before,

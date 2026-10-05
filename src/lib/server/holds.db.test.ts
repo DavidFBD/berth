@@ -70,6 +70,7 @@ async function order({
   filledAt = daysAgo(31),
   placedAt = null,
   deliveredTo,
+  deliveredChain = null,
 }: {
   owner: string;
   userId?: string | null;
@@ -80,15 +81,17 @@ async function order({
   placedAt?: Date | null;
   /** Defaults to a hub wallet derived from the owner; pass null for none. */
   deliveredTo?: string | null;
+  /** orders.delivered_chain: null (every row before Robinhood Chain delivery), 'sonic' or 'robinhood'. */
+  deliveredChain?: "sonic" | "robinhood" | null;
 }): Promise<string> {
   const intentTx = tx();
   const delivered =
     deliveredTo === undefined ? hub(Number.parseInt(owner.slice(2), 16)) : deliveredTo;
   await sql.query(
     `insert into orders (user_id, wallet_address, intent_tx, direction, listing_symbol,
-       listing_address, quantity, placed_at, filled_at, delivered_to)
-     values ($1, $2, $3, $4, 'X', $5, $6, $7, $8, $9)`,
-    [userId, owner, intentTx, direction, listing, quantity, placedAt, filledAt, delivered],
+       listing_address, quantity, placed_at, filled_at, delivered_to, delivered_chain)
+     values ($1, $2, $3, $4, 'X', $5, $6, $7, $8, $9, $10)`,
+    [userId, owner, intentTx, direction, listing, quantity, placedAt, filledAt, delivered, deliveredChain],
   );
   return intentTx;
 }
@@ -474,5 +477,77 @@ describe("pendingHolds", () => {
   it("is empty for an account with no buys", async () => {
     const owner = await account(22);
     expect(await pendingHolds(owner.id)).toEqual([]);
+  });
+});
+
+/**
+ * The Robinhood Chain guard (plan P0b): the check reads balances on Sonic
+ * only, so a buy delivered to the person's own wallet on Robinhood Chain
+ * would read zero there and be forfeited for good. Until the check reads
+ * the delivery chain (P1b), such a buy is never judged, listed or counted.
+ */
+describe("a buy delivered to Robinhood Chain", () => {
+  it("is never judged, so a zero Sonic balance cannot forfeit it", async () => {
+    const owner = await account(40);
+    const robinhood = await order({ owner: owner.wallet_address!, deliveredChain: "robinhood", filledAt: daysAgo(45) });
+
+    expect(await holdCandidates(NOW)).toEqual([]);
+    const reader = chain(0n);
+    expect(await runHoldCheck({ now: NOW, readBalances: reader })).toEqual({
+      checked: 0,
+      paid: 0,
+      forfeited: 0,
+      retried: 0,
+    });
+    expect(reader.calls).toEqual([]);
+    expect(await orderRow(robinhood)).toEqual({ hold_checked_at: null, hold_outcome: null });
+    expect(await xpOf(owner.id)).toBe(owner.xp);
+  });
+
+  it("leaves the Sonic buys beside it judged exactly as before", async () => {
+    const owner = await account(41);
+    const legacy = await order({ owner: owner.wallet_address!, quantity: "1", filledAt: daysAgo(33) });
+    const sonic = await order({ owner: owner.wallet_address!, quantity: "1", deliveredChain: "sonic", filledAt: daysAgo(32) });
+    const robinhood = await order({ owner: owner.wallet_address!, quantity: "1", deliveredChain: "robinhood", filledAt: daysAgo(31) });
+
+    expect((await holdCandidates(NOW)).map((candidate) => candidate.intentTx)).toEqual([legacy, sonic]);
+    const reader = chain(0n);
+    expect(await runHoldCheck({ now: NOW, readBalances: reader })).toEqual({
+      checked: 2,
+      paid: 0,
+      forfeited: 2,
+      retried: 0,
+    });
+    expect(reader.calls.flat().length).toBeGreaterThan(0);
+    expect(await orderRow(legacy)).toMatchObject({ hold_outcome: "forfeit" });
+    expect(await orderRow(sonic)).toMatchObject({ hold_outcome: "forfeit" });
+    expect(await orderRow(robinhood)).toEqual({ hold_checked_at: null, hold_outcome: null });
+  });
+
+  it("is not listed as waiting, since no verdict is coming yet", async () => {
+    const owner = await account(42);
+    await order({ owner: owner.wallet_address!, deliveredChain: "robinhood", filledAt: daysAgo(3) });
+    const listed = await order({ owner: owner.wallet_address!, filledAt: daysAgo(2) });
+
+    expect((await pendingHolds(owner.id)).map((hold) => hold.ref)).toEqual([listed]);
+  });
+
+  it("never counts toward what a Sonic buy at the same wallet must cover", async () => {
+    const owner = await account(43);
+    const wallet = hub(43);
+    // A Robinhood Chain row stamped paid by hand (nothing in this build
+    // stamps one): its quantity sits on another chain, so it must not raise
+    // the Sonic buy's requirement.
+    const robinhood = await order({ owner: owner.wallet_address!, quantity: "5", deliveredChain: "robinhood", deliveredTo: wallet, filledAt: daysAgo(60) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(1), robinhood]);
+    const sonic = await order({ owner: owner.wallet_address!, quantity: "1", deliveredTo: wallet, filledAt: daysAgo(31) });
+
+    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.paidBefore])).toEqual([[sonic, "0"]]);
+    expect(await runHoldCheck({ now: NOW, readBalances: chain(ONE) })).toMatchObject({ paid: 1, forfeited: 0 });
+  });
+
+  it("is refused by the schema under any chain name it does not know", async () => {
+    const owner = await account(44);
+    await expect(order({ owner: owner.wallet_address!, deliveredChain: "base" as "sonic" })).rejects.toThrow();
   });
 });
