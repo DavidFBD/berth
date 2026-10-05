@@ -116,6 +116,11 @@ describe("berthFilledIntents", () => {
     );
     expect(kept.map((entry) => [entry.intentTx, entry.direction])).toEqual([[tx(8), "buy"]]);
   });
+
+  it("passes by a sell paid from Robinhood Chain, as on master (until P3a)", () => {
+    const sell = item({ txHash: tx(10), input: NVDA.rhHubAsset!, output: USDC_HUB });
+    expect(berthFilledIntents([{ ...sell, intent: { ...sell.intent, srcChain: 21071 } }], listings)).toEqual([]);
+  });
 });
 
 let sql: SqlClient;

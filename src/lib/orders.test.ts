@@ -235,9 +235,10 @@ describe("listingOfIntent", () => {
     expect(listingOfIntent(listings, { ...RH_BUY, outputToken: NVDA.address }, "buy")).toBeUndefined();
   });
 
-  it("reads a sell from its input and source chain", () => {
+  it("reads a sell from its input on the hub, and no sell from Robinhood Chain until P3a", () => {
     const sell = { ...CASH_BUY, inputToken: NVDA.rhHubAsset, outputToken: CASH_BUY.inputToken, srcChain: 21071n, dstChain: 4n };
-    expect(listingOfIntent(listings, sell, "sell")).toBe(NVDA);
+    expect(listingOfIntent(listings, sell, "sell")).toBeUndefined();
+    expect(listingOfIntent(listings, { ...sell, inputToken: NVDA.address }, "sell")).toBeUndefined();
     expect(listingOfIntent(listings, { ...sell, inputToken: NVDA.address, srcChain: 146n }, "sell")).toBe(NVDA);
     expect(listingOfIntent(listings, { ...sell, srcChain: 146n }, "sell")).toBeUndefined();
   });
