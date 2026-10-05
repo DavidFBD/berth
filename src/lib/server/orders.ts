@@ -1,4 +1,4 @@
-import type { Intent, Sodax } from "@sodax/sdk";
+import { EvmSolverService, type Intent, type Sodax } from "@sodax/sdk";
 import { BENCHMARKS } from "@/lib/benchmarks";
 import { displayToken } from "@/lib/chains";
 import { getSql } from "@/lib/server/db";
@@ -7,10 +7,14 @@ import { HUB_RPC_URLS } from "@/lib/sodax-config";
 import { COINGECKO_ID_BY_LOWER_SYMBOL } from "@/lib/coingecko-ids";
 import { listListings } from "@/lib/listings";
 import {
+  INTENT_FILLED_TOPIC,
   TRANSFER_TOPIC,
   addressTopic,
+  holdingChainOf,
   isDollarStable,
+  listingOfIntent,
   pickFill,
+  pickIntentFill,
   priceIdFor,
   readOrder,
   type OrderRecord,
@@ -208,10 +212,15 @@ async function blockTime(blockHex: string): Promise<Date | null> {
   return block ? new Date(Number.parseInt(block.timestamp, 16) * 1000) : null;
 }
 
-/** The listing an intent buys (its output) or sells (its input), if it is one of ours. */
+/**
+ * The listing an intent buys (its output) or sells (its input), if it is
+ * one of ours: by its Sonic address on the hub, by its Robinhood Chain hub
+ * asset on Robinhood Chain (lib/orders listingOfIntent). Either way the
+ * listing returned carries the Sonic address, which is what the order row
+ * keeps as listing_address.
+ */
 function orderListing(sodax: Sodax, intent: Intent, direction: "buy" | "sell") {
-  const ours = direction === "buy" ? intent.outputToken : intent.inputToken;
-  return listListings(sodax.leverageYield.listVaults()).find((entry) => entry.address.toLowerCase() === ours.toLowerCase());
+  return listingOfIntent(listListings(sodax.leverageYield.listVaults()), intent, direction);
 }
 
 /** The symbol of the listing an intent buys or sells, or null (a pour claim keeps it). Never throws. */
@@ -245,9 +254,10 @@ export async function buildOrder({
   const placedAt = receipt ? await blockTime(receipt.blockNumber) : null;
 
   let fill: ReturnType<typeof pickFill>;
-  // A buy is delivered to the hub wallet on Sonic, where the Transfer can be
-  // read. A sell pays out on the destination chain, which is not read here.
-  if (direction === "buy" && receipt) {
+  // A buy delivered on the hub lands in the hub wallet on Sonic, where the
+  // Transfer can be read. A sell pays out on the destination chain, which
+  // is not read here.
+  if (direction === "buy" && receipt && holdingChainOf(direction, intent) === "sonic") {
     const from = Number.parseInt(receipt.blockNumber, 16);
     const logs = await rpc<{ transactionHash: string; data: string; blockNumber: string }[]>(
       "eth_getLogs",
@@ -262,6 +272,29 @@ export async function buildOrder({
       { urls: FILL_LOG_URLS },
     );
     fill = logs ? pickFill(logs, claimedFillTx) : undefined;
+  } else if (direction === "buy" && receipt) {
+    // Delivered on Robinhood Chain: the solver's fill on Sonic hands the
+    // listing's hub asset to the asset manager, which delivers the native
+    // token on 4663, so no Transfer of the listing reaches the buyer on
+    // Sonic. The fill is the Intents contract's IntentFilled for this
+    // intent's hash, and its receivedOutput is the quantity (the hub asset
+    // and the native token both have the listing's 18 decimals; read on
+    // chain 2026-10-05, and lib/listings.test holds the SDK's decimals to
+    // the listing's).
+    const from = Number.parseInt(receipt.blockNumber, 16);
+    const logs = await rpc<{ transactionHash: string; data: string; blockNumber: string }[]>(
+      "eth_getLogs",
+      [
+        {
+          fromBlock: receipt.blockNumber,
+          toBlock: `0x${(from + FILL_SEARCH_BLOCKS).toString(16)}`,
+          address: sodax.config.solver.intentsContract,
+          topics: [INTENT_FILLED_TOPIC],
+        },
+      ],
+      { urls: FILL_LOG_URLS },
+    );
+    fill = logs ? pickIntentFill(logs, EvmSolverService.getIntentHash(intent)) : undefined;
   }
   const filledAt = fill ? await blockTime(`0x${fill.blockNumber.toString(16)}`) : null;
 
@@ -289,7 +322,9 @@ export async function buildOrder({
 
 /**
  * Insert or complete, returning the row's id. Known values are never
- * overwritten with unknowns. Every path that records a buy comes through
+ * overwritten with unknowns. Every new row names its holding chain
+ * (lib/orders holdingChainOf), so a null there keeps meaning only "legacy,
+ * on the hub"; a legacy row completed later takes the chain then. Every path that records a buy comes through
  * here (the pour route, the evening pass over pour claims, a limit order's
  * fill).
  */
@@ -299,10 +334,11 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
        user_id, wallet_address, intent_tx, fill_tx, direction, listing_symbol,
        listing_address, quantity, min_quantity, pay_symbol, pay_chain,
        pay_amount, fee_amount, usd_value, placed_at, filled_at, usd_source,
-       delivered_to, src_address
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       delivered_to, src_address, holding_chain
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      on conflict (intent_tx) do update set
        user_id = coalesce(orders.user_id, excluded.user_id),
+       holding_chain = coalesce(orders.holding_chain, excluded.holding_chain),
        delivered_to = coalesce(orders.delivered_to, excluded.delivered_to),
        wallet_address = coalesce(orders.wallet_address, excluded.wallet_address),
        src_address = coalesce(orders.src_address, excluded.src_address),
@@ -334,6 +370,7 @@ export async function saveOrder(userId: string | null, order: OrderRecord): Prom
       order.usdSource,
       order.deliveredTo,
       order.srcAddress ?? null,
+      order.holdingChain,
     ],
   )) as { id: string }[];
   return rows[0]?.id;

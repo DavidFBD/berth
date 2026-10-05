@@ -283,6 +283,11 @@ describe("the Robinhood Chain twin of every listing", () => {
     }
   });
 
+  it("counts the Robinhood Chain token in the listing's own decimals, so an order's quantity reads the same on either chain", () => {
+    const spoke = robinhoodSupportedTokens as Record<string, { decimals: number } | undefined>;
+    for (const listing of TOKEN_LISTINGS) expect(spoke[listing.symbol]?.decimals, listing.symbol).toBe(listing.decimals);
+  });
+
   it("has a distinct hub asset per listing", () => {
     const hubAssets = TOKEN_LISTINGS.map((listing) => listing.rhHubAsset!.toLowerCase());
     expect(new Set(hubAssets).size).toBe(TOKEN_LISTINGS.length);

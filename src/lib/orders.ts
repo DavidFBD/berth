@@ -1,4 +1,4 @@
-import { formatUnits } from "viem";
+import { decodeAbiParameters, formatUnits } from "viem";
 
 /**
  * An order as Berth remembers it, and the pure reading of an intent into one.
@@ -48,7 +48,85 @@ export type OrderRecord = {
   usdSource: "stable" | "price" | null;
   placedAt: Date | null;
   filledAt: Date | null;
+  /**
+   * Where the stock token sits for this order (orders.holding_chain): a
+   * buy, where it arrived; a sell, where it left from. Never the payout
+   * chain of a sell, which is `payChain`. Read from the intent only
+   * (holdingChainOf), so every writer stores the same truth.
+   */
+  holdingChain: HoldingChain;
 };
+
+/**
+ * The chains a listing's stock token can sit on for Berth: the Sonic hub
+ * (the listing's own vault token, every order before Robinhood Chain) and
+ * Robinhood Chain (chain 4663, the native Robinhood stock token in the
+ * person's own wallet). The values are the SDK chain keys, exactly what
+ * orders.holding_chain's check allows; never a chain id.
+ */
+export type HoldingChain = "sonic" | "robinhood";
+
+/**
+ * SODAX relay chain ids, as an intent's srcChain and dstChain carry them.
+ * Pinned here rather than read from the SDK so this file keeps no imports
+ * the backfill scripts cannot load; lib/orders.test holds them to the
+ * SDK's own map (getSpokeChainKeyFromIntentRelayChainId).
+ */
+export const SONIC_RELAY_CHAIN_ID = 146n;
+export const ROBINHOOD_RELAY_CHAIN_ID = 21071n;
+
+function relayId(value: bigint | number | string | undefined): bigint | null {
+  if (value === undefined) return null;
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where an order's stock token sits, from the intent alone: a buy
+ * delivered on Robinhood Chain (dstChain 21071) holds there, and so does a
+ * sell paid from Robinhood Chain (srcChain 21071). Everything else is the
+ * hub. The one place orders.holding_chain is derived (plan, carried into
+ * P2a): readOrder sets it on every record, and the backfill scripts call it
+ * for theirs.
+ */
+export function holdingChainOf(
+  direction: "buy" | "sell",
+  intent: { srcChain?: bigint | number | string; dstChain?: bigint | number | string },
+): HoldingChain {
+  const leg = direction === "buy" ? relayId(intent.dstChain) : relayId(intent.srcChain);
+  return leg === ROBINHOOD_RELAY_CHAIN_ID ? "robinhood" : "sonic";
+}
+
+/** What a listing needs to be found from an intent: its Sonic vault address and, where it has one, its Robinhood Chain hub asset. */
+export type IntentListing = { address: string; rhHubAsset?: string };
+
+/**
+ * The listing an intent buys (its output) or sells (its input), or
+ * undefined. On the hub that token is the listing's own Sonic address. On
+ * Robinhood Chain an intent names the listing's hub asset there
+ * (`rhHubAsset`, the SDK's robinhood supportedTokens), and only together
+ * with that chain: a buy whose output is the hub asset must be delivered on
+ * Robinhood Chain, a sell spending it must come from there. A hub asset
+ * delivered to the hub is not a holding Berth knows, so it is no listing.
+ * The listing found is always the one with the Sonic address, which is
+ * what orders.listing_address stores for both chains.
+ */
+export function listingOfIntent<L extends IntentListing>(
+  listings: readonly L[],
+  intent: { inputToken: string; outputToken: string; srcChain?: bigint | number | string; dstChain?: bigint | number | string },
+  direction: "buy" | "sell",
+): L | undefined {
+  const ours = (direction === "buy" ? intent.outputToken : intent.inputToken).toLowerCase();
+  const chain = holdingChainOf(direction, intent);
+  return listings.find((listing) =>
+    chain === "robinhood"
+      ? !!listing.rhHubAsset && listing.rhHubAsset.toLowerCase() === ours
+      : listing.address.toLowerCase() === ours,
+  );
+}
 
 /** Symbols worth exactly a dollar for a cost basis. Kept short on purpose. */
 const DOLLAR_STABLES = new Set(["USDC", "USDT", "USDS", "DAI", "BNUSD", "USDC.E", "USDBC"]);
@@ -130,8 +208,11 @@ export type IntentFacts = {
   inputAmount: bigint;
   minOutputAmount: bigint;
   srcAddress: string;
-  /** Where the output is delivered: on a buy, the hub wallet the fill's Transfer goes to. */
+  /** Where the output is delivered: on a buy, the hub wallet the fill's Transfer goes to, or the person's own wallet on Robinhood Chain. */
   dstAddress?: string;
+  /** Relay chain ids (SONIC_RELAY_CHAIN_ID, ROBINHOOD_RELAY_CHAIN_ID): where the input came from and the output goes. */
+  srcChain: bigint | number | string;
+  dstChain: bigint | number | string;
   data: string;
 };
 
@@ -211,6 +292,7 @@ export function readOrder({
     ...dollars(direction, pay?.symbol, payAmount, payUsdPrice),
     placedAt: placedAt ?? null,
     filledAt: filledAt ?? null,
+    holdingChain: holdingChainOf(direction, intent),
   };
 }
 
@@ -226,6 +308,57 @@ function dollars(
     return { usdValue: (Number(payAmount) * price).toFixed(6), usdSource: "price" };
   }
   return { usdValue: null, usdSource: null };
+}
+
+/** The topic of the Intents contract's IntentFilled(bytes32 intentHash, (bool,uint256,uint256,bool) intentState). */
+export const INTENT_FILLED_TOPIC = "0x179edcc2ff551e1336d178824736b025cc5df1a59d05fbcb69ae2de8c06433da";
+
+/**
+ * Which IntentFilled is this intent's fill, from the Intents contract's
+ * logs: the intent hash is not indexed, so the caller reads every
+ * IntentFilled in a block range and this keeps the ones for `intentHash`.
+ * The fill that leaves nothing remaining is the one, its receivedOutput the
+ * whole output (the Intents contract counts it cumulatively); with none
+ * whole, the last one so far. This is how a Robinhood Chain buy is read:
+ * its output leaves the hub through the asset manager, so no Transfer of
+ * the listing to the buyer ever happens on Sonic (pickFill's reading).
+ */
+export function pickIntentFill(
+  logs: readonly { transactionHash: string; data: string; blockNumber: string; topics?: readonly string[] }[],
+  intentHash: string,
+): { fillTx: string; received: bigint; blockNumber: number } | undefined {
+  const fills: { fillTx: string; received: bigint; remaining: bigint; blockNumber: number }[] = [];
+  for (const log of logs) {
+    try {
+      const [hash, state] = decodeAbiParameters(
+        [
+          { type: "bytes32" },
+          {
+            type: "tuple",
+            components: [
+              { name: "exists", type: "bool" },
+              { name: "remainingInput", type: "uint256" },
+              { name: "receivedOutput", type: "uint256" },
+              { name: "pendingPayment", type: "bool" },
+            ],
+          },
+        ],
+        log.data as `0x${string}`,
+      );
+      if (hash.toLowerCase() !== intentHash.toLowerCase()) continue;
+      fills.push({
+        fillTx: log.transactionHash.toLowerCase(),
+        received: state.receivedOutput,
+        remaining: state.remainingInput,
+        blockNumber: Number.parseInt(log.blockNumber, 16),
+      });
+    } catch {
+      // not an IntentFilled we can read: skip it
+    }
+  }
+  fills.sort((a, b) => a.blockNumber - b.blockNumber);
+  const chosen = fills.find((fill) => fill.remaining === 0n) ?? fills.at(-1);
+  return chosen ? { fillTx: chosen.fillTx, received: chosen.received, blockNumber: chosen.blockNumber } : undefined;
 }
 
 /** The ERC-20 Transfer event's topic. */

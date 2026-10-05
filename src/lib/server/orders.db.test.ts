@@ -37,6 +37,7 @@ const base: OrderRecord = {
   usdSource: "stable",
   placedAt: new Date("2026-09-21T09:19:00Z"),
   filledAt: null,
+  holdingChain: "sonic",
 };
 
 describe("saveOrder", () => {
@@ -62,5 +63,32 @@ describe("saveOrder", () => {
       usd_value: "2",
       delivered_to: "0xhub",
     });
+  });
+});
+
+describe("saveOrder and the holding chain", () => {
+  const chainOf = async (intentTx: string) =>
+    ((await sql.query(`select holding_chain from orders where intent_tx = $1`, [intentTx])) as { holding_chain: string | null }[])[0]
+      ?.holding_chain;
+
+  it("names the chain on every new row: a Robinhood Chain buy as robinhood, with its Sonic listing address", async () => {
+    await saveOrder(null, { ...base, intentTx: "0xrh1", holdingChain: "robinhood", deliveredTo: "0xbuyer" });
+    await saveOrder(null, { ...base, intentTx: "0xhub1" });
+    expect(await chainOf("0xrh1")).toBe("robinhood");
+    expect(await chainOf("0xhub1")).toBe("sonic");
+    const row = ((await sql.query(`select listing_address from orders where intent_tx = '0xrh1'`, [])) as { listing_address: string }[])[0];
+    expect(row.listing_address).toBe("0xlisting");
+  });
+
+  it("never moves a row's chain once named, and fills a legacy null in", async () => {
+    await saveOrder(null, { ...base, intentTx: "0xrh1", holdingChain: "sonic", quantity: "1" });
+    expect(await chainOf("0xrh1")).toBe("robinhood");
+    await sql.query(
+      `insert into orders (intent_tx, direction, listing_symbol, listing_address) values ('0xlegacy', 'buy', 'SGOV', '0xlisting')`,
+      [],
+    );
+    expect(await chainOf("0xlegacy")).toBeNull();
+    await saveOrder(null, { ...base, intentTx: "0xlegacy", holdingChain: "robinhood" });
+    expect(await chainOf("0xlegacy")).toBe("robinhood");
   });
 });
