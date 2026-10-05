@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { readUsdcOnBase, type FundingWatch } from "@/hooks/use-funding-handoff";
-import { FUND_CHAIN_CAIP, FUND_USDC_BASE, fundingOutcome, readBaseline, usdcToUsd, type ArrivalView } from "@/lib/funding-handoff";
+import { FUND_CHAIN_CAIP, FUND_USDC_BASE, fundingOutcome, offersPayAnotherWay, readBaseline, usdcToUsd, type ArrivalView } from "@/lib/funding-handoff";
 import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
@@ -83,6 +83,7 @@ export function ArrivalPanel({
   target,
   listingName,
   onChoose,
+  onPayAnotherWay,
   onClose,
 }: {
   view: ArrivalView;
@@ -91,6 +92,8 @@ export function ArrivalPanel({
   /** The order that asked for the money, when one did. */
   listingName?: string;
   onChoose: () => void;
+  /** Stops the wait and shows the ways to pay again, so a card payment that failed never holds the person here. */
+  onPayAnotherWay: () => void;
   onClose: () => void;
 }) {
   const copy = useCopy().funding;
@@ -138,11 +141,16 @@ export function ArrivalPanel({
           </p>
         </div>
       </div>
-      <div className="flex flex-col gap-1">
-        <Button variant="outline" className="h-11 w-full rounded-full text-[15px]" onClick={onClose}>
+      <div className="flex flex-col gap-2">
+        {offersPayAnotherWay(view) && (
+          <Button variant="outline" className="h-11 w-full rounded-full text-[15px]" onClick={onPayAnotherWay}>
+            {copy.payAnotherWay}
+          </Button>
+        )}
+        <Button variant="ghost" className="h-11 w-full rounded-full text-[15px]" onClick={onClose}>
           {copy.close}
         </Button>
-        {waiting && <p className="text-center text-xs text-muted-foreground">{copy.closeLine}</p>}
+        {waiting && <p className="text-center text-xs text-muted-foreground">{copy.payAnotherWayLine}</p>}
       </div>
     </div>
   );

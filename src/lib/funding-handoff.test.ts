@@ -6,6 +6,7 @@ import {
   arrivalView,
   fundingOutcome,
   nextLowest,
+  offersPayAnotherWay,
   readBaseline,
   withTimeout,
   handoffTarget,
@@ -86,6 +87,16 @@ describe("arrivalView", () => {
     expect(stillWatching({ kind: "waiting", slow: true })).toBe(true);
     expect(stillWatching({ kind: "stopped" })).toBe(false);
     expect(stillWatching({ kind: "arrived", amount: 1n })).toBe(false);
+  });
+});
+
+describe("paying another way while waiting", () => {
+  it("is offered on every wait, so a refused card payment never holds the person there", () => {
+    expect(offersPayAnotherWay({ kind: "waiting", slow: false })).toBe(true);
+    expect(offersPayAnotherWay({ kind: "waiting", slow: true })).toBe(true);
+    expect(offersPayAnotherWay({ kind: "stopped" })).toBe(true);
+    expect(offersPayAnotherWay({ kind: "unknown" })).toBe(true);
+    expect(offersPayAnotherWay({ kind: "arrived", amount: 1n })).toBe(false);
   });
 });
 

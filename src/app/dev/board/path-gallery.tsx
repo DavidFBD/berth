@@ -303,6 +303,7 @@ export function PathGallery({ account, at, skipped: skippedParam, drawer: drawer
                     setHandoff(null);
                     set({ funded: true });
                   },
+                  onPayAnotherWay: () => setHandoff(null),
                 }
               : null
           }

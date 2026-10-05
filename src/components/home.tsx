@@ -579,6 +579,9 @@ function SignedInHome() {
     handoff.end();
     showChoice();
   };
+  // A card payment that failed with the provider must not hold the person on the wait:
+  // the ways to pay come back, and the order that asked for money still follows them.
+  const payAnotherWay = () => handoff.end();
   const onAddMoneyOpenChange = (next: boolean) => {
     setAddMoneyOpen(next);
     // Closed on a stopped wait, or on an arrival with no order to reopen:
@@ -794,7 +797,7 @@ function SignedInHome() {
           onOpenChange={onAddMoneyOpenChange}
           arrival={
             handoff.view
-              ? { view: handoff.view, target: handoffTo, listingName: topUpName, onChoose: chooseAfterArrival }
+              ? { view: handoff.view, target: handoffTo, listingName: topUpName, onChoose: chooseAfterArrival, onPayAnotherWay: payAnotherWay }
               : null
           }
         />

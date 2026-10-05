@@ -251,6 +251,9 @@ export type Copy = {
     /** The balance before the payment could not be read, so its arrival cannot be told apart. */
     unknownTitle: string;
     unknownLine: string;
+    /** While waiting: stop the wait and show the ways to pay again. */
+    payAnotherWay: string;
+    payAnotherWayLine: string;
     arrivedTitle: string;
     arrivedLine: (amount: string) => string;
     /** Arrived, and an order asked for it: the buy reopens on its own. */
@@ -2810,6 +2813,9 @@ export const COPY: Copy = {
     unknownTitle: "Your payment is with the provider",
     unknownLine:
       "Berth could not read your balance before you paid, so it cannot tell here when your money lands. When it does, it shows on your home, ready to buy with.",
+    payAnotherWay: "Pay another way",
+    payAnotherWayLine:
+      "Paying another way stops this wait. If the card payment still goes through, it shows on your home. You can also close this.",
     arrivedTitle: "Your money has arrived",
     arrivedLine: (amount) => `Your account holds ${amount} more than before, ready to buy with.`,
     arrivedOpening: (name) => `Opening your order for ${name}.`,

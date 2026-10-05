@@ -331,6 +331,7 @@ export function AddMoneyDrawer({
                 target={arrival.target}
                 listingName={arrival.listingName}
                 onChoose={arrival.onChoose}
+                onPayAnotherWay={arrival.onPayAnotherWay}
                 onClose={() => onOpenChange(false)}
               />
             </Panel>
@@ -372,6 +373,8 @@ export type AddMoneyArrival = {
   target: "buy" | "choose" | "none";
   listingName?: string;
   onChoose: () => void;
+  /** Stops the wait and shows the ways to pay again (the drawer stays open). */
+  onPayAnotherWay: () => void;
 };
 
 /**

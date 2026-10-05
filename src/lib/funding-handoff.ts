@@ -150,6 +150,16 @@ export function arrivalView({
   return { kind: "waiting", slow: waited >= SLOW_AFTER_MS };
 }
 
+/**
+ * The way out of a wait. Privy answers "submitted" before the provider has
+ * finished its checks, so a payment it then refuses would otherwise hold
+ * the person on the wait for STOP_AFTER_MS: every view short of the
+ * arrival offers paying another way, which stops the wait.
+ */
+export function offersPayAnotherWay(view: ArrivalView): boolean {
+  return view.kind !== "arrived";
+}
+
 /** Whether the balance is still worth reading. */
 export function stillWatching(view: ArrivalView): boolean {
   return view.kind === "waiting";
