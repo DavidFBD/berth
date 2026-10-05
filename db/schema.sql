@@ -286,11 +286,14 @@ create table if not exists no_xp_intents (
 -- Why it pays nothing: 'unavailable', reported from where Berth is not
 -- available; or 'unproven_source', a buy delivered to the account's own hub
 -- wallet whose payer cannot be proven the account's (a Sui or Stellar
--- source, which no identity can be linked in; lib/server/pour-ownership).
+-- source, which no identity can be linked in; lib/server/pour-ownership);
+-- or 'delivery_refused', a buy delivered on Robinhood Chain that the
+-- server's own re-check of the destination did not allow, or never could
+-- make (lib/server/delivery-gate).
 alter table no_xp_intents add column if not exists reason text not null default 'unavailable';
 alter table no_xp_intents drop constraint if exists no_xp_intents_reason_check;
 alter table no_xp_intents add constraint no_xp_intents_reason_check
-  check (reason in ('unavailable', 'unproven_source'));
+  check (reason in ('unavailable', 'unproven_source', 'delivery_refused'));
 
 -- A claim settled for such a buy says so: recorded, nothing paid.
 alter table pour_claims drop constraint if exists pour_claims_outcome_check;
@@ -303,6 +306,14 @@ alter table pour_claims add constraint pour_claims_outcome_check
 -- offer it and it is not let go until the evening pass settles the claim.
 -- Null on claims kept before this column; those hold back nothing.
 alter table pour_claims add column if not exists listing_symbol text;
+
+-- true: the claim is a buy delivered on Robinhood Chain whose destination
+-- the pour route re-checked from the request and allowed (switched on, a
+-- country Robinhood offers its tokens in, the session's own plain EVM key;
+-- lib/server/delivery-gate). The evening pass has no request to check
+-- from, so it pays such a claim only when this is true; null on every
+-- other claim, and written only for Robinhood Chain buys.
+alter table pour_claims add column if not exists delivery_ok boolean;
 
 -- Daily closes per listing and benchmark (lib/marks), kept past DefiLlama's
 -- ninety day reach so a portfolio can be drawn for as long as it existed.

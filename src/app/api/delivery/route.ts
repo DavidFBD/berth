@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { deliveryFor, hubDelivery, type Delivery } from "@/lib/delivery";
-import { accountEvmAddresses } from "@/lib/server/identities";
-import { AVAILABLE, requestCountry } from "@/lib/server/availability";
-import { confirmPlainKey, robinhoodDeliveryOn } from "@/lib/server/delivery";
+import type { Delivery } from "@/lib/delivery";
+import { requestCountry } from "@/lib/server/availability";
+import { decideDelivery } from "@/lib/server/delivery";
 import { readRewardsCaller, resolveRewardsUser } from "@/lib/server/rewards-route";
 
 export const dynamic = "force-dynamic";
@@ -36,36 +35,14 @@ export async function POST(request: NextRequest) {
   const resolved = await resolveRewardsUser(read.caller);
   if (!resolved.ok) return resolved.response;
   const { user } = resolved;
-
-  if (!robinhoodDeliveryOn([user.id, user.wallet_address, read.caller.wallet])) {
-    return NextResponse.json(hubDelivery("not_listed") satisfies DeliveryResponse);
-  }
-  // Where Berth takes no new buy, a buy is not on offer to deliver anywhere.
-  if (!(read.caller.availability ?? AVAILABLE).available) {
-    return NextResponse.json(hubDelivery("no_new_buys") satisfies DeliveryResponse);
-  }
-
-  // The wallet this session signs with, and only when it is one of the
-  // account's own linked EVM wallets. Not the home wallet when the two
-  // differ: a sell of what lands on Robinhood Chain (plan P3a) must be
-  // signed there by the wallet that holds it, and the one wallet this
-  // session is known to sign with is its own. Anything else (a Solana or
-  // Bitcoin session, a wallet the account does not hold) answers the hub.
-  // A failed read of the account's wallets is the hub too, never a guess.
-  let evmAddress: string | null = null;
-  try {
-    const { all } = await accountEvmAddresses(user.id, user.wallet_address, { failClosed: true });
-    const signer = (read.caller.wallet ?? "").toLowerCase();
-    evmAddress = signer && all.includes(signer) ? signer : null;
-  } catch {
-    return NextResponse.json(hubDelivery("read_failed") satisfies DeliveryResponse);
-  }
-  const delivery = deliveryFor({
-    switched: true,
-    evmAddress,
+  // The decision itself lives in lib/server/delivery, where the order
+  // record makes it again for a buy that was delivered on Robinhood Chain.
+  const delivery = await decideDelivery({
+    userId: user.id,
+    usersWallet: user.wallet_address,
+    signer: read.caller.wallet,
+    availability: read.caller.availability,
     country: requestCountry(request.headers, { url: request.url }),
   });
-  // Only a plain key on Robinhood Chain and on Sonic: a smart account's
-  // address there may be nobody's (lib/server/delivery isPlainKey).
-  return NextResponse.json((await confirmPlainKey(delivery)) satisfies DeliveryResponse);
+  return NextResponse.json(delivery satisfies DeliveryResponse);
 }

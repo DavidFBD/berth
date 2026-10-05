@@ -3,6 +3,8 @@ import type { RewardList } from "@/lib/profile-types";
 import { flushUnannounced } from "@/lib/server/accounts";
 import { awardFilledPour, closePourClaim, fillVerdict, savePourClaim } from "@/lib/server/pour-claims";
 import { forgoHold, isNoXp, markNoXp, pourPaid } from "@/lib/server/no-xp";
+import { requestCountry } from "@/lib/server/availability";
+import { gateRobinhoodBuy, markDeliveryOk } from "@/lib/server/delivery-gate";
 import { orderListingSymbol, recordOrder } from "@/lib/server/orders";
 import { accountOwnedWallets } from "@/lib/server/pour-ownership";
 import { verifyPourTx } from "@/lib/server/pour-verify";
@@ -99,6 +101,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: verified.reason }, { status: 422 });
   }
 
+  // A buy delivered on Robinhood Chain (plan P2a): the delivery decision
+  // /api/delivery makes is made again here, from this request, and the buy
+  // earns only when it answers Robinhood Chain to the very wallet it went
+  // to (lib/server/delivery-gate). A refused one is still recorded, held
+  // on Robinhood Chain, and pays nothing, then or ever. A read that did not
+  // answer refuses nothing: the claim is kept and the client asks again.
+  const gate = await gateRobinhoodBuy({
+    intentTx: txHash,
+    direction,
+    intent: verified.intent,
+    inputs: {
+      userId: user.id,
+      usersWallet: user.wallet_address,
+      signer: read.caller.wallet,
+      availability,
+      country: requestCountry(request.headers, { url: request.url }),
+    },
+  });
+  if (gate === "unknown") {
+    await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction));
+    return NextResponse.json({ error: "not yet known", retry: true }, { status: 503, headers: { "retry-after": "10" } });
+  }
+
   // XP only for an order that filled (lib/server/pour-claims): a created
   // then cancelled or expired intent earns nothing. When the fill cannot
   // be confirmed yet, a claim is kept and the evening pass pays it.
@@ -136,6 +161,9 @@ export async function POST(request: NextRequest) {
   // pass records and pays it (lib/server/pour-claims payClaim). Closed below
   // once paid or recorded.
   await savePourClaim(user.id, txHash, direction, claimedFill, orderListingSymbol(verified.sodax, verified.intent, direction));
+  // The evening pass cannot judge a Robinhood Chain destination (it has no
+  // request), so the claim carries this route's allowance to it.
+  if (gate === "allowed") await markDeliveryOk(txHash, user.id);
   // An unknown verdict stops at the claim: the evening pass confirms it.
   if (verdict === "filled" && noXp) {
     await recordOrder({

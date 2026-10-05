@@ -1,5 +1,6 @@
 import { EvmSolverService, IntentsAbi, type Intent, type IntentResponse } from "@sodax/sdk";
 import { forgoHold, isNoXp, markNoXp, pourPaid } from "@/lib/server/no-xp";
+import { isRobinhoodBuy, settleRobinhoodClaim } from "@/lib/server/delivery-gate";
 import { parseEventLogs, type Log } from "viem";
 import { awardXp } from "@/lib/server/accounts";
 import { getSql } from "@/lib/server/db";
@@ -255,6 +256,8 @@ export type ClaimPayDeps = {
   readIntent: (intentTx: string) => Promise<Intent | null>;
   prove: (claim: SettledClaim, intent: Intent) => Promise<OwnershipVerdict>;
   record: (claim: SettledClaim, intent: Intent) => Promise<void>;
+  /** A claim on a buy delivered on Robinhood Chain: paid only if the pour route allowed its destination (lib/server/delivery-gate). */
+  settleRobinhood?: (claim: SettledClaim) => Promise<unknown>;
 };
 
 export function defaultClaimPayDeps(): ClaimPayDeps {
@@ -298,6 +301,10 @@ export async function payClaim(
   // never paid (lib/server/no-xp), which payRecordedClaim reads below. A
   // buy already paid is a replay and is never marked after the fact.
   if (!owned.ok && !(await pourPaid(claim.intent_tx))) await markNoXp(claim.intent_tx, "unproven_source");
+  // Delivered on Robinhood Chain: no request here to judge the destination
+  // from, so it pays only on the pour route's recorded allowance, and is
+  // otherwise marked to pay nothing (payRecordedClaim reads that below).
+  if (isRobinhoodBuy(claim.direction, intent)) await (deps.settleRobinhood ?? settleRobinhoodClaim)(claim);
   await deps.record(claim, intent);
   if (!(await orderExists(claim.intent_tx))) return false;
   return payRecordedClaim(claim);

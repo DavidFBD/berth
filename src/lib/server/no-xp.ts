@@ -14,9 +14,11 @@ import { getSql } from "@/lib/server/db";
 /**
  * Why a buy pays nothing: reported from where Berth is not available, or
  * delivered to the account's own hub wallet by a payer that cannot be
- * proven the account's (lib/server/pour-ownership).
+ * proven the account's (lib/server/pour-ownership), or delivered on
+ * Robinhood Chain where the server's own re-check of the destination did
+ * not allow it, or could never make it (lib/server/delivery-gate).
  */
-export type NoXpReason = "unavailable" | "unproven_source";
+export type NoXpReason = "unavailable" | "unproven_source" | "delivery_refused";
 
 export async function markNoXp(intentTx: string, reason: NoXpReason = "unavailable"): Promise<void> {
   await getSql().query(`insert into no_xp_intents (intent_tx, reason) values ($1, $2) on conflict (intent_tx) do nothing`, [

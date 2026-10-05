@@ -1,7 +1,9 @@
 import { ChainKeys } from "@sodax/sdk";
+import { AVAILABLE, type Availability } from "@/lib/availability";
 import { switchedOn } from "@/lib/limit-orders";
-import { hubDelivery, type Delivery } from "@/lib/delivery";
+import { deliveryFor, hubDelivery, type Delivery, type DeliveryReason } from "@/lib/delivery";
 import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
+import { accountEvmAddresses } from "@/lib/server/identities";
 import { HUB_RPC_URLS, getPinnedRpcUrls } from "@/lib/sodax-config";
 
 /**
@@ -51,12 +53,28 @@ function isPlainCode(code: string): boolean {
  */
 export async function isPlainKey(
   address: string,
-  { fetcher = fetch }: { fetcher?: typeof fetch } = {},
+  options: { fetcher?: typeof fetch } = {},
 ): Promise<boolean> {
+  return (await readPlainKey(address, options)) === true;
+}
+
+/**
+ * isPlainKey, telling a "no" apart from a read that did not answer:
+ * false when either chain shows code that is not plain, "unknown" when a
+ * chain could not be read (and none showed such code), true only when both
+ * answered plain. The order record needs the difference (a read that fails
+ * there is asked again later, never held against the order); the route
+ * answers the hub for both.
+ */
+export async function readPlainKey(
+  address: string,
+  { fetcher = fetch }: { fetcher?: typeof fetch } = {},
+): Promise<boolean | "unknown"> {
   const reads = await Promise.all(
     CODE_CHAINS.map((urls) => hubRpc<string>("eth_getCode", [address, "latest"], { ...ROUTE_READ, urls, fetcher })),
   );
-  return reads.every((read) => read.ok && typeof read.result === "string" && isPlainCode(read.result));
+  if (reads.some((read) => read.ok && typeof read.result === "string" && !isPlainCode(read.result))) return false;
+  return reads.every((read) => read.ok && typeof read.result === "string") ? true : "unknown";
 }
 
 /**
@@ -67,4 +85,89 @@ export async function isPlainKey(
 export async function confirmPlainKey(delivery: Delivery, options: { fetcher?: typeof fetch } = {}): Promise<Delivery> {
   if (delivery.chainKey !== "robinhood") return delivery;
   return (await isPlainKey(delivery.address, options)) ? delivery : hubDelivery("not_eoa");
+}
+
+/** What the delivery decision is made from: the account, the wallet this session signs with, where the request came from. */
+export type DeliveryInputs = {
+  userId: string;
+  /** users.wallet_address, the account's home. */
+  usersWallet: string | null;
+  /** The wallet the session signs with (the rewards caller's `wallet`). */
+  signer: string | null | undefined;
+  /** Where Berth takes new buys (the caller's availability); absent reads as available, as the route reads it. */
+  availability: Availability | undefined;
+  /** The request's country (lib/server/availability requestCountry). */
+  country: string | null;
+  fetcher?: typeof fetch;
+};
+
+/**
+ * The one decision where an account's next buy is delivered (plan P2a: the
+ * route's answer and the order record's re-check are this same function).
+ * Everyone not switched on gets the hub before any further read. Switched
+ * on, the hub is still the answer where Berth takes no new buy, where
+ * Robinhood does not offer its tokens (lib/delivery), when the country is
+ * unknown, for a session not signing with one of the account's own linked
+ * EVM wallets, for an address with code on Robinhood Chain or Sonic, and
+ * whenever a read fails. `unread` says a read failed rather than answered
+ * no, which only the re-check acts on.
+ */
+async function decide(inputs: DeliveryInputs): Promise<{ delivery: Delivery; unread: boolean }> {
+  const { userId, usersWallet, signer, availability, country, fetcher } = inputs;
+  if (!robinhoodDeliveryOn([userId, usersWallet, signer])) return { delivery: hubDelivery("not_listed"), unread: false };
+  // Where Berth takes no new buy, a buy is not on offer to deliver anywhere.
+  if (!(availability ?? AVAILABLE).available) return { delivery: hubDelivery("no_new_buys"), unread: false };
+  // The wallet this session signs with, and only when it is one of the
+  // account's own linked EVM wallets. Not the home wallet when the two
+  // differ: a sell of what lands on Robinhood Chain (plan P3a) must be
+  // signed there by the wallet that holds it, and the one wallet this
+  // session is known to sign with is its own. Anything else (a Solana or
+  // Bitcoin session, a wallet the account does not hold) answers the hub.
+  // A failed read of the account's wallets is the hub too, never a guess.
+  let evmAddress: string | null = null;
+  try {
+    const { all } = await accountEvmAddresses(userId, usersWallet, { failClosed: true });
+    const own = (signer ?? "").toLowerCase();
+    evmAddress = own && all.includes(own) ? own : null;
+  } catch {
+    return { delivery: hubDelivery("read_failed"), unread: true };
+  }
+  const delivery = deliveryFor({ switched: true, evmAddress, country });
+  if (delivery.chainKey !== "robinhood") return { delivery, unread: false };
+  // Only a plain key on Robinhood Chain and on Sonic: a smart account's
+  // address there may be nobody's (isPlainKey).
+  const plain = await readPlainKey(delivery.address, { fetcher });
+  return plain === true ? { delivery, unread: false } : { delivery: hubDelivery("not_eoa"), unread: plain === "unknown" };
+}
+
+/** The delivery for the next buy, as app/api/delivery answers it. */
+export async function decideDelivery(inputs: DeliveryInputs): Promise<Delivery> {
+  return (await decide(inputs)).delivery;
+}
+
+/**
+ * The server's own check of a buy that was delivered on Robinhood Chain,
+ * when the order is recorded (plan, carried into P2a). The route's answer
+ * is advice and the intent is built and signed in the browser, so the
+ * same decision is made again from this request: the buy is allowed only
+ * when today's answer is Robinhood Chain to exactly the address it was
+ * delivered to. `refused` says why (a hub reason, or `other_address` for
+ * a delivery to any other wallet); `unknown` is a read that did not
+ * answer, asked again later and never held against the order.
+ */
+export type DestinationCheck =
+  | { verdict: "allowed" }
+  | { verdict: "refused"; reason: Exclude<DeliveryReason, "switched_on" | "read_failed"> | "other_address" }
+  | { verdict: "unknown" };
+
+export async function recheckRobinhoodDestination(inputs: DeliveryInputs & { dstAddress: string }): Promise<DestinationCheck> {
+  const { delivery, unread } = await decide(inputs);
+  if (unread) return { verdict: "unknown" };
+  if (delivery.chainKey === "robinhood") {
+    return delivery.address.toLowerCase() === inputs.dstAddress.toLowerCase()
+      ? { verdict: "allowed" }
+      : { verdict: "refused", reason: "other_address" };
+  }
+  // read_failed always comes with unread, so it never reaches here.
+  return { verdict: "refused", reason: delivery.reason as Exclude<DeliveryReason, "switched_on" | "read_failed"> };
 }
