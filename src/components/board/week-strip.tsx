@@ -83,7 +83,7 @@ export function WeekStrip({
         aria-labelledby={headingId}
         // Blocked, not masked: the days are the account's own changes, with its holdings' marks.
         data-ph-block
-        className="mt-1 -mx-0.5 grid grid-cols-7 gap-0.5"
+        className="mt-1 -mx-0.5 grid grid-cols-7 gap-0.5 overflow-hidden"
       >
         {days.map((day, index) => {
           const direction = changeDirection(day.changePct ?? undefined) ?? "flat";
@@ -120,17 +120,24 @@ export function WeekStrip({
               </span>
               <span
                 className={cn(
-                  "money text-[11.5px] leading-4 font-medium tracking-[-0.02em] tabular-nums",
+                  "money text-[10.5px] leading-4 font-medium tracking-[-0.03em] tabular-nums min-[360px]:text-[11.5px] min-[360px]:tracking-[-0.02em]",
                   day.changePct == null ? "text-muted-foreground" : TONE[direction],
                 )}
               >
-                {day.changePct == null ? "·" : formatPercentChange(day.changePct, 1)}
+                {day.changePct == null
+                  ? "·"
+                  : // A double-digit day drops its decimal, so seven tiles fit at 320px.
+                    formatPercentChange(day.changePct, Math.abs(day.changePct) >= 10 ? 0 : 1)}
               </span>
               <span className="flex h-4 max-w-full items-center justify-center text-secondary-foreground">
                 {mark ? (
                   <CompanyMark id={mark} className="size-3.5" />
-                ) : day.moverName ? (
-                  <span className="max-w-full truncate px-0.5 text-[10px] leading-4">{day.moverName}</span>
+                ) : day.mover ? (
+                  // No pinned mark: the lettered tile, as the holdings list falls
+                  // back to, small. The name is in the tile's label.
+                  <span className="money rounded-[4px] bg-muted px-1 text-[8.5px] leading-[14px] font-medium tracking-tight">
+                    {day.mover.symbol.slice(0, 4)}
+                  </span>
                 ) : null}
               </span>
             </button>

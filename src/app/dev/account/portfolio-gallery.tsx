@@ -43,6 +43,7 @@ import MARKS_JSON from "./portfolio-marks.json";
  *   /dev/account?portfolio=day-7          the first seven market days, full, with news on the last
  *   /dev/account?portfolio=one-month      a month with several buys and a sell
  *   /dev/account?portfolio=down-week      a week in which most days fell
+ *   /dev/account?portfolio=narrow         a double-digit day and an unmarked name, for a 320px check
  *   /dev/account?portfolio=empty          nothing held
  *   /dev/account?portfolio=loading        the query still out
  *
@@ -71,12 +72,19 @@ export const PORTFOLIO_STATES = [
   "day-7",
   "one-month",
   "down-week",
+  "narrow",
   "empty",
   "loading",
 ] as const;
 export type PortfolioState = (typeof PORTFOLIO_STATES)[number];
 
-const MARKS = MARKS_JSON as Record<string, Marks>;
+const MARKS: Record<string, Marks> = {
+  ...(MARKS_JSON as Record<string, Marks>),
+  // Dev only: Microsoft has no stored closes here and no pinned mark, so
+  // the narrow scene borrows Tesla's swings to show a long unmarked name
+  // on a double-digit day. Not Microsoft's prices.
+  MSFT: (MARKS_JSON as Record<string, Marks>).TSLA,
+};
 const FEE = 0.003;
 
 /** `priceDay`: the day whose close the buy was filled at, when not its own (a morning buy). */
@@ -204,6 +212,15 @@ const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
       { symbol: "NVDA", day: "2026-09-17", usd: 10 },
     ],
     sells: [{ symbol: "AAPL", day: "2026-09-21", share: 0.4 }],
+  },
+  narrow: {
+    from: "2026-06-26",
+    to: "2026-07-08",
+    buys: [
+      { symbol: "MSFT", day: "2026-06-26", usd: 20 },
+      { symbol: "NVDA", day: "2026-06-26", usd: 5 },
+    ],
+    sells: [],
   },
   "down-week": {
     from: "2026-09-02",
