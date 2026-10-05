@@ -220,6 +220,19 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
     }
     return closeOn(closes, point.day);
   };
+  /**
+   * The price a sell is valued at, the line's own rule (lib/portfolio-history):
+   * the listing's close that day, or today the live price, never the
+   * snapshot's held price, so the strip and the line agree on a sell day.
+   */
+  const sellPriceAt = (point: Point, symbol: string): number | undefined => {
+    const closes = input.listingCloses?.[symbol];
+    if (point.live) {
+      const live = input.live?.prices?.[symbol];
+      return live !== undefined && live > 0 ? live : closeOnOrBefore(closes, point.day);
+    }
+    return closeOn(closes, point.day);
+  };
 
   const landed: (typeof sorted)[] = points.map(() => []);
   const orders: StoryOrder[] = [];
@@ -227,8 +240,8 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
     const index = points.findIndex((point) => point.asOf >= order.at);
     if (index === -1) continue;
     landed[index].push(order);
-    // A sell is told at the day's price, as the line values its proceeds.
-    const price = order.direction === "sell" ? priceAt(points[index], order.symbol) : undefined;
+    // A sell is told at the price the line values its proceeds at.
+    const price = order.direction === "sell" ? sellPriceAt(points[index], order.symbol) : undefined;
     orders.push({
       day: points[index].day,
       at: order.placedAt,
@@ -246,6 +259,12 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
   const stories: DayStory[] = points.map((point, index) => {
     const before = index > 0 ? points[index - 1] : undefined;
     const buys = landed[index].filter((order) => order.direction === "buy");
+    const sold = new Map<string, number>();
+    for (const order of landed[index]) {
+      if (order.direction !== "sell") continue;
+      if (order.quantity === null) return { day: point.day, change: null, changePct: null, top: null, mover: null, fromBuy: !before, parts: {} };
+      sold.set(order.symbol, (sold.get(order.symbol) ?? 0) + order.quantity);
+    }
     const unknown: DayStory = { day: point.day, change: null, changePct: null, top: null, mover: null, fromBuy: !before, parts: {} };
     // Nothing before and nothing bought: there is no change to tell.
     if (!before && buys.length === 0) return { ...unknown, fromBuy: false };
@@ -253,10 +272,23 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
     const parts = new Map<string, number>();
     const add = (symbol: string, usd: number) => parts.set(symbol, (parts.get(symbol) ?? 0) + usd);
     const paid = new Map<string, number>();
+    // Held through the day: what stayed moves to today's price, what was
+    // sold moves to the price it was sold at (the line's rule).
     for (const [symbol, holding] of before?.held ?? []) {
-      const now = priceAt(point, symbol);
-      if (now === undefined || !(holding.price > 0)) return unknown;
-      add(symbol, holding.quantity * (now - holding.price));
+      if (!(holding.price > 0)) return unknown;
+      const out = Math.min(sold.get(symbol) ?? 0, holding.quantity);
+      const kept = holding.quantity - out;
+      if (kept > DUST_QUANTITY) {
+        const now = priceAt(point, symbol);
+        if (now === undefined) return unknown;
+        add(symbol, kept * (now - holding.price));
+      }
+      if (out > DUST_QUANTITY) {
+        const at = sellPriceAt(point, symbol);
+        if (at === undefined) return unknown;
+        add(symbol, out * (at - holding.price));
+      }
+      sold.set(symbol, (sold.get(symbol) ?? 0) - out);
     }
     for (const order of buys) {
       if (order.usd === null || order.quantity === null) return unknown;
@@ -264,6 +296,14 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
       if (now === undefined) return unknown;
       add(order.symbol, order.quantity * now - order.usd);
       paid.set(order.symbol, (paid.get(order.symbol) ?? 0) + order.usd);
+    }
+    // Bought and sold again the same day: the part sold goes at its sell price.
+    for (const [symbol, rest] of sold) {
+      if (!(rest > DUST_QUANTITY)) continue;
+      const now = priceAt(point, symbol);
+      const at = sellPriceAt(point, symbol);
+      if (now === undefined || at === undefined) return unknown;
+      add(symbol, rest * (at - now));
     }
 
     const change = [...parts.values()].reduce((sum, usd) => sum + usd, 0);

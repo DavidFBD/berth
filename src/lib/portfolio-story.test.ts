@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Marks, OrderFacts } from "@/lib/benchmark";
 import { markAsOf } from "@/lib/marks";
 import { combineAccountDays } from "@/lib/server/portfolio";
-import { historyRanges } from "@/lib/portfolio-history";
+import { historyRanges, portfolioHistory } from "@/lib/portfolio-history";
 import {
   dailyStory,
   pickMove,
@@ -92,6 +92,7 @@ describe("dailyStory", () => {
         ]),
       ],
       orders: [buy("2026-09-14T15:00:00Z", 200, 2), buy("2026-09-14T15:00:00Z", 50, 1, "AAPL"), sell("2026-09-15T15:00:00Z", 1)],
+      listingCloses: { NVDA: marks({ "2026-09-14": 100, "2026-09-15": 90 }) },
     });
     // Both NVIDIA lost 10 each, the sold one included, and Apple made 2.
     expect(stories[1].change).toBeCloseTo(-18);
@@ -101,6 +102,22 @@ describe("dailyStory", () => {
       ["2026-09-14", "buy", 50],
       ["2026-09-15", "sell", 90],
     ]);
+  });
+
+  it("values the part sold at the line's price, so the strip and the line agree on a sell day", () => {
+    // Ten held at 10; five sold, the close was 10, but the evening snapshot read 10.5.
+    const days = [
+      day("2026-09-14", [{ symbol: "NVDA", quantity: 10, price: 10 }]),
+      day("2026-09-15", [{ symbol: "NVDA", quantity: 5, price: 10.5 }]),
+    ];
+    const orders = [buy("2026-09-14T15:00:00Z", 100, 10), sell("2026-09-15T15:00:00Z", 5)];
+    const listingCloses = { NVDA: marks({ "2026-09-14": 10, "2026-09-15": 10 }) };
+    const { stories, orders: landed } = dailyStory({ days, orders, listingCloses });
+    // The line: 52.50 held plus 5 sold at the close of 10, on 100 before.
+    const line = portfolioHistory({ days, orders, listingCloses, benchmarkMarks: { dates: [], values: [] } }, "since");
+    expect(stories[1].change).toBeCloseTo(5 * 10.5 + 5 * 10 - 100);
+    expect(stories[1].changePct).toBeCloseTo(line.days[1].returnPct! - line.days[0].returnPct!, 10);
+    expect(landed[1].usd).toBeCloseTo(50);
   });
 
   it("takes the close for a listing sold out of the holdings that day", () => {
