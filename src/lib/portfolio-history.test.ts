@@ -739,6 +739,63 @@ describe("the percent line", () => {
     expect(result.days.at(-1)!.benchmarkReturnPct).toBeCloseTo(result.benchmarkPct!, 10);
   });
 
+  // A listing that is the benchmark itself, bought at the same prices: the
+  // shadow is the account, so the two returns must agree exactly.
+  const asBenchmark = (orders: OrderFacts[], dates: string[]) => {
+    const value = (day: string) => {
+      let units = 0;
+      for (const order of orders) {
+        if (dayOfClose(order.placedAt) > day) continue;
+        units += order.direction === "buy" ? order.quantity! : -order.quantity!;
+      }
+      return units * SPY.values[SPY.dates.indexOf(day)];
+    };
+    return portfolioHistory(
+      {
+        days: dates.map((day) => ({ day, value: value(day) })),
+        orders,
+        benchmarkSymbol: "SPY",
+        benchmarkMarks: SPY,
+        listingCloses: { NVDA: SPY },
+      },
+      "since",
+    );
+  };
+  /** The day whose 21:30 close first comes after an order. */
+  const dayOfClose = (placedAt: string) => {
+    const date = placedAt.slice(0, 10);
+    return Date.parse(placedAt) > Date.parse(markAsOf(date)) ? "9999" : date;
+  };
+
+  it("weighs a later, larger buy as your side does: same money, same days", () => {
+    // $100 on Monday at 50, then $1,000 more on Thursday at 52 (Wednesday's close).
+    const result = asBenchmark(
+      [buy("2026-09-14T15:00:00Z", 100, 2), buy("2026-09-17T15:00:00Z", 1000, 1000 / 52)],
+      ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"],
+    );
+    expect(result.benchmarkStatus).toBe("ok");
+    expect(result.benchmarkPct).toBeCloseTo(result.changePct!, 10);
+    result.days.forEach((point) => expect(point.benchmarkReturnPct).toBeCloseTo(point.returnPct!, 10));
+  });
+
+  it("earns the benchmark nothing while the money is out of the market", () => {
+    // In at 50 on Monday, all sold on Wednesday at 52, back in on Friday at 49.
+    const result = asBenchmark(
+      [
+        buy("2026-09-14T15:00:00Z", 100, 2),
+        sell("2026-09-16T15:00:00Z", 2),
+        buy("2026-09-18T15:00:00Z", 104, 104 / 49),
+      ],
+      ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"],
+    );
+    // 52 on 50 while in, then 51 on 49 once back: the fall to 49 in between is missed.
+    const expected = ((52 / 50) * (51 / 49) - 1) * 100;
+    expect(result.changePct).toBeCloseTo(expected, 10);
+    expect(result.benchmarkPct).toBeCloseTo(expected, 10);
+    // The price alone, 50 to 51, would have said +2%.
+    expect(result.benchmarkPct).not.toBeCloseTo(2, 1);
+  });
+
   it("has no percent line where the time-weighted return cannot be told, and keeps the dollars", () => {
     const unpriced = { ...input, orders: [buy("2026-09-15T15:00:00Z", null), buy("2026-09-16T15:00:00Z", 50)] };
     const result = portfolioHistory(unpriced, "since");

@@ -35,8 +35,13 @@ import { dayOfOrder, type SnapshotBase } from "@/lib/portfolio-days";
  *   starts from its first close; since first buy starts from nothing, so
  *   the first day's buys are its base and the move from the order to that
  *   close (fee included) counts, as in lib/benchmark compareHolding.
- * - `benchmarkPct`: the benchmark's own price change over the same days;
- *   since first buy, from its price at the first order's minute.
+ * - `benchmarkPct`: the shadow's own time-weighted return over the same
+ *   days, by the same rule with the same dollars in and the shadow's
+ *   units sold valued out: same money, same days. Money out of the market
+ *   earns it nothing, and a later, larger buy weighs what it weighs on
+ *   your side. Since first buy, the first buy's units are priced at the
+ *   order's minute. A day with no close is a gap in the chain; its flows
+ *   are counted at the next priced day.
  *
  * A LATER START. When money moved without an order (a transfer, or a
  * trade the ledger never saw) but a stored snapshot's holdings plus the
@@ -66,8 +71,8 @@ import { dayOfOrder, type SnapshotBase } from "@/lib/portfolio-days";
  *
  * THE PERCENT LINE. Each point also carries the return so far: yours is
  * the same daily chain as `changePct` read at every point, the
- * benchmark's its price over the same start (the same money in it earns
- * exactly that, whatever goes in or out). Both start at 0 on a fixed
+ * benchmark's the same chain over the shadow (`benchmarkPct` read at
+ * every point). Both start at 0 on a fixed
  * range; since first buy they count from the first buy, so the chart
  * draws an origin at 0 before the first close. The last point's returns
  * are `changePct` and `benchmarkPct`.
@@ -281,9 +286,14 @@ function shadowLine(
   marks: Marks,
   livePrice: number | null,
   basis: Basis,
-): { values: (number | null)[]; status: Exclude<BenchmarkStatus, "too_short"> } {
-  const none = () => series.map(() => null);
-  if (basis === "unexplained") return { values: none(), status: "unexplained_balance" };
+): Shadow {
+  const none = () => ({
+    values: series.map(() => null),
+    prices: series.map(() => undefined),
+    bought: series.map(() => 0),
+    soldUnits: series.map(() => 0),
+  });
+  if (basis === "unexplained") return { ...none(), status: "unexplained_balance" };
   const base = basis === "orders" ? undefined : basis;
   const lastAsOf = series.at(-1)?.asOf ?? -Infinity;
   const counted = orders.filter((order) => order.at <= lastAsOf && (!base || order.at > base.at));
@@ -296,20 +306,23 @@ function shadowLine(
   }
   for (const order of counted) {
     if (order.direction === "buy") {
-      if (order.usd === null || order.quantity === null) return { values: none(), status: "unpriced_orders" };
+      if (order.usd === null || order.quantity === null) return { ...none(), status: "unpriced_orders" };
       held.set(order.symbol, (held.get(order.symbol) ?? 0) + order.quantity);
     } else {
       const before = held.get(order.symbol) ?? 0;
-      if (order.quantity === null || before <= 0) return { values: none(), status: "unpriced_orders" };
-      if (order.quantity > before * (1 + SELL_TOLERANCE)) return { values: none(), status: "unpriced_orders" };
+      if (order.quantity === null || before <= 0) return { ...none(), status: "unpriced_orders" };
+      if (order.quantity > before * (1 + SELL_TOLERANCE)) return { ...none(), status: "unpriced_orders" };
       held.set(order.symbol, Math.max(before - order.quantity, 0));
     }
   }
-  if (marks.dates.length === 0) return { values: none(), status: "no_marks" };
+  if (marks.dates.length === 0) return { ...none(), status: "no_marks" };
 
   const units = new Map<string, number>();
   const quantity = new Map<string, number>();
   const values: (number | null)[] = [];
+  const prices: (number | undefined)[] = series.map(() => undefined);
+  const bought: number[] = series.map(() => 0);
+  const soldUnits: number[] = series.map(() => 0);
   let next = 0;
   for (const [index, point] of series.entries()) {
     if (base && index < base.index) {
@@ -319,7 +332,7 @@ function shadowLine(
     if (base && index === base.index) {
       // The snapshot's whole value buys the benchmark at that day's close.
       const close = closeOn(marks, base.day);
-      if (!(close && close > 0)) return { values: none(), status: "no_marks" };
+      if (!(close && close > 0)) return { ...none(), status: "no_marks" };
       for (const holding of base.holdings) {
         units.set(holding.symbol, (units.get(holding.symbol) ?? 0) + (holding.quantity * holding.price) / close);
         quantity.set(holding.symbol, (quantity.get(holding.symbol) ?? 0) + holding.quantity);
@@ -330,11 +343,13 @@ function shadowLine(
       const heldBefore = quantity.get(order.symbol) ?? 0;
       if (order.direction === "buy") {
         const mark = symbol === undefined ? undefined : order.benchmarkMarks?.[symbol];
-        if (!(mark && mark > 0)) return { values: none(), status: "no_marks" };
+        if (!(mark && mark > 0)) return { ...none(), status: "no_marks" };
         units.set(order.symbol, (units.get(order.symbol) ?? 0) + (order.usd ?? 0) / mark);
         quantity.set(order.symbol, heldBefore + (order.quantity ?? 0));
+        bought[index] += order.usd ?? 0;
       } else {
         const sold = Math.min((order.quantity ?? 0) / heldBefore, 1);
+        soldUnits[index] += (units.get(order.symbol) ?? 0) * sold;
         units.set(order.symbol, (units.get(order.symbol) ?? 0) * (1 - sold));
         quantity.set(order.symbol, Math.max(heldBefore - (order.quantity ?? 0), 0));
       }
@@ -345,10 +360,65 @@ function shadowLine(
       ? (livePrice ?? closeOnOrBefore(marks, point.day))
       : closeOn(marks, point.day);
     const total = [...units.values()].reduce((sum, value) => sum + value, 0);
+    prices[index] = price;
     values.push(price === undefined ? null : total * price);
   }
-  return { values, status: "ok" };
+  return { values, prices, bought, soldUnits, status: "ok" };
 }
+
+/**
+ * The shadow at every point: its value (null on a day the benchmark has no
+ * close), the dollars that bought into it at each point, and the benchmark
+ * units sold out of it at each point.
+ */
+type Shadow = {
+  values: (number | null)[];
+  prices: (number | undefined)[];
+  bought: number[];
+  soldUnits: number[];
+  status: Exclude<BenchmarkStatus, "too_short">;
+};
+
+/**
+ * The shadow's own time-weighted return, point by point over the window,
+ * with the same rule as yours: r = (S + out) / (S before + in), `in` the
+ * same buy dollars, `out` the units sold at that point's price. A day
+ * with no close is a gap: its flows wait for the next priced point, and
+ * the chain picks up there. So the benchmark line is the same money on
+ * the same days, and money out of the market earns it nothing.
+ */
+function shadowReturns(
+  shadow: Shadow,
+  from: number,
+  length: number,
+  fromZero: boolean,
+): (number | null)[] {
+  const out: (number | null)[] = Array.from({ length }, () => null);
+  // The last priced value and the flows since it.
+  let lastValue: number | null = fromZero ? (from > 0 ? (shadow.values[from - 1] ?? 0) : 0) : shadow.values[from];
+  if (lastValue === null) return out;
+  if (!fromZero) out[0] = 0;
+  let growth = 1;
+  let pendingIn = 0;
+  let pendingSold = 0;
+  for (let index = fromZero ? 0 : 1; index < length; index += 1) {
+    const at = from + index;
+    pendingIn += shadow.bought[at];
+    pendingSold += shadow.soldUnits[at];
+    const value = shadow.values[at];
+    if (value === null) continue;
+    // Units sold since the last priced point go out at this point's price.
+    const base = lastValue + pendingIn;
+    const outflow = pendingSold * (shadow.prices[at] ?? 0);
+    growth *= base > DUST_USD ? (value + outflow) / base : 1;
+    out[index] = (growth - 1) * 100;
+    lastValue = value;
+    pendingIn = 0;
+    pendingSold = 0;
+  }
+  return out;
+}
+
 
 /**
  * What the shadow is built on: every order ('orders'), a snapshot and the
@@ -483,36 +553,12 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
     returns[index] = (growth - 1) * 100;
   }
 
-  let benchmarkPct: number | null = null;
-  const benchmarkReturns: (number | null)[] = window.map(() => null);
-  if (shadow.status === "ok") {
-    const marks = input.benchmarkMarks;
-    const lastPoint = window.at(-1)!;
-    const endMark =
-      (lastPoint.live ? livePrice ?? undefined : undefined) ?? closeOnOrBefore(marks, lastPoint.day);
-    const startMark = fromZero
-      ? input.benchmarkSymbol && orders[0]?.benchmarkMarks?.[input.benchmarkSymbol]
-      : closeOnOrBefore(marks, since);
-    if (startMark && endMark) benchmarkPct = (endMark / startMark - 1) * 100;
-    // The same money in the benchmark earns the benchmark's own price
-    // change, whatever went in or out, so its return is its price from the
-    // same start. A day with no close is a gap, as in the dollar line.
-    if (startMark) {
-      window.forEach((point, index) => {
-        if (index === 0 && !fromZero) {
-          benchmarkReturns[index] = 0;
-          return;
-        }
-        const mark =
-          index === window.length - 1
-            ? endMark
-            : point.live
-              ? (livePrice ?? closeOnOrBefore(marks, point.day))
-              : closeOn(marks, point.day);
-        benchmarkReturns[index] = mark ? (mark / startMark - 1) * 100 : null;
-      });
-    }
-  }
+  // The benchmark's return is the shadow's own time-weighted chain: the
+  // same money on the same days, so money out of the market earns nothing
+  // and a later, larger buy weighs what it weighs on your side.
+  const benchmarkReturns: (number | null)[] =
+    shadow.status === "ok" ? shadowReturns(shadow, from, window.length, fromZero) : window.map(() => null);
+  const benchmarkPct = shadow.status === "ok" ? (benchmarkReturns.findLast((value) => value !== null) ?? null) : null;
   days.forEach((point, index) => {
     point.returnPct = returns[index];
     point.benchmarkReturnPct = benchmarkReturns[index];
