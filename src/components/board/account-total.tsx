@@ -15,7 +15,7 @@ import { useLimitOrders } from "@/hooks/use-limit-orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { accountTotalWith, waitingUsd } from "@/lib/limit-orders";
 import { shownPart } from "@/lib/last-known";
-import { useLastKnown } from "@/hooks/use-profile";
+import { useLastKnown, useOrders } from "@/hooks/use-profile";
 import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { formatUnits } from "viem";
 
@@ -115,6 +115,8 @@ export function useLiveFigures() {
 export function AccountTotal() {
   const live = useLiveFigures();
   const lastKnown = useLastKnown(live.hasAccount).data;
+  // The same query "What you own" reads; asked once for both.
+  const orders = useOrders(live.hasAccount).data;
 
   if (!live.hasAccount) return null;
   const known = lastKnown?.snapshot;
@@ -141,8 +143,29 @@ export function AccountTotal() {
           ? { holdings: holdings.lastKnown, cash: cash.lastKnown, funds: funds.lastKnown, asOf: lastKnown?.asOf }
           : undefined
       }
+      compareOpenByDefault={isNewAccount(orders)}
     />
   );
+}
+
+/** For this long after the first buy the comparison opens by itself. */
+const NEW_ACCOUNT_DAYS = 30;
+
+/**
+ * Whether the first buy is under thirty days old: the weeks in which the
+ * line is the account's story, so it opens without a tap until the person
+ * hides it once.
+ */
+export function isNewAccount(
+  orders: readonly { direction: string; placedAt: string }[] | undefined,
+  now = Date.now(),
+): boolean {
+  const first = orders
+    ?.filter((order) => order.direction === "buy")
+    .map((order) => Date.parse(order.placedAt))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)[0];
+  return first !== undefined && now - first < NEW_ACCOUNT_DAYS * 24 * 60 * 60 * 1000;
 }
 
 /**
@@ -154,14 +177,17 @@ export function AccountTotal() {
 export function AccountTotalView({
   figures,
   updating,
+  compareOpenByDefault = false,
 }: {
   figures: AccountFigures;
   /** Which parts are the last reading rather than live (lib/last-known), and when it was read. */
   updating?: { holdings?: boolean; cash?: boolean; funds?: boolean; asOf?: number };
+  /** A new account's comparison starts open, until the person hides it (isNewAccount). */
+  compareOpenByDefault?: boolean;
 }) {
   const copy = useCopy();
   const money = useMoney();
-  const [compareOpen, toggleCompare, compareId] = useDisclosure("compare");
+  const [compareOpen, toggleCompare, compareId] = useDisclosure("compare", compareOpenByDefault);
   const { holdings, cash, funds } = figures;
   const waiting = figures.waiting ?? 0;
   // What the person owns plus what waits in orders: the parts below always add up to it.
@@ -227,7 +253,8 @@ export function AccountTotalView({
         ))}
       </dl>
       {/* The comparison is a weekly look, not the first read: one tap
-          under the figure opens it, and the choice is remembered. */}
+          under the figure opens it, and the choice is remembered. In an
+          account's first thirty days it starts open, until hidden once. */}
       {figures.holdsAnything && (
         <>
           <button
