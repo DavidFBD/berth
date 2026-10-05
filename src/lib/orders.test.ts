@@ -282,6 +282,7 @@ describe("pickIntentFill", () => {
   it("keeps only this intent's fills and takes the whole one, its output counted cumulatively", () => {
     const logs = [filled("0xOTHER", 5, OTHER, 0n, 99n), filled("0xB", 12, HASH, 0n, 30n), filled("0xA", 10, HASH, 5n, 10n)];
     expect(pickIntentFill(logs, HASH)).toEqual({ fillTx: "0xb", received: 30n, blockNumber: 12 });
+    expect(pickIntentFill([filled("0xA", 10, HASH, 5n, 10n)], HASH, { wholeOnly: true })).toBeUndefined();
   });
 
   it("takes the last part fill when none is whole, and nothing when none is this intent's", () => {

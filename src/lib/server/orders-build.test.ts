@@ -20,7 +20,8 @@ vi.mock("@/lib/server/hub-rpc", async (importOriginal) => {
     ...real,
     hubRpc: async (method: string, params: unknown[]) => {
       calls.push({ method, params });
-      return { ok: true, result: answers[method] ?? null };
+      const answer = answers[method];
+      return { ok: true, result: (typeof answer === "function" ? answer(params) : answer) ?? null };
     },
   };
 });
@@ -96,6 +97,27 @@ describe("buildOrder", () => {
     const search = calls.find((call) => call.method === "eth_getLogs")!.params[0] as { address: string; topics: string[] };
     expect(search.address.toLowerCase()).toBe(sodax.config.solver.intentsContract.toLowerCase());
     expect(search.topics).toEqual([INTENT_FILLED_TOPIC]);
+  });
+
+  it("reads a Robinhood Chain buy's fill from its named fill transaction first, with no scan", async () => {
+    const rh = intent({ outputToken: NVDA.rhHubAsset!, dstChain: 21071n, dstAddress: BUYER });
+    const fillLog = { ...filledLog(EvmSolverService.getIntentHash(rh), 7n * 10n ** 18n), address: sodax.config.solver.intentsContract, transactionHash: "0xF1LL" };
+    const stranger = { ...filledLog(EvmSolverService.getIntentHash(rh), 1n), address: "0x000000000000000000000000000000000000dEaD" };
+    answers.eth_getTransactionReceipt = ([hash]: string[]) =>
+      hash === "0xF1LL" ? { status: "0x1", blockNumber: "0x20", logs: [stranger, fillLog] } : { blockNumber: "0x10" };
+    const order = await buildOrder({ sodax, intentTx: "0xABC", direction: "buy", intent: rh, claimedFillTx: "0xF1LL" });
+    expect(order!.quantity).toBe("7");
+    expect(order!.fillTx).toBe("0xf1ll");
+    expect(calls.some((call) => call.method === "eth_getLogs")).toBe(false);
+  });
+
+  it("falls back to the scan when the named transaction holds no whole fill of this intent", async () => {
+    const rh = intent({ outputToken: NVDA.rhHubAsset!, dstChain: 21071n, dstAddress: BUYER });
+    answers.eth_getTransactionReceipt = ([hash]: string[]) => (hash === "0xWRONG" ? { status: "0x1", blockNumber: "0x20", logs: [] } : { blockNumber: "0x10" });
+    answers.eth_getLogs = [filledLog(EvmSolverService.getIntentHash(rh), 3n * 10n ** 18n)];
+    const order = await buildOrder({ sodax, intentTx: "0xABC", direction: "buy", intent: rh, claimedFillTx: "0xWRONG" });
+    expect(order!.quantity).toBe("3");
+    expect(calls.filter((call) => call.method === "eth_getLogs")).toHaveLength(1);
   });
 
   it("reads a hub buy from the listing's Transfer to the hub wallet, as before", async () => {

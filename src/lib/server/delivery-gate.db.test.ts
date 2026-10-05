@@ -136,7 +136,7 @@ describe("savePourClaim's delivery columns", () => {
 
 describe("a Robinhood Chain claim in the evening pass", () => {
   const record = vi.fn(async (claim: { intent_tx: string; user_id: string }) => {
-    await q(`insert into orders (user_id, intent_tx, direction, listing_symbol, listing_address, holding_chain) values ($1, $2, 'buy', 'NVDA', '0xl', 'robinhood') on conflict do nothing`, [
+    await q(`insert into orders (user_id, intent_tx, direction, listing_symbol, listing_address, holding_chain, quantity) values ($1, $2, 'buy', 'NVDA', '0xl', 'robinhood', 1) on conflict do nothing`, [
       claim.user_id,
       claim.intent_tx,
     ]);
@@ -218,6 +218,29 @@ describe("a Robinhood Chain claim in the evening pass", () => {
       expect(await reason(intentTx)).toBe("delivery_refused");
       expect(await xpFor(intentTx)).toBe(0);
     }
+  });
+
+  it("keeps a claim open while its row has no quantity, builds it again the next night, and pays once (R4)", async () => {
+    await settleAll();
+    const user = await account("0x5959595959595959595959595959595959595959");
+    await savePourClaim(user, tx(19), "buy", null, "NVDA", { delivery: { ok: true, signer: BUYER, placeOk: true } });
+    let quantity: string | null = null;
+    const rebuild = vi.fn(async (claim: { intent_tx: string; user_id: string }) => {
+      await q(
+        `insert into orders (user_id, intent_tx, direction, listing_symbol, listing_address, holding_chain, quantity) values ($1, $2, 'buy', 'NVDA', '0xl', 'robinhood', $3)
+         on conflict (intent_tx) do update set quantity = coalesce(orders.quantity, excluded.quantity)`,
+        [claim.user_id, claim.intent_tx, quantity],
+      );
+    });
+    const withRebuild: ClaimPayDeps = { ...deps(), record: rebuild };
+    const run = () => settlePourClaims({ verdictOf: async () => "filled", pay: (claim) => payClaim(claim, withRebuild) });
+    expect(await run()).toMatchObject({ paid: 0 });
+    expect(await claimOf(tx(19))).toMatchObject({ settled: false });
+    quantity = "7";
+    expect(await run()).toMatchObject({ paid: 1 });
+    expect(await q(`select quantity::text as quantity from orders where intent_tx = $1`, [tx(19)])).toEqual([{ quantity: "7" }]);
+    expect(await claimOf(tx(19))).toMatchObject({ outcome: "paid" });
+    expect(await xpFor(tx(19))).toBe(1);
   });
 
   it("settleRobinhoodClaim leaves a paid one alone", async () => {

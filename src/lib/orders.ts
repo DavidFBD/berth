@@ -332,6 +332,8 @@ export const INTENT_FILLED_TOPIC = "0x179edcc2ff551e1336d178824736b025cc5df1a59d
 export function pickIntentFill(
   logs: readonly { transactionHash: string; data: string; blockNumber: string; topics?: readonly string[] }[],
   intentHash: string,
+  /** Only a fill that leaves nothing remaining: what a single named fill transaction must show to be taken alone. */
+  { wholeOnly = false }: { wholeOnly?: boolean } = {},
 ): { fillTx: string; received: bigint; blockNumber: number } | undefined {
   const fills: { fillTx: string; received: bigint; remaining: bigint; blockNumber: number }[] = [];
   for (const log of logs) {
@@ -363,7 +365,7 @@ export function pickIntentFill(
     }
   }
   fills.sort((a, b) => a.blockNumber - b.blockNumber);
-  const chosen = fills.find((fill) => fill.remaining === 0n) ?? fills.at(-1);
+  const chosen = fills.find((fill) => fill.remaining === 0n) ?? (wholeOnly ? undefined : fills.at(-1));
   return chosen ? { fillTx: chosen.fillTx, received: chosen.received, blockNumber: chosen.blockNumber } : undefined;
 }
 

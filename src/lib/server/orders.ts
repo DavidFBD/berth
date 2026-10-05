@@ -282,20 +282,45 @@ export async function buildOrder({
     // decimals() reads 0 on Sonic, for USDC's as for NVDA's, 2026-10-05),
     // and the native token has the listing's 18 (lib/listings.test holds
     // the SDK's decimals to the listing's), so listing.decimals reads it.
-    const from = Number.parseInt(receipt.blockNumber, 16);
-    const logs = await rpc<{ transactionHash: string; data: string; blockNumber: string }[]>(
-      "eth_getLogs",
-      [
-        {
-          fromBlock: receipt.blockNumber,
-          toBlock: `0x${(from + FILL_SEARCH_BLOCKS).toString(16)}`,
-          address: sodax.config.solver.intentsContract,
-          topics: [INTENT_FILLED_TOPIC],
-        },
-      ],
-      { urls: FILL_LOG_URLS },
-    );
-    fill = logs ? pickIntentFill(logs, EvmSolverService.getIntentHash(intent)) : undefined;
+    //
+    // The fill transaction, when one is named (the client's, the claim's,
+    // recovery's proven one), is read first: one receipt, whose own
+    // IntentFilled for this hash must leave nothing remaining. Only without
+    // one does the search scan every IntentFilled in the window, which
+    // grows with all of SODAX's fills and is slow on the fallback endpoint.
+    // A fill missed by both leaves the quantity empty; the claim is then
+    // kept open and the evening pass builds the row again (payClaim).
+    const intentHash = EvmSolverService.getIntentHash(intent);
+    const intentsContract = sodax.config.solver.intentsContract.toLowerCase();
+    if (claimedFillTx) {
+      const named = await rpc<{
+        status?: string;
+        logs?: { address: string; topics?: string[]; transactionHash: string; data: string; blockNumber: string }[];
+      }>("eth_getTransactionReceipt", [claimedFillTx]);
+      const own =
+        named && named.status !== "0x0"
+          ? (named.logs ?? []).filter(
+              (log) => log.address?.toLowerCase() === intentsContract && log.topics?.[0]?.toLowerCase() === INTENT_FILLED_TOPIC,
+            )
+          : [];
+      fill = pickIntentFill(own, intentHash, { wholeOnly: true });
+    }
+    if (!fill) {
+      const from = Number.parseInt(receipt.blockNumber, 16);
+      const logs = await rpc<{ transactionHash: string; data: string; blockNumber: string }[]>(
+        "eth_getLogs",
+        [
+          {
+            fromBlock: receipt.blockNumber,
+            toBlock: `0x${(from + FILL_SEARCH_BLOCKS).toString(16)}`,
+            address: sodax.config.solver.intentsContract,
+            topics: [INTENT_FILLED_TOPIC],
+          },
+        ],
+        { urls: FILL_LOG_URLS },
+      );
+      fill = logs ? pickIntentFill(logs, intentHash) : undefined;
+    }
   }
   const filledAt = fill ? await blockTime(`0x${fill.blockNumber.toString(16)}`) : null;
 

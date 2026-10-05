@@ -172,9 +172,15 @@ export async function POST(request: NextRequest) {
   const listingSymbol = orderListingSymbol(verified.sodax, verified.intent, direction);
   if (gate.delivery) await savePourClaim(user.id, txHash, direction, claimedFill, listingSymbol, { delivery: gate.delivery });
   else await savePourClaim(user.id, txHash, direction, claimedFill, listingSymbol);
+  // A Robinhood Chain buy whose fill was not read yet (its row's quantity
+  // empty) keeps its claim open whatever it earned here: the evening pass
+  // builds the row again from the fill transaction (pour-claims payClaim),
+  // and any XP it pays then is index-deduped, so nothing is paid twice.
+  const complete = (recorded: Awaited<ReturnType<typeof recordOrder>>) =>
+    gate.outcome === "hub" || (recorded !== undefined && recorded.order.quantity !== null);
   // An unknown verdict stops at the claim: the evening pass confirms it.
   if (verdict === "filled" && noXp) {
-    await recordOrder({
+    const recorded = await recordOrder({
       sodax: verified.sodax,
       userId: user.id,
       intentTx: txHash,
@@ -183,11 +189,11 @@ export async function POST(request: NextRequest) {
       claimedFillTx: claimedFill,
     });
     await forgoHold(txHash);
-    await closePourClaim(txHash, new Date(), "recorded_no_xp", user.id);
+    if (complete(recorded)) await closePourClaim(txHash, new Date(), "recorded_no_xp", user.id);
   } else if (verdict === "filled") {
     // Awaited, not fired and forgotten: a serverless function may be frozen
     // the moment it answers. recordOrder never throws, so the award is safe.
-    await recordOrder({
+    const recorded = await recordOrder({
       sodax: verified.sodax,
       userId: user.id,
       intentTx: txHash,
@@ -200,7 +206,7 @@ export async function POST(request: NextRequest) {
     // farm. Every award is index-deduped, so replays and later pours no-op.
     const paid = await awardFilledPour(user, kind, txHash);
     // An earlier call may have left a claim for this intent: it is paid now.
-    await closePourClaim(txHash, new Date(), "paid", user.id);
+    if (complete(recorded)) await closePourClaim(txHash, new Date(), "paid", user.id);
     rewards.push(...paid.rewards);
     xp = paid.xp;
   }

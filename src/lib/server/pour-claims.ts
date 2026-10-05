@@ -125,9 +125,23 @@ export async function awardFilledPour(
 /** How long the evening pass may keep starting claims (the stage allows ten seconds). */
 export const CLAIMS_BUDGET_MS = 8_000;
 
-async function orderExists(intentTx: string): Promise<boolean> {
-  const rows = (await getSql().query(`select 1 from orders where intent_tx = $1 limit 1`, [intentTx.toLowerCase()])) as unknown[];
-  return rows.length > 0;
+/** The claim's order row as recorded, or undefined while there is none. */
+async function orderRow(intentTx: string): Promise<{ quantity: string | null } | undefined> {
+  const rows = (await getSql().query(`select quantity from orders where intent_tx = $1 limit 1`, [intentTx.toLowerCase()])) as {
+    quantity: string | null;
+  }[];
+  return rows[0];
+}
+
+/** How long a claim is kept open for its order row to be completed (the fill read again each night). */
+const CLAIM_LIFE_MS = 30 * 86_400_000;
+
+/** The fill transaction SODAX's backend names for an intent, if it has one. */
+export function filledTxOf(record: IntentResponse | null): string | null {
+  const fills = ((record?.events ?? []) as { eventType?: string; txHash?: string }[]).filter(
+    (event) => event.eventType === "intent-filled" && typeof event.txHash === "string",
+  );
+  return fills.at(-1)?.txHash?.toLowerCase() ?? null;
 }
 
 /** How a settled claim ended: paid, dropped unfilled, or recorded for a buy that pays nothing (lib/server/no-xp). */
@@ -305,7 +319,13 @@ export function defaultClaimPayDeps(): ClaimPayDeps {
         txHash: claim.intent_tx,
       }),
     record: async (claim, intent) => {
-      await recordOrder({ sodax, userId: claim.user_id, intentTx: claim.intent_tx, direction: claim.direction, intent, claimedFillTx: claim.fill_tx });
+      // A Robinhood Chain buy's fill is read from its fill transaction
+      // first (lib/server/orders buildOrder): the claim's, else the one
+      // SODAX's backend names, so a fill outside the scan's window is still
+      // found on a later night.
+      const claimedFillTx =
+        claim.fill_tx ?? (isRobinhoodBuy(claim.direction, intent) ? filledTxOf(await fetchIntentRecord(claim.intent_tx).catch(() => null)) : null);
+      await recordOrder({ sodax, userId: claim.user_id, intentTx: claim.intent_tx, direction: claim.direction, intent, claimedFillTx });
     },
   };
 }
@@ -317,9 +337,14 @@ export function defaultClaimPayDeps(): ClaimPayDeps {
  * that did not answer leaves it open too; only a proven "not the
  * account's" removes it ("not_owned").
  */
+function outlived(claim: SettledClaim, now: Date): boolean {
+  return !!claim.created_at && now.getTime() - new Date(claim.created_at).getTime() > CLAIM_LIFE_MS;
+}
+
 export async function payClaim(
   claim: SettledClaim,
   deps: ClaimPayDeps = defaultClaimPayDeps(),
+  now = new Date(),
 ): Promise<boolean | "paid" | "recorded_no_xp" | "not_owned"> {
   const intent = await deps.readIntent(claim.intent_tx);
   if (!intent) return false;
@@ -337,8 +362,13 @@ export async function payClaim(
   // next night.
   const delivery = isRobinhoodBuy(claim.direction, intent) ? await (deps.settleRobinhood ?? settleRobinhoodClaim)(claim, intent) : null;
   await deps.record(claim, intent);
-  if (!(await orderExists(claim.intent_tx))) return false;
+  const row = await orderRow(claim.intent_tx);
+  if (!row) return false;
   if (delivery === "wait") return false;
+  // A Robinhood Chain buy whose fill was not read yet (the row's quantity
+  // empty): the claim stays open and the row is built again the next night,
+  // filling only what is missing, for as long as a claim lives (30 days).
+  if (delivery !== null && row.quantity === null && !outlived(claim, now)) return false;
   return payRecordedClaim(claim);
 }
 
@@ -384,7 +414,7 @@ export async function settlePourClaims({
   /** One claim; undecided or unpaid it simply stays open (it is already at the back of the line). */
   async function settleOne(claim: SettledClaim & { created_at: string | Date }): Promise<void> {
     const verdict = await verdictOf(claim.intent_tx);
-    const stale = now.getTime() - new Date(claim.created_at).getTime() > 30 * 86_400_000;
+    const stale = now.getTime() - new Date(claim.created_at).getTime() > CLAIM_LIFE_MS;
     let outcome: ClaimOutcome;
     if (verdict === "filled") {
       const settled = await pay(claim);
