@@ -71,7 +71,7 @@ import {
  *   /dev/board?home=path                the guided first path, walked live from
  *                                       fixtures (path-gallery.tsx: &account=wallet,
  *                                       &at=, &skipped=, &drawer=1, &done=,
- *                                       &funding=waiting|slow|stopped|arrived|buy|away
+ *                                       &funding=waiting|slow|stopped|unknown|arrived|buy|away
  *                                       the Add money drawer's wait and arrival;
  *                                       Pay by card on the money step walks it live)
  *   /dev/board?proof=1                  the social counts from fixtures
