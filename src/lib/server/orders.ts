@@ -277,10 +277,11 @@ export async function buildOrder({
     // listing's hub asset to the asset manager, which delivers the native
     // token on 4663, so no Transfer of the listing reaches the buyer on
     // Sonic. The fill is the Intents contract's IntentFilled for this
-    // intent's hash, and its receivedOutput is the quantity (the hub asset
-    // and the native token both have the listing's 18 decimals; read on
-    // chain 2026-10-05, and lib/listings.test holds the SDK's decimals to
-    // the listing's).
+    // intent's hash, and its receivedOutput is the quantity. A hub asset
+    // keeps its spoke token's raw units (it has no decimals of its own:
+    // decimals() reads 0 on Sonic, for USDC's as for NVDA's, 2026-10-05),
+    // and the native token has the listing's 18 (lib/listings.test holds
+    // the SDK's decimals to the listing's), so listing.decimals reads it.
     const from = Number.parseInt(receipt.blockNumber, 16);
     const logs = await rpc<{ transactionHash: string; data: string; blockNumber: string }[]>(
       "eth_getLogs",

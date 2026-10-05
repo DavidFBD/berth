@@ -10,7 +10,7 @@
 // Exit 1 on any drift, with every difference printed, so it can gate a
 // release. Read-only: no key, no wallet, no funds.
 import { createPublicClient, http, parseAbi } from "viem";
-import { Sodax } from "@sodax/sdk";
+import { Sodax, assetManagerAbi } from "@sodax/sdk";
 
 // Node strips the types from the .ts import (see the flag in package.json),
 // so the script reads the very table the app ships, not a copy of it.
@@ -170,6 +170,42 @@ for (const read of reads) {
     note(`${listing.symbol}: contract name() is "${read.name}"`);
   if (Number(read.decimals) !== listing.decimals)
     note(`${listing.symbol}: contract decimals() is ${read.decimals}`);
+}
+
+// 2b. Robinhood Chain on chain, not SDK against SDK: the hub asset
+//     manager must file each listing's rhHubAsset as Robinhood Chain's
+//     (relay chain 21071) spoke token rhAddress, and that token on 4663 must
+//     have the listing's decimals. A buy delivered there is built from
+//     these two addresses and its quantity read in these decimals.
+const ROBINHOOD_RELAY_CHAIN_ID = 21071n;
+const ROBINHOOD_RPC = process.env.ROBINHOOD_RPC_URL ?? "https://robinhood-rpc.publicnode.com";
+const hubAssetManager = new Sodax().hubProvider.chainConfig.addresses.assetManager;
+const rhClient = createPublicClient({ transport: http(ROBINHOOD_RPC) });
+const twinReads = await Promise.all(
+  TOKEN_LISTINGS.filter((listing) => listing.rhHubAsset && listing.rhAddress).map(async (listing) => {
+    try {
+      const [[chainId, spokeAddress], decimals] = await Promise.all([
+        client.readContract({ address: hubAssetManager, abi: assetManagerAbi, functionName: "assetInfo", args: [listing.rhHubAsset] }),
+        rhClient.readContract({ address: listing.rhAddress, abi: erc20, functionName: "decimals" }),
+      ]);
+      return { listing, chainId, spokeAddress, decimals };
+    } catch (error) {
+      return { listing, error };
+    }
+  }),
+);
+for (const read of twinReads) {
+  const { listing } = read;
+  if (read.error) {
+    note(`${listing.symbol}: Robinhood Chain twin read failed: ${read.error.shortMessage ?? read.error.message}`);
+    continue;
+  }
+  if (read.chainId !== ROBINHOOD_RELAY_CHAIN_ID)
+    note(`${listing.symbol}: the asset manager files rhHubAsset under chain ${read.chainId}, not Robinhood Chain`);
+  if (lower(read.spokeAddress) !== lower(listing.rhAddress))
+    note(`${listing.symbol}: the asset manager maps rhHubAsset to ${read.spokeAddress}, not rhAddress ${listing.rhAddress}`);
+  if (Number(read.decimals) !== listing.decimals)
+    note(`${listing.symbol}: decimals() on Robinhood Chain is ${read.decimals}`);
 }
 
 // 3. Icon coverage. Informational only, not a drift check: a listing with
