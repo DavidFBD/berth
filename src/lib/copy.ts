@@ -188,6 +188,39 @@ export type Copy = {
     dismiss: string;
   };
   /**
+   * Robinhood Chain delivery (plan P1a, P2b), for accounts on the switch
+   * only: where a holding sits, the buy's arrival line and its progress.
+   * Only a holding delivered there is "in your own wallet"; what sits in
+   * the Berth account keeps its own wording.
+   */
+  rhChain: {
+    /** Under a holding wholly on Robinhood Chain. */
+    holdingInWallet: string;
+    /** Under a holding in both places: the two quantities, account first. */
+    holdingSplit: (inAccount: string, inWallet: string) => string;
+    /** The Robinhood Chain wallet did not answer: the list is the account's alone. */
+    walletUnread: string;
+    /** The buy sheet, under the quote: where the token goes. */
+    arrival: string;
+    /** The fill toast's line for such a buy. */
+    filledToastBody: string;
+    /** The filled screen while the token travels from the fill to the wallet. */
+    onItsWayBody: (name: string) => string;
+    /** The filled screen once it has arrived. */
+    arrivedBody: (name: string) => string;
+    /** The two steps of the delivery, as the filled screen lists them. */
+    stepFilled: string;
+    stepArriving: string;
+    stepArrived: string;
+    /** No arrival seen in the wait: honest, calm, and true either way. */
+    arrivalSlow: string;
+    /** The link to the delivery, or to the token, on Blockscout. */
+    seeDelivery: string;
+    seeToken: string;
+    /** The order stopped because where it would arrive changed after it was shown. */
+    destinationChanged: string;
+  };
+  /**
    * The signed-in home's one next step per state (components/home-next-step):
    * add money, buy the first stock, or buy more; and the short list of what
    * sits behind a tap (components/home-more).
@@ -2778,6 +2811,22 @@ export const COPY: Copy = {
     firstStockLine: (name) =>
       `${name} is in your account as a token that tracks its share price. It is yours, in an account your wallet controls, and you can sell it any day under What you own.`,
     dismiss: "Got it",
+  },
+  rhChain: {
+    holdingInWallet: "In your own wallet on Robinhood Chain",
+    holdingSplit: (inAccount, inWallet) => `${inAccount} in your Berth account, ${inWallet} in your own wallet on Robinhood Chain`,
+    walletUnread: "Your wallet on Robinhood Chain could not be read just now, so what is there is not shown. Berth will try again shortly.",
+    arrival: "Arrives in your own wallet on Robinhood Chain.",
+    filledToastBody: "It is on its way to your own wallet on Robinhood Chain.",
+    onItsWayBody: (name) => `${name} is bought and on its way to your own wallet on Robinhood Chain.`,
+    arrivedBody: (name) => `${name} is in your own wallet on Robinhood Chain.`,
+    stepFilled: "Bought",
+    stepArriving: "Arriving on Robinhood Chain",
+    stepArrived: "In your wallet on Robinhood Chain",
+    arrivalSlow: "This is taking longer than usual. You can close this, the delivery carries on without this page.",
+    seeDelivery: "See the delivery on Robinhood Chain",
+    seeToken: "See the token on Robinhood Chain",
+    destinationChanged: "Where this buy would arrive changed after it was shown. Nothing was sent. Check the order and buy again.",
   },
   calmHome: {
     addTitle: "Add money to begin",

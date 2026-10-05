@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useAccountHoldings } from "@/hooks/use-account-holdings";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useLimitOrders } from "@/hooks/use-limit-orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
@@ -43,7 +44,12 @@ export type AccountFigures = {
 export function useLiveFigures() {
   const funds = useEmbeddedHoldings();
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallets);
+  // Both chains (plan P1a): a switched account's Robinhood Chain tokens
+  // count in its figure. A failed read there leaves them out, and the
+  // reading is then not whole, so it is never kept as the last known.
+  const hubHoldings = useHubHoldings(account.hubWallets);
+  const holdings = useAccountHoldings(account, hubHoldings);
+  const robinhoodPending = holdings.robinhoodState === "loading" || holdings.robinhoodState === "failed";
   const prices = useListingPrices();
   const limits = useLimitOrders({ poll: false });
 
@@ -80,7 +86,11 @@ export function useLiveFigures() {
     fundsUnpriced: !funds.isLoading && funds.holdings.length > 0 && funds.totalUsd === undefined,
     /** Every part read live and the orders known: the reading may be kept (lib/last-known). */
     complete:
-      figures.holdings !== undefined && figures.cash !== undefined && figures.funds !== undefined && !limits.isLoading,
+      figures.holdings !== undefined &&
+      figures.cash !== undefined &&
+      figures.funds !== undefined &&
+      !limits.isLoading &&
+      !robinhoodPending,
     /** Every network answered and every asset priced: the Funds part is the whole of it. */
     fundsWhole:
       !funds.isLoading &&

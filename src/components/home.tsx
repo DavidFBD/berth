@@ -35,6 +35,7 @@ import { VaultPositions } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useAccountHoldings } from "@/hooks/use-account-holdings";
 import { FirstStockCard } from "@/components/first-look";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { AddMoneyStep, BuyMoreButton, FirstBuyStep, NextStepSkeleton } from "@/components/home-next-step";
@@ -183,6 +184,10 @@ function SignedInHome() {
   // something, its total and holdings lead and Buy follows.
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
+  // Both chains decide the step and the first stock (plan P1a): a switched
+  // account's first buy may sit in its own wallet on Robinhood Chain. A
+  // draft sell still reads `holdings`, the hub, which is all a sell spends.
+  const ownedHoldings = useAccountHoldings(account, holdings);
   const funds = useEmbeddedHoldings();
   // The answer is remembered per account, so a returning holder's page
   // opens in its settled order instead of reordering when holdings land.
@@ -211,8 +216,8 @@ function SignedInHome() {
   // stand between it and certainty) is shown when nothing is remembered,
   // and never remembered itself.
   const live = homeStage({
-    holdingsSettled: holdings.settled && !linkedWallets.isLoading,
-    ownsStock: holdings.held.some((holding) => holding.listing.kind === "stock"),
+    holdingsSettled: ownedHoldings.settled && !linkedWallets.isLoading,
+    ownsStock: ownedHoldings.held.some((holding) => holding.listing.kind === "stock"),
     funds: {
       connected: funds.connected,
       unaddressedChains: funds.unaddressedChains.length,
@@ -257,8 +262,11 @@ function SignedInHome() {
   const [firstStockClosed, rememberFirstStockClosed] = useStoredChoice(
     accountKey ? `berth.first-stock-closed.${accountKey.toLowerCase()}` : null,
   );
-  const stocksHeld = holdings.held.filter((holding) => holding.listing.kind === "stock");
-  const oneStock = proven === "owns" && holdings.settled && stocksHeld.length === 1;
+  const stocksHeld = ownedHoldings.held.filter((holding) => holding.listing.kind === "stock");
+  // The first stock's card speaks of the Berth account ("an account your
+  // wallet controls"), so it is not shown for a stock delivered to Robinhood
+  // Chain until its own words exist (plan P4d).
+  const oneStock = proven === "owns" && ownedHoldings.settled && stocksHeld.length === 1 && stocksHeld[0].robinhood === 0n;
   const firstStockState = useFirstStock(oneStock);
   const closeFirstStock = useCloseFirstStock();
   const firstStock =
@@ -311,7 +319,7 @@ function SignedInHome() {
   const holdingsKnown = holdings.settled && !linkedWallets.isLoading;
   const livePath = useLiveFirstPath({
     funded: decided === undefined ? undefined : decided !== "empty",
-    ownsStock: holdingsKnown ? holdings.held.some((holding) => holding.listing.kind === "stock") : undefined,
+    ownsStock: holdingsKnown ? ownedHoldings.held.some((holding) => holding.listing.kind === "stock") : undefined,
     account: emailSession ? "email" : "wallet",
     canBuy: pageAvailability.available,
     accountKey: accountKey ?? null,
