@@ -238,7 +238,15 @@ export async function savePourClaim(
  * (lib/server/pour-ownership), removed unpaid and unrecorded so the real
  * owner can still report the intent.
  */
-export type ClaimSummary = { checked: number; paid: number; dropped: number; recorded: number; refused: number };
+export type ClaimSummary = {
+  checked: number;
+  paid: number;
+  dropped: number;
+  recorded: number;
+  refused: number;
+  /** Claims whose settling threw: logged, left open at the back of the line, never in the way of the rest. */
+  failed: number;
+};
 
 export type SettledClaim = {
   user_id: string;
@@ -372,15 +380,11 @@ export async function settlePourClaims({
       order by c.last_checked_at asc nulls first, c.created_at asc limit $1`,
     [limit],
   )) as (SettledClaim & { created_at: string | Date })[];
-  const summary: ClaimSummary = { checked: claims.length, paid: 0, dropped: 0, recorded: 0, refused: 0 };
-  for (const claim of claims) {
-    if (clock() - started > budgetMs) break;
+  const summary: ClaimSummary = { checked: claims.length, paid: 0, dropped: 0, recorded: 0, refused: 0, failed: 0 };
+  /** One claim; undecided or unpaid it simply stays open (it is already at the back of the line). */
+  async function settleOne(claim: SettledClaim & { created_at: string | Date }): Promise<void> {
     const verdict = await verdictOf(claim.intent_tx);
     const stale = now.getTime() - new Date(claim.created_at).getTime() > 30 * 86_400_000;
-    // Undecided or unpaid claims go to the back of the line, so one that
-    // stays stuck can never starve the ones behind it.
-    const later = () =>
-      sql.query(`update pour_claims set last_checked_at = $2 where intent_tx = $1 and user_id = $3`, [claim.intent_tx, now.toISOString(), claim.user_id]);
     let outcome: ClaimOutcome;
     if (verdict === "filled") {
       const settled = await pay(claim);
@@ -389,12 +393,9 @@ export async function settlePourClaims({
         // kept that would stand in the real owner's way (one claim per intent).
         await sql.query(`delete from pour_claims where intent_tx = $1 and user_id = $2 and settled_at is null`, [claim.intent_tx, claim.user_id]);
         summary.refused += 1;
-        continue;
+        return;
       }
-      if (!settled) {
-        await later();
-        continue;
-      }
+      if (!settled) return;
       outcome = settled === "recorded_no_xp" ? "recorded_no_xp" : "paid";
       if (outcome === "paid") summary.paid += 1;
       else summary.recorded += 1;
@@ -402,8 +403,7 @@ export async function settlePourClaims({
       outcome = "dropped";
       summary.dropped += 1;
     } else {
-      await later();
-      continue;
+      return;
     }
     // The claim that proved settles; any other account's on the intent goes.
     if (outcome !== "dropped") await dropOtherClaims(claim.intent_tx, claim.user_id);
@@ -413,6 +413,24 @@ export async function settlePourClaims({
       outcome,
       claim.user_id,
     ]);
+  }
+  for (const claim of claims) {
+    if (clock() - started > budgetMs) break;
+    try {
+      // To the back of the line before anything is read: a claim that
+      // throws, or hangs past the function's life, never heads the queue
+      // again, so one bad claim never stalls the ones behind it night after
+      // night.
+      await sql.query(`update pour_claims set last_checked_at = $2 where intent_tx = $1 and user_id = $3`, [
+        claim.intent_tx,
+        now.toISOString(),
+        claim.user_id,
+      ]);
+      await settleOne(claim);
+    } catch (error) {
+      summary.failed += 1;
+      console.warn("[pour-claims] claim failed", claim.intent_tx.slice(0, 10), error instanceof Error ? error.message : error);
+    }
   }
   return summary;
 }

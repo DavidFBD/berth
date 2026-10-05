@@ -35,7 +35,7 @@ import { getSodax, verifyPourTx, type VerifiedPour } from "@/lib/server/pour-ver
  * hold-checked with no outcome, so the thirty day hold never pays for it.
  */
 
-export type RecoveryRejection = VerifiedPourRejection | "fill not on chain" | "not built" | "another account";
+export type RecoveryRejection = VerifiedPourRejection | "fill not on chain" | "not built" | "another account" | "failed";
 type VerifiedPourRejection = Extract<VerifiedPour, { ok: false }>["reason"];
 
 export type RecoveredOrder = OrderRecord & { userId: string; xpPaid: boolean };
@@ -264,14 +264,16 @@ export async function recoverAccountOrders(
   )) as { ref: string }[];
   const xpPaid = new Set(paid.map((row) => row.ref));
 
-  for (const candidate of candidates) {
+  // One candidate at a time, each on its own: one that throws (a read, a
+  // write) is logged and counted as "failed", and the rest still run.
+  const recoverOne = async (candidate: Candidate): Promise<void> => {
     if (have.has(candidate.intentTx)) {
       report.alreadyRecorded += 1;
-      continue;
+      return;
     }
     if (taken.has(candidate.intentTx)) {
       report.rejected.push({ intentTx: candidate.intentTx, reason: "another account" });
-      continue;
+      return;
     }
     const verified = await deps.verify({
       txHash: candidate.intentTx,
@@ -280,12 +282,12 @@ export async function recoverAccountOrders(
     });
     if (!verified.ok) {
       report.rejected.push({ intentTx: candidate.intentTx, reason: verified.reason });
-      continue;
+      return;
     }
     const fill = await deps.fillOnChain(candidate.fillTx, verified.intent);
     if (!fill.ok) {
       report.rejected.push({ intentTx: candidate.intentTx, reason: "fill not on chain" });
-      continue;
+      return;
     }
     const order = await deps.build({
       intentTx: candidate.intentTx,
@@ -295,7 +297,7 @@ export async function recoverAccountOrders(
     });
     if (!order) {
       report.rejected.push({ intentTx: candidate.intentTx, reason: "not built" });
-      continue;
+      return;
     }
     // A sell pays out off the hub, so buildOrder reads no fill for it; the
     // fill just proven on chain is its fill.
@@ -319,6 +321,14 @@ export async function recoverAccountOrders(
         if (order.placedAt) await deps.marks(id, order.placedAt);
       }
     }
+  };
+  for (const candidate of candidates) {
+    try {
+      await recoverOne(candidate);
+    } catch (error) {
+      report.rejected.push({ intentTx: candidate.intentTx, reason: "failed" });
+      console.warn("[orders-recover] candidate failed", candidate.intentTx.slice(0, 10), error instanceof Error ? error.message : error);
+    }
   }
   return report;
 }
@@ -330,6 +340,8 @@ export type RecoverySummary = {
   /** Recovered orders the XP ledger holds no pour award for. XP is not paid here. */
   xpUnpaid: number;
   rejected: number;
+  /** Accounts whose recovery threw before it could report; logged, the run goes on. */
+  failedAccounts: number;
 };
 
 /** Every live account (retired ones are read through their survivor), in order of creation. */
@@ -342,10 +354,19 @@ export async function recoverOrders({
     `select id, wallet_address from users where retired_into is null order by created_at, id`,
   )) as { id: string; wallet_address: string | null }[];
   const taken = new Set<string>();
-  const summary: RecoverySummary = { accounts: accounts.length, recovered: 0, written: 0, xpUnpaid: 0, rejected: 0 };
+  const summary: RecoverySummary = { accounts: accounts.length, recovered: 0, written: 0, xpUnpaid: 0, rejected: 0, failedAccounts: 0 };
   const resolved = deps ?? defaultRecoveryDeps();
   for (const account of accounts) {
-    const report = await recoverAccountOrders(account, { write, deps: resolved, taken });
+    // One account at a time, each on its own: one whose wallets or intents
+    // cannot be read is logged and counted, and the rest still run.
+    let report: AccountRecovery;
+    try {
+      report = await recoverAccountOrders(account, { write, deps: resolved, taken });
+    } catch (error) {
+      summary.failedAccounts += 1;
+      console.warn("[orders-recover] account failed", account.id, error instanceof Error ? error.message : error);
+      continue;
+    }
     summary.recovered += report.recovered.length;
     summary.written += report.written;
     summary.xpUnpaid += report.recovered.filter((order) => !order.xpPaid).length;

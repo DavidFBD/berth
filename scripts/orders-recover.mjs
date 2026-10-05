@@ -69,5 +69,6 @@ if (JSON_FILE) writeFileSync(JSON_FILE, JSON.stringify(rows, null, 2));
 console.log(
   `${summary.accounts} account(s): ${summary.recovered} order(s) ${WRITE ? `recovered, ${summary.written} written` : "to add"}, ` +
     `${summary.xpUnpaid} without pour XP (not paid here), ${summary.rejected} refused` +
+    (summary.failedAccounts ? `, ${summary.failedAccounts} account(s) failed (see warnings; rerun, it is idempotent)` : "") +
     (WRITE ? "" : "; dry run, add --write to save"),
 );

@@ -73,12 +73,47 @@ describe("claims the evening settles", () => {
     const verdicts: Record<string, "filled" | "notFilled" | "unknown"> = { "0xfilled": "filled", "0xcancelled": "notFilled", "0xwaiting": "unknown" };
     const pay = vi.fn(async () => true);
     const summary = await settlePourClaims({ verdictOf: async (tx) => verdicts[tx], pay });
-    expect(summary).toEqual({ checked: 3, paid: 1, dropped: 1, recorded: 0, refused: 0 });
+    expect(summary).toEqual({ checked: 3, paid: 1, dropped: 1, recorded: 0, refused: 0, failed: 0 });
     expect(pay).toHaveBeenCalledTimes(1);
     expect(pay.mock.calls[0]).toEqual([expect.objectContaining({ intent_tx: "0xfilled", fill_tx: "0xfilltx", direction: "buy" })]);
     const again = await settlePourClaims({ verdictOf: async (tx) => verdicts[tx], pay });
-    expect(again).toEqual({ checked: 1, paid: 0, dropped: 0, recorded: 0, refused: 0 });
+    expect(again).toEqual({ checked: 1, paid: 0, dropped: 0, recorded: 0, refused: 0, failed: 0 });
     expect(pay).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a claim that throws", () => {
+  it("is logged and left open at the back of the line, and never stops the claims behind it", async () => {
+    await sql.query(`update pour_claims set settled_at = now() where settled_at is null`);
+    const rows = (await sql.query(`insert into users (wallet_address) values ('0xthrows') returning id`)) as { id: string }[];
+    const userId = rows[0].id;
+    await savePourClaim(userId, "0xbad", "buy", null);
+    await savePourClaim(userId, "0xgood", "buy", null);
+    await sql.query(`update pour_claims set created_at = now() - interval '1 hour' where intent_tx = '0xbad'`);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const pay = vi.fn(async (claim: SettledClaim) => {
+      if (claim.intent_tx === "0xbad") throw new Error("column delivery_ok does not exist");
+      return true;
+    });
+    const summary = await settlePourClaims({ verdictOf: async () => "filled", pay });
+    expect(summary).toEqual({ checked: 2, paid: 1, dropped: 0, recorded: 0, refused: 0, failed: 1 });
+    expect(warn).toHaveBeenCalledWith("[pour-claims] claim failed", "0xbad", "column delivery_ok does not exist");
+    warn.mockRestore();
+    expect(await sql.query(`select intent_tx, settled_at is null as open, last_checked_at is not null as looked from pour_claims where user_id = $1 order by intent_tx`, [userId])).toEqual([
+      { intent_tx: "0xbad", open: true, looked: true },
+      { intent_tx: "0xgood", open: false, looked: true },
+    ]);
+    // The next night it is behind any claim not yet looked at.
+    await savePourClaim(userId, "0xnew", "buy", null);
+    const order: string[] = [];
+    await settlePourClaims({
+      verdictOf: async (tx) => {
+        order.push(tx);
+        return "unknown";
+      },
+      pay,
+    });
+    expect(order.indexOf("0xnew")).toBeLessThan(order.indexOf("0xbad"));
   });
 });
 

@@ -61,17 +61,24 @@ const rows = await sql.query(
 );
 let filled = 0;
 let unresolved = 0;
+let failed = 0;
 for (const row of rows) {
-  const intent = await intentOf(row.intent_tx);
-  const delivered =
-    intent && typeof intent.dstAddress === "string" && intent.dstAddress.length > 2
-      ? intent.dstAddress.toLowerCase()
-      : null;
-  if (!delivered) {
-    unresolved += 1;
-    continue;
+  // Each row on its own: one whose write throws is counted and the rest still run.
+  try {
+    const intent = await intentOf(row.intent_tx);
+    const delivered =
+      intent && typeof intent.dstAddress === "string" && intent.dstAddress.length > 2
+        ? intent.dstAddress.toLowerCase()
+        : null;
+    if (!delivered) {
+      unresolved += 1;
+      continue;
+    }
+    const updated = await sql.query(DELIVERED_TO_UPDATE, deliveredToParams(row.intent_tx, delivered, holdingChainOf(row.direction, intent)));
+    if (updated.length > 0) filled += 1;
+  } catch (error) {
+    failed += 1;
+    console.warn("row failed:", error instanceof Error ? error.message : error);
   }
-  const updated = await sql.query(DELIVERED_TO_UPDATE, deliveredToParams(row.intent_tx, delivered, holdingChainOf(row.direction, intent)));
-  if (updated.length > 0) filled += 1;
 }
-console.log(`rows seen: ${rows.length}, filled: ${filled}, unresolved: ${unresolved}`);
+console.log(`rows seen: ${rows.length}, filled: ${filled}, unresolved: ${unresolved}, failed: ${failed}`);

@@ -47,17 +47,22 @@ const sodax = new Sodax({
 });
 const listings = listListings(sodax.leverageYield.listVaults());
 
+// Every read is bounded, so one hung endpoint never stalls the run.
+const READ_TIMEOUT_MS = 20_000;
 async function rpc(method, params) {
   const response = await fetch(RPC, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    signal: AbortSignal.timeout(READ_TIMEOUT_MS),
   });
   return (await response.json()).result;
 }
 async function priceAt(id, at) {
   const seconds = Math.floor(at.getTime() / 1000);
-  const response = await fetch(`https://coins.llama.fi/prices/historical/${seconds}/coingecko:${id}`);
+  const response = await fetch(`https://coins.llama.fi/prices/historical/${seconds}/coingecko:${id}`, {
+    signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+  });
   if (!response.ok) return undefined;
   const price = (await response.json()).coins?.[`coingecko:${id}`]?.price;
   return typeof price === "number" && price > 0 ? price : undefined;
@@ -73,12 +78,14 @@ const pours = await sql`
   order by created_at`;
 console.log(`${pours.length} pours in the ledger${WRITE ? "" : " (dry run)"}`);
 
-for (const pour of pours) {
+// One pour at a time, each on its own: one that throws (a read, a write) is
+// logged and counted, and the rest still run. Safe to run again for those.
+async function backfillOne(pour) {
   const direction = pour.kind === "pour_out" ? "sell" : "buy";
   const found = await sodax.swaps.getIntent(pour.ref);
   if (!found.ok) {
     console.log("skip, no intent", pour.ref);
-    continue;
+    return;
   }
   const intent = found.value;
   const other = direction === "buy" ? intent.inputToken : intent.outputToken;
@@ -87,7 +94,7 @@ for (const pour of pours) {
   const listing = listingOfIntent(listings, intent, direction);
   if (!listing) {
     console.log("skip, not a listing", pour.ref);
-    continue;
+    return;
   }
   const pay = displayToken(sodax.config.getXTokenFromHubAsset(other));
   const receipt = await rpc("eth_getTransactionReceipt", [pour.ref]);
@@ -141,7 +148,18 @@ for (const pour of pours) {
     `${order.direction} ${order.quantity ?? "?"} ${order.listingSymbol} for ${order.payAmount ?? "?"} ${order.paySymbol ?? "?"}` +
       ` on ${order.holdingChain} usd=${order.usdValue ?? "-"} (${order.usdSource ?? "unknown"}) placed=${order.placedAt?.toISOString() ?? "?"} fill=${order.fillTx ? "yes" : "no"}`,
   );
-  if (!WRITE) continue;
+  if (!WRITE) return;
   await sql.query(BACKFILL_ORDER_UPSERT, backfillOrderParams(pour.user_id, order));
 }
+
+let failed = 0;
+for (const pour of pours) {
+  try {
+    await backfillOne(pour);
+  } catch (error) {
+    failed += 1;
+    console.warn("failed", pour.ref, error instanceof Error ? error.message : error);
+  }
+}
+if (failed) console.log(`${failed} pour(s) failed; rerun to retry them`);
 console.log(WRITE ? "written" : "dry run; add --write to save");

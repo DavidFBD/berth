@@ -230,6 +230,34 @@ describe("recovering orders", () => {
     expect(await sql.query(`select user_id from orders where intent_tx = $1`, [tx(0x301)])).toEqual([{ user_id: owner }]);
   });
 
+  it("one candidate that throws is counted as failed and never stops the rest (R6)", async () => {
+    const owner = ((await sql.query(`insert into users (wallet_address) values ($1) returning id`, [
+      "0x5757575757575757575757575757575757575757",
+    ])) as { id: string }[])[0].id;
+    const bad = item({ txHash: tx(0x501), input: USDC_HUB, output: NVDA.address });
+    const good = item({ txHash: tx(0x502), input: USDC_HUB, output: NVDA.address });
+    const base = depsFor([bad, good]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const report = await recoverAccountOrders(
+      { id: owner, wallet_address: "0x5757575757575757575757575757575757575757" },
+      {
+        write: true,
+        deps: {
+          ...base,
+          fetchIntents: vi.fn(async () => [bad, good]),
+          fillOnChain: vi.fn(async (fillTx: string, intent) => {
+            if (fillTx === tx(9000 + 0x501)) throw new Error("rpc hung up");
+            return base.fillOnChain(fillTx, intent);
+          }),
+        },
+      },
+    );
+    warn.mockRestore();
+    expect(report.rejected).toEqual([{ intentTx: tx(0x501), reason: "failed" }]);
+    expect(report.written).toBe(1);
+    expect(await sql.query(`select intent_tx from orders where intent_tx in ($1, $2)`, [tx(0x501), tx(0x502)])).toEqual([{ intent_tx: tx(0x502) }]);
+  });
+
   it("a recovered unproven-source buy whose XP was already paid is never marked (m1)", async () => {
     const owner = ((await sql.query(`insert into users (wallet_address) values ($1) returning id`, [
       "0x5656565656565656565656565656565656565656",
