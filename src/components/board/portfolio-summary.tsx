@@ -529,9 +529,12 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   const origin = percent && range === "since" && !result.rebasedFrom && days[0].fromBuy === true;
   const chart = buildChart(days, { percent, origin, withBenchmark });
   const indexOf = new Map(chart.flatMap((point, index) => (point.origin ? [] : [[point.day, index] as const])));
-  const fromStrip = hover ?? pinned;
-  const marked = scrub ?? (fromStrip !== null ? (indexOf.get(fromStrip) ?? null) : null);
-  const markedDay = marked !== null ? chart[marked]?.day ?? null : null;
+  // The day in hand, from either side: the line's scrub, then the strip's
+  // hover, then its pick. The strip and the day line always show it; the
+  // line marks it only when it is one of the range's points (a 1W range
+  // can start after the strip's first day).
+  const markedDay = (scrub !== null ? (chart[scrub]?.day ?? null) : null) ?? hover ?? pinned;
+  const marked = scrub ?? (markedDay !== null ? (indexOf.get(markedDay) ?? null) : null);
   const chooser = (
     <BenchmarkChooser value={benchmark} shown={shownBenchmark} onChange={setBenchmark} />
   );
