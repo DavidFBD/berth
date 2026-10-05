@@ -19,7 +19,10 @@ import { PathGallery } from "./path-gallery";
 import { mostHeldFor, socialProofFor } from "./social-proof-fixtures";
 import { LINE_FIXTURES } from "../campaigns/fixtures";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
-import { ActionStepper } from "@/components/flow/action-stepper";
+import { ActionStepper, IntentTracking, RobinhoodArrival } from "@/components/flow/action-stepper";
+import { useCopy } from "@/components/settings-provider";
+import type { Delivery } from "@/lib/delivery";
+import type { ArrivalState } from "@/lib/robinhood-arrival";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
@@ -84,6 +87,17 @@ import {
  *                                       not available (lib/availability): the
  *                                       buy drawer is the soft landing, the
  *                                       home scenes carry the banner
+ *   /dev/board?open=NVDA&usd=5&pay=hold&rh=1
+ *                                       the buy drawer for an account on the
+ *                                       Robinhood Chain switch: the live quote
+ *                                       taken to the token there, and the
+ *                                       arrival line (plan P2b)
+ *   /dev/board?rhbuy=arriving           the filled screen of such a buy, held
+ *                                       on arriving, arrived or slow
+ *   /dev/board?home=held&rh=1           the home with one holding in the
+ *                                       person's own wallet on Robinhood Chain
+ *                                       (rh=split: half there, half in the
+ *                                       Berth account) (plan P1a)
  *   /dev/board?stepper=approving        the working stepper on its own, held
  *                                       on one step (building, approving or
  *                                       signing) without a wallet; &approve=0
@@ -116,6 +130,10 @@ function Galleries() {
       </div>
     );
   }
+  const arrivalWanted = params.get("rhbuy");
+  if (arrivalWanted === "arriving" || arrivalWanted === "arrived" || arrivalWanted === "slow") {
+    return <RobinhoodArrivalScene state={arrivalWanted} />;
+  }
   const home = params.get("home");
   if (home === "path") {
     return (
@@ -145,6 +163,7 @@ function Galleries() {
         campaign={LINE_FIXTURES[params.get("campaign") ?? ""]}
         proof={params.get("proof")}
         share={params.get("share")}
+        robinhood={params.get("rh")}
       />
     );
   }
@@ -293,6 +312,7 @@ function Gallery() {
             listing={buyListing}
             prefill={buyPrefill}
             devHoldings={devHoldings}
+            devDelivery={params.get("rh") === "1" ? DEV_ROBINHOOD_DELIVERY : undefined}
             open={buyOpen}
             onOpenChange={setBuyOpen}
           />
@@ -306,6 +326,42 @@ function Gallery() {
         </>
       )}
     </>
+  );
+}
+
+/** A switched account's answer, for ?rh=1: buys go to this wallet on Robinhood Chain. */
+const DEV_ROBINHOOD_DELIVERY: Delivery = {
+  chainKey: "robinhood",
+  address: "0xbE59D5Bf40aC4a349bd748e0D7c19ef27aD3Ca23",
+  reason: "switched_on",
+};
+
+/**
+ * ?rhbuy=arriving|arrived|slow: the buy drawer's filled screen for a buy
+ * delivered to Robinhood Chain (plan P2b), held on one arrival state,
+ * without a wallet or an order.
+ */
+function RobinhoodArrivalScene({ state }: { state: "arriving" | "arrived" | "slow" }) {
+  const copy = useCopy();
+  const nvidia = TOKEN_LISTINGS.find((listing) => listing.symbol === "NVDA")!;
+  const arrival: ArrivalState =
+    state === "arrived"
+      ? { kind: "arrived", deliveryTx: "0x5f0c9e1d8b7a6f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6" }
+      : { kind: state };
+  return (
+    <div className="mx-auto flex min-h-[70vh] w-full max-w-sm items-center justify-center px-4 py-8">
+      <Panel className="w-full p-4">
+        <IntentTracking
+          phase="filled"
+          fillTxHash="0x9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b"
+          successTitle={copy.buyFilledTitle}
+          successBody={state === "arrived" ? copy.rhChain.arrivedBody(nvidia.name) : copy.rhChain.onItsWayBody(nvidia.name)}
+          onDone={() => {}}
+        >
+          <RobinhoodArrival state={arrival} token={nvidia.rhAddress!} />
+        </IntentTracking>
+      </Panel>
+    </div>
   );
 }
 

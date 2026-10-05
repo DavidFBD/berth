@@ -200,6 +200,8 @@ export type Copy = {
     holdingSplit: (inAccount: string, inWallet: string) => string;
     /** The Robinhood Chain wallet did not answer: the list is the account's alone. */
     walletUnread: string;
+    /** The buy sheet's line under its title, for such a buy: buySub without "It lands in your account". */
+    buySub: string;
     /** The buy sheet, under the quote: where the token goes. */
     arrival: string;
     /** The fill toast's line for such a buy. */
@@ -2816,11 +2818,12 @@ export const COPY: Copy = {
     holdingInWallet: "In your own wallet on Robinhood Chain",
     holdingSplit: (inAccount, inWallet) => `${inAccount} in your Berth account, ${inWallet} in your own wallet on Robinhood Chain`,
     walletUnread: "Your wallet on Robinhood Chain could not be read just now, so what is there is not shown. Berth will try again shortly.",
+    buySub: "Pay with what you hold, from more than 20 networks.",
     arrival: "Arrives in your own wallet on Robinhood Chain.",
     filledToastBody: "It is on its way to your own wallet on Robinhood Chain.",
-    onItsWayBody: (name) => `${name} is bought and on its way to your own wallet on Robinhood Chain.`,
+    onItsWayBody: (name) => `${name} is on its way to your own wallet on Robinhood Chain.`,
     arrivedBody: (name) => `${name} is in your own wallet on Robinhood Chain.`,
-    stepFilled: "Bought",
+    stepFilled: "Bought on Sonic",
     stepArriving: "Arriving on Robinhood Chain",
     stepArrived: "In your wallet on Robinhood Chain",
     arrivalSlow: "This is taking longer than usual. You can close this, the delivery carries on without this page.",

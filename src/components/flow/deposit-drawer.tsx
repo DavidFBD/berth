@@ -59,6 +59,7 @@ import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useLimitDraft, type LimitPrefill } from "@/hooks/use-limit-draft";
 import { usePourQuote } from "@/hooks/use-pour-quote";
 import { useDelivery } from "@/hooks/use-delivery";
+import type { Delivery } from "@/lib/delivery";
 import { useRobinhoodArrival } from "@/hooks/use-robinhood-arrival";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
@@ -117,6 +118,7 @@ export function DepositDrawer({
   preferPay,
   devHoldings,
   devLimit,
+  devDelivery,
   confirmTerms,
 }: {
   listing: Listing | null;
@@ -159,6 +161,8 @@ export function DepositDrawer({
     Partial<Pick<EmbeddedHoldingsResult, "nativeBalances">>;
   /** Dev galleries only: show "Set a price" as if the switch were on. */
   devLimit?: boolean;
+  /** Dev galleries only: stands in for the delivery answer (hooks/use-delivery), so a Robinhood Chain buy sheet can be seen without a session. */
+  devDelivery?: Delivery;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
     DEPOSIT_SOURCE_CHAINS[0],
@@ -194,7 +198,10 @@ export function DepositDrawer({
   // says this account's buys go to its own wallet on Robinhood Chain. The
   // quote and the arrival line follow the answer; the machine asks again
   // as the order starts.
-  const delivery = useDelivery({ enabled: open && isBuy });
+  const fetchedDelivery = useDelivery({ enabled: open && isBuy && !devDelivery });
+  const delivery = devDelivery
+    ? { delivery: devDelivery, switched: true, settled: true, ask: async () => devDelivery }
+    : fetchedDelivery;
   const robinhoodToken =
     listing?.kind === "stock" && delivery.delivery.chainKey === "robinhood" ? listing.rhAddress : undefined;
   // Once such a buy is filled on the hub: has it reached the wallet yet?
@@ -741,7 +748,7 @@ export function DepositDrawer({
                 ? copy.buyTitle(isBuy ? listing.name : (meta?.title ?? listing.name))
                 : copy.orderTitleFallback}
             </DrawerTitle>
-            <DrawerDescription>{copy.buySub}</DrawerDescription>
+            <DrawerDescription>{robinhoodToken && !limit.active ? copy.rhChain.buySub : copy.buySub}</DrawerDescription>
           </DrawerHeader>
 
           {/* The three acts (form → working → settling) hand off with a soft

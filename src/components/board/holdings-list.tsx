@@ -310,7 +310,7 @@ export function HoldingsView({
                   {/* Where a holding sits, said only when part of it is in
                       the person's own wallet on Robinhood Chain. */}
                   {robinhood !== undefined && robinhood > 0n && (
-                    <div className="truncate text-[11px] text-muted-foreground">
+                    <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
                       {robinhood >= balance
                         ? copy.rhChain.holdingInWallet
                         : copy.rhChain.holdingSplit(

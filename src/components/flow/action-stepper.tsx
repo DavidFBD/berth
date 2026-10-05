@@ -413,12 +413,12 @@ export function RobinhoodArrival({ state, token }: { state: ArrivalState; token:
     <div data-ph-mask className="flex w-full flex-col gap-2 rounded-xl bg-muted/50 px-3 py-2.5 text-left text-sm">
       <ol className="flex flex-col gap-1.5">
         <li className="flex items-center gap-2 text-foreground">
-          <Check weight="bold" aria-hidden className="size-4 shrink-0 text-primary" />
+          <Check weight="bold" aria-hidden className="size-4 shrink-0 text-foreground" />
           {copy.rhChain.stepFilled}
         </li>
         <li className={cn("flex items-center gap-2", arrived ? "text-foreground" : "text-muted-foreground")}>
           {arrived ? (
-            <Check weight="bold" aria-hidden className="size-4 shrink-0 text-primary" />
+            <Check weight="bold" aria-hidden className="size-4 shrink-0 text-foreground" />
           ) : (
             <span className="-m-0.5 grid size-5 shrink-0 place-items-center">
               <ThinkingOrb state="working" size={20} tone="muted" decorative />
