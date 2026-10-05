@@ -459,6 +459,27 @@ describe("windows", () => {
     expect(result.tradingDays).toBe(5);
   });
 
+  const without = (day: string): Marks => {
+    const all = long.benchmarkMarks;
+    const keep = all.dates.map((date, index) => [date, all.values[index]] as const).filter(([date]) => date !== day);
+    return { dates: keep.map(([date]) => date), values: keep.map(([, value]) => value) };
+  };
+
+  it("starts a window whose first day has no benchmark close from the close before it", () => {
+    // No close on Thursday the 17th, the week's first day: Wednesday's 52 stands in.
+    const result = portfolioHistory({ ...long, benchmarkMarks: without("2026-09-17") }, "1w");
+    expect(result.benchmarkStatus).toBe("ok");
+    expect(result.days[0].benchmarkReturnPct).toBe(0);
+    expect(result.benchmarkPct).toBeCloseTo((54 / 52 - 1) * 100, 10);
+  });
+
+  it("ends on the close before the last stored day when that day has none and nothing is live", () => {
+    // No close on Thursday the 24th: Wednesday's 53 ends the line, so the legend compares the same day.
+    const result = portfolioHistory({ ...long, benchmarkMarks: without("2026-09-24") }, "1w");
+    expect(result.days.at(-1)!.benchmarkReturnPct).not.toBeNull();
+    expect(result.benchmarkPct).toBeCloseTo((53 / 49 - 1) * 100, 10);
+  });
+
   it("starts at the first day with a value when the range reaches further back", () => {
     const result = portfolioHistory(long, "1m");
     expect(result.since).toBe("2026-09-14");

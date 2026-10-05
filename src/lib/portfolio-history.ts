@@ -286,6 +286,8 @@ function shadowLine(
   marks: Marks,
   livePrice: number | null,
   basis: Basis,
+  /** The index of the window's first point, which never lacks a price. */
+  windowFrom: number,
 ): Shadow {
   const none = () => ({
     values: series.map(() => null),
@@ -355,10 +357,14 @@ function shadowLine(
       }
     }
     // Today's point takes the live price, or the latest close when there
-    // is none; a stored day takes its own close or nothing.
+    // is none; a stored day takes its own close or nothing, except the
+    // window's first point and the last point, which take the latest close
+    // on or before their day as the live point does: a missing close there
+    // would leave the whole comparison without a start or an end.
     const price = point.live
       ? (livePrice ?? closeOnOrBefore(marks, point.day))
-      : closeOn(marks, point.day);
+      : (closeOn(marks, point.day) ??
+        (index === windowFrom || index === series.length - 1 ? closeOnOrBefore(marks, point.day) : undefined));
     const total = [...units.values()].reduce((sum, value) => sum + value, 0);
     prices[index] = price;
     values.push(price === undefined ? null : total * price);
@@ -497,7 +503,7 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
   const rebasedFrom = base && start === base.day ? series[from].day : null;
 
   const livePrice = input.live?.benchmarkPrice ?? null;
-  const shadow = shadowLine(series, orders, input.benchmarkSymbol, input.benchmarkMarks, livePrice, basis);
+  const shadow = shadowLine(series, orders, input.benchmarkSymbol, input.benchmarkMarks, livePrice, basis, from);
   const window = series.slice(from);
   const days: HistoryPoint[] = window.map((point, index) => ({
     day: point.day,

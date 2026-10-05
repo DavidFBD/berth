@@ -116,7 +116,9 @@ describe("dailyStory", () => {
     // The line: 52.50 held plus 5 sold at the close of 10, on 100 before.
     const line = portfolioHistory({ days, orders, listingCloses, benchmarkMarks: { dates: [], values: [] } }, "since");
     expect(stories[1].change).toBeCloseTo(5 * 10.5 + 5 * 10 - 100);
-    expect(stories[1].changePct).toBeCloseTo(line.days[1].returnPct! - line.days[0].returnPct!, 10);
+    // The day's return is the line's chain from one point to the next: (1 + r_t) / (1 + r_{t-1}) − 1.
+    const lineDay = ((1 + line.days[1].returnPct! / 100) / (1 + line.days[0].returnPct! / 100) - 1) * 100;
+    expect(stories[1].changePct).toBeCloseTo(lineDay, 10);
     expect(landed[1].usd).toBeCloseTo(50);
   });
 
