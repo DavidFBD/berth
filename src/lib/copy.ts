@@ -4114,8 +4114,9 @@ export const COPY: Copy = {
         id: "transfers",
         heading: "International transfers",
         body: [
-          "Some of these services process data outside the European Economic Area, mostly in the United States: among them Privy, Stripe, MoonPay, Vercel, GitHub, OpenAI, Resend, X and node providers. PostHog keeps analytics in Frankfurt.",
+          "Some of these services process data outside the European Economic Area, mostly in the United States: among them Privy, Vercel, GitHub, OpenAI, Resend, X and node providers. PostHog keeps analytics in Frankfurt.",
           "Where data leaves the European Economic Area, it is protected by the European Commission's standard contractual clauses in each provider's data processing terms. You can ask us for a copy.",
+          "The card provider you choose to add money with, such as Stripe or MoonPay, handles your data as its own, under its own terms and privacy policy, including where it transfers it.",
         ],
       },
       {
