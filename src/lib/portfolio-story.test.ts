@@ -201,6 +201,8 @@ describe("dailyStory", () => {
       orders: [],
     });
     expect(stories[1].top).toEqual({ symbol: "NVDA", usd: expect.closeTo(2), pct: expect.closeTo(2) });
+    // The strip's pick is by percent, so the small position that moved 10% is named.
+    expect(stories[1].mover).toEqual({ symbol: "TSLA", usd: expect.closeTo(1), pct: expect.closeTo(10) });
   });
 });
 

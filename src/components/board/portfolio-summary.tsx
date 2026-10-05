@@ -14,7 +14,7 @@ import { TOKEN_LISTINGS, rowName } from "@/lib/listings";
 import { isTradingDay } from "@/lib/market-calendar";
 import { addDays } from "@/lib/marks";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
-import { RANGES, type HistoryResult, type Range } from "@/lib/portfolio-history";
+import { RANGES, type HistoryPoint, type HistoryResult, type Range } from "@/lib/portfolio-history";
 import type { StoryMove, StoryOrder, StoryPoint } from "@/lib/portfolio-story";
 import { cn } from "@/lib/utils";
 
@@ -251,7 +251,8 @@ function DayLine({
   const copy = useCopy();
   const money = useMoney();
   const signed = useSignedMoney();
-  const top = point.top ?? null;
+  // The day's pick is the holding that moved most in percent, told with its dollars.
+  const top = point.mover ?? point.top ?? null;
   // One holding moving the whole day says it once.
   const sameAsTop = top !== null && point.change != null && Math.abs(top.usd - point.change) < 0.005;
   const shownOrders = orders.slice(0, 2);
@@ -349,7 +350,7 @@ function useStripDays(points: readonly StoryPoint[], liveDay: string | null): St
   const signed = useSignedMoney();
   return points.map((point) => {
     const today = point.day === liveDay;
-    const moverName = point.top ? nameOf(point.top.symbol) : null;
+    const moverName = point.mover ? nameOf(point.mover.symbol) : null;
     const pct = point.changePct;
     const change =
       point.change == null || pct == null
@@ -365,9 +366,53 @@ function useStripDays(points: readonly StoryPoint[], liveDay: string | null): St
   });
 }
 
-/** One marker per point the orders landed on: a buy when any was a buy. */
-function markersFor(days: readonly StoryPoint[], orders: readonly StoryOrder[]): ChartMarker[] {
-  const index = new Map(days.map((point, at) => [point.day, at]));
+/** A point as the chart draws it, in its unit, with the dollars for the readout. */
+type ChartPoint = HistoryPoint & {
+  /** The account's dollars at this point; null for an origin whose cost is unknown. */
+  dollars: number | null;
+  /** The 0% point at the first buy, before its first close. */
+  origin: boolean;
+};
+
+/**
+ * The chart's points: the returns so far when `percent` (with an origin at
+ * 0% when the window counts from the first buy), else the dollar values.
+ */
+function buildChart(
+  days: readonly StoryPoint[],
+  { percent, origin, withBenchmark }: { percent: boolean; origin: boolean; withBenchmark: boolean },
+): ChartPoint[] {
+  const points: ChartPoint[] = days.map((point) => ({
+    day: point.day,
+    value: percent ? point.returnPct! : point.value,
+    benchmark: percent ? (point.benchmarkReturnPct ?? null) : point.benchmark,
+    dollars: point.value,
+    origin: false,
+  }));
+  if (!origin) return points;
+  const first = days[0];
+  return [
+    {
+      day: first.day,
+      value: 0,
+      benchmark: withBenchmark ? 0 : null,
+      dollars: first.change != null ? first.value - first.change : null,
+      origin: true,
+    },
+    ...points,
+  ];
+}
+
+/**
+ * One marker per point the orders landed on: a buy when any was a buy. With
+ * an origin, the orders that landed on the first close are drawn on it,
+ * where the money went in.
+ */
+function markersFor(points: readonly ChartPoint[], orders: readonly StoryOrder[]): ChartMarker[] {
+  const index = new Map<string, number>();
+  points.forEach((point, at) => {
+    if (!index.has(point.day)) index.set(point.day, at);
+  });
   const kinds = new Map<number, ChartMarker["kind"]>();
   for (const order of orders) {
     const at = index.get(order.day);
@@ -417,7 +462,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
     return (
       <div className="mt-4">
         <Skeleton className="h-4 w-56 max-w-full" />
-        <div className="mt-2 h-[150px] lg:h-[190px]" />
+        <div className="mt-2 h-[150px] lg:h-[160px]" />
         <div className="mt-1 h-8" />
       </div>
     );
@@ -463,38 +508,60 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   }
 
   const days = result.days;
-  const indexOf = new Map(days.map((point, index) => [point.day, index]));
-  const fromStrip = hover ?? pinned;
-  const marked = scrub ?? (fromStrip !== null ? (indexOf.get(fromStrip) ?? null) : null);
-  const markedDay = marked !== null ? days[marked]?.day ?? null : null;
-
   const shownBenchmark = data.benchmark.symbol as BenchmarkSymbol;
   const stale = query.isPlaceholderData;
   const status = result.benchmarkStatus;
   const withBenchmark = status === "ok" && result.benchmarkPct !== null;
+
+  // The line is the return so far, both sides from the same start, so a
+  // buy is never a step up. Where that return cannot be told the line is
+  // dollars, as it was, with the reason said below the legend.
+  const percent = result.changePct !== null && days.every((point) => point.returnPct != null);
+  // Since first buy counts from the buy itself: an origin at 0% before the
+  // first close, where the first buy's mark sits.
+  const origin = percent && range === "since" && !result.rebasedFrom && days[0].fromBuy === true;
+  const chart = buildChart(days, { percent, origin, withBenchmark });
+  const indexOf = new Map(chart.flatMap((point, index) => (point.origin ? [] : [[point.day, index] as const])));
+  const fromStrip = hover ?? pinned;
+  const marked = scrub ?? (fromStrip !== null ? (indexOf.get(fromStrip) ?? null) : null);
+  const markedDay = marked !== null ? chart[marked]?.day ?? null : null;
   const chooser = (
     <BenchmarkChooser value={benchmark} shown={shownBenchmark} onChange={setBenchmark} />
   );
   // In a reason's sentence the name is plain text: the legend holds the chooser.
   const named = `${copy.benchmarkArticle[shownBenchmark]}${copy.benchmarkNames[shownBenchmark]}`;
 
-  const scrubbed = marked !== null ? days[marked] : undefined;
+  const scrubbed = marked !== null ? chart[marked] : undefined;
+  const figure = (value: number) => (percent ? formatPercentChange(value, 1) : money.format(value));
   const readout = scrubbed && (
     // Over the legend, never instead of it: the legend keeps its height,
     // hidden, so nothing below moves.
-    <p className="absolute inset-0 flex flex-wrap content-center items-baseline gap-x-1.5 text-[13px] leading-5 text-muted-foreground">
-      <span className="whitespace-nowrap">{scrubbed.day === liveDay ? copy.portfolioToday : shortDate(scrubbed.day)}</span>
+    // Anchored to the bottom: on a narrow screen a second line grows up into
+    // the space above the legend, never down over the line.
+    <p className="absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-1.5 text-[13px] leading-5 text-muted-foreground">
+      <span className="whitespace-nowrap">
+        {scrubbed.origin
+          ? copy.portfolioWhenBought
+          : scrubbed.day === liveDay
+            ? copy.portfolioToday
+            : shortDate(scrubbed.day)}
+      </span>
       <span aria-hidden="true">·</span>
       <span className="whitespace-nowrap text-foreground">
-        {copy.portfolioYou}{" "}
-        <span className="money tabular-nums">{money.format(scrubbed.value)}</span>
+        {copy.portfolioYou} <span className="money tabular-nums">{figure(scrubbed.value)}</span>
+        {/* On a percent line the dollars ride along, so the money is never out of sight. */}
+        {percent && scrubbed.dollars !== null && (
+          <>
+            , <span className="money tabular-nums">{money.format(scrubbed.dollars)}</span>
+          </>
+        )}
       </span>
       {withBenchmark && scrubbed.benchmark !== null && (
         <>
           <span aria-hidden="true">·</span>
           <span className="whitespace-nowrap">
             {copy.benchmarkNames[shownBenchmark]}{" "}
-            <span className="money tabular-nums">{money.format(scrubbed.benchmark)}</span>
+            <span className="money tabular-nums">{figure(scrubbed.benchmark)}</span>
           </span>
         </>
       )}
@@ -559,12 +626,13 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
       {reason && <p className="mt-1 text-xs leading-5 text-muted-foreground">{reason}</p>}
       <div className="mt-2">
         <PortfolioChart
-          days={days}
+          days={chart}
+          unit={percent ? "pct" : "usd"}
           withBenchmark={withBenchmark}
           scrubIndex={marked}
           onScrub={setScrub}
           drawKey={`${range}:${shownBenchmark}`}
-          markers={markersFor(days, result.orders ?? [])}
+          markers={markersFor(chart, result.orders ?? [])}
         />
       </div>
       {stripDays.length > 0 && (
@@ -586,7 +654,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
       />
       <div className="mt-2 flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <span className="text-[12.5px] text-muted-foreground">
-          {copy.portfolioSameDays}
+          {percent ? copy.portfolioReturnCaption : copy.portfolioSameDays}
           {/* The percentages are dollar returns; in another currency, say so. */}
           {money.converted && `. ${copy.inUsDollars}`}
         </span>
@@ -625,10 +693,13 @@ function FirstDay({
   const money = useMoney();
   const [scrub, setScrub] = useState<number | null>(null);
   const paid = point.value - (point.change ?? 0);
+  // In percent like every other line: from 0% at the buy to the return now.
+  const percent = point.changePct != null;
   const days: StoryPoint[] = [
-    { day: point.day, value: paid, benchmark: null },
-    { day: point.day, value: point.value, benchmark: null },
+    { day: point.day, value: percent ? 0 : paid, benchmark: null },
+    { day: point.day, value: percent ? point.changePct! : point.value, benchmark: null },
   ];
+  const dollars = [paid, point.value];
   const scrubbed = scrub !== null ? days[scrub] : undefined;
   return (
     <div data-ph-mask className="mt-5 lg:mt-[22px]">
@@ -651,7 +722,13 @@ function FirstDay({
             </span>
             <span aria-hidden="true">·</span>
             <span className="whitespace-nowrap text-foreground">
-              {copy.portfolioYou} <span className="money tabular-nums">{money.format(scrubbed.value)}</span>
+              {copy.portfolioYou}{" "}
+              {percent && (
+                <>
+                  <span className="money tabular-nums">{formatPercentChange(scrubbed.value, 1)}</span>,{" "}
+                </>
+              )}
+              <span className="money tabular-nums">{money.format(dollars[scrub!])}</span>
             </span>
           </p>
         )}
@@ -659,6 +736,7 @@ function FirstDay({
       <div className="mt-2">
         <PortfolioChart
           days={days}
+          unit={percent ? "pct" : "usd"}
           withBenchmark={false}
           scrubIndex={scrub}
           onScrub={setScrub}

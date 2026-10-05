@@ -278,6 +278,8 @@ export type Copy = {
   accountSplitHoldings: string;
   /** Under the comparison chart, beside the range: what the two lines are. */
   portfolioSameDays: string;
+  /** Under the percent line: both lines are returns from the same start, buys and sells set aside. */
+  portfolioReturnCaption: string;
   /** Over the holding rows: what the pair of figures on each row is. */
   holdingsSubline: string;
   /** Under "What you own": what its figure counts. Must match lib/server/portfolio. The first only while cash is parked. */
@@ -2830,6 +2832,7 @@ export const COPY: Copy = {
   lastKnownAsOf: (when) => `Showing what we last read, ${when}, while the latest arrives.`,
   accountSplitHoldings: "Stocks",
   portfolioSameDays: "Same money, same days",
+  portfolioReturnCaption: "Returns, money in and out set aside",
   holdingsSubline: "Since you bought, beside the S&P 500 ETF.",
   holdingsCashIncluded: "Includes your parked cash.",
   holdingsWalletsNote: "Money waiting in your wallets is not counted.",
@@ -2931,7 +2934,7 @@ export const COPY: Copy = {
   moveInTheNews: (source) => `In the news: ${source}`,
   moveReadPost: (source) => `Read what ${source} posted, on X`,
   holdingsBenchmarkNote:
-    "The line is your money each day at the close, and today at the live price, beside the same money put on the same days into what you compare it with, priced the same way. Your side includes the fee you paid; the other side does not. The percentage is time weighted, so money you add is not counted as a gain. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. Each day under the line is what your holdings made or lost that day, with buys and sells set aside, and the holding that moved most. A ringed dot on the line is a buy, a hollow ring a sell. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
+    "The line is the return on your money so far, each day at the close and today at the live price, beside the return of the same money put on the same days into what you compare it with. Both start at 0% together, so the gap between them is what your choices did. The return is time weighted: money you add or take out moves neither line, only prices do. Your side includes the fee you paid; the other side does not. Where a return cannot be told, the line shows your money in dollars instead and says why. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. Each day under the line is what your holdings made or lost that day, with buys and sells set aside, and the holding that moved most. A ringed dot on the line is a buy, a hollow ring a sell. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
   portfolioSince: (date, days) => `Since ${date}, ${marketDays(days)}.`,
   portfolioYou: "You",
   portfolioSameDollarsIn: {

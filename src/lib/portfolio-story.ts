@@ -59,6 +59,12 @@ export type DayStory = {
   /** The change over the money at work that day (yesterday's value plus the day's buys), percent. */
   changePct: number | null;
   top: DayMover | null;
+  /**
+   * The holding whose own price moved most that day, in percent (for one
+   * first bought that day, its change from what was paid), whatever its
+   * size: so a large position does not name every day. With its dollars.
+   */
+  mover: DayMover | null;
   /** The first point, with nothing before it: the change is from what was paid. */
   fromBuy: boolean;
   /** Every holding's part of the change, dollars, by symbol. Empty when the change is unknown. */
@@ -102,6 +108,7 @@ export type StoryPoint = HistoryPoint & {
   change?: number | null;
   changePct?: number | null;
   top?: DayMover | null;
+  mover?: DayMover | null;
   fromBuy?: boolean;
 };
 
@@ -239,7 +246,7 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
   const stories: DayStory[] = points.map((point, index) => {
     const before = index > 0 ? points[index - 1] : undefined;
     const buys = landed[index].filter((order) => order.direction === "buy");
-    const unknown: DayStory = { day: point.day, change: null, changePct: null, top: null, fromBuy: !before, parts: {} };
+    const unknown: DayStory = { day: point.day, change: null, changePct: null, top: null, mover: null, fromBuy: !before, parts: {} };
     // Nothing before and nothing bought: there is no change to tell.
     if (!before && buys.length === 0) return { ...unknown, fromBuy: false };
 
@@ -261,24 +268,31 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
 
     const change = [...parts.values()].reduce((sum, usd) => sum + usd, 0);
     const atWork = (before?.value ?? 0) + [...paid.values()].reduce((sum, usd) => sum + usd, 0);
+    const movers: DayMover[] = [...parts]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([symbol, usd]) => {
+        const held = before?.held.get(symbol);
+        const now = priceAt(point, symbol);
+        const pct =
+          held && held.price > 0 && now !== undefined
+            ? (now / held.price - 1) * 100
+            : (paid.get(symbol) ?? 0) > DUST_USD
+              ? (usd / paid.get(symbol)!) * 100
+              : null;
+        return { symbol, usd, pct };
+      });
     let top: DayMover | null = null;
-    for (const [symbol, usd] of [...parts].sort(([a], [b]) => a.localeCompare(b))) {
-      if (top && Math.abs(usd) <= Math.abs(top.usd)) continue;
-      const held = before?.held.get(symbol);
-      const now = priceAt(point, symbol);
-      const pct =
-        held && held.price > 0 && now !== undefined
-          ? (now / held.price - 1) * 100
-          : (paid.get(symbol) ?? 0) > DUST_USD
-            ? (usd / paid.get(symbol)!) * 100
-            : null;
-      top = { symbol, usd, pct };
+    let mover: DayMover | null = null;
+    for (const candidate of movers) {
+      if (!top || Math.abs(candidate.usd) > Math.abs(top.usd)) top = candidate;
+      if (candidate.pct !== null && (!mover || Math.abs(candidate.pct) > Math.abs(mover.pct!))) mover = candidate;
     }
     return {
       day: point.day,
       change,
       changePct: atWork > DUST_USD ? (change / atWork) * 100 : null,
       top,
+      mover,
       fromBuy: !before,
       parts: Object.fromEntries(parts),
     };
@@ -340,7 +354,7 @@ export function withStory(
       days: result.days.map((point) => {
         const story = byDay.get(point.day);
         if (!story) return point;
-        return { ...point, change: story.change, changePct: story.changePct, top: story.top, fromBuy: story.fromBuy };
+        return { ...point, change: story.change, changePct: story.changePct, top: story.top, mover: story.mover, fromBuy: story.fromBuy };
       }),
       ...rangeStory(result, byDay, orders, fromZero),
     };

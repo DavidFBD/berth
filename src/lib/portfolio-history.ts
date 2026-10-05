@@ -64,6 +64,14 @@ import { dayOfOrder, type SnapshotBase } from "@/lib/portfolio-days";
  * when a sell lands on a day its listing has no close. Under two days
  * there is no line and no change ('too_short').
  *
+ * THE PERCENT LINE. Each point also carries the return so far: yours is
+ * the same daily chain as `changePct` read at every point, the
+ * benchmark's its price over the same start (the same money in it earns
+ * exactly that, whatever goes in or out). Both start at 0 on a fixed
+ * range; since first buy they count from the first buy, so the chart
+ * draws an origin at 0 before the first close. The last point's returns
+ * are `changePct` and `benchmarkPct`.
+ *
  * THE RECORD'S START. Stored days began with the evening snapshot
  * (2026-09-25), and an earlier stretch is rebuilt from the orders only
  * when they explain the first snapshot (lib/server/history-backfill). When
@@ -141,7 +149,20 @@ export type HistoryInput = {
   base?: SnapshotBase;
 };
 
-export type HistoryPoint = { day: IsoDay; value: number; benchmark: number | null };
+export type HistoryPoint = {
+  day: IsoDay;
+  value: number;
+  benchmark: number | null;
+  /**
+   * The time-weighted return from the window's start to this point,
+   * percent (THE PERCENT LINE); null when `changePct` is. A fixed range
+   * starts at 0; since first buy starts from the first buy, so its first
+   * point already holds the move from the order to that close.
+   */
+  returnPct?: number | null;
+  /** The benchmark's return over the same days, percent; null when its line is refused or the day has no close. */
+  benchmarkReturnPct?: number | null;
+};
 
 export type BenchmarkStatus =
   | "ok"
@@ -450,14 +471,20 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
     else flowOut[index - from] += order.quantity * price;
   }
 
+  // The return so far at every point (THE PERCENT LINE): the same chain,
+  // read as it goes. A fixed range's first point is its base, 0%.
   let growth = 1;
+  const returns: (number | null)[] = window.map(() => null);
+  if (changeKnown && !fromZero) returns[0] = 0;
   for (let index = fromZero ? 0 : 1; changeKnown && index < window.length; index += 1) {
     const before = index === 0 ? (from > 0 ? series[from - 1].value : 0) : window[index - 1].value;
     const base = before + flowIn[index];
     growth *= base > DUST_USD ? (window[index].value + flowOut[index]) / base : 1;
+    returns[index] = (growth - 1) * 100;
   }
 
   let benchmarkPct: number | null = null;
+  const benchmarkReturns: (number | null)[] = window.map(() => null);
   if (shadow.status === "ok") {
     const marks = input.benchmarkMarks;
     const lastPoint = window.at(-1)!;
@@ -467,7 +494,29 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
       ? input.benchmarkSymbol && orders[0]?.benchmarkMarks?.[input.benchmarkSymbol]
       : closeOnOrBefore(marks, since);
     if (startMark && endMark) benchmarkPct = (endMark / startMark - 1) * 100;
+    // The same money in the benchmark earns the benchmark's own price
+    // change, whatever went in or out, so its return is its price from the
+    // same start. A day with no close is a gap, as in the dollar line.
+    if (startMark) {
+      window.forEach((point, index) => {
+        if (index === 0 && !fromZero) {
+          benchmarkReturns[index] = 0;
+          return;
+        }
+        const mark =
+          index === window.length - 1
+            ? endMark
+            : point.live
+              ? (livePrice ?? closeOnOrBefore(marks, point.day))
+              : closeOn(marks, point.day);
+        benchmarkReturns[index] = mark ? (mark / startMark - 1) * 100 : null;
+      });
+    }
   }
+  days.forEach((point, index) => {
+    point.returnPct = returns[index];
+    point.benchmarkReturnPct = benchmarkReturns[index];
+  });
 
   return {
     range,

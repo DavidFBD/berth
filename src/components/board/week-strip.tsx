@@ -87,7 +87,7 @@ export function WeekStrip({
       >
         {days.map((day, index) => {
           const direction = changeDirection(day.changePct ?? undefined) ?? "flat";
-          const mark = day.top ? LISTING_MARK_BY_SYMBOL[day.top.symbol] : undefined;
+          const mark = day.mover ? LISTING_MARK_BY_SYMBOL[day.mover.symbol] : undefined;
           const isActive = active === day.day;
           return (
             <button

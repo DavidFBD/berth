@@ -5,8 +5,10 @@ import type { HistoryPoint } from "@/lib/portfolio-history";
 import { cn } from "@/lib/utils";
 
 /**
- * Two lines in dollars: the account's money each day, and the same dollars
- * placed in a benchmark on the same days (lib/portfolio-history). The first
+ * Two lines: the return on the account's money so far, and the return of
+ * the same dollars placed in a benchmark on the same days, both from 0%
+ * (lib/portfolio-history, THE PERCENT LINE). Where the return cannot be
+ * told the parent passes dollars instead (`unit`). The first
  * is ink, since the board's one accent is Ask; the second is quiet and dashed. No fill,
  * no grid, no axis: the headline above states the numbers, so the drawing
  * is hidden from assistive technology.
@@ -39,11 +41,18 @@ const MIN_HALF_SPAN = 0.015;
 
 export type ChartScale = { lo: number; hi: number };
 
+/** In percent the same floor is absolute: ±1.5 points around the middle. */
+const MIN_HALF_SPAN_POINTS = 1.5;
+
+/** What the lines are drawn in: dollars, or the return so far in percent. */
+export type ChartUnit = "usd" | "pct";
+
 /**
  * The vertical range: both lines' spread plus 8%, but never narrower than
- * ±1.5% around the middle, so a few quiet days are drawn as quiet.
+ * ±1.5% around the middle (±1.5 points for a percent line), so a few
+ * quiet days are drawn as quiet and a 0.2% day never looks like a cliff.
  */
-export function chartScale(days: readonly HistoryPoint[]): ChartScale | undefined {
+export function chartScale(days: readonly HistoryPoint[], unit: ChartUnit = "usd"): ChartScale | undefined {
   const values: number[] = [];
   for (const day of days) {
     if (Number.isFinite(day.value)) values.push(day.value);
@@ -56,7 +65,7 @@ export function chartScale(days: readonly HistoryPoint[]): ChartScale | undefine
   lo -= pad;
   hi += pad;
   const mid = (lo + hi) / 2;
-  const minHalf = Math.abs(mid) * MIN_HALF_SPAN || 1;
+  const minHalf = unit === "pct" ? MIN_HALF_SPAN_POINTS : Math.abs(mid) * MIN_HALF_SPAN || 1;
   if ((hi - lo) / 2 < minHalf) {
     lo = mid - minHalf;
     hi = mid + minHalf;
@@ -117,8 +126,12 @@ export function PortfolioChart({
   onScrub,
   drawKey,
   markers = [],
+  unit = "usd",
 }: {
+  /** `value` and `benchmark` in the chosen unit: dollars, or the return so far in percent. */
   days: readonly HistoryPoint[];
+  /** A percent line gets a percent floor on its scale and a hairline at 0%. */
+  unit?: ChartUnit;
   /** Draw the benchmark's line; off when its status is not ok. */
   withBenchmark: boolean;
   scrubIndex: number | null;
@@ -130,8 +143,10 @@ export function PortfolioChart({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const shown = withBenchmark ? days : days.map((day) => ({ ...day, benchmark: null }));
-  const scale = chartScale(shown);
-  if (!scale || days.length < 2) return <div className="h-[150px] lg:h-[190px]" />;
+  const scale = chartScale(shown, unit);
+  if (!scale || days.length < 2) return <div className="h-[150px] lg:h-[160px]" />;
+  // Where both lines started, for a percent line: a rule, never a label.
+  const zero = unit === "pct" && scale.lo < 0 && scale.hi > 0 ? yAt(0, scale) : null;
 
   const count = days.length;
   const valuePath = linePath(
@@ -156,7 +171,7 @@ export function PortfolioChart({
       ref={box}
       // Blocked, not masked: the line's shape is the account's value over time (lib/analytics).
       data-ph-block
-      className="relative h-[150px] cursor-crosshair touch-pan-y select-none lg:h-[190px]"
+      className="relative h-[150px] cursor-crosshair touch-pan-y select-none lg:h-[160px]"
       onPointerDown={pick}
       onPointerMove={pick}
       onPointerLeave={leave}
@@ -165,6 +180,14 @@ export function PortfolioChart({
       }}
       onPointerCancel={leave}
     >
+      {zero !== null && (
+        <span
+          aria-hidden="true"
+          data-zero-line
+          className="pointer-events-none absolute inset-x-0 h-px -translate-y-1/2 bg-border"
+          style={{ top: `${zero}%` }}
+        />
+      )}
       {/* The draw-in: a reveal from the left, replayed per range and
           benchmark by the key, and switched off for reduced motion. */}
       <div key={drawKey} data-chart-draw className="absolute inset-0">
