@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { PortfolioChart, type ChartMarker } from "@/components/board/portfolio-chart";
 import { WeekStrip, type StripDay } from "@/components/board/week-strip";
+import { useMoves } from "@/hooks/use-moves";
 import { usePortfolioHistory } from "@/hooks/use-profile";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
 import { BENCHMARKS, DEFAULT_BENCHMARK, findBenchmark, type BenchmarkSymbol } from "@/lib/benchmarks";
@@ -15,7 +16,7 @@ import { isTradingDay } from "@/lib/market-calendar";
 import { addDays } from "@/lib/marks";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 import { RANGES, type HistoryPoint, type HistoryResult, type Range } from "@/lib/portfolio-history";
-import type { StoryMove, StoryOrder, StoryPoint } from "@/lib/portfolio-story";
+import { pickMove, type StoryMove, type StoryOrder, type StoryPoint } from "@/lib/portfolio-story";
 import { cn } from "@/lib/utils";
 
 const BENCHMARK_KEY = "berth.portfolio.benchmark";
@@ -450,8 +451,14 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   // The live point, when today's is one: the strip and the day line call it Today.
   const liveDay =
     data?.todaySource && data.todaySource.value !== "stored" ? (since?.days.at(-1)?.day ?? null) : null;
-  const stripSource = since && since.days.length > 0 ? since.days : [];
+  const stripSource: readonly StoryPoint[] = since && since.days.length > 0 ? since.days : [];
   const stripDays = useStripDays(stripSource.slice(-7), liveDay);
+  // Large moves in the news, already read for the board (/api/moves): the
+  // one on a day on the line in a listing held then, if any.
+  const moves = useMoves();
+  const move = pickMove([...moves.values()], stripSource, (day, symbol) =>
+    Boolean(stripSource.find((point) => point.day === day)?.held?.includes(symbol)),
+  );
 
   if (!holdsAnything) return null;
 
@@ -479,7 +486,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   const stripHeading = firstWeek ? copy.portfolioFirstWeek(stripSource.length) : copy.portfolioWeekLabel;
   const allOrders = since?.orders ?? result?.orders ?? [];
   const ordersOn = (day: string) => allOrders.filter((order) => order.day === day);
-  const moveOn = (day: string) => (data.move && data.move.day === day ? data.move : null);
+  const moveOn = (day: string) => (move && move.day === day ? move : null);
   const pin = (day: string) => setPinned((current) => (current === day ? null : day));
 
   if (!result || result.days.length < 2 || data.available.length === 0) {

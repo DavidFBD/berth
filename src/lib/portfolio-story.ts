@@ -65,6 +65,8 @@ export type DayStory = {
    * size: so a large position does not name every day. With its dollars.
    */
   mover: DayMover | null;
+  /** The listings held at this point, by symbol: what a move in the news may be about. */
+  held: string[];
   /** The first point, with nothing before it: the change is from what was paid. */
   fromBuy: boolean;
   /** Every holding's part of the change, dollars, by symbol. Empty when the change is unknown. */
@@ -109,6 +111,7 @@ export type StoryPoint = HistoryPoint & {
   changePct?: number | null;
   top?: DayMover | null;
   mover?: DayMover | null;
+  held?: string[];
   fromBuy?: boolean;
 };
 
@@ -262,10 +265,10 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
     const sold = new Map<string, number>();
     for (const order of landed[index]) {
       if (order.direction !== "sell") continue;
-      if (order.quantity === null) return { day: point.day, change: null, changePct: null, top: null, mover: null, fromBuy: !before, parts: {} };
+      if (order.quantity === null) return { day: point.day, change: null, changePct: null, top: null, mover: null, held: [...point.held.keys()].sort(), fromBuy: !before, parts: {} };
       sold.set(order.symbol, (sold.get(order.symbol) ?? 0) + order.quantity);
     }
-    const unknown: DayStory = { day: point.day, change: null, changePct: null, top: null, mover: null, fromBuy: !before, parts: {} };
+    const unknown: DayStory = { day: point.day, change: null, changePct: null, top: null, mover: null, held: [...point.held.keys()].sort(), fromBuy: !before, parts: {} };
     // Nothing before and nothing bought: there is no change to tell.
     if (!before && buys.length === 0) return { ...unknown, fromBuy: false };
 
@@ -333,6 +336,7 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
       changePct: atWork > DUST_USD ? (change / atWork) * 100 : null,
       top,
       mover,
+      held: [...point.held.keys()].sort(),
       fromBuy: !before,
       parts: Object.fromEntries(parts),
     };
@@ -394,7 +398,7 @@ export function withStory(
       days: result.days.map((point) => {
         const story = byDay.get(point.day);
         if (!story) return point;
-        return { ...point, change: story.change, changePct: story.changePct, top: story.top, mover: story.mover, fromBuy: story.fromBuy };
+        return { ...point, change: story.change, changePct: story.changePct, top: story.top, mover: story.mover, held: story.held, fromBuy: story.fromBuy };
       }),
       ...rangeStory(result, byDay, orders, fromZero),
     };

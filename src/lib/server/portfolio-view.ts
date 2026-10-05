@@ -8,9 +8,8 @@ import {
   type LivePoint,
   type Range,
 } from "@/lib/portfolio-history";
-import { pickMove, withStory, type StoryHolding, type StoryMove, type StoryResult } from "@/lib/portfolio-story";
+import { withStory, type StoryHolding, type StoryResult } from "@/lib/portfolio-story";
 import { readMarks } from "@/lib/server/marks";
-import { loadMoves, type MoveNews } from "@/lib/server/moves";
 import {
   liveListingPrices,
   loadListingOrders,
@@ -60,12 +59,14 @@ import type { Marks, OrderFacts } from "@/lib/benchmark";
  * Each day's story rides on its point (lib/portfolio-story, additive):
  * `change` the dollars the holdings made or lost that day with buys and
  * sells set aside (null when a price or a cost is missing), `changePct`
- * the same over the money at work, `top` the holding that moved most
- * `{symbol, usd, pct}`, `fromBuy` on a first point told from what was
- * paid. Each range adds `contributions` (each holding's dollars over the
- * window), `changeUsd` and `orders` (`{day, at, symbol, direction, usd}`,
- * the point each landed on). `move` is a large move with news in a
- * listing held, on a day on the line, or null.
+ * the same over the money at work, `top` the holding that moved most in
+ * dollars and `mover` in percent `{symbol, usd, pct}`, `held` the symbols
+ * held, `fromBuy` on a first point told from what was paid. Each range
+ * adds `contributions` (each holding's dollars over the window),
+ * `changeUsd` and `orders` (`{day, at, symbol, direction, usd}`, the point
+ * each landed on). A large move in the news is not read here: the board
+ * already holds the moves (/api/moves) and picks one on a held day
+ * (lib/portfolio-story pickMove), so this read never waits on news.
  *
  * `todaySource` says where today's point came from: `value` 'oracle' when
  * every holding was priced live, 'marks' when any took its latest close,
@@ -102,16 +103,7 @@ export type PortfolioHistoryResponse = {
     value: "oracle" | "marks" | "stored";
     benchmark: "oracle" | "defillama" | "marks";
   } | null;
-  /**
-   * A large move with news in a listing the account held, on a day on the
-   * line (lib/server/moves, lib/portfolio-story pickMove): "in the news",
-   * never "because". Null on most days; absent from older answers.
-   */
-  move?: StoryMove | null;
 };
-
-/** How long the moves read may take before the line goes without one. */
-const MOVES_READ_MS = 2_500;
 
 /** DefiLlama's current price for a benchmark-only id, or undefined. */
 async function currentPrice(marketId: string): Promise<number | undefined> {
@@ -178,16 +170,7 @@ export async function loadPortfolioHistory({
     })
     .finally(() => clearTimeout(timer));
 
-  // A move with news is read beside everything else and given up quietly.
-  let movesTimer: ReturnType<typeof setTimeout> | undefined;
-  const movesRead = Promise.race([
-    loadMoves().then((read) => read.moves),
-    new Promise<MoveNews[]>((resolve) => {
-      movesTimer = setTimeout(() => resolve([]), MOVES_READ_MS);
-    }),
-  ])
-    .catch(() => [] as MoveNews[])
-    .finally(() => clearTimeout(movesTimer));
+
 
   const [liveOutcome, marks] = await Promise.all([
     liveRead,
@@ -253,12 +236,7 @@ export async function loadPortfolioHistory({
     liveHoldings,
   });
 
-  // Held that day: the stored day's holdings, or today's live balances.
-  const heldOn = (day: string, symbol: string) => {
-    if (live && day === live.day) return (liveInputs?.balances[symbol] ?? 0) > 0;
-    return days.some((entry) => entry.day === day && entry.holdings.some((holding) => holding.symbol === symbol && holding.quantity > 0));
-  };
-  const move = pickMove(await movesRead, ranges.since?.days ?? [], heldOn);
+
 
   const response: PortfolioHistoryResponse = {
     benchmark: { symbol: benchmark.symbol, name: benchmark.name },
@@ -267,7 +245,6 @@ export async function loadPortfolioHistory({
     available,
     updatedAt: live?.asOf ?? days.at(-1)?.asOf ?? null,
     todaySource,
-    move,
   };
   return response;
 }

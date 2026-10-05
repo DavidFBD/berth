@@ -18,7 +18,8 @@ import {
   type SnapshotBase,
 } from "@/lib/portfolio-days";
 import { historyRanges, type PortfolioDay } from "@/lib/portfolio-history";
-import { withStory, type StoryMove } from "@/lib/portfolio-story";
+import { withStory } from "@/lib/portfolio-story";
+import type { MoveNews } from "@/app/api/moves/route";
 import { isNewAccount } from "@/components/board/account-total";
 import MARKS_JSON from "./portfolio-marks.json";
 
@@ -355,25 +356,32 @@ export function seededPortfolioClient(
       available,
       updatedAt: `${days.at(-1)!.day}T21:30:00.000Z`,
       todaySource: null,
-      move: scene.move ? sceneMove(scene.move, newest.day) : null,
     };
     client.setQueryData(["portfolio-history", null, benchmark.symbol], response);
   }
+  // The board's moves (/api/moves), seeded: a made up post on the scene's last day.
+  client.setQueryData(["listings", "moves"], scene.move ? [sceneMove(scene.move, newest.day)] : []);
   // As the board judges it (AccountTotal), with the scene's last day as now.
   const young = isNewAccount(orders, Date.parse(markAsOf(newest.day)));
   return { client, rows, young };
 }
 
 /** A made up post beside the day's real move, to lay out the news line. Dev only. */
-function sceneMove(move: NonNullable<Scene["move"]>, day: string): StoryMove {
+function sceneMove(move: NonNullable<Scene["move"]>, day: string): MoveNews {
   const marks = MARKS[move.symbol];
   const at = marks.dates.indexOf(day);
   const changePct = at > 0 ? (marks.values[at] / marks.values[at - 1] - 1) * 100 : 0;
   return {
-    day,
+    asOf: day,
     symbol: move.symbol,
     changePct,
-    post: { url: "https://x.com/berthmarkets", name: move.author, username: "berthmarkets" },
+    post: {
+      url: "https://x.com/berthmarkets",
+      name: move.author,
+      username: "berthmarkets",
+      publishedAt: Date.parse(`${day}T14:00:00Z`),
+      text: "A made up post, for the gallery only.",
+    },
   };
 }
 
