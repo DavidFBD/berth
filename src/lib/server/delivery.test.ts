@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getAddress } from "viem";
 import { hubDelivery } from "@/lib/delivery";
-import { confirmPlainKey, isPlainKey, robinhoodDeliveryOn } from "./delivery";
+import { KNOWN_7702_DELEGATES, confirmPlainKey, isPlainKey, robinhoodDeliveryOn } from "./delivery";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -40,6 +40,26 @@ describe("isPlainKey", () => {
   it("is a plain key only when both chains answer with no code", async () => {
     expect(await isPlainKey(ADDRESS, { fetcher: answering("0x") })).toBe(true);
     expect(await isPlainKey(ADDRESS, { fetcher: answering("0x6080") })).toBe(false);
+  });
+
+  it("counts an EIP-7702 designator to a pinned delegate as plain, on both chains", async () => {
+    const delegate = [...KNOWN_7702_DELEGATES][0].slice(2);
+    const fetcher = answering(`0xef0100${delegate}`);
+    expect(await isPlainKey(ADDRESS, { fetcher })).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(await isPlainKey(ADDRESS, { fetcher: answering(`0xEF0100${delegate.toUpperCase()}`) })).toBe(true);
+  });
+
+  it("is not, for a designator to an unknown delegate", async () => {
+    expect(await isPlainKey(ADDRESS, { fetcher: answering(`0xef0100${"11".repeat(20)}`) })).toBe(false);
+  });
+
+  it("is not, for a designator of the wrong length or prefix", async () => {
+    const delegate = [...KNOWN_7702_DELEGATES][0].slice(2);
+    expect(await isPlainKey(ADDRESS, { fetcher: answering(`0xef0100${delegate}00`) })).toBe(false);
+    expect(await isPlainKey(ADDRESS, { fetcher: answering(`0xef0100${delegate.slice(0, 38)}`) })).toBe(false);
+    expect(await isPlainKey(ADDRESS, { fetcher: answering(`0xef0101${delegate}`) })).toBe(false);
+    expect(await isPlainKey(ADDRESS, { fetcher: answering(`0x00ef0100${delegate}`) })).toBe(false);
   });
 
   it("is not, when a chain answers nothing usable or fails", async () => {
