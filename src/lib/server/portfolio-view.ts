@@ -306,9 +306,21 @@ export function storedComparison({
     balanceExplained,
     base,
   });
-  // Each day's story beside the numbers (lib/portfolio-story): additive.
-  return {
-    ranges: withStory(ranges, { days: drawn, orders, listingCloses: marks, live, liveHoldings }, { rebased: Boolean(base && drawn.some((day) => day.day === base.day)) }),
-    available,
-  };
+  // Each day's story beside the numbers (lib/portfolio-story): additive,
+  // and never in the way. If telling it fails, the plain numbers go out
+  // as they are, so the chart, the weekly email and the assistant's
+  // performance read never fail because of it.
+  try {
+    return {
+      ranges: withStory(
+        ranges,
+        { days: drawn, orders, listingCloses: marks, live, liveHoldings },
+        { rebased: Boolean(base && drawn.some((day) => day.day === base.day)) },
+      ),
+      available,
+    };
+  } catch (error) {
+    console.warn("[portfolio/history] no day stories", error instanceof Error ? error.message : error);
+    return { ranges, available };
+  }
 }
