@@ -1068,7 +1068,9 @@ export function DepositDrawer({
                     {copy.gasFloorWarning(nativeToken.symbol)}
                   </p>
                 )}
-                {token && walletSession && emailCoversFee && address && !gas.sponsored(srcChainKey) && nativeToken && (
+                {/* One gas message at a time: the note only while no block or warning speaks. */}
+                {token && walletSession && emailCoversFee && address && !gas.sponsored(srcChainKey) && nativeToken &&
+                  !selectedGasShort && !gasShortChains.includes(srcChainKey) && !gasFloorWarn && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
                     {copy.selfPaidFeeNote(nativeToken.symbol, getChainName(srcChainKey))}
                   </p>

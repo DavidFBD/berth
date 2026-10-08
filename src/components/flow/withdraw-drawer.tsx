@@ -1038,7 +1038,9 @@ export function WithdrawDrawer({
                     {copy.gasFloorWarning(signNative.symbol)}
                   </p>
                 )}
-                {walletSession && emailCoversFee && address && !signGas.sponsored(srcChainKey) && signNative && (
+                {/* One gas message at a time: the note only while no block or warning speaks. */}
+                {walletSession && emailCoversFee && address && !signGas.sponsored(srcChainKey) && signNative &&
+                  !signGasShort && !signGasFloorWarn && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
                     {copy.selfPaidFeeNote(signNative.symbol, getChainName(srcChainKey))}
                   </p>
