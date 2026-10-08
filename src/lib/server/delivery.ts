@@ -6,6 +6,8 @@ import { ROBINHOOD_RESTRICTED_COUNTRIES, deliveryFor, hubDelivery, knownCountry,
 import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
 import { accountEvmAddresses } from "@/lib/server/identities";
 import { HUB_RPC_URLS, getPinnedRpcUrls } from "@/lib/sodax-config";
+import { PRIVY_SPONSORABLE_CHAIN_IDS } from "@/lib/gas-sponsor";
+import { getSql } from "@/lib/server/db";
 
 /**
  * How the Robinhood Chain delivery switch stands, from `ROBINHOOD_DELIVERY`:
@@ -49,6 +51,39 @@ export function robinhoodDeliveryOn(identifiers: readonly (string | null | undef
   if (mode === "off") return false;
   if (mode === "listed") return switchedOn(process.env.ROBINHOOD_DELIVERY_USERS, identifiers);
   return true;
+}
+
+/**
+ * Whether a Privy email wallet (the embedded wallet) may take delivery on
+ * Robinhood Chain: only once Robinhood Chain (4663) is sponsorable
+ * (lib/gas-sponsor PRIVY_SPONSORABLE_CHAIN_IDS, held out until SODAX
+ * confirms its relayer picks up a sponsored 7702 send, the plan's decision
+ * 2). An email wallet holds no ETH there and has no way to get any, so
+ * until then it could take delivery but never sell (rh-ux-sec B1). The
+ * day 4663 joins that set, email wallets become eligible with no other
+ * change. External plain key wallets stay eligible either way.
+ */
+export function embeddedEligible(ids: ReadonlySet<number> = PRIVY_SPONSORABLE_CHAIN_IDS): boolean {
+  return ids.has(4663);
+}
+
+/**
+ * Whether the account's wallet `address` is its Privy email wallet: linked
+ * with Privy's own proof ('privy_wallet'), or, for an email account whose
+ * wallet row predates proofs ('legacy', or none yet), its home address.
+ * Throws when the tables cannot be read; the callers answer the hub or
+ * "unknown".
+ */
+export async function isEmbeddedWallet(userId: string, address: string): Promise<boolean> {
+  const rows = (await getSql().query(
+    `select (i.proof = 'privy_wallet'
+             or (u.privy_did is not null and lower(u.wallet_address) = $2 and coalesce(i.proof, 'legacy') = 'legacy')) as embedded
+       from users u
+       left join user_identities i on i.user_id = u.id and i.kind = 'wallet' and i.value = $2 and i.unlinked_at is null
+      where u.id = $1`,
+    [userId, address.toLowerCase()],
+  )) as { embedded: boolean | null }[];
+  return rows.some((row) => row.embedded === true);
 }
 
 /** The chains a destination is asked about: Robinhood Chain itself, and Sonic, the one chain every Berth SIWE names. */
@@ -167,6 +202,14 @@ async function decide(inputs: DeliveryInputs): Promise<Delivery> {
   }
   const delivery = deliveryFor({ switched: true, evmAddress, country });
   if (delivery.chainKey !== "robinhood") return delivery;
+  // An email wallet only once a sell from there costs it nothing (embeddedEligible).
+  if (!embeddedEligible()) {
+    try {
+      if (await isEmbeddedWallet(userId, delivery.address)) return hubDelivery("embedded_wallet");
+    } catch {
+      return hubDelivery("read_failed");
+    }
+  }
   // Only a plain key on Robinhood Chain and on Sonic: a smart account's
   // address there may be nobody's (isPlainKey).
   return (await readPlainKey(delivery.address, { fetcher })) === true ? delivery : hubDelivery("not_eoa");
@@ -256,6 +299,13 @@ export async function recheckDestination({
   }
   if (!all.includes(own)) return { verdict: "refused", reason: "no_evm_wallet" };
   if (own !== dstAddress.toLowerCase()) return { verdict: "refused", reason: "other_address" };
+  if (!embeddedEligible()) {
+    try {
+      if (await isEmbeddedWallet(userId, own)) return { verdict: "refused", reason: "embedded_wallet" };
+    } catch {
+      return { verdict: "unknown" };
+    }
+  }
   const plain = await readPlainKey(own, { fetcher });
   if (plain === "unknown") return { verdict: "unknown" };
   return plain ? { verdict: "allowed" } : { verdict: "refused", reason: "not_eoa" };

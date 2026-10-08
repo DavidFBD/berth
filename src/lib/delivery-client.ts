@@ -21,6 +21,7 @@ const REASONS: ReadonlySet<string> = new Set<DeliveryReason>([
   "read_failed",
   "no_evm_wallet",
   "not_eoa",
+  "embedded_wallet",
   "restricted_country",
   "unknown_country",
 ]);

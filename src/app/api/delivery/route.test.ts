@@ -127,7 +127,25 @@ describe("POST /api/delivery", () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_DENY", STRANGER);
     vi.stubEnv("ROBINHOOD_DELIVERY", "on");
     expect(await ask("NL")).toEqual(RH(SIGNER));
-    expect(query).toHaveBeenCalledTimes(1);
+    // The account's wallets, then whether the signer is its email wallet.
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a Privy email wallet on the hub while Robinhood Chain is not sponsorable, and an external wallet delivered there (rh-ux-sec B1)", async () => {
+    query.mockImplementation(async (text?: string) =>
+      String(text).includes("privy_wallet") ? [{ embedded: true }] : [linked(HOME, true), linked(SIGNER, false)],
+    );
+    expect(await ask("NL")).toEqual(HUB("embedded_wallet"));
+    query.mockImplementation(async (text?: string) =>
+      String(text).includes("privy_wallet") ? [{ embedded: false }] : [linked(HOME, true), linked(SIGNER, false)],
+    );
+    expect(await ask("NL")).toEqual(RH(SIGNER));
+    // A read that fails is the hub, never a guess.
+    query.mockImplementation(async (text?: string) => {
+      if (String(text).includes("privy_wallet")) throw new Error("db down");
+      return [linked(HOME, true), linked(SIGNER, false)];
+    });
+    expect(await ask("NL")).toEqual(HUB("read_failed"));
   });
 
   it("in listed mode delivers only to the accounts on ROBINHOOD_DELIVERY_USERS, by user id, home wallet or signing wallet", async () => {

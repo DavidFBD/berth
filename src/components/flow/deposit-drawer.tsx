@@ -1071,6 +1071,12 @@ export function DepositDrawer({
                             {copy.rhChain.arrival}
                           </p>
                         )}
+                        {/* Before signing: a later sell from there is this wallet's own fee to pay (rh-ux-sec B1). */}
+                        {robinhoodToken && !gas.sponsored(ChainKeys.ROBINHOOD_MAINNET) && (
+                          <p className="text-xs text-muted-foreground" data-testid="rh-sell-fee">
+                            {copy.rhChain.sellFeeLater}
+                          </p>
+                        )}
                       </>
                     ) : (
                       <div className="flex items-center gap-2 text-muted-foreground">

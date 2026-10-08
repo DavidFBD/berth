@@ -230,6 +230,8 @@ export type Copy = {
     sellFromAccount: string;
     /** The sell sheet's signing line for a sell from the wallet on Robinhood Chain: sellSignOnce's sibling. */
     sellSignWallet: string;
+    /** The buy sheet, under the arrival line, for a wallet that pays its own fee there: a later sell costs ETH on Robinhood Chain. */
+    sellFeeLater: string;
   };
   /**
    * The signed-in home's one next step per state (components/home-next-step):
@@ -2847,6 +2849,7 @@ export const COPY: Copy = {
     sellFromAccount: "Berth account",
     sellSignWallet:
       "You sign on Robinhood Chain, from the wallet that holds it. The first sell of a stock from there also asks you to approve it.",
+    sellFeeLater: "Selling it later from your wallet there costs a small network fee in ETH on Robinhood Chain.",
   },
   calmHome: {
     addTitle: "Add money to begin",

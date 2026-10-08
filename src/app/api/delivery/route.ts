@@ -20,7 +20,7 @@ export const maxDuration = 15;
  *   { chainKey: "sonic", address: null, reason }
  *       the hub, as every buy before, with a short machine code saying why
  *       (not_listed, no_new_buys, read_failed, no_evm_wallet, not_eoa,
- *       restricted_country, unknown_country)
+ *       embedded_wallet, restricted_country, unknown_country)
  *
  * An account the switch leaves off gets the hub (`not_listed`) and nothing
  * else, before any further read. Otherwise the hub is still the answer where Berth takes
