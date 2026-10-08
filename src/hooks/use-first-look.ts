@@ -1,7 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { FIRST_LOOK_SYMBOLS, lookStateFor, type FirstLookResponse, type FirstLookState } from "@/lib/first-look";
+import {
+  FIRST_LOOK_SYMBOLS,
+  firstBuyProposals,
+  lookStateFor,
+  type FirstBuyProposals,
+  type FirstLookResponse,
+  type FirstLookState,
+} from "@/lib/first-look";
 
 export const FIRST_LOOK_QUERY_KEY = ["first-look"] as const;
 
@@ -10,7 +17,11 @@ export const FIRST_LOOK_QUERY_KEY = ["first-look"] as const;
  * `also` adds one stock outside the first buy's examples (the first stock
  * card's); the examples alone share one cached answer.
  */
-export function useFirstLook(also?: string): { lookOf: (symbol: string) => FirstLookState } {
+export function useFirstLook(also?: string): {
+  lookOf: (symbol: string) => FirstLookState;
+  /** The names the first buy offers, only those with news while any has (lib/first-look firstBuyProposals). */
+  proposals: FirstBuyProposals;
+} {
   const extra = also && !(FIRST_LOOK_SYMBOLS as readonly string[]).includes(also) ? also : undefined;
   const query = useQuery({
     queryKey: extra ? [...FIRST_LOOK_QUERY_KEY, extra] : FIRST_LOOK_QUERY_KEY,
@@ -24,5 +35,6 @@ export function useFirstLook(also?: string): { lookOf: (symbol: string) => First
   });
   return {
     lookOf: (symbol) => lookStateFor({ symbol, data: query.data, loading: query.isLoading }),
+    proposals: firstBuyProposals({ data: query.data, loading: query.isLoading }),
   };
 }

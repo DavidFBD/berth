@@ -187,12 +187,13 @@ function PayByCardView({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Four well known names, in the registry's own words; nothing is chosen for the person. */
-/** The first look's examples (lib/first-look), so the names offered and the names looked at never drift apart. */
-const PICK_SYMBOLS = FIRST_LOOK_SYMBOLS;
-const PICKS: readonly TokenListing[] = PICK_SYMBOLS.map((symbol) =>
-  STOCK_LISTINGS.find((listing) => listing.symbol === symbol),
-).filter((listing): listing is TokenListing => listing !== undefined);
+/** The well known names the first buy may offer (lib/first-look), in the registry's own words; nothing is chosen for the person. */
+const LISTING_OF: ReadonlyMap<string, TokenListing> = new Map(
+  FIRST_LOOK_SYMBOLS.flatMap((symbol) => {
+    const listing = STOCK_LISTINGS.find((one) => one.symbol === symbol);
+    return listing ? [[symbol, listing] as const] : [];
+  }),
+);
 
 const TONE: Record<ChangeDirection, string> = {
   up: "text-good",
@@ -240,8 +241,14 @@ export function FirstBuyStep({
   const money = useMoney();
   const prices = useListingPrices();
   const performance = useListingPerformance();
-  const [chosen, setChosen] = useState<TokenListing | null>(null);
-  const { lookOf } = useFirstLook();
+  const [picked, setChosen] = useState<TokenListing | null>(null);
+  const { lookOf, proposals } = useFirstLook();
+  // Only names with news this week while any has it, each with its headline;
+  // all four with no news line when none has (lib/first-look firstBuyProposals).
+  const picks: TokenListing[] =
+    proposals.kind === "loading" ? [] : proposals.symbols.flatMap((symbol) => LISTING_OF.get(symbol) ?? []);
+  // A choice the list no longer offers (the look came in after it) is no choice.
+  const chosen = picked && picks.some((listing) => listing.address === picked.address) ? picked : null;
   const line = unfunded ? (
     copy.firstPath.firstUnfunded
   ) : loading ? (
@@ -256,7 +263,17 @@ export function FirstBuyStep({
   return (
     <StepCard title={title ?? copy.calmHome.firstTitle} line={line} frame={frame}>
       <div data-ph-mask role="radiogroup" aria-label={copy.calmHome.pickLabel} className="divide-y divide-border border-y border-border">
-        {PICKS.map((listing) => {
+        {proposals.kind === "loading" &&
+          FIRST_LOOK_SYMBOLS.map((symbol) => (
+            <div key={symbol} aria-hidden className="flex items-center gap-3 px-[18px] py-3 lg:px-6">
+              <Skeleton className="size-9 shrink-0 rounded-full" />
+              <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </span>
+            </div>
+          ))}
+        {picks.map((listing) => {
           const price = prices.priceOf(listing);
           const moved = performance.performanceOf(listing);
           const direction = changeDirection(moved?.changePct);

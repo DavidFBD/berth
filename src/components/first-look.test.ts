@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
 import { STOCK_LISTINGS } from "@/lib/listings";
+import type { StoryCard } from "@/lib/news-stories";
 
 // The tile's module reaches the wallet SDKs, which do not load under node.
 vi.mock("@/components/board/holdings-list", () => ({ TickerTile: () => null }));
@@ -21,6 +22,28 @@ const nvidia = STOCK_LISTINGS.find((listing) => listing.symbol === "NVDA")!;
 const tesla = STOCK_LISTINGS.find((listing) => listing.symbol === "TSLA")!;
 const amazon = STOCK_LISTINGS.find((listing) => listing.symbol === "AMZN")!;
 const noop = () => {};
+
+/** The drawer's card a look attaches (lib/news-stories). */
+function storyAbout(symbol: string, over: Partial<StoryCard> = {}): StoryCard {
+  return {
+    id: `s-${symbol}`,
+    storyId: symbol.length,
+    kind: "article",
+    title: "Nvidia agrees to supply chips for OpenAI's new data centres",
+    url: "https://example.com/a",
+    publisher: "Reuters",
+    publishedAt: Date.now() - 2 * 60 * 60 * 1000,
+    symbol,
+    name: symbol,
+    symbols: [symbol],
+    verdict: "fact",
+    about: 0.92,
+    readings: {},
+    alsoReportedBy: [],
+    alsoOnX: [],
+    ...over,
+  };
+}
 
 function view(props: Parameters<typeof FirstLookReadingView>[0]) {
   return renderToStaticMarkup(createElement(FirstLookReadingView, props));
@@ -85,7 +108,9 @@ function card(listing: typeof nvidia, seed?: { key: readonly unknown[]; data: Fi
   );
 }
 
-const looked = Object.fromEntries(FIRST_LOOK_SYMBOLS.map((symbol) => [symbol, { looked: true, inNews: true, inNewsWeek: true }]));
+const looked = Object.fromEntries(
+  FIRST_LOOK_SYMBOLS.map((symbol) => [symbol, { looked: true, inNews: true, inNewsWeek: true, story: storyAbout(symbol) }]),
+);
 
 describe("FirstStockCard", () => {
   it("says what the stock is and the look's fixed line", () => {

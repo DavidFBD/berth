@@ -2,6 +2,7 @@ import { adviceShaped } from "@/lib/advice-shaped";
 import { STOCK_LISTINGS } from "@/lib/listings";
 import { newYorkDate, newYorkInstant, shiftDate } from "@/lib/market-calendar";
 import type { NewsItem } from "@/lib/news";
+import type { StoryCard } from "@/lib/news-stories";
 
 export { adviceShaped };
 
@@ -39,7 +40,13 @@ export { adviceShaped };
 /** How surely Jev must read a headline as mainly about the company (the column keeps a named one from 0.35). */
 export const FIRST_LOOK_ABOUT_FLOOR = 0.8;
 
-/** The examples the first buy offers (components/home-next-step); fixed, never chosen by the news. */
+/**
+ * The well known names the first buy may offer (components/home-next-step).
+ * Since 2026-10-08 it offers only those of them with a headline that passed
+ * this week, the headline itself attached (`firstBuyProposals`), so "in recent
+ * news" always has news behind it; all four, with no news line, only when
+ * none has.
+ */
 export const FIRST_LOOK_SYMBOLS = ["SPY", "NVDA", "AAPL", "TSLA"] as const;
 
 /** How many New York calendar days the look reads: today and the six before it. */
@@ -78,6 +85,12 @@ export type FirstLook = {
   inNewsWeek?: boolean;
   /** The last trading day's change, percent, when it was large for this listing; from the marks, never Jev. */
   movePct?: number;
+  /**
+   * The newest headline that passed, as the news drawer's card for this
+   * listing (lib/news-stories forListing). Every news line stands on it: an
+   * answer without it (one cached before 2026-10-08) says no news at all.
+   */
+  story?: StoryCard;
 };
 
 export type FirstLookResponse = {
@@ -106,23 +119,36 @@ export function passes(item: NewsItem): boolean {
  * did not read carries neither, and so never passes). Only a passing
  * headline makes a line, so a headline not yet read cannot make one false.
  */
-export function judgeRecent({
+export function judgeRecent<T extends NewsItem>({
   symbol,
   items,
   now = Date.now(),
 }: {
   symbol: string;
-  items: readonly NewsItem[];
+  items: readonly T[];
   now?: number;
-}): Pick<FirstLook, "looked" | "inNews" | "inNewsWeek"> {
+}): Pick<FirstLook, "looked" | "inNews" | "inNewsWeek"> & { lead?: T } {
   const since = windowStart(now);
   const passed = items.filter(
     (item) => item.symbol === symbol && item.publishedAt <= now && item.publishedAt >= since && passes(item),
   );
   if (passed.length === 0) return { looked: false, inNews: false, inNewsWeek: false };
   const today = passed.some((item) => sameNewYorkDay(item.publishedAt, now));
+  // The newest that passed: the one headline the look shows.
+  const lead = passed.reduce((newest, item) => (item.publishedAt > newest.publishedAt ? item : newest));
   // Week only: `looked` and `inNews` stay false, so a page from before the week line says nothing at all.
-  return { looked: today, inNews: today, inNewsWeek: true };
+  return { looked: today, inNews: today, inNewsWeek: true, lead };
+}
+
+/**
+ * The headline behind a look's news line, or undefined when there is no
+ * news line to show. A look that claims news without its headline (an
+ * answer from before 2026-10-08) has none: nothing is said that the drawer
+ * cannot show.
+ */
+export function newsOf(look: FirstLook | undefined): StoryCard | undefined {
+  if (!look?.story) return undefined;
+  return (look.looked && look.inNews) || look.inNewsWeek ? look.story : undefined;
 }
 
 /**
@@ -150,10 +176,45 @@ export function lookStateFor({
 }): FirstLookState {
   if (!data) return loading ? { kind: "loading" } : { kind: "hidden" };
   if (!data.judged || !sameNewYorkDay(data.asOf, now)) return { kind: "hidden" };
-  const look = data.looks?.[symbol];
+  const found = data.looks?.[symbol];
+  if (!found) return { kind: "hidden" };
+  // No headline, no news line: a claim the drawer could not back is dropped (newsOf).
+  const claims = (found.looked && found.inNews) || found.inNewsWeek === true;
+  const look: FirstLook = claims && !newsOf(found) ? { ...found, looked: false, inNews: false, inNewsWeek: false } : found;
   // An answer cached from before the week line can carry looked without inNews: it says nothing now.
-  if (!look || (!(look.looked && look.inNews) && !look.inNewsWeek && look.movePct === undefined)) return { kind: "hidden" };
+  if (!(look.looked && look.inNews) && !look.inNewsWeek && look.movePct === undefined) return { kind: "hidden" };
   return { kind: "shown", look };
+}
+
+/**
+ * Which names the first buy offers, and whether it may speak of their news:
+ *   loading  the look is on its way: hold the rows' place
+ *   news     the well known names with a headline this week, in their usual
+ *            order, each one's headline attached; fewer than four when fewer
+ *            had one. Every one of them has news the drawer shows.
+ *   plain    none had one, or the look failed, is stale or is off: all four,
+ *            and no news line, row or box anywhere (never "nothing in the news").
+ */
+export type FirstBuyProposals =
+  | { kind: "loading" }
+  | { kind: "news"; symbols: string[] }
+  | { kind: "plain"; symbols: string[] };
+
+export function firstBuyProposals({
+  data,
+  loading,
+  now = Date.now(),
+}: {
+  data: FirstLookResponse | undefined;
+  loading: boolean;
+  now?: number;
+}): FirstBuyProposals {
+  if (!data && loading) return { kind: "loading" };
+  const symbols = FIRST_LOOK_SYMBOLS.filter((symbol) => {
+    const state = lookStateFor({ symbol, data, loading, now });
+    return state.kind === "shown" && newsOf(state.look) !== undefined;
+  });
+  return symbols.length > 0 ? { kind: "news", symbols } : { kind: "plain", symbols: [...FIRST_LOOK_SYMBOLS] };
 }
 
 /**

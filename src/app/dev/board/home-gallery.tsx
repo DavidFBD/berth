@@ -28,6 +28,7 @@ import { seededPortfolioClient } from "../account/portfolio-gallery";
 import { FirstStockCard } from "@/components/first-look";
 import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
+import { FIXTURE_STORIES } from "./first-look-fixture";
 import { STOCK_LISTINGS } from "@/lib/listings";
 import { CampaignLineView } from "@/components/board/campaign-line";
 import { campaignLine, type CampaignProgress } from "@/lib/campaigns";
@@ -48,8 +49,8 @@ function firstLookFixture(look: "fixture" | "quiet"): FirstLookResponse {
     judged: true,
     asOf,
     looks: {
-      NVDA: { looked: true, inNews: true, inNewsWeek: true },
-      AAPL: { looked: false, inNews: false, inNewsWeek: true },
+      NVDA: { looked: true, inNews: true, inNewsWeek: true, story: FIXTURE_STORIES.NVDA() },
+      AAPL: { looked: false, inNews: false, inNewsWeek: true, story: FIXTURE_STORIES.AAPL() },
       TSLA: { ...silent, movePct: -3.6 },
       SPY: silent,
     },

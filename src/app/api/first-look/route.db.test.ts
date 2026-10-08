@@ -144,20 +144,24 @@ describe("GET /api/first-look", () => {
 
     const body = await look();
     expect(jevCalls).toHaveBeenCalledTimes(paid);
-    expect(body.looks.NVDA).toEqual({ looked: true, inNews: true, inNewsWeek: true });
+    const { story, ...nvidia } = body.looks.NVDA;
+    expect(nvidia).toEqual({ looked: true, inNews: true, inNewsWeek: true });
+    // The news line carries the headline it stands on, as the drawer's card for NVIDIA.
+    expect(story).toMatchObject({ kind: "article", symbol: "NVDA", title: "Nvidia agrees to supply chips for a new OpenAI data centre", publisher: "Reuters" });
     expect(body.looks.TSLA).toEqual({ looked: false, inNews: false, inNewsWeek: false, movePct: -5 });
     // Only loosely about Apple, and no story about the fund at all: no news line, never "nothing".
     expect(body.looks.AAPL).toEqual({ looked: false, inNews: false, inNewsWeek: false });
     expect(body.looks.SPY).toEqual({ looked: false, inNews: false, inNewsWeek: false });
-    // No headline, source or link leaves the route.
-    expect(JSON.stringify(body)).not.toMatch(/Nvidia agrees|Conviction|Reuters|nasdaq\.com/);
+    // Only a headline that passed leaves the route: never the advice, never the loose one.
+    expect(JSON.stringify(body)).not.toMatch(/Conviction|Chip makers rally/);
   });
 
   it("says the week of yesterday's story in its own field, and leaves an older page's today fields silent", async () => {
     await columnReads("META");
     const body = await look("?also=META");
-    expect(body.looks.META).toEqual({ looked: false, inNews: false, inNewsWeek: true });
-    expect(JSON.stringify(body)).not.toMatch(/Meta agrees|chip designer/);
+    const { story, ...meta } = body.looks.META;
+    expect(meta).toEqual({ looked: false, inNews: false, inNewsWeek: true });
+    expect(story).toMatchObject({ symbol: "META", title: "Meta agrees to buy a chip designer for $4 billion" });
   });
 
   it("reads the first stock card's stock when asked, and a feed that failed is no look", async () => {
