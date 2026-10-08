@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { getChainType, type SpokeChainKey } from "@sodax/sdk";
 import { amountBucket, chainFamily, track } from "@/lib/analytics";
+import { trackGasBlocked } from "@/lib/gas-message";
 
 /**
  * The buy or sell drawer's half of the order funnel (lib/analytics); the
@@ -28,7 +29,11 @@ export function useDrawerFunnel({
   usd: number | undefined;
   quoted: boolean;
   limitActive: boolean;
-  /** The signing chain and shortfall while the order is stopped for gas (lib/gas-need). */
+  /**
+   * The signing chain and shortfall while the order the person is making is
+   * stopped for gas (lib/gas-need): pass it only once they have typed an
+   * amount, never for a token merely preselected on opening.
+   */
   gasBlocked?: { chainKey: SpokeChainKey; shortfall: string } | null;
 }): void {
   const said = useRef(new Set<string>());
@@ -77,7 +82,7 @@ export function useDrawerFunnel({
   useEffect(() => {
     if (open && gasBlocked)
       once(`gas:${gasBlocked.chainKey}`, () =>
-        track("gas_blocked", { side, chain: gasBlocked.chainKey, shortfall: gasBlocked.shortfall }),
+        trackGasBlocked({ side, chain: gasBlocked.chainKey, shortfall: gasBlocked.shortfall }),
       );
   });
 }

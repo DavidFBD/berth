@@ -5,8 +5,7 @@ import { getXChainType, getXService, useXService } from "@sodax/wallet-sdk-react
 import { useXBalances } from "@sodax/dapp-kit";
 import { isEvmChainKeyType, type EvmChainKey, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import { getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
-import { gasShortMessage, shortfallProp, type GasPurpose } from "@/lib/gas-message";
-import { track } from "@/lib/analytics";
+import { gasShortMessage, shortfallProp, trackGasBlocked, type GasPurpose } from "@/lib/gas-message";
 import {
   amountLeavesNoFee,
   blockingNeed,
@@ -143,7 +142,7 @@ export function useGasPreflight(): (args: {
     const need = blockingNeed({ chainKey, feePerGas, approval, order });
     if (!orderGasShort({ ...facts, need })) return null;
     const toAdd = gasToAdd({ ...facts, need });
-    track("gas_blocked", {
+    trackGasBlocked({
       side: purpose === "cancel" ? "cancel" : order,
       chain: chainKey,
       shortfall: shortfallProp(toAdd, native.decimals),
@@ -151,8 +150,6 @@ export function useGasPreflight(): (args: {
     return gasShortMessage(copy, native, chainKey, toAdd, purpose, amountLeavesNoFee({ ...facts, need }));
   };
 }
-
-
 
 /**
  * Whether the wallet at `address` can pay one signature's fee on

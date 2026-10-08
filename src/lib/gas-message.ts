@@ -3,6 +3,7 @@ import { getChainName } from "@/lib/chains";
 import type { Copy } from "@/lib/copy";
 import { formatTokenAmount } from "@/lib/format";
 import { formatUnits } from "viem";
+import { track } from "@/lib/analytics";
 
 /**
  * The top-up guidance for an order its wallet cannot pay the fee for: the
@@ -42,4 +43,26 @@ export type GasPurpose = "order" | "cancel";
  */
 export function shortfallProp(toAdd: bigint | undefined, decimals: number): string {
   return toAdd === undefined ? "unknown" : formatUnits(toAdd, decimals);
+}
+
+/** How long one block counts as one, across the drawer and the last check. */
+const GAS_BLOCKED_DEDUPE_MS = 60_000;
+const lastGasBlocked = new Map<string, number>();
+
+/**
+ * Send gas_blocked once per block: the drawer showing it after the person
+ * typed an amount, the last check on a tap and the cancel check all report
+ * the same side and chain, and within a minute only the first is sent.
+ * Returns whether it was sent (tests).
+ */
+export function trackGasBlocked(
+  props: { side: "buy" | "sell" | "cancel"; chain: string; shortfall: string },
+  now = Date.now(),
+): boolean {
+  const key = `${props.side}:${props.chain}`;
+  const last = lastGasBlocked.get(key);
+  if (last !== undefined && now - last < GAS_BLOCKED_DEDUPE_MS) return false;
+  lastGasBlocked.set(key, now);
+  track("gas_blocked", props);
+  return true;
 }

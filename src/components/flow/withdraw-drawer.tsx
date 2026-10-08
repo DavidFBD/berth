@@ -376,8 +376,10 @@ export function WithdrawDrawer({
     usd: buildAmount ? sharesWorthUsd(buildAmount) : undefined,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
+    // Only once the person is making this order (an amount typed), never
+    // for a token preselected on opening.
     gasBlocked:
-      signGasShort && signNative
+      signGasShort && signNative && !!buildAmount
         ? { chainKey: srcChainKey, shortfall: shortfallProp(signGasToAdd, signNative.decimals) }
         : null,
   });

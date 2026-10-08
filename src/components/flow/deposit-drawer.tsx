@@ -461,8 +461,10 @@ export function DepositDrawer({
     usd: worthUsd,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
+    // Only once the person is making this order (an amount typed), never
+    // for a token preselected on opening.
     gasBlocked:
-      selectedGasShort && nativeToken
+      selectedGasShort && nativeToken && !!buildAmount
         ? { chainKey: srcChainKey, shortfall: shortfallProp(selectedGasToAdd, nativeToken.decimals) }
         : null,
   });

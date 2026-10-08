@@ -30,7 +30,7 @@ import {
 } from "@/hooks/use-limit-orders";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useSignGasCheck } from "@/hooks/use-gas-gate";
-import { trackOnce } from "@/lib/analytics";
+import { trackGasBlocked } from "@/lib/gas-message";
 
 /**
  * Waiting orders (lib/limit-orders): a thin line under the account total,
@@ -254,8 +254,8 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
   const gasNote = gasShort?.message ?? null;
   const shortfall = gasShort?.shortfall;
   useEffect(() => {
-    if (shortfall) trackOnce(`gas_blocked:cancel:${order.intentTx}`, "gas_blocked", { side: "cancel", chain: chainKey, shortfall });
-  }, [shortfall, chainKey, order.intentTx]);
+    if (shortfall) trackGasBlocked({ side: "cancel", chain: chainKey, shortfall });
+  }, [shortfall, chainKey]);
   const confirm = async () => {
     if (!wallet.walletProvider || !wallet.address) return;
     onBusy(true);

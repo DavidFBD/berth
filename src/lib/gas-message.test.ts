@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys } from "@sodax/sdk";
 import { COPY } from "@/lib/copy";
-import { gasShortMessage, shortfallProp } from "./gas-message";
+import { gasShortMessage, shortfallProp, trackGasBlocked } from "./gas-message";
 import { cleanProps } from "./analytics";
 
 const ETH = { symbol: "ETH", decimals: 18 };
@@ -35,5 +35,15 @@ describe("the gas_blocked event", () => {
     expect(
       cleanProps("gas_blocked", { side: "sell", chain: ChainKeys.BASE_MAINNET, shortfall: "0.00034", address: "0xE0000000000000000000000000000000000000dd" }),
     ).toEqual({ side: "sell", chain: ChainKeys.BASE_MAINNET, shortfall: "0.00034" });
+  });
+});
+
+describe("trackGasBlocked", () => {
+  it("sends one block once, whether the drawer or the last check reports it first", () => {
+    const props = { side: "buy" as const, chain: ChainKeys.ARBITRUM_MAINNET, shortfall: "0.00001" };
+    expect(trackGasBlocked(props, 1_000)).toBe(true);
+    expect(trackGasBlocked(props, 30_000)).toBe(false);
+    expect(trackGasBlocked({ ...props, side: "sell" }, 30_000)).toBe(true);
+    expect(trackGasBlocked(props, 62_000)).toBe(true);
   });
 });
