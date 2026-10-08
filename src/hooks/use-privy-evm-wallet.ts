@@ -258,7 +258,7 @@ export function usePrivyEvmWalletProvider(
                 value: hex(tx.value),
               });
               // Unknown never stops a send: the node has the last word.
-              if (balance !== undefined && want !== undefined && balance < want) {
+              if (balance !== undefined && balance < want) {
                 throw new InsufficientFundsForPaidSend(balance, want);
               }
             },

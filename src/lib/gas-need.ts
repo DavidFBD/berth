@@ -461,10 +461,11 @@ export function floorWarns({
 /**
  * What a paid send needs in hand: its own gas limit times its own max fee
  * plus the value, exactly what the node checks, when the transaction
- * carries them; otherwise the chain-priced need (gasNeed) plus the value.
- * This is the embedded wallet's paid fallback after Privy declines to
- * sponsor, and that wallet signs at the chain's own price, so no wallet
- * tip is added. `undefined` when it cannot be priced.
+ * carries them. Whatever it lacks is filled the way the gate fills it: the
+ * deposit's gas limit (GATE_DEPOSIT_GAS; the provider cannot tell a buy
+ * from a sell, so the larger), and twice the fee per gas plus the chain's
+ * wallet tip (walletReserve's rule), with the assumed fee when unread. This
+ * is the embedded wallet's paid fallback after Privy declines to sponsor.
  */
 export function paidSendNeed({
   chainKey,
@@ -478,10 +479,11 @@ export function paidSendNeed({
   maxFeePerGas: bigint | undefined;
   feePerGas: bigint | undefined;
   value?: bigint;
-}): bigint | undefined {
-  if (gas !== undefined && maxFeePerGas !== undefined) return gas * maxFeePerGas + value;
-  const need = gasNeed({ chainKey, feePerGas, approval: false });
-  return need === undefined ? undefined : need + value;
+}): bigint {
+  const limit = gas ?? GATE_DEPOSIT_GAS;
+  const fee = feePerGas ?? assumedFeePerGas(chainKey);
+  const perGas = maxFeePerGas ?? (TIP_IN_FEE.has(chainKey) ? 2n * fee : 2n * fee + walletFeeFloor(chainKey));
+  return limit * perGas + value;
 }
 
 /**

@@ -346,12 +346,20 @@ describe("paidSendNeed: the embedded wallet's paid fallback", () => {
     );
   });
 
-  it("falls back to the chain's own price, with no wallet tip, and is unknown without one", () => {
+  it("fills what it lacks the way the gate does: the deposit's limit, twice the fee and the chain's tip", () => {
     const fee = 7_000_000n;
-    expect(paidSendNeed({ chainKey: ChainKeys.BASE_MAINNET, gas: undefined, maxFeePerGas: undefined, feePerGas: fee })).toBe(
-      gasNeed({ chainKey: ChainKeys.BASE_MAINNET, feePerGas: fee, approval: false }),
+    const BASE = ChainKeys.BASE_MAINNET;
+    expect(paidSendNeed({ chainKey: BASE, gas: undefined, maxFeePerGas: undefined, feePerGas: fee })).toBe(
+      GATE_DEPOSIT_GAS * (2n * fee + 2n * GWEI),
     );
-    expect(paidSendNeed({ chainKey: ChainKeys.BASE_MAINNET, gas: undefined, maxFeePerGas: undefined, feePerGas: undefined })).toBeUndefined();
+    expect(paidSendNeed({ chainKey: BASE, gas: 80_000n, maxFeePerGas: undefined, feePerGas: fee })).toBe(80_000n * (2n * fee + 2n * GWEI));
+    expect(paidSendNeed({ chainKey: BASE, gas: undefined, maxFeePerGas: 10_000_000n, feePerGas: undefined })).toBe(
+      GATE_DEPOSIT_GAS * 10_000_000n,
+    );
+    // No read: the chain's assumed fee.
+    expect(paidSendNeed({ chainKey: BASE, gas: undefined, maxFeePerGas: undefined, feePerGas: undefined })).toBe(
+      GATE_DEPOSIT_GAS * (2n * (GWEI / 50n) + 2n * GWEI),
+    );
   });
 });
 
