@@ -66,37 +66,73 @@ export async function spokesOf(row: AccountRow): Promise<{ home: string | null; 
   return { home: null, all: [] };
 }
 
-export type HoldingLine = { listing: TokenListing; quantity: number; price?: number; value?: number };
+export type HoldingLine = {
+  listing: TokenListing;
+  /** Everything held: `hub` plus `robinhood`. */
+  quantity: number;
+  /** In the Berth account on Sonic, every linked address's hub wallet added up. */
+  hub: number;
+  /** In the person's own wallets on Robinhood Chain, added up. */
+  robinhood: number;
+  /** The most any one wallet holds on Robinhood Chain: a sell from there spends one wallet. */
+  robinhoodLargest: number;
+  price?: number;
+  value?: number;
+};
 
 /**
  * What the account holds right now across every linked address's hub
- * wallet, read on chain, valued at the solver oracle's prices. `hubWallets`
- * is every hub wallet read, home first; one failed read fails the whole.
+ * wallet and the same addresses' own wallets on Robinhood Chain
+ * (lib/server/portfolio readAccountBalances), read on chain, valued at the
+ * solver oracle's prices. `hubWallets` is every hub wallet read, home
+ * first; `robinhoodWallets` the addresses holding anything on Robinhood
+ * Chain. One failed read fails the whole.
  */
-export async function readHoldings(
-  spokes: string | readonly string[],
-): Promise<{ hubWallet: string; hubWallets: string[]; lines: HoldingLine[]; total: number; unpriced: number }> {
+export async function readHoldings(spokes: string | readonly string[]): Promise<{
+  hubWallet: string;
+  hubWallets: string[];
+  robinhoodWallets: string[];
+  lines: HoldingLine[];
+  total: number;
+  unpriced: number;
+}> {
   const list = typeof spokes === "string" ? [spokes] : spokes;
   const [read, prices] = await Promise.all([
     withTimeout(readAccountBalances(list), CHAIN_READ_MS, "balance read"),
     liveListingPrices().catch(() => ({}) as Record<string, number>),
   ]);
   const balances = read.total;
+  const onRobinhood = read.robinhood ?? {};
+  const owners = [...read.robinhoodByOwner.entries()];
   const lines: HoldingLine[] = [];
   let total = 0;
   let unpriced = 0;
   for (const listing of TOKEN_LISTINGS) {
     const quantity = balances[listing.symbol];
     if (!quantity) continue;
+    const robinhood = onRobinhood[listing.symbol] ?? 0;
+    const robinhoodLargest = owners.reduce((most, [, holdings]) => Math.max(most, holdings[listing.symbol] ?? 0), 0);
     const price = prices[listing.symbol];
     const value = price !== undefined ? quantity * price : undefined;
     if (value !== undefined) total += value;
     else unpriced += 1;
-    lines.push({ listing, quantity, price, value });
+    lines.push({ listing, quantity, hub: Math.max(0, quantity - robinhood), robinhood, robinhoodLargest, price, value });
   }
   lines.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const hubWallets = read.byWallet.map((wallet) => wallet.hubWallet);
-  return { hubWallet: hubWallets[0], hubWallets, lines, total, unpriced };
+  const robinhoodWallets = owners.filter(([, holdings]) => Object.keys(holdings).length > 0).map(([owner]) => owner);
+  return { hubWallet: hubWallets[0], hubWallets, robinhoodWallets, lines, total, unpriced };
+}
+
+/**
+ * The most of a listing one sell can spend: a market sell spends either
+ * the Berth account or one wallet on Robinhood Chain, never the two
+ * together, so the larger of the two; a limit sell waits on the hub and
+ * spends the Berth account alone.
+ */
+export function sellableOf(line: HoldingLine | undefined, orderType: "market" | "limit" = "market"): number {
+  if (!line) return 0;
+  return orderType === "limit" ? line.hub : Math.max(line.hub, line.robinhoodLargest);
 }
 
 export const PERIODS: Record<string, { range: Range; words: string }> = {

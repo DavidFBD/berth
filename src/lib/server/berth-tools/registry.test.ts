@@ -20,6 +20,8 @@ vi.mock("@/lib/server/portfolio", () => ({
       hubWallet: index === 0 ? "0x00000000000000000000000000000000000000bb" : "0x00000000000000000000000000000000000000cc",
       balances: { TSLA: 0.5 },
     })),
+    robinhood: {},
+    robinhoodByOwner: new Map(spokes.map((spoke) => [spoke, {}])),
   })),
 }));
 vi.mock("@/lib/server/listing-performance", () => ({ loadPerformance: vi.fn(async () => ({ performance: {} })) }));
@@ -394,6 +396,31 @@ describe("an account with more than one linked EVM address", () => {
     // A sell may draft up to the whole account's holding.
     const sell = await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 1 } as never, ctx);
     expect(sell.isError).toBeUndefined();
+    vi.mocked(spokesOf).mockReset();
+  });
+
+  it("names where each holding sits, and caps a sell at what one place holds, never the two added", async () => {
+    const { readAccountBalances } = await import("@/lib/server/portfolio");
+    const { spokesOf } = await import("@/lib/server/berth-tools/account");
+    vi.mocked(spokesOf).mockResolvedValue({ home: HOME, all: [HOME, SECOND] });
+    // 0.5 TSLA in the Berth account, 0.75 in one wallet on Robinhood Chain and 0.25 in the other.
+    vi.mocked(readAccountBalances).mockResolvedValue({
+      total: { TSLA: 1.5 },
+      byWallet: [{ spoke: HOME, hubWallet: "0x00000000000000000000000000000000000000bb", balances: { TSLA: 0.5 } }],
+      robinhood: { TSLA: 1 },
+      robinhoodByOwner: new Map([
+        [HOME, { TSLA: 0.75 }],
+        [SECOND, { TSLA: 0.25 }],
+      ]),
+    });
+    const account = await tools.get_account.run({} as never, ctx);
+    expect(account.text).toContain(`Stock tokens in the person's own wallets on Robinhood Chain: ${HOME}, ${SECOND}.`);
+    const holdings = await tools.get_holdings.run({} as never, ctx);
+    expect(holdings.text).toContain("Tesla (TSLA): 1.5");
+    expect(holdings.text).toContain("(0.5 in the Berth account on Sonic, 1 in the person's own wallet on Robinhood Chain)");
+    expect((await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 0.75 } as never, ctx)).isError).toBeUndefined();
+    expect((await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 1 } as never, ctx)).isError).toBe(true);
+    vi.mocked(readAccountBalances).mockReset();
     vi.mocked(spokesOf).mockReset();
   });
 });

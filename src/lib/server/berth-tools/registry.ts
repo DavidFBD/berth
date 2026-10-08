@@ -29,6 +29,7 @@ import {
   STATUS_WORDS,
   loadAccountRow,
   readHoldings,
+  sellableOf,
   spokesOf,
 } from "@/lib/server/berth-tools/account";
 
@@ -316,6 +317,11 @@ const getAccount = defineTool({
         holdings.hubWallets.length === 1
           ? `Account on Sonic: ${holdings.hubWallet}.`
           : `Accounts on Sonic: ${holdings.hubWallets.join(", ")}, the first is home.`,
+        ...(holdings.robinhoodWallets.length > 0
+          ? [
+              `Stock tokens in the person's own wallet${holdings.robinhoodWallets.length === 1 ? "" : "s"} on Robinhood Chain: ${holdings.robinhoodWallets.join(", ")}. They are counted in the totals; a sell spends either the Berth account or one of these wallets, never both at once.`,
+            ]
+          : []),
         holdings.lines.length === 0
           ? "It holds no listings right now."
           : `It holds ${holdings.lines.length} listing${holdings.lines.length === 1 ? "" : "s"} worth ${usd(holdings.total)} in total${holdings.unpriced ? `, plus ${holdings.unpriced} without a live price` : ""}. get_holdings has the detail.`,
@@ -331,7 +337,7 @@ const getHoldings = defineTool({
   name: "get_holdings",
   title: "What the account owns",
   description:
-    "Every listing the account holds right now, read from the chain: quantity, current price, value in dollars and share of the total. Cash is the Treasury bill fund. Does not include funds still in the person's own wallets on other networks, nor shares in Berth's earlier leveraged vaults, which the app lists separately.",
+    "Every listing the account holds right now, read from the chain: quantity, current price, value in dollars and share of the total, and where it sits, in the Berth account on Sonic or as stock tokens in the person's own wallet on Robinhood Chain. Cash is the Treasury bill fund. Does not include other funds still in the person's own wallets on other networks, nor shares in Berth's earlier leveraged vaults, which the app lists separately.",
   input: z.object({}),
   annotations: { title: "What the account owns", ...READ_ONLY },
   scope: SCOPE_READ,
@@ -344,8 +350,14 @@ const getHoldings = defineTool({
     const out = [`Holdings, ${usd(holdings.total)} in total at current prices:`];
     for (const line of holdings.lines) {
       const share = line.value !== undefined && holdings.total > 0 ? `, ${((line.value / holdings.total) * 100).toFixed(1)}% of the total` : "";
+      const where =
+        line.robinhood > 0
+          ? line.hub > 0
+            ? ` (${units(line.hub)} in the Berth account on Sonic, ${units(line.robinhood)} in the person's own wallet on Robinhood Chain)`
+            : " (in the person's own wallet on Robinhood Chain)"
+          : "";
       out.push(
-        `${named(line.listing)}: ${units(line.quantity)} at ${usd(line.price)}, worth ${line.value !== undefined ? usd(line.value) : "unknown (no live price)"}${share}`,
+        `${named(line.listing)}: ${units(line.quantity)} at ${usd(line.price)}, worth ${line.value !== undefined ? usd(line.value) : "unknown (no live price)"}${share}${where}`,
       );
     }
     return ok(out.join("\n"));
@@ -535,7 +547,7 @@ const draftOrderTool = defineTool({
   name: "draft_order",
   title: "Draft a buy or sell",
   description:
-    `Prepare a buy or a sell for the person to approve in Berth. Returns a link that opens Berth's order screen with the listing and amount filled in, and a plain summary. Nothing is placed, reserved or sent: the person checks it, chooses what to pay with, and signs in Berth, or closes it. Give usd_amount for a buy; for a sell give usd_amount or quantity, never more than the account holds. The smallest order, either way, is ${usd(MIN_ORDER_USD)}. The person opens the link to review it in Berth. Where the account has limit orders switched on, order_type "limit" with limit_price drafts an order that waits for that price instead of filling now, until cancelled or until expires.`,
+    `Prepare a buy or a sell for the person to approve in Berth. Returns a link that opens Berth's order screen with the listing and amount filled in, and a plain summary. Nothing is placed, reserved or sent: the person checks it, chooses what to pay with, and signs in Berth, or closes it. Give usd_amount for a buy; for a sell give usd_amount or quantity, never more than one place holds: a sell spends either the Berth account or one wallet on Robinhood Chain, never the two together. The smallest order, either way, is ${usd(MIN_ORDER_USD)}. The person opens the link to review it in Berth. Where the account has limit orders switched on, order_type "limit" with limit_price drafts an order that waits for that price instead of filling now, until cancelled or until expires.`,
   input: z.object({
     listing: LISTING_ARG,
     side: z.enum(["buy", "sell"]).describe("buy to spend dollars on the listing, sell to turn some of it back into dollars."),
@@ -582,8 +594,12 @@ const draftOrderTool = defineTool({
       if (spokes.length === 0) held = 0;
       else {
         try {
+          // One sell spends one place (lib/server/berth-tools/account sellableOf).
           const holdings = await readHoldings(spokes);
-          held = holdings.lines.find((line) => line.listing.symbol === listing.symbol)?.quantity ?? 0;
+          held = sellableOf(
+            holdings.lines.find((line) => line.listing.symbol === listing.symbol),
+            order_type === "limit" ? "limit" : "market",
+          );
         } catch {
           held = undefined;
         }
