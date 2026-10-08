@@ -12,6 +12,8 @@ import { MergeCard } from "@/components/account-merge";
 import { useWalletMerge } from "@/hooks/use-account-merge";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useWalletOnlySession } from "@/hooks/use-account";
+import { useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
+import { joinNames } from "@/lib/gas-sponsor";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useAccountWallets, useIdentityLabel, useWalletAct } from "@/hooks/use-profile";
 import { shortenAddress } from "@/lib/format";
@@ -72,6 +74,8 @@ export function WalletsSection() {
   const addable = useAddWallets();
   const connect = useConnectNetwork();
   const walletOnly = useWalletOnlySession();
+  // Named, and only while some network is sponsored at all (lib/gas-sponsor).
+  const sponsoredNames = useSponsoredChainNames();
 
   const all = list.data?.wallets ?? [];
   const evm = all.filter((wallet) => wallet.family === "evm");
@@ -152,9 +156,9 @@ export function WalletsSection() {
     />
     {/* A wallet session pays its own network fees (lib/gas-sponsor sponsors
         only an email's embedded wallet): said once, calmly, beside its wallets. */}
-    {walletOnly && (
+    {walletOnly && sponsoredNames.length > 0 && (
       <p className="px-1 pt-3 text-xs leading-relaxed text-muted-foreground" data-testid="wallet-pays-own-fees">
-        {copy.walletPaysOwnFees}
+        {copy.walletPaysOwnFees(joinNames(sponsoredNames, copy.listAnd))}
       </p>
     )}
     {connect.drawer}

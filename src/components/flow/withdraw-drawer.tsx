@@ -29,7 +29,7 @@ import { getChainName, getNativeGasToken, isTypedEvmAddress, toBalanceReadToken 
 import { floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import { gasShortMessage, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { useWalletOnlySession } from "@/hooks/use-account";
-import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
+import { useOutcomeHold, useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
 import { formatTokenAmount, formatUsd, parseAmount, shortenAddress } from "@/lib/format";
@@ -211,6 +211,9 @@ export function WithdrawDrawer({
   // A session with no email signs every order with its own wallet and pays
   // every fee itself: said calmly near the fee line, every time.
   const walletSession = useWalletOnlySession();
+  // Only where an email sign-in would in fact pay nothing (lib/gas-sponsor,
+  // minus any chain Privy refused this session) is the note true.
+  const emailCoversFee = useSponsoredChainNames().includes(getChainName(srcChainKey));
   // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
   const outcomeHold = useOutcomeHold();
   // Funds are delivered to the user's wallet ON the destination chain (the
@@ -1035,7 +1038,7 @@ export function WithdrawDrawer({
                     {copy.gasFloorWarning(signNative.symbol)}
                   </p>
                 )}
-                {walletSession && address && !signGas.sponsored(srcChainKey) && signNative && (
+                {walletSession && emailCoversFee && address && !signGas.sponsored(srcChainKey) && signNative && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
                     {copy.selfPaidFeeNote(signNative.symbol, getChainName(srcChainKey))}
                   </p>

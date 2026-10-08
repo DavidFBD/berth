@@ -81,7 +81,7 @@ import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { gasShortMessage, isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { useWalletOnlySession } from "@/hooks/use-account";
-import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
+import { useOutcomeHold, useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
 import { byGasStatus, floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import {
   ActionError,
@@ -327,6 +327,9 @@ export function DepositDrawer({
   // A session with no email signs every order with its own wallet and pays
   // every fee itself: said calmly near the fee line, every time.
   const walletSession = useWalletOnlySession();
+  // Only where an email sign-in would in fact pay nothing (lib/gas-sponsor,
+  // minus any chain Privy refused this session) is the note true.
+  const emailCoversFee = useSponsoredChainNames().includes(getChainName(srcChainKey));
   // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
   const outcomeHold = useOutcomeHold();
 
@@ -1065,7 +1068,7 @@ export function DepositDrawer({
                     {copy.gasFloorWarning(nativeToken.symbol)}
                   </p>
                 )}
-                {token && walletSession && address && !gas.sponsored(srcChainKey) && nativeToken && (
+                {token && walletSession && emailCoversFee && address && !gas.sponsored(srcChainKey) && nativeToken && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
                     {copy.selfPaidFeeNote(nativeToken.symbol, getChainName(srcChainKey))}
                   </p>
