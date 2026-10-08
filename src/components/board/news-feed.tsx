@@ -27,7 +27,7 @@ import { useSeenPosts } from "@/hooks/use-seen-posts";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT } from "@/lib/motion";
 import { formatTimeAgo } from "@/lib/news";
-import { heldEvents, ownedState, type EventCard, type StoryCard } from "@/lib/news-stories";
+import { heldEvents, ownedState, pinnedRiver, type EventCard, type StoryCard } from "@/lib/news-stories";
 import { formatCount, type Verdict } from "@/lib/x-feed";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 
@@ -102,6 +102,7 @@ const PAD = "px-[18px] lg:px-6";
  */
 export function NewsFeed({
   filter,
+  focus,
   onClearFilter,
   limit: limitProp,
   fill = false,
@@ -110,6 +111,12 @@ export function NewsFeed({
   mostHeld: mostHeldOverride,
 }: {
   filter?: TokenListing | null;
+  /**
+   * A headline to show first while the column is pointed at its listing: the
+   * one the first look showed and the reader tapped (components/first-look).
+   * Pinned only when the column itself returned that story (lib/news-stories pinnedRiver).
+   */
+  focus?: StoryCard | null;
   onClearFilter?: () => void;
   /** Fewer cards at once in the river; the rest join the rotation. */
   limit?: number;
@@ -152,11 +159,30 @@ export function NewsFeed({
   const shownOwned = owned?.kind === "stories" ? owned.stories : [];
   const events = owner ? heldEvents(news.data.events, held!, new Date(now).toISOString().slice(0, 10)) : [];
   const ownedIds = new Set(shownOwned.map((card) => card.storyId));
-  const riverAll = news.data.stories.filter((card) => !ownedIds.has(card.storyId));
-  const reserveAll = news.data.reserve.filter((card) => !ownedIds.has(card.storyId));
-  const shownRiver = limit ? riverAll.slice(0, limit) : riverAll;
-  const reserve = limit ? [...riverAll.slice(limit), ...reserveAll] : reserveAll;
-  const { visible: rotated, ref: riverRef, handlers: riverHandlers, node: riverNode } = useRotatingFeed(shownRiver, reserve, true);
+  const pinned = filter && focus && focus.symbol === filter.symbol && !news.isLoading ? focus : undefined;
+  const { pin, river: riverRest, reserve: reserveAll } = pinnedRiver({
+    stories: news.data.stories.filter((card) => !ownedIds.has(card.storyId)),
+    reserve: news.data.reserve.filter((card) => !ownedIds.has(card.storyId)),
+    focus: pinned,
+  });
+  const riverAll = pin ? [pin, ...riverRest] : riverRest;
+  // The pinned card stays first: only the cards after it rotate.
+  const room = limit && pin ? Math.max(limit - 1, 0) : limit;
+  const shownRiver = room ? riverRest.slice(0, room) : riverRest;
+  const reserve = room ? [...riverRest.slice(room), ...reserveAll] : reserveAll;
+  const { visible: turning, ref: riverRef, handlers: riverHandlers, node: riverNode } = useRotatingFeed(shownRiver, reserve, true);
+  const rotated = pin ? [pin, ...turning] : turning;
+  // Focus moves to the story the reader tapped, once it is on screen, so a
+  // screen reader starts there and reads "The story you opened" first; Tab
+  // goes on to its link.
+  const pinId = pin?.storyId;
+  useEffect(() => {
+    if (pinId === undefined || !riverNode) return;
+    const timer = window.setTimeout(() => {
+      riverNode.querySelector<HTMLElement>("[data-focused]")?.focus({ preventScroll: false });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [pinId, riverNode]);
   const seen = useSeenPosts(riverAll.concat(reserveAll), rotated, true, riverNode);
 
   const updatedAt = news.data.updatedAt;
@@ -368,11 +394,16 @@ export function NewsFeed({
                       <motion.li
                         key={story.id}
                         data-post-id={story.id}
+                        data-focused={pin && story.storyId === pin.storyId ? "" : undefined}
+                        // Focusable from code only: focus lands here, and its first words say what it is.
+                        tabIndex={pin && story.storyId === pin.storyId ? -1 : undefined}
+                        className={pin && story.storyId === pin.storyId ? "bg-muted/50 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset" : undefined}
                         variants={CARD}
                         exit="leave"
                         layout="position"
                         transition={{ layout: ARRIVE }}
                       >
+                        {pin && story.storyId === pin.storyId && <span className="sr-only">{copy.newsOpenedStory}</span>}
                         {card(story)}
                       </motion.li>
                     ))}

@@ -13,9 +13,10 @@ import { useAvailability } from "@/components/availability/availability-context"
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useFirstLook } from "@/hooks/use-first-look";
-import { FIRST_LOOK_SYMBOLS } from "@/lib/first-look";
+import { FIRST_LOOK_SYMBOLS, holdProposals, type FirstBuyProposals } from "@/lib/first-look";
 import { FirstLookReadingView } from "@/components/first-look";
 import { STOCK_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
+import type { StoryCard } from "@/lib/news-stories";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 import { cn } from "@/lib/utils";
 
@@ -187,12 +188,13 @@ function PayByCardView({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Four well known names, in the registry's own words; nothing is chosen for the person. */
-/** The first look's examples (lib/first-look), so the names offered and the names looked at never drift apart. */
-const PICK_SYMBOLS = FIRST_LOOK_SYMBOLS;
-const PICKS: readonly TokenListing[] = PICK_SYMBOLS.map((symbol) =>
-  STOCK_LISTINGS.find((listing) => listing.symbol === symbol),
-).filter((listing): listing is TokenListing => listing !== undefined);
+/** The well known names the first buy may offer (lib/first-look), in the registry's own words; nothing is chosen for the person. */
+const LISTING_OF: ReadonlyMap<string, TokenListing> = new Map(
+  FIRST_LOOK_SYMBOLS.flatMap((symbol) => {
+    const listing = STOCK_LISTINGS.find((one) => one.symbol === symbol);
+    return listing ? [[symbol, listing] as const] : [];
+  }),
+);
 
 const TONE: Record<ChangeDirection, string> = {
   up: "text-good",
@@ -227,8 +229,8 @@ export function FirstBuyStep({
   note?: ReactNode;
   /** Opens Ask with a factual question about the chosen name; absent while Ask is locked or off. */
   onAsk?: (prompt: string) => void;
-  /** Opens the news drawer on a listing, from the first look's quiet link. */
-  onReadNews?: (listing: TokenListing) => void;
+  /** Opens the news drawer on a listing, from the first look; `focus` is the headline tapped, shown first. */
+  onReadNews?: (listing: TokenListing, focus?: StoryCard) => void;
   /** Spendable money the oracle prices; undefined when only unpriced crypto proved there is some. */
   readyUsd: number | undefined;
   /** While the funds are read: the line's place is held. */
@@ -240,8 +242,18 @@ export function FirstBuyStep({
   const money = useMoney();
   const prices = useListingPrices();
   const performance = useListingPerformance();
-  const [chosen, setChosen] = useState<TokenListing | null>(null);
-  const { lookOf } = useFirstLook();
+  const [picked, setChosen] = useState<TokenListing | null>(null);
+  const { lookOf, proposals: latest } = useFirstLook();
+  // The first settled list holds for the step's life (lib/first-look holdProposals).
+  const [held, setHeld] = useState<FirstBuyProposals | null>(null);
+  if (held === null && latest.kind !== "loading") setHeld(latest);
+  const proposals = holdProposals(held, latest);
+  // Only names with news this week while any has it, each with its headline;
+  // all four with no news line when none has (lib/first-look firstBuyProposals).
+  const picks: TokenListing[] =
+    proposals.kind === "loading" ? [] : proposals.symbols.flatMap((symbol) => LISTING_OF.get(symbol) ?? []);
+  // Belt and braces: the held list always offers the choice, but a choice not on it is none.
+  const chosen = picked && picks.some((listing) => listing.address === picked.address) ? picked : null;
   const line = unfunded ? (
     copy.firstPath.firstUnfunded
   ) : loading ? (
@@ -256,7 +268,17 @@ export function FirstBuyStep({
   return (
     <StepCard title={title ?? copy.calmHome.firstTitle} line={line} frame={frame}>
       <div data-ph-mask role="radiogroup" aria-label={copy.calmHome.pickLabel} className="divide-y divide-border border-y border-border">
-        {PICKS.map((listing) => {
+        {proposals.kind === "loading" &&
+          FIRST_LOOK_SYMBOLS.map((symbol) => (
+            <div key={symbol} aria-hidden className="flex items-center gap-3 px-[18px] py-3 lg:px-6">
+              <Skeleton className="size-9 shrink-0 rounded-full" />
+              <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </span>
+            </div>
+          ))}
+        {picks.map((listing) => {
           const price = prices.priceOf(listing);
           const moved = performance.performanceOf(listing);
           const direction = changeDirection(moved?.changePct);
@@ -312,14 +334,14 @@ export function FirstBuyStep({
           );
         })}
       </div>
-      {/* Once a name is chosen: today's reading about it, before the buy (lib/first-look). */}
+      {/* Once a name is chosen: its reading and the one headline behind it, before the buy (lib/first-look). */}
       {chosen && lookOf(chosen.symbol).kind !== "hidden" && (
         <div className="px-[18px] pt-4 lg:px-6">
           <FirstLookReadingView
             listing={chosen}
             look={lookOf(chosen.symbol)}
             onAsk={onAsk}
-            onReadNews={onReadNews ? () => onReadNews(chosen) : undefined}
+            onReadNews={onReadNews ? (focus) => onReadNews(chosen, focus) : undefined}
           />
         </div>
       )}

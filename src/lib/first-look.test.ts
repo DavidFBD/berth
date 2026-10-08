@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   FIRST_LOOK_ABOUT_FLOOR,
   FIRST_LOOK_SYMBOLS,
+  firstBuyProposals,
+  holdProposals,
   firstLookSymbols,
   judgeRecent,
+  newsOf,
   lookStateFor,
   sameNewYorkDay,
   windowStart,
@@ -11,6 +14,7 @@ import {
 } from "@/lib/first-look";
 import { COPY } from "@/lib/copy";
 import type { NewsItem } from "@/lib/news";
+import type { StoryCard } from "@/lib/news-stories";
 
 // 16:00 UTC, noon in New York.
 const NOW = Date.UTC(2026, 9, 1, 16);
@@ -30,8 +34,34 @@ function headline(over: Partial<NewsItem> = {}): NewsItem {
   };
 }
 
+/** The drawer's card a look attaches (lib/news-stories), for one listing. */
+function story(symbol = "NVDA", over: Partial<StoryCard> = {}): StoryCard {
+  return {
+    id: `s${symbol.length}`,
+    storyId: symbol.length,
+    kind: "article",
+    title: "Nvidia agrees to supply chips for OpenAI's new data centres",
+    url: "https://example.com/a",
+    publisher: "Reuters",
+    publishedAt: NOW - 2 * HOUR,
+    symbol,
+    name: symbol,
+    symbols: [symbol],
+    verdict: "fact",
+    about: 0.92,
+    readings: { [symbol]: { verdict: "fact", about: 0.92 } },
+    alsoReportedBy: [],
+    alsoOnX: [],
+    ...over,
+  };
+}
+
 describe("judgeRecent", () => {
-  const judge = (items: NewsItem[], now = NOW) => judgeRecent({ symbol: "NVDA", items, now });
+  const judge = (items: NewsItem[], now = NOW) => {
+    const said: Partial<ReturnType<typeof judgeRecent>> = judgeRecent({ symbol: "NVDA", items, now });
+    delete said.lead;
+    return said;
+  };
   const silent = { looked: false, inNews: false, inNewsWeek: false };
   const today = { looked: true, inNews: true, inNewsWeek: true };
   const weekOnly = { looked: false, inNews: false, inNewsWeek: true };
@@ -82,6 +112,14 @@ describe("judgeRecent", () => {
     expect(judge([headline({ publishedAt: Date.UTC(2026, 8, 25, 3, 59) })])).toEqual(silent);
     expect(judge([headline({ publishedAt: Date.UTC(2026, 8, 25, 4, 1) })]).inNewsWeek).toBe(true);
     expect(judge([headline({ publishedAt: NOW + HOUR })])).toEqual(silent);
+  });
+
+  it("attaches the newest headline that passed, and none when nothing did", () => {
+    const older = headline({ title: "Nvidia files its quarterly report", publishedAt: NOW - 30 * HOUR });
+    const newer = headline({ title: "Nvidia opens a plant in Arizona", publishedAt: NOW - HOUR });
+    const advice = headline({ title: "Should You Buy Nvidia?", publishedAt: NOW - 10 * 60 * 1000 });
+    expect(judgeRecent({ symbol: "NVDA", items: [older, newer, advice], now: NOW }).lead).toBe(newer);
+    expect(judgeRecent({ symbol: "NVDA", items: [advice], now: NOW }).lead).toBeUndefined();
   });
 
   it("is not hushed by a headline Jev has not read, which never passes itself", () => {
@@ -138,8 +176,18 @@ describe("lookStateFor", () => {
   });
 
   it("shows the week's news, which an older page's fields leave silent", () => {
-    const week = { looked: false, inNews: false, inNewsWeek: true };
+    const week = { looked: false, inNews: false, inNewsWeek: true, story: story() };
     expect(lookStateFor({ symbol: "NVDA", data: data({ NVDA: week }), loading: false, now: NOW })).toEqual({ kind: "shown", look: week });
+  });
+
+  it("drops a news claim that carries no headline: nothing is said the drawer cannot show", () => {
+    const bare = { looked: true, inNews: true, inNewsWeek: true };
+    expect(lookStateFor({ symbol: "NVDA", data: data({ NVDA: bare }), loading: false, now: NOW }).kind).toBe("hidden");
+    // A large move still stands on its own, without the news line.
+    expect(lookStateFor({ symbol: "NVDA", data: data({ NVDA: { ...bare, movePct: 4 } }), loading: false, now: NOW })).toEqual({
+      kind: "shown",
+      look: { looked: false, inNews: false, inNewsWeek: false, movePct: 4 },
+    });
   });
 
   it("never says today of an answer from an earlier New York day", () => {
@@ -150,6 +198,61 @@ describe("lookStateFor", () => {
   it("knows a New York day", () => {
     expect(sameNewYorkDay(Date.UTC(2026, 9, 1, 3), Date.UTC(2026, 8, 30, 23))).toBe(true);
     expect(sameNewYorkDay(Date.UTC(2026, 9, 1, 5), Date.UTC(2026, 9, 1, 3))).toBe(false);
+  });
+});
+
+describe("firstBuyProposals", () => {
+  const data = (looks: FirstLookResponse["looks"], over: Partial<FirstLookResponse> = {}): FirstLookResponse => ({
+    judged: true,
+    asOf: NOW - HOUR,
+    looks,
+    ...over,
+  });
+  const week = (symbol: string) => ({ looked: false, inNews: false, inNewsWeek: true, story: story(symbol) });
+  const silent = { looked: false, inNews: false, inNewsWeek: false };
+
+  it("offers only the names with a headline this week, in their usual order, each with news to show", () => {
+    const answer = data({ SPY: silent, NVDA: week("NVDA"), AAPL: { ...silent, movePct: 3 }, TSLA: week("TSLA") });
+    const proposals = firstBuyProposals({ data: answer, loading: false, now: NOW });
+    expect(proposals).toEqual({ kind: "news", symbols: ["NVDA", "TSLA"] });
+    // The invariant: every name offered under news has a headline the drawer shows, for that name.
+    for (const symbol of proposals.kind === "news" ? proposals.symbols : []) {
+      const state = lookStateFor({ symbol, data: answer, loading: false, now: NOW });
+      expect(state.kind).toBe("shown");
+      expect(state.kind === "shown" && newsOf(state.look)?.symbol).toBe(symbol);
+    }
+  });
+
+  it("never offers a name for news it claims without a headline", () => {
+    const answer = data({ SPY: { looked: true, inNews: true, inNewsWeek: true }, NVDA: week("NVDA") });
+    expect(firstBuyProposals({ data: answer, loading: false, now: NOW })).toEqual({ kind: "news", symbols: ["NVDA"] });
+  });
+
+  it("offers all four with no news when none has a headline, the look failed, is stale or is off", () => {
+    const plain = { kind: "plain", symbols: [...FIRST_LOOK_SYMBOLS] };
+    expect(firstBuyProposals({ data: data({ SPY: silent, NVDA: { looked: true, inNews: true } }), loading: false, now: NOW })).toEqual(plain);
+    expect(firstBuyProposals({ data: undefined, loading: false, now: NOW })).toEqual(plain);
+    expect(firstBuyProposals({ data: data({ NVDA: week("NVDA") }, { judged: false }), loading: false, now: NOW })).toEqual(plain);
+    expect(firstBuyProposals({ data: data({ NVDA: week("NVDA") }, { asOf: Date.UTC(2026, 9, 1, 3) }), loading: false, now: NOW })).toEqual(plain);
+    for (const symbol of FIRST_LOOK_SYMBOLS) {
+      const state = lookStateFor({ symbol, data: data({ SPY: silent, NVDA: { looked: true, inNews: true } }), loading: false, now: NOW });
+      expect(state.kind === "shown" && newsOf(state.look)).toBeFalsy();
+    }
+  });
+
+  it("keeps the first settled list for the step's life, so a later read never takes a chosen name away", () => {
+    const first = firstBuyProposals({ data: data({ NVDA: week("NVDA"), AAPL: week("AAPL") }), loading: false, now: NOW });
+    // A refetch where Apple's story aged out of the week.
+    const later = firstBuyProposals({ data: data({ NVDA: week("NVDA") }), loading: false, now: NOW });
+    expect(later).toEqual({ kind: "news", symbols: ["NVDA"] });
+    expect(holdProposals(first, later)).toBe(first);
+    // Until one settles, the latest is shown.
+    expect(holdProposals(null, { kind: "loading" })).toEqual({ kind: "loading" });
+    expect(holdProposals({ kind: "loading" }, later)).toBe(later);
+  });
+
+  it("holds the place while the look is on its way", () => {
+    expect(firstBuyProposals({ data: undefined, loading: true, now: NOW })).toEqual({ kind: "loading" });
   });
 });
 
@@ -170,7 +273,8 @@ describe("the onboarding red team's rule", () => {
     words.rowInNewsWeek,
     words.inNews("NVIDIA"),
     words.inNewsWeek("NVIDIA"),
-    words.readNews,
+    words.moreNews("NVIDIA"),
+    words.opensPanel,
     words.newsNote,
     COPY.calmHome.pickLabel,
     COPY.calmHome.firstTitle,

@@ -17,6 +17,7 @@ import { AddMoneyDrawer, WalletAddMoney } from "@/components/account-button";
 import type { ArrivalView } from "@/lib/funding-handoff";
 import { FirstPathProvider, HomePathCard, pathOnScreen, useDoneMoment, type FirstPathValue } from "@/components/first-path";
 import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
+import { FIXTURE_STORIES } from "./first-look-fixture";
 import { buyStepState, firstPath, isPathStep, withSkip, withoutSkip, NUDGES_SAID_BY_PATH, type PathFacts, type PathStep } from "@/lib/first-path";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
 import type { HomeStage } from "@/lib/home-stage";
@@ -116,8 +117,10 @@ function firstLookFixture(): FirstLookResponse {
       FIRST_LOOK_SYMBOLS.map((symbol) => [
         symbol,
         symbol === "NVDA"
-          ? { looked: true, inNews: true, inNewsWeek: true }
-          : { looked: false, inNews: false, inNewsWeek: symbol === "AAPL" },
+          ? { looked: true, inNews: true, inNewsWeek: true, story: FIXTURE_STORIES.NVDA() }
+          : symbol === "AAPL"
+            ? { looked: false, inNews: false, inNewsWeek: true, story: FIXTURE_STORIES.AAPL() }
+            : { looked: false, inNews: false, inNewsWeek: false },
       ]),
     ),
   };

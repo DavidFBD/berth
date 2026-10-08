@@ -29,6 +29,7 @@ import { useAskAvailable } from "@/components/chat/chat-status";
 import { AssistantCard } from "@/components/assistant/assistant-card";
 import type { AssistantId } from "@/lib/assistant-party";
 import { cn } from "@/lib/utils";
+import type { StoryCard } from "@/lib/news-stories";
 import { FundsModule } from "@/components/funds-module";
 import { Panel } from "@/components/ui/panel";
 import { VaultPositions } from "@/components/vaults";
@@ -294,9 +295,12 @@ function SignedInHome() {
   // What sits one tap away (components/home-more), and the add-money drawer.
   const [boardOpen, setBoardOpen] = useState(false);
   const [newsOpen, setNewsOpen] = useState(false);
-  // The first look's "Read the news": the news drawer, pointed at that listing.
-  const openNewsOn = (listing: TokenListing) => {
+  // The first look's headline, or its "More news": the news drawer, pointed
+  // at that listing, with the headline tapped shown first.
+  const [newsFocus, setNewsFocus] = useState<StoryCard | null>(null);
+  const openNewsOn = (listing: TokenListing, focus?: StoryCard) => {
     setNewsFilter(listing);
+    setNewsFocus(focus ?? null);
     setNewsOpen(true);
   };
   const [aiOpen, setAiOpen] = useState(false);
@@ -774,6 +778,7 @@ function SignedInHome() {
             // A row can point the news at itself: the news drawer opens on it.
             onFilterNews={(listing) => {
               setNewsFilter(listing);
+              setNewsFocus(null);
               setBoardOpen(false);
               setNewsOpen(true);
             }}
@@ -785,14 +790,21 @@ function SignedInHome() {
           onOpenChange={(next) => {
             setNewsOpen(next);
             // A filter set from a board row lasts as long as the drawer it opened.
-            if (!next) setNewsFilter(null);
+            if (!next) {
+              setNewsFilter(null);
+              setNewsFocus(null);
+            }
           }}
           title={copy.newsTitle}
           description={copy.calmHome.moreNewsSub}
         >
           <NewsFeed
             filter={newsFilter}
-            onClearFilter={() => setNewsFilter(null)}
+            focus={newsFocus}
+            onClearFilter={() => {
+              setNewsFilter(null);
+              setNewsFocus(null);
+            }}
             // The sections for what you own; the symbols stay in the browser (app/api/news).
             held={holdings.settled ? stocksHeld.map((holding) => holding.listing.symbol) : undefined}
           />

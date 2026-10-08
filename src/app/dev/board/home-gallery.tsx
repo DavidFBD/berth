@@ -28,6 +28,8 @@ import { seededPortfolioClient } from "../account/portfolio-gallery";
 import { FirstStockCard } from "@/components/first-look";
 import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
+import { FIXTURE_STORIES } from "./first-look-fixture";
+import type { StoryCard } from "@/lib/news-stories";
 import { STOCK_LISTINGS } from "@/lib/listings";
 import { CampaignLineView } from "@/components/board/campaign-line";
 import { campaignLine, type CampaignProgress } from "@/lib/campaigns";
@@ -48,8 +50,8 @@ function firstLookFixture(look: "fixture" | "quiet"): FirstLookResponse {
     judged: true,
     asOf,
     looks: {
-      NVDA: { looked: true, inNews: true, inNewsWeek: true },
-      AAPL: { looked: false, inNews: false, inNewsWeek: true },
+      NVDA: { looked: true, inNews: true, inNewsWeek: true, story: FIXTURE_STORIES.NVDA() },
+      AAPL: { looked: false, inNews: false, inNewsWeek: true, story: FIXTURE_STORIES.AAPL() },
       TSLA: { ...silent, movePct: -3.6 },
       SPY: silent,
     },
@@ -146,8 +148,10 @@ export function HomeGallery({
         : { kind: "firstBuy" },
   );
   const [newsFilter, setNewsFilter] = useState<TokenListing | null>(null);
-  const openNewsOn = (listing: TokenListing) => {
+  const [newsFocus, setNewsFocus] = useState<StoryCard | null>(null);
+  const openNewsOn = (listing: TokenListing, focus?: StoryCard) => {
     setNewsFilter(listing);
+    setNewsFocus(focus ?? null);
     setDrawer("news");
   };
   const cashScene = scene === "cash";
@@ -254,7 +258,7 @@ export function HomeGallery({
         />
       </SectionDrawer>
       <SectionDrawer open={drawer === "news"} onOpenChange={(open) => setDrawer(open ? "news" : null)} title={copy.newsTitle} description={copy.calmHome.moreNewsSub}>
-        <NewsFeed filter={newsFilter} onClearFilter={() => setNewsFilter(null)} />
+        <NewsFeed filter={newsFilter} focus={newsFocus} onClearFilter={() => setNewsFilter(null)} />
       </SectionDrawer>
       {dock && <AskDock onOpen={noop} hidden={drawer !== null} busy={streaming} />}
     </QueryClientProvider>

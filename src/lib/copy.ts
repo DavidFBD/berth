@@ -163,8 +163,10 @@ export type Copy = {
   footerNote: string;
   /**
    * The first look (lib/first-look), beside the first buy's examples and on
-   * the first stock's card. Only these fixed lines: no headline or post text
-   * ever sits beside Buy. Jev only decides which line is true.
+   * the first stock's card. These fixed lines, and since 2026-10-08 the one
+   * headline the news line stands on (title, publisher, time), which opens
+   * the news drawer, never the article. No post text. Jev decides which line
+   * is true and which headline may show.
    */
   firstLook: {
     /** After the ticker in the pick list, when one of today's headlines (New York) passed. */
@@ -176,7 +178,9 @@ export type Copy = {
     /** The same line when what passed is from the past seven days, not today. */
     inNewsWeek: (name: string) => string;
     /** Opens the news drawer on the listing, where the news column's own rules apply. */
-    readNews: string;
+    moreNews: (name: string) => string;
+    /** Read after the headline and the "more news" control by a screen reader: they open a panel in Berth, not a page. */
+    opensPanel: string;
     /** The last trading day's move, only when it was large for the listing. Code's numbers, no cause. */
     move: (name: string, direction: "rose" | "fell", pct: string) => string;
     /** Under the news line when news is linked. */
@@ -569,6 +573,8 @@ export type Copy = {
   newsEmptyFor: (name: string) => string;
   /** Follows the listing's name: "NVIDIA The Motley Fool, 2 hours ago". */
   newsByline: (source: string, when: string) => string;
+  /** Read by a screen reader before the story a reader tapped from the first buy, pinned first in the panel. */
+  newsOpenedStory: string;
   /** The column's refresh control, for a screen reader, and while it works. */
   newsRefresh: string;
   newsRefreshing: string;
@@ -2769,7 +2775,8 @@ export const COPY: Copy = {
     rowInNewsWeek: ", in recent news",
     inNews: (name) => `${name} is in today's news.`,
     inNewsWeek: (name) => `${name} was in the news this past week.`,
-    readNews: "Read the news",
+    moreNews: (name) => `More news about ${name}`,
+    opensPanel: "Opens the news panel in Berth",
     move: (name, direction, pct) => `${name} ${direction} ${pct} on the last trading day, more than it usually moves.`,
     newsNote: "News to read, not advice.",
     ask: (name) => `Ask about ${name}`,
@@ -3132,6 +3139,7 @@ export const COPY: Copy = {
   newsShowAll: "Show all",
   newsEmptyFor: (name) => `Nothing new about ${name} right now.`,
   newsByline: (source, when) => `${source}, ${when}`,
+  newsOpenedStory: "The story you opened",
   newsRefresh: "Refresh the news",
   newsRefreshing: "Refreshing the news",
   newsUpdated: (when) => `Updated ${when}`,
