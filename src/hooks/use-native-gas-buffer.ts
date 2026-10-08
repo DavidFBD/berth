@@ -11,7 +11,7 @@ import {
   type XToken,
 } from "@sodax/sdk";
 import { pinnedEvmTransport } from "@/lib/sodax-config";
-import { floorNeed } from "@/lib/gas-need";
+import { assumedFeePerGas, walletReserve } from "@/lib/gas-need";
 
 /**
  * How much of the NATIVE token to hold back from a "Max" pour so the
@@ -68,13 +68,15 @@ const FALLBACK_BUFFER_FRACTION = 100n; // 1% of balance
 const GAS_PRICE_STALE_MS = 30_000;
 
 /**
- * The least a Max may withhold on an EVM chain, whatever the RPC reports:
- * exactly the wallet floor the gate refuses below (lib/gas-need floorNeed),
- * so a Max order is never refused by the gate that set it.
+ * The least a Max may withhold on an EVM chain: what a wallet reserves for
+ * the deposit (lib/gas-need walletReserve) at three times the fee per gas
+ * read now (or assumed, with no read), so a Max order clears the gate and
+ * the wallet's own balance check even if the fee triples before signing.
  * Exported for the test that pins issue #23's arithmetic.
  */
-export function evmFeeFloorBuffer(chainKey: SpokeChainKey): bigint {
-  return floorNeed(chainKey, false) ?? 0n;
+export function evmFeeFloorBuffer(chainKey: SpokeChainKey, feePerGas?: bigint): bigint {
+  const fee = feePerGas ?? assumedFeePerGas(chainKey);
+  return walletReserve({ chainKey, feePerGas: fee * GAS_PRICE_SAFETY, approval: false }) ?? 0n;
 }
 
 /**
@@ -157,7 +159,7 @@ export function useNativeGasBuffer({
   }
 
   if (isEvm) {
-    const floor = evmFeeFloorBuffer(chainKey);
+    const floor = evmFeeFloorBuffer(chainKey, feePerGasQuery.data);
     if (feePerGasQuery.data === undefined) {
       // Still loading, or the RPC failed. On failure fall back rather than
       // block the button forever.

@@ -13,8 +13,9 @@ import {
  * it), and the order machine checks again right before the wallet opens.
  *
  * What refuses is the larger of two needs (blockingNeed): the chain's own
- * live price (gasNeed), and what some wallets attach on top of it whatever
- * the chain suggests (WALLET_FEE_FLOOR, floorNeed). The floor used to only
+ * live price (gasNeed), and what a wallet reserves, twice the base fee plus
+ * the tip some wallets attach whatever the chain suggests (WALLET_FEE_FLOOR,
+ * walletReserve). The floor used to only
  * warn; issues #23 and #27 were wallets that paid their own gas, held "a
  * little ETH" on Base, and were refused by the wallet at the very end. So
  * since 2026-10-08 a wallet that pays its own fee is stopped before the
@@ -83,18 +84,41 @@ export function walletFeeFloor(chainKey: SpokeChainKey): bigint {
 }
 
 /**
- * The gas a wallet RESERVES for a deposit: the largest limit seen on recent
- * SODAX deposits to the Base asset manager (119k to 229k), rounded up. A
- * wallet needs limit x maxFee in hand, not the gas burned.
+ * The fee per gas assumed when the live read fails or is still loading: a
+ * busy-day maxFee for the chain (roughly twice its usual base fee), so a
+ * failed read neither waves through a wallet that cannot pay nor refuses
+ * one that plainly can. Unlisted EVM chains assume 1 gwei.
  */
-export const GATE_DEPOSIT_GAS = 230_000n;
+const ASSUMED_FEE_PER_GAS: Partial<Record<EvmChainKey, bigint>> = {
+  [ChainKeys.BASE_MAINNET]: GWEI / 50n, // 0.02 gwei
+  [ChainKeys.OPTIMISM_MAINNET]: GWEI / 50n,
+  [ChainKeys.ARBITRUM_MAINNET]: GWEI / 20n, // 0.05 gwei
+  [ChainKeys.ROBINHOOD_MAINNET]: GWEI / 20n,
+  [ChainKeys.BSC_MAINNET]: GWEI / 10n,
+  [ChainKeys.HYPEREVM_MAINNET]: GWEI,
+  [ChainKeys.AVALANCHE_MAINNET]: 2n * GWEI,
+  [ChainKeys.ETHEREUM_MAINNET]: 10n * GWEI,
+  [ChainKeys.POLYGON_MAINNET]: 100n * GWEI,
+  [ChainKeys.SONIC_MAINNET]: 100n * GWEI,
+};
+
+export function assumedFeePerGas(chainKey: SpokeChainKey): bigint {
+  return ASSUMED_FEE_PER_GAS[chainKey as EvmChainKey] ?? GWEI;
+}
+
+/**
+ * The gas a wallet RESERVES for a deposit: the largest limit seen on recent
+ * SODAX deposits to the Base asset manager (119k to 229k), with about 9%
+ * room. A wallet needs limit x maxFee in hand, not the gas burned.
+ */
+export const GATE_DEPOSIT_GAS = 250_000n;
 
 /**
  * The gas a wallet reserves for a sell (or a vault withdrawal): one message
  * from the signing chain. Issue #27's sell on Base carried a 61,401 gas
- * limit; 70,000 leaves 14% room and still refuses #27 at Base's 2 gwei
- * floor (0.00014 ETH needed, the wallet asked about 0.000123). Only the floor uses it (floorNeed): the
- * chain-priced need keeps the deposit's larger limit.
+ * limit; 70,000 leaves 14% room. Only the wallet reserve uses it
+ * (walletReserve): the chain-priced need keeps the deposit's larger limit,
+ * since a hub-side sell has no measured limit of its own.
  */
 export const GATE_SELL_GAS = 70_000n;
 
@@ -194,42 +218,62 @@ export function gasNeed({
 }
 
 /**
- * What a wallet that attaches the floor (WALLET_FEE_FLOOR) would reserve
- * for the same order; `undefined` off EVM and when Privy pays.
+ * What a wallet reserves for an order before it will sign: the gas limit
+ * times its maxFeePerGas, which wallets set to about twice the base fee
+ * plus the tip they attach (`tip`, WALLET_FEE_FLOOR by default). The base
+ * fee is bounded by the chain's own maxFee read (`feePerGas`, at least the
+ * base fee), so 2 x feePerGas covers the doubled base fee with room; with
+ * no read, the chain's assumed busy-day fee stands in. `undefined` off EVM
+ * and when Privy pays.
+ *
+ * Issue #23 on these numbers: 229k gas at a 0.006 gwei base fee and a
+ * 2 gwei tip, the wallet reserved 0.000460748 ETH; this asks 250k x
+ * (2 x 0.006 + 2) gwei = 0.000503 ETH.
  */
-export function floorNeed(
-  chainKey: SpokeChainKey,
-  approval: boolean,
+export function walletReserve({
+  chainKey,
+  feePerGas,
+  approval,
   sponsored = false,
-  order: GasOrder = "buy",
-): bigint | undefined {
+  order = "buy",
+  tip = walletFeeFloor(chainKey),
+}: {
+  chainKey: SpokeChainKey;
+  feePerGas: bigint | undefined;
+  approval: boolean;
+  sponsored?: boolean;
+  order?: GasOrder;
+  tip?: bigint;
+}): bigint | undefined {
   if (gasModel(chainKey, sponsored).kind !== "evm") return undefined;
-  return walletFeeFloor(chainKey) * (order === "sell" ? GATE_SELL_GAS + (approval ? GATE_APPROVE_GAS : 0n) : evmGas(approval));
+  const gas = (order === "sell" ? GATE_SELL_GAS : GATE_DEPOSIT_GAS) + (approval ? GATE_APPROVE_GAS : 0n);
+  return gas * (2n * (feePerGas ?? assumedFeePerGas(chainKey)) + tip);
 }
 
 /**
  * The native balance that refuses an order: the larger of the chain's own
- * price (gasNeed) and the wallet floor (floorNeed). The floor needs no live
- * read, so while the fee per gas is loading the floor alone stands in for
- * it, and the pre-sign check reads the fee afresh. Off EVM and when Privy
- * pays, the chain's need unchanged.
+ * price (gasNeed) and what a wallet reserves (walletReserve). The wallet
+ * reserve needs no live read to be told, so while the fee per gas is
+ * loading or its read failed the assumed fee stands in, and the pre-sign
+ * check reads it afresh. Off EVM and when Privy pays, the chain's need.
  */
 export function blockingNeed({
   chainKey,
-  need,
+  feePerGas,
   approval,
   sponsored = false,
   order = "buy",
 }: {
   chainKey: SpokeChainKey;
-  need: bigint | undefined;
+  feePerGas: bigint | undefined;
   approval: boolean;
   sponsored?: boolean;
   order?: GasOrder;
 }): bigint | undefined {
-  const floor = floorNeed(chainKey, approval, sponsored, order);
-  if (floor === undefined) return need;
-  return need !== undefined && need > floor ? need : floor;
+  const need = gasNeed({ chainKey, feePerGas, approval, sponsored });
+  const reserve = walletReserve({ chainKey, feePerGas, approval, sponsored, order });
+  if (reserve === undefined) return need;
+  return need !== undefined && need > reserve ? need : reserve;
 }
 
 /**

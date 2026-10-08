@@ -7,7 +7,6 @@ import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chain
 import { formatUnits } from "viem";
 import {
   blockingNeed,
-  gasNeed,
   gasToAdd,
   orderGasShort,
   payTokenGas,
@@ -31,7 +30,7 @@ export type GasGate = {
   /**
    * The native balance an order on `chainKey` must find: the chain's own
    * price or the wallet floor, whichever is larger (lib/gas-need
-   * blockingNeed). A sell reserves less gas than a buy at the floor.
+   * blockingNeed). A sell reserves less gas than a buy.
    */
   needFor: (chainKey: SpokeChainKey, approval: boolean, order?: GasOrder) => bigint | undefined;
   /**
@@ -66,7 +65,7 @@ export function useGasGate(chains: readonly SpokeChainKey[], enabled = true): Ga
   const needFor = (chainKey: SpokeChainKey, approval: boolean, order: GasOrder = "buy") =>
     blockingNeed({
       chainKey,
-      need: gasNeed({ chainKey, feePerGas: feeOf(chainKey), approval, sponsored: sponsored(chainKey) }),
+      feePerGas: feeOf(chainKey),
       approval,
       sponsored: sponsored(chainKey),
       order,
@@ -124,7 +123,7 @@ export function useGasPreflight(): (args: {
     ]);
     const isNative = !!token && isGasToken(chainKey, token);
     const facts = { chainKey, isNative, nativeBalance, amount: isNative ? amount : 0n };
-    const need = blockingNeed({ chainKey, need: gasNeed({ chainKey, feePerGas, approval }), approval, order });
+    const need = blockingNeed({ chainKey, feePerGas, approval, order });
     if (!orderGasShort({ ...facts, need })) return null;
     return gasShortMessage(copy, native, chainKey, gasToAdd({ ...facts, need }));
   };
