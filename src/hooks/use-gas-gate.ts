@@ -1,10 +1,22 @@
 "use client";
 
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { getXChainType, getXService } from "@sodax/wallet-sdk-react";
+import { getXChainType, getXService, useXService } from "@sodax/wallet-sdk-react";
+import { useXBalances } from "@sodax/dapp-kit";
 import { isEvmChainKeyType, type EvmChainKey, type SpokeChainKey, type XToken } from "@sodax/sdk";
-import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
-import { gasNeed, orderGasShort, payTokenGas, withinOrUnknown, type GasStatus } from "@/lib/gas-need";
+import { getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
+import { gasShortMessage, shortfallProp, trackGasBlocked, type GasPurpose } from "@/lib/gas-message";
+import {
+  amountLeavesNoFee,
+  blockingNeed,
+  gasToAdd,
+  orderGasShort,
+  payTokenGas,
+  withinOrUnknown,
+  warnReserve,
+  type GasOrder,
+  type GasStatus,
+} from "@/lib/gas-need";
 import { useCopy } from "@/components/settings-provider";
 import { feePerGasQueryOptions } from "@/hooks/use-native-gas-buffer";
 import { useGasSponsored } from "@/hooks/use-gas-sponsor";
@@ -17,11 +29,20 @@ export type GasGate = {
    * the allowance it read needs it.
    */
   statusFor: (chainKey: SpokeChainKey, token: XToken, nativeBalance: bigint | undefined) => GasStatus;
-  /** The native fee an order on `chainKey` must find at the chain's own price (lib/gas-need gasNeed). */
-  needFor: (chainKey: SpokeChainKey, approval: boolean) => bigint | undefined;
+  /**
+   * The native balance an order on `chainKey` must find: the chain's own
+   * price or the wallet floor, whichever is larger (lib/gas-need
+   * blockingNeed). A sell reserves less gas than a buy.
+   */
+  needFor: (chainKey: SpokeChainKey, approval: boolean, order?: GasOrder) => bigint | undefined;
+  /**
+   * What a wallet attaching 2 gwei would reserve, on chains whose floor is
+   * lower (lib/gas-need warnReserve): pass it to floorWarns.
+   */
+  warnNeedFor: (chainKey: SpokeChainKey, approval: boolean, order?: GasOrder) => bigint | undefined;
   /**
    * Whether Privy pays this person's fee on `chainKey` (hooks/use-gas-sponsor).
-   * Pass it on as `sponsored` to orderGasShort and floorWarns.
+   * Pass it on as `sponsored` to orderGasShort and gasToAdd.
    */
   sponsored: (chainKey: SpokeChainKey) => boolean;
 };
@@ -48,11 +69,21 @@ export function useGasGate(chains: readonly SpokeChainKey[], enabled = true): Ga
     const index = pricedChains.indexOf(chainKey as EvmChainKey);
     return index < 0 ? undefined : fees[index]?.data;
   };
-  const needFor = (chainKey: SpokeChainKey, approval: boolean) =>
-    gasNeed({ chainKey, feePerGas: feeOf(chainKey), approval, sponsored: sponsored(chainKey) });
+  const needFor = (chainKey: SpokeChainKey, approval: boolean, order: GasOrder = "buy") =>
+    blockingNeed({
+      chainKey,
+      feePerGas: feeOf(chainKey),
+      approval,
+      sponsored: sponsored(chainKey),
+      order,
+    });
+
+  const warnNeedFor = (chainKey: SpokeChainKey, approval: boolean, order: GasOrder = "buy") =>
+    warnReserve({ chainKey, feePerGas: feeOf(chainKey), approval, sponsored: sponsored(chainKey), order });
 
   return {
     needFor,
+    warnNeedFor,
     sponsored,
     statusFor: (chainKey, token, nativeBalance) =>
       payTokenGas({
@@ -67,13 +98,18 @@ export function useGasGate(chains: readonly SpokeChainKey[], enabled = true): Ga
 
 /**
  * The last check before a wallet opens: a fresh read of the native balance
- * and the fee, and the plain message to stop with when the chain's own
- * price cannot be paid (`null` to go on). The picker already greys such a
- * token; this catches the race, a balance spent or a fee risen since.
+ * and the fee, and the plain message to stop with when the order's fee
+ * cannot be paid, at the chain's own price or what a wallet reserves
+ * (lib/gas-need blockingNeed), naming roughly how much to add (`null` to go
+ * on). The picker already greys such a token; this catches the race, a
+ * balance spent or a fee risen since.
  *
- * Unknown never stops an order: a failed or slow read (lib/gas-need PREFLIGHT_TIMEOUT_MS)
- * goes on to the wallet as before, and so does a 0 off EVM, where the SDK
- * answers 0 for a failed read (lib/gas-need trustedNativeBalance).
+ * An unknown balance never stops an order: a failed or slow balance read
+ * (lib/gas-need PREFLIGHT_TIMEOUT_MS) goes on to the wallet, and so does a
+ * 0 off EVM, where the SDK answers 0 for a failed read (lib/gas-need
+ * trustedNativeBalance). A failed or slow FEE read does not wave an order
+ * through: the chain's assumed busy-day fee stands in for it (lib/gas-need
+ * assumedFeePerGas), so a known balance below that need still stops.
  */
 export function useGasPreflight(): (args: {
   chainKey: SpokeChainKey;
@@ -81,11 +117,13 @@ export function useGasPreflight(): (args: {
   token?: XToken;
   amount: bigint;
   approval: boolean;
+  order?: GasOrder;
+  purpose?: GasPurpose;
 }) => Promise<string | null> {
   const queryClient = useQueryClient();
   const copy = useCopy();
   const sponsored = useGasSponsored();
-  return async ({ chainKey, address, token, amount, approval }) => {
+  return async ({ chainKey, address, token, amount, approval, order = "buy", purpose = "order" }) => {
     // Privy pays: nothing to check. If Privy refuses at send time, the send
     // falls back to an ordinary one (lib/gas-sponsor withGasSponsor), and a
     // wallet with no gas then hears the calm insufficient-funds sentence.
@@ -100,13 +138,63 @@ export function useGasPreflight(): (args: {
         : Promise.resolve(undefined),
     ]);
     const isNative = !!token && isGasToken(chainKey, token);
-    const short = orderGasShort({
-      chainKey,
-      isNative,
-      nativeBalance,
-      amount: isNative ? amount : 0n,
-      need: gasNeed({ chainKey, feePerGas, approval }),
+    const facts = { chainKey, isNative, nativeBalance, amount: isNative ? amount : 0n };
+    const need = blockingNeed({ chainKey, feePerGas, approval, order });
+    if (!orderGasShort({ ...facts, need })) return null;
+    const toAdd = gasToAdd({ ...facts, need });
+    trackGasBlocked({
+      side: purpose === "cancel" ? "cancel" : order,
+      chain: chainKey,
+      shortfall: shortfallProp(toAdd, native.decimals),
     });
-    return short ? copy.gasNeededToPay(native.symbol, getChainName(chainKey)) : null;
+    return gasShortMessage(copy, native, chainKey, toAdd, purpose, amountLeavesNoFee({ ...facts, need }));
   };
+}
+
+/**
+ * Whether the wallet at `address` can pay one signature's fee on
+ * `chainKey` right now, read live: the same need as the drawers
+ * (blockingNeed), for screens with no drawer of their own, such as the
+ * cancel check. `message` is the calm guidance when it cannot, with the
+ * shortfall as analytics carries it; `null`
+ * while it can, while anything is unknown, or when Privy pays.
+ */
+export function useSignGasCheck({
+  chainKey,
+  address,
+  enabled,
+  order = "sell",
+  purpose = "order",
+}: {
+  chainKey: SpokeChainKey;
+  address: string | undefined;
+  enabled: boolean;
+  order?: GasOrder;
+  purpose?: GasPurpose;
+}): { message: string; shortfall: string } | null {
+  const copy = useCopy();
+  const gate = useGasGate([chainKey], enabled);
+  const native = getNativeGasToken(chainKey);
+  const xService = useXService({ xChainType: getXChainType(chainKey) });
+  const query = useXBalances({
+    params: {
+      xService,
+      xChainId: chainKey,
+      xTokens: native ? [toBalanceReadToken(native)] : [],
+      address: enabled && native ? address : undefined,
+    },
+    queryOptions: { refetchInterval: 30_000, staleTime: 15_000 },
+  });
+  if (!native || !query.data) return null;
+  const facts = {
+    chainKey,
+    isNative: false,
+    nativeBalance: query.data[toBalanceReadToken(native).address] ?? 0n,
+    amount: 0n,
+    need: gate.needFor(chainKey, false, order),
+    sponsored: gate.sponsored(chainKey),
+  };
+  if (!orderGasShort(facts)) return null;
+  const toAdd = gasToAdd(facts);
+  return { message: gasShortMessage(copy, native, chainKey, toAdd, purpose), shortfall: shortfallProp(toAdd, native.decimals) };
 }

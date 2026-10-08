@@ -5,7 +5,7 @@ import { ChainKeys } from "@sodax/sdk";
 import { getAddress, isAddress } from "viem";
 import { useGasSponsored } from "@/hooks/use-gas-sponsor";
 import { feePerGasQueryOptions } from "@/hooks/use-native-gas-buffer";
-import { gasNeed, orderGasShort, withinOrUnknown } from "@/lib/gas-need";
+import { blockingNeed, orderGasShort, withinOrUnknown } from "@/lib/gas-need";
 import type { HubAccount } from "@/hooks/use-hub-account";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 import { robinhoodOwners } from "@/lib/account-holdings";
@@ -85,7 +85,10 @@ export function useRobinhoodGasReady(signer: string | undefined, enabled: boolea
         withinOrUnknown(queryClient.fetchQuery(feePerGasQueryOptions(ChainKeys.ROBINHOOD_MAINNET, true))),
       ]);
       if (balance === undefined || feePerGas === undefined) return false;
-      const need = gasNeed({ chainKey: ChainKeys.ROBINHOOD_MAINNET, feePerGas, approval: true });
+      // The same need the sell's gas gate refuses at: the larger of the
+      // chain's own price and what a wallet reserves for a sell (70k gas
+      // plus the approval, at 2 x fee + the 0.1 gwei Robinhood Chain tip).
+      const need = blockingNeed({ chainKey: ChainKeys.ROBINHOOD_MAINNET, feePerGas, approval: true, order: "sell" });
       return !orderGasShort({ chainKey: ChainKeys.ROBINHOOD_MAINNET, isNative: false, nativeBalance: balance, amount: 0n, need });
     },
   });

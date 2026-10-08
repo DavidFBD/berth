@@ -66,6 +66,12 @@ export type AnalyticsEvents = {
 
   limit_started: { side: "buy" | "sell" };
   limit_saved: { side: "buy" | "sell" };
+  /**
+   * An order or cancel stopped before signing because the wallet cannot pay
+   * the network fee. `chain` is the chain key, `shortfall` roughly how much
+   * native is missing ("0.00034", or "unknown"): no address, no balance.
+   */
+  gas_blocked: { side: "buy" | "sell" | "cancel"; chain: string; shortfall: string };
 
   account_screen_opened: { screen: string };
   news_story_opened: { listing: string; source_kind: string };
@@ -116,6 +122,7 @@ export const EVENT_PROPS = {
 
   limit_started: ["side"],
   limit_saved: ["side"],
+  gas_blocked: ["side", "chain", "shortfall"],
 
   account_screen_opened: ["screen"],
   news_story_opened: ["listing", "source_kind"],

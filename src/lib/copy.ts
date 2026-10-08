@@ -748,10 +748,35 @@ export type Copy = {
   /** The buy or sell button while the signing chain cannot pay its fee. */
   ctaNeedsGas: (symbol: string) => string;
   /**
-   * Under the button when the chain's own price is covered but not what
-   * some wallets attach on top (lib/gas-need floorWarns). The person may sign.
+   * The top-up guidance that stops an order whose wallet pays its own fee
+   * and holds too little for it (lib/gas-need blockingNeed, gasToAdd).
+   * `amount` is a plain decimal rounded up, "0.00034".
+   */
+  gasToAdd: (amount: string, symbol: string, chainName: string) => string;
+  /** Paying in the gas token itself, when the amount typed leaves too little for the fee. */
+  gasLowerAmount: (symbol: string, chainName: string) => string;
+  /** The same guidance when the signature would cancel a waiting order. */
+  gasToAddCancel: (amount: string, symbol: string, chainName: string) => string;
+  /** The same, when how much cannot be told. */
+  gasNeededToCancel: (symbol: string, chainName: string) => string;
+  /**
+   * Under the button when the order clears the gate but a wallet attaching
+   * 2 gwei would ask for more (lib/gas-need floorWarns). The person may sign.
    */
   gasFloorWarning: (symbol: string) => string;
+  /**
+   * Near the fee line in the buy and sell drawers, when the session is a
+   * browser-extension or other external wallet and the signing network is
+   * one where Privy covers the fee for email sign-ins (lib/gas-sponsor):
+   * this wallet pays its own there. Never shown where email pays too.
+   */
+  selfPaidFeeNote: (symbol: string, chainName: string) => string;
+  /**
+   * The same, once, in the account's Wallets section for a wallet session,
+   * only while some network is sponsored. `chainNames` arrives joined:
+   * "Base, Arbitrum and Polygon".
+   */
+  walletPaysOwnFees: (chainNames: string) => string;
   /**
    * Where the network fee would be mentioned, when Privy pays it for an
    * email user's embedded wallet on this chain (lib/gas-sponsor). The
@@ -3273,8 +3298,20 @@ export const COPY: Copy = {
     `Your ${symbol} on ${chainName} would all go to the network fee. Add a little more to pay with it.`,
   gasHelpLabel: "Why this cannot pay",
   ctaNeedsGas: (symbol) => `Not enough ${symbol} for the network fee`,
+  gasToAdd: (amount, symbol, chainName) =>
+    `Add about ${amount} ${symbol} on ${chainName} to pay the network fee, then this order can start.`,
+  gasLowerAmount: (symbol, chainName) =>
+    `This leaves too little ${symbol} on ${chainName} for the network fee. Lower the amount, or use Max.`,
+  gasToAddCancel: (amount, symbol, chainName) =>
+    `Cancelling has a network fee. Add about ${amount} ${symbol} on ${chainName}, then you can cancel this order.`,
+  gasNeededToCancel: (symbol, chainName) =>
+    `Cancelling has a network fee. Add a little ${symbol} on ${chainName}, then you can cancel this order.`,
   gasFloorWarning: (symbol) =>
     `Some wallets ask for a higher network fee. If yours refuses, add a little ${symbol}.`,
+  selfPaidFeeNote: (symbol, chainName) =>
+    `Berth covers the network fee on ${chainName} for email sign-ins only. With this wallet you pay it yourself, in ${symbol}, so keep a little there or the order can fail.`,
+  walletPaysOwnFees: (chainNames) =>
+    `Berth covers network fees on ${chainNames} for email sign-ins only. With this wallet you pay each fee yourself, on the network you sign on, so keep a little of its gas token there or orders can fail.`,
   noNetworkFeeOn: (chainName) => `No network fee to pay on ${chainName}.`,
   noNetworkFeeNote: "no network fee",
   gasCoveredChains: (chainNames) => `Buying from ${chainNames} has no network fee to pay.`,
