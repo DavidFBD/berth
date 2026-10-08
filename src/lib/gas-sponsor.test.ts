@@ -31,6 +31,7 @@ import {
   subscribeSponsoredStall,
   sponsorFallbackAllowed,
   sponsorRefusals,
+  sponsoredSendsOut,
   sponsoredChainNames,
   sponsoredSendOptions,
   toSponsoredTransaction,
@@ -155,10 +156,10 @@ describe("classifySponsorError", () => {
     Object.assign(new Error(error), { name: "PrivyApiError", error, status, ...(code ? { code } : {}) });
 
   it("refuses, so falls back, only on client error statuses from Privy's API", () => {
-    for (const status of [400, 401, 402, 403, 404, 422]) {
+    for (const status of [400, 402, 403, 422]) {
       expect(classifySponsorError(api(status, "Insufficient credits"))).toBe("refused");
     }
-    for (const status of [401, 402, 403, 404]) expect(sponsorFallbackAllowed(api(status))).toBe(true);
+    for (const status of [402, 403]) expect(sponsorFallbackAllowed(api(status))).toBe(true);
     expect(classifySponsorError(api(429, "Too many requests"))).toBe("rate-limited");
   });
 
@@ -222,9 +223,7 @@ describe("classifySponsorError", () => {
   it("falls back on react-auth's own pre-send throws", () => {
     expect(classifySponsorError(Object.assign(new Error("Sponsoring is only supported for wallets on the TEE stack"), { type: "client_error" }))).toBe("refused");
     expect(classifySponsorError(new Error("Cannot sponsor a sign transaction request"))).toBe("refused");
-    expect(classifySponsorError(new Error("Must have valid access token and Privy wallet to send transaction"))).toBe("refused");
     expect(classifySponsorError(Object.assign(new Error("Chain ID 146 is not supported. It must be added"), { privyErrorCode: "unsupported_chain_id" }))).toBe("refused");
-    expect(classifySponsorError({ code: "embedded_wallet_request_expired", error: "Wallet request expired before it could be sent. Please try again." })).toBe("refused");
   });
 
   it("never falls back on anything that may have reached the bundler", () => {
@@ -594,7 +593,8 @@ describe("a sponsored send past its deadline", () => {
     void provider.request(args).finally(() => (settled = true)).catch(() => {});
     await vi.advanceTimersByTimeAsync(SPONSORED_SEND_DEADLINE_MS - 1);
     expect(stalled).not.toHaveBeenCalled();
-    expect(outcomeHoldUntil()).toBe(0);
+    // Held all the while the send is out, not only from the deadline.
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
     await vi.advanceTimersByTimeAsync(1);
     expect(stalled).toHaveBeenCalledOnce();
     expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
@@ -785,6 +785,55 @@ describe("the hold after an unknown outcome, across a refresh and other tabs", (
     expect(heard).toHaveBeenCalledTimes(1);
   });
 
+  /** A sponsored send in `mod` that the person cancels: a definite answer before broadcast. */
+  async function cancelledSend(mod: typeof import("./gas-sponsor")) {
+    const provider = mod.withGasSponsor(
+      { request: async () => "0xpaid" },
+      { chainId: 8453, address: "0xa", active: () => true, sendSponsored: async () => Promise.reject({ code: 4001 }) },
+    );
+    await provider.request({ method: "eth_sendTransaction", params: [{ to: "0xb" }] }).catch(() => null);
+  }
+
+  it("a reloaded tab keeps an unknown outcome's hold through a send of its own that ends definitely", async () => {
+    const storage = fakeStorage();
+    vi.stubGlobal("window", { localStorage: storage });
+    const first = await import("./gas-sponsor");
+    const now = Date.now();
+    first.holdAfterUnknownOutcome(now);
+
+    // The page reloads; a sponsored limit cancel from it is then refused.
+    vi.resetModules();
+    const reloaded = await import("./gas-sponsor");
+    await cancelledSend(reloaded);
+    expect(reloaded.outcomeHoldUntil()).toBe(now + OUTCOME_HOLD_MS);
+    expect(storage.getItem("berth.gasSponsorOutcomeHold")).toBe(String(now + OUTCOME_HOLD_MS));
+    reloaded.resetOutcomeHold();
+    first.resetOutcomeHold();
+  });
+
+  it("a second tab keeps a hold it heard of through a send of its own that ends definitely", async () => {
+    const storage = fakeStorage();
+    const handlers: ((event: { key: string | null }) => void)[] = [];
+    vi.stubGlobal("window", {
+      localStorage: storage,
+      addEventListener: (type: string, handler: (event: { key: string | null }) => void) => {
+        if (type === "storage") handlers.push(handler);
+      },
+      removeEventListener: () => {},
+    });
+    const other = await import("./gas-sponsor");
+    const off = other.subscribeOutcomeHold(() => {});
+    // The first tab's send ends unknown; the browser tells this one.
+    const now = Date.now();
+    storage.setItem("berth.gasSponsorOutcomeHold", String(now + OUTCOME_HOLD_MS));
+    for (const handler of handlers) handler({ key: "berth.gasSponsorOutcomeHold" });
+    await cancelledSend(other);
+    expect(other.outcomeHoldUntil()).toBe(now + OUTCOME_HOLD_MS);
+    expect(storage.getItem("berth.gasSponsorOutcomeHold")).toBe(String(now + OUTCOME_HOLD_MS));
+    off();
+    other.resetOutcomeHold();
+  });
+
   it("still holds this page when storage is blocked", async () => {
     vi.stubGlobal("window", { localStorage: fakeStorage(true) });
     const mod = await import("./gas-sponsor");
@@ -880,5 +929,230 @@ describe("Robinhood Chain (4663)", () => {
     expect(warn).toHaveBeenCalledOnce();
     expect(isSponsoredChain(RH, ids)).toBe(false);
     expect(gasSponsored(RH, true, ids, new Set())).toBe(false);
+  });
+});
+
+describe("the hold while a sponsored send is out", () => {
+  const args = { method: "eth_sendTransaction", params: [{ from: "0xa", to: "0xb", data: "0x12" }] };
+
+  function deferred() {
+    let resolve!: (value: { hash: string }) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<{ hash: string }>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  function setup(pending: () => Promise<{ hash: string }>, extra: Partial<Parameters<typeof withGasSponsor>[1]> = {}) {
+    const inner = { request: vi.fn(async () => "0xpaid") };
+    const sponsored = vi.fn(pending);
+    const provider = withGasSponsor(inner, { chainId: 8453, address: "0xa", active: () => true, sendSponsored: sponsored, ...extra });
+    return { inner, sponsored, provider };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("holds the moment Privy is asked, before it answers", async () => {
+    const privy = deferred();
+    const { provider } = setup(() => privy.promise);
+    const answer = provider.request(args);
+    await Promise.resolve();
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+    expect(sponsoredSendsOut()).toBe(1);
+    privy.resolve({ hash: HASH });
+    await expect(answer).resolves.toBe(HASH);
+    // A hash: the order is out and followed from here; the hold lifts.
+    expect(outcomeHoldUntil()).toBe(0);
+    expect(sponsoredSendsOut()).toBe(0);
+  });
+
+  it("renews the hold while Privy is slow, short of the deadline", async () => {
+    vi.useFakeTimers();
+    const privy = deferred();
+    const { provider } = setup(() => privy.promise);
+    const answer = provider.request(args);
+    // Past a whole minute, still before the ninety second deadline.
+    await vi.advanceTimersByTimeAsync(OUTCOME_HOLD_MS + 20_000);
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+    privy.resolve({ hash: HASH });
+    await answer;
+    expect(outcomeHoldUntil()).toBe(0);
+  });
+
+  it("is in storage from the start, so a reload mid-POST comes back held", async () => {
+    const items = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => items.get(key) ?? null,
+        setItem: (key: string, value: string) => void items.set(key, value),
+        removeItem: (key: string) => void items.delete(key),
+      },
+    });
+    vi.resetModules();
+    const mod = await import("./gas-sponsor");
+    const provider = withGasSponsorFrom(mod, () => new Promise(() => {}));
+    void provider.request(args).catch(() => {});
+    await Promise.resolve();
+    // The page goes away here; a fresh one reads the hold back.
+    vi.resetModules();
+    const reloaded = await import("./gas-sponsor");
+    expect(reloaded.outcomeHoldUntil()).toBeGreaterThan(Date.now());
+    expect(reloaded.outcomeHoldUntil()).toBeLessThanOrEqual(Date.now() + OUTCOME_HOLD_MS);
+    mod.resetOutcomeHold();
+    vi.resetModules();
+  });
+
+  function withGasSponsorFrom(mod: typeof import("./gas-sponsor"), pending: () => Promise<{ hash: string }>) {
+    return mod.withGasSponsor({ request: async () => "0xpaid" }, { chainId: 8453, address: "0xa", active: () => true, sendSponsored: pending });
+  }
+
+  it("lifts on a definite answer before broadcast: a refusal, a revert, a cancel", async () => {
+    const answers = [
+      Object.assign(new Error("Transaction simulation failed: execution reverted"), { status: 400 }),
+      { code: 4001, message: "User rejected" },
+    ];
+    for (const error of answers) {
+      const { provider } = setup(async () => Promise.reject(error));
+      await provider.request(args).catch(() => null);
+      expect(outcomeHoldUntil()).toBe(0);
+    }
+    // A refusal lifts the hold before the paid send and its gas check.
+    let heldAtPaidSend = -1;
+    const { provider, inner } = setup(async () => Promise.reject(Object.assign(new Error("no credits"), { status: 402 })), {
+      beforePaidSend: async () => {
+        heldAtPaidSend = outcomeHoldUntil();
+      },
+    });
+    await expect(provider.request(args)).resolves.toBe("0xpaid");
+    expect(heldAtPaidSend).toBe(0);
+    expect(inner.request).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the unknown outcome's minute as before", async () => {
+    const { provider } = setup(async () => Promise.reject(Object.assign(new Error("Bad Gateway"), { status: 502 })));
+    const before = Date.now();
+    await provider.request(args).catch(() => null);
+    expect(outcomeHoldUntil()).toBeGreaterThanOrEqual(before + OUTCOME_HOLD_MS);
+  });
+
+  it("stays held while another send is still out, and keeps an earlier unknown minute", async () => {
+    const slow = deferred();
+    const first = setup(() => slow.promise);
+    const firstAnswer = first.provider.request(args);
+    const second = setup(async () => Promise.reject({ code: 4001 }));
+    await second.provider.request(args).catch(() => null);
+    // The first send is still out: the second's cancel lifts nothing.
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+    holdAfterUnknownOutcome();
+    const minute = outcomeHoldUntil();
+    slow.resolve({ hash: HASH });
+    await firstAnswer;
+    expect(outcomeHoldUntil()).toBe(minute);
+  });
+});
+
+describe("a lapsed Privy session", () => {
+  const api = (status: number, error = "x", code?: string) =>
+    Object.assign(new Error(error), { name: "PrivyApiError", error, status, ...(code ? { code } : {}) });
+  const args = { method: "eth_sendTransaction", params: [{ from: "0xa", to: "0xb", data: "0x12" }] };
+
+  it("is its own kind: never a refusal, never a fallback", () => {
+    for (const error of [
+      api(401, "Unauthorized"),
+      api(404, "Not found"),
+      { code: "must_be_authenticated" },
+      { code: "embedded_wallet_request_expired", error: "Wallet request expired before it could be sent. Please try again." },
+      new Error("Must have valid access token and Privy wallet to send transaction"),
+      new Error("User must be authenticated before signing with a Privy wallet"),
+      new Error("Wallet request expired before it could be sent. Please try again."),
+    ]) {
+      expect(classifySponsorError(error)).toBe("auth");
+      expect(sponsorFallbackAllowed(error)).toBe(false);
+    }
+    // Refusals stay refusals.
+    expect(classifySponsorError(api(402))).toBe("refused");
+    expect(classifySponsorError(api(403))).toBe("refused");
+    expect(classifySponsorError({ code: "embedded_wallet_not_found" })).toBe("refused");
+  });
+
+  function setup(answers: unknown[], refreshAuth?: () => Promise<boolean>) {
+    const inner = { request: vi.fn(async () => "0xpaid") };
+    const onFallback = vi.fn();
+    const beforePaidSend = vi.fn(async () => {});
+    const sponsored = vi.fn(async () => {
+      const next = answers.shift();
+      if (next instanceof Error || (typeof next === "object" && next !== null && !("hash" in next))) throw next;
+      return next as { hash: string };
+    });
+    const provider = withGasSponsor(inner, {
+      chainId: 8453,
+      address: "0xa",
+      active: () => true,
+      sendSponsored: sponsored,
+      onFallback,
+      beforePaidSend,
+      refreshAuth,
+      sleep: async () => {},
+    });
+    return { inner, onFallback, beforePaidSend, sponsored, provider };
+  }
+
+  it("refreshes the token and asks Privy once more, sponsored", async () => {
+    const refresh = vi.fn(async () => true);
+    const { inner, onFallback, sponsored, provider } = setup([api(401, "Unauthorized"), { hash: HASH }], refresh);
+    await expect(provider.request(args)).resolves.toBe(HASH);
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(sponsored).toHaveBeenCalledTimes(2);
+    expect(onFallback).not.toHaveBeenCalled();
+    expect(inner.request).not.toHaveBeenCalled();
+    expect(sponsorRefusals().size).toBe(0);
+  });
+
+  it("fails the order with its own error when the second ask lapses too, never paying", async () => {
+    const refresh = vi.fn(async () => true);
+    const second = api(401, "Still unauthorized");
+    const { inner, onFallback, beforePaidSend, sponsored, provider } = setup([{ code: "embedded_wallet_request_expired" }, second], refresh);
+    await expect(provider.request(args)).rejects.toBe(second);
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(sponsored).toHaveBeenCalledTimes(2);
+    expect(onFallback).not.toHaveBeenCalled();
+    expect(beforePaidSend).not.toHaveBeenCalled();
+    expect(inner.request).not.toHaveBeenCalled();
+    expect(outcomeHoldUntil()).toBe(0);
+  });
+
+  it("fails the order at once when no fresh token comes, or the refresh throws, or there is none", async () => {
+    for (const refresh of [async () => false, async () => Promise.reject(new Error("offline")), undefined]) {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const lapsed = api(401, "Unauthorized");
+      const { inner, onFallback, sponsored, provider } = setup([lapsed, { hash: HASH }], refresh);
+      await expect(provider.request(args)).rejects.toBe(lapsed);
+      expect(sponsored).toHaveBeenCalledOnce();
+      expect(onFallback).not.toHaveBeenCalled();
+      expect(inner.request).not.toHaveBeenCalled();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("a refusal after the fresh token is a real refusal, and falls back", async () => {
+    const { inner, onFallback, provider } = setup([api(401), api(402, "Insufficient credits")], async () => true);
+    await expect(provider.request(args)).resolves.toBe("0xpaid");
+    expect(onFallback).toHaveBeenCalledWith(expect.anything(), "refused");
+    expect(inner.request).toHaveBeenCalledOnce();
+  });
+
+  it("an unknown outcome on the second ask is held, never resent", async () => {
+    const { inner, onFallback, sponsored, provider } = setup([api(401), api(502, "Bad Gateway")], async () => true);
+    const error = await provider.request(args).catch((e: unknown) => e);
+    expect(isSponsoredOutcomeUnknown(error)).toBe(true);
+    expect(sponsored).toHaveBeenCalledTimes(2);
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+    expect(onFallback).not.toHaveBeenCalled();
+    expect(inner.request).not.toHaveBeenCalled();
   });
 });

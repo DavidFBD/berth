@@ -17,8 +17,8 @@ import {
 } from "@sodax/sdk";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { pinnedEvmTransport } from "@/lib/sodax-config";
-import { gasSponsored, markSponsorRefused, sponsoredSendOptions, withGasSponsor } from "@/lib/gas-sponsor";
-import { InsufficientFundsForPaidSend, paidSendNeed, withinOrUnknown } from "@/lib/gas-need";
+import { gasSponsored, withGasSponsor } from "@/lib/gas-sponsor";
+import { privySponsorOptions } from "@/lib/privy-sponsor-wiring";
 import { readEvmFeePerGas } from "@/hooks/use-native-gas-buffer";
 
 /** The user's Privy embedded EVM wallet, if signed in via email. */
@@ -227,50 +227,19 @@ export function usePrivyEvmWalletProvider(
       // paid by the person, when Privy refuses. This wallet IS the embedded
       // one, so the session question is already answered.
       const signer: Eip1193 = gasSponsored(evmChainKey, true)
-        ? withGasSponsor(eip1193, {
-            chainId: chain.id,
-            address: embeddedAddress,
-            active: () => gasSponsored(evmChainKey, true),
-            // The bundle's own success flag for our call (lib/gas-sponsor
-            // sponsoredCallSucceeded). Short: Privy answers after inclusion.
-            readReceipt: (hash) =>
-              publicClient
-                .waitForTransactionReceipt({ hash, timeout: 30_000 })
-                .catch((error: unknown) => {
-                  console.warn(`[privy-wallet] could not read the sponsored receipt ${hash}; trusting the hash`, error);
-                  return undefined;
-                }),
-            sendSponsored: (tx) =>
-              sendRef.current(tx, sponsoredSendOptions(embeddedAddress)),
-            beforePaidSend: async (tx) => {
-              const hex = (value: string | undefined) => (value ? BigInt(value) : undefined);
-              const [balance, feePerGas] = await Promise.all([
-                withinOrUnknown(publicClient.getBalance({ address: embeddedAddress as `0x${string}` })),
-                hex(tx.maxFeePerGas ?? tx.gasPrice) === undefined
-                  ? withinOrUnknown(readEvmFeePerGas(evmChainKey))
-                  : Promise.resolve(undefined),
-              ]);
-              const want = paidSendNeed({
-                chainKey: evmChainKey,
-                gas: hex(tx.gas),
-                maxFeePerGas: hex(tx.maxFeePerGas ?? tx.gasPrice),
-                feePerGas,
-                value: hex(tx.value),
-              });
-              // Unknown never stops a send: the node has the last word.
-              if (balance !== undefined && balance < want) {
-                throw new InsufficientFundsForPaidSend(balance, want);
-              }
-            },
-            onFallback: (error, kind) => {
-              // Two 429s in a row pay this once but keep the chain sponsored.
-              if (kind === "refused") markSponsorRefused(chain.id);
-              console.warn(
-                `[privy-wallet] gas sponsorship ${kind} on ${evmChainKey}; sending the ordinary way, paid by the wallet`,
-                error,
-              );
-            },
-          })
+        ? withGasSponsor(
+            eip1193,
+            privySponsorOptions({
+              chainId: chain.id,
+              chainKey: evmChainKey,
+              address: embeddedAddress,
+              client: publicClient,
+              readFeePerGas: readEvmFeePerGas,
+              send: (tx, options) => sendRef.current(tx, options),
+              getAccessToken: () => getAccessTokenRef.current(),
+              active: () => gasSponsored(evmChainKey, true),
+            }),
+          )
         : eip1193;
 
       const walletClient = createWalletClient({

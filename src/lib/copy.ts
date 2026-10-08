@@ -931,6 +931,13 @@ export type Copy = {
   notArrivedWatching: string;
   /** A reopened drawer, while an earlier order is still on its way. */
   earlierOrderOnItsWay: string;
+  /**
+   * The order buttons are held because a gas-sponsored order may still be
+   * on its way (lib/gas-sponsor outcome hold): one sent just now, before a
+   * reload, or from another tab. Shown while the screen has no order of
+   * its own in hand.
+   */
+  earlierOrderMayGoThrough: string;
   /** Accessible names that never render visibly. */
   ariaAmount: string;
   ariaAmountIn: (currency: string) => string;
@@ -3443,6 +3450,8 @@ export const COPY: Copy = {
   notArrivedWatching: "The link below follows the payment on mempool.space.",
   earlierOrderOnItsWay:
     "An earlier order is still on its way. Let it settle before placing the same one again.",
+  earlierOrderMayGoThrough:
+    "An earlier order may still go through. Check What you own in a minute before trying again.",
   ariaAmount: "Amount",
   ariaAmountIn: (currency) => `Amount in ${currency}`,
   ariaSharesToWithdraw: "Shares to withdraw",

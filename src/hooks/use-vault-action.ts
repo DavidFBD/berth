@@ -82,6 +82,7 @@ import {
   type RenotifyState,
 } from "@/lib/market-send";
 import { subscribeSponsoredStall } from "@/lib/gas-sponsor";
+import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 import type { PourReadiness } from "@/hooks/use-privy-evm-wallet";
@@ -310,6 +311,13 @@ export interface UseVaultActionResult {
    * arrival can be seen (hooks/use-robinhood-arrival). Null for every other order.
    */
   robinhood: RobinhoodRun | null;
+  /**
+   * The order buttons are held for a gas-sponsored order that may still go
+   * through (lib/gas-sponsor outcome hold), while this screen has no order
+   * of its own in hand: the calm "may still go through" note shows. True
+   * after a reload mid-send, and in a second tab.
+   */
+  outcomeHeld: boolean;
   /** True mid-pipeline: between first tap and signature. */
   pending: boolean;
   /** True while the drawer must refuse dismissal. */
@@ -387,8 +395,18 @@ function errorLine(error: unknown): string {
 type SentIntent = CreateVaultIntentResult<SpokeChainKey, boolean>;
 
 /**
+ * Whether the screen says an earlier order may still go through: the
+ * outcome hold is on (a sponsored send is out, or its outcome is unknown,
+ * here, before a reload, or in another tab) and the screen is idle. A
+ * screen with an order in hand shows that order's own state instead.
+ */
+export function heldOrderNotice(step: PourStep, held: boolean): boolean {
+  return held && step === "idle";
+}
+
+/**
  * Resolves when a sponsored send passes its deadline (lib/gas-sponsor), so
- * the order waiting on it can let its screen go while the send carries on.
+ * the approval waiting on it can let its screen go while the send carries on.
  */
 function sponsoredStall(): { promise: Promise<void>; cancel: () => void } {
   let off = () => {};
@@ -396,6 +414,55 @@ function sponsoredStall(): { promise: Promise<void>; cancel: () => void } {
     off = subscribeSponsoredStall(() => resolve());
   });
   return { promise, cancel: () => off() };
+}
+
+type Sent<V, E> = { ok: true; value: V } | { ok: false; error: E };
+
+/**
+ * Sends an order whose sponsored send may pass its deadline
+ * (lib/gas-sponsor subscribeSponsoredStall). In time: its result, as
+ * createVaultIntent gave it. Past the deadline: `onStalled` runs at once,
+ * so the screen can say the order may still go through, and the send
+ * carries on underneath; should it then go out after all, `onLate` takes
+ * it from there, once. It is never sent a second time. A throw from the
+ * send in time is the caller's to handle.
+ */
+export async function sendUnlessStalled<V, E>(
+  send: () => Promise<Sent<V, E>>,
+  {
+    label,
+    onStalled,
+    onLate,
+    subscribe = subscribeSponsoredStall,
+  }: {
+    /** "order" or "limit order", for the console. */
+    label: string;
+    onStalled: () => void;
+    onLate: (value: V) => Promise<unknown> | void;
+    subscribe?: (listener: () => void) => () => void;
+  },
+): Promise<{ stalled: false; value: Sent<V, E> } | { stalled: true }> {
+  let off = () => {};
+  const stalled = new Promise<void>((resolve) => {
+    off = subscribe(() => resolve());
+  });
+  let raced;
+  try {
+    raced = await unlessStalled(send(), stalled);
+  } finally {
+    off();
+  }
+  if (!raced.stalled) return raced;
+  // The screen first, then the late answer: a late hash that is already
+  // in hand must not have its screen overwritten by the stall.
+  onStalled();
+  void raced.later
+    .then(async (created): Promise<void> => {
+      if (!created.ok) return console.warn(`[vault-action] late ${label} did not go out`, created.error);
+      await onLate(created.value);
+    })
+    .catch((e: unknown) => console.error(`[vault-action] late ${label}`, e));
+  return { stalled: true };
 }
 
 const sleep = (ms: number) =>
@@ -437,6 +504,7 @@ export function useVaultAction(options?: {
   const [approveTwice, setApproveTwice] = useState(false);
   const [robinhood, setRobinhood] = useState<RobinhoodRun | null>(null);
   const runningRef = useRef(false);
+  const held = useOutcomeHold();
   const { reportState, report, resetReport } = useErrorReporter();
   /** Read by slow orders, which outlive the render that started them. */
   const reportRef = useRef(report);
@@ -1214,29 +1282,20 @@ export function useVaultAction(options?: {
       const { payload, walletProvider, srcChainKey } = input;
       const run = runRef.current;
       const pour = pourRef.current;
-      const stall = sponsoredStall();
-      let raced;
-      try {
-        raced = await unlessStalled(
-          sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false }),
-          stall.promise,
-        );
-      } finally {
-        stall.cancel();
-      }
       const finish = (created: SentIntent) =>
         finishLimit({ created, srcChainKey, direction: input.direction, limit: input.limit, run, pour });
-      if (raced.stalled) {
-        failStalled();
-        void raced.later
-          .then(async (created): Promise<void> => {
-            if (!created.ok) return console.warn("[vault-action] late limit order did not go out", created.error);
-            console.warn("[vault-action] late limit order went out", String(created.value.tx));
-            await finish(created.value);
-          })
-          .catch((e: unknown) => console.error("[vault-action] late limit order", e));
-        return false;
-      }
+      const raced = await sendUnlessStalled(
+        () => sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false }),
+        {
+          label: "limit order",
+          onStalled: failStalled,
+          onLate: async (created) => {
+            console.warn("[vault-action] late limit order went out", String(created.tx));
+            await finish(created);
+          },
+        },
+      );
+      if (raced.stalled) return false;
       const created = raced.value;
       if (!created.ok) {
         fail(friendlyError(created.error, COPY.errOrderFailed, gasContextFor(srcChainKey)), created.error);
@@ -1285,36 +1344,30 @@ export function useVaultAction(options?: {
         return false;
       };
 
-      const stall = sponsoredStall();
       let raced;
       try {
-        raced = await unlessStalled(
-          sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false }),
-          stall.promise,
+        raced = await sendUnlessStalled(
+          () => sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false }),
+          {
+            label: "order",
+            onStalled: failStalled,
+            onLate: async (created) => {
+              console.warn("[vault-action] late order went out", String(created.tx));
+              if (!pour) return;
+              await sendSlow({
+                payload,
+                walletProvider,
+                srcChainKey,
+                relayWaitMs: DEFAULT_RELAY_TX_TIMEOUT,
+                late: { created, run, pour },
+              });
+            },
+          },
         );
       } catch (error) {
         return failed(error);
-      } finally {
-        stall.cancel();
       }
-      if (raced.stalled) {
-        failStalled();
-        void raced.later
-          .then(async (created): Promise<void> => {
-            if (!created.ok) return console.warn("[vault-action] late order did not go out", created.error);
-            console.warn("[vault-action] late order went out", String(created.value.tx));
-            if (!pour) return;
-            await sendSlow({
-              payload,
-              walletProvider,
-              srcChainKey,
-              relayWaitMs: DEFAULT_RELAY_TX_TIMEOUT,
-              late: { created: created.value, run, pour },
-            });
-          })
-          .catch((e: unknown) => console.error("[vault-action] late order", e));
-        return false;
-      }
+      if (raced.stalled) return false;
 
       let onHub;
       try {
@@ -1926,6 +1979,7 @@ export function useVaultAction(options?: {
     earlierOrder: earlierOrder
       ? { spokeTxHash: earlierOrder.spokeTxHash, spokeTxUrl: earlierOrder.spokeTxUrl }
       : null,
+    outcomeHeld: heldOrderNotice(step, held),
     pending: isPipelineStep(step),
     locked: isPourLocked(step, sent?.closable === true),
     runDeposit,

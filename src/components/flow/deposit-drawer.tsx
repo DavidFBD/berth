@@ -873,6 +873,8 @@ export function DepositDrawer({
               {action.step === "error" && action.error && (
                 <ActionError message={action.error} reportState={action.reportState} />
               )}
+              {/* Place is off while the hold is on: say why, as the order form does. */}
+              <EarlierOrderNote order={null} held={action.outcomeHeld} />
             </div>
           ) : listing ? (
             <>
@@ -1106,7 +1108,7 @@ export function DepositDrawer({
                   </div>
                 ) : null}
 
-                <EarlierOrderNote order={action.earlierOrder} />
+                <EarlierOrderNote order={action.earlierOrder} held={action.outcomeHeld} />
 
                 {action.step === "error" && action.error && (
                   <ActionError

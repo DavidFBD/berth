@@ -333,10 +333,24 @@ export function IntentTracking({
  */
 export function EarlierOrderNote({
   order,
+  held = false,
 }: {
   order: { spokeTxHash: string; spokeTxUrl?: string } | null;
+  /**
+   * The order buttons are held for a sponsored order that may still go
+   * through (useVaultAction's outcomeHeld): said here, so a reloaded page
+   * explains why its buttons are off.
+   */
+  held?: boolean;
 }) {
   const copy = useCopy();
+  if (!order && held) {
+    return (
+      <div className="rounded-xl bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground" data-testid="held-order-note">
+        <p>{copy.earlierOrderMayGoThrough}</p>
+      </div>
+    );
+  }
   if (!order) return null;
   return (
     <div className="rounded-xl bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">

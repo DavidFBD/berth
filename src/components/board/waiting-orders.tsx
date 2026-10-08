@@ -30,6 +30,7 @@ import {
 } from "@/hooks/use-limit-orders";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useSignGasCheck } from "@/hooks/use-gas-gate";
+import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { trackGasBlocked } from "@/lib/gas-message";
 
 /**
@@ -248,6 +249,9 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
   const chainKey = (order.direction === "sell" ? HOME_CHAIN : (order.srcChain ?? HOME_CHAIN)) as SpokeChainKey;
   const wallet = useVaultWallet(chainKey);
   const cancel = useCancelWaitingOrder();
+  // A sponsored order may still be going through (lib/gas-sponsor outcome
+  // hold): the cancel waits for it, as the order buttons do.
+  const held = useOutcomeHold();
   // Said before the tap: a wallet that cannot pay the cancel's fee is told
   // how much to add and the button waits (hooks/use-gas-gate).
   const gasShort = useSignGasCheck({ chainKey, address: wallet.address, enabled: true, order: "sell", purpose: "cancel" });
@@ -285,6 +289,7 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
       busy={cancel.isPending}
       ready={!!wallet.walletProvider && !!wallet.address}
       gasNote={gasNote}
+      held={held}
       onKeep={onDone}
       onConfirm={() => void confirm()}
     />
@@ -296,6 +301,7 @@ export function CancelCheckView({
   busy,
   ready = true,
   gasNote = null,
+  held = false,
   onKeep,
   onConfirm,
 }: {
@@ -304,6 +310,8 @@ export function CancelCheckView({
   ready?: boolean;
   /** The wallet cannot pay the cancel's fee: this guidance shows and the button waits. */
   gasNote?: string | null;
+  /** The outcome hold is on: the button waits, and says why unless this cancel is the send. */
+  held?: boolean;
   onKeep: () => void;
   onConfirm: () => void;
 }) {
@@ -321,8 +329,13 @@ export function CancelCheckView({
           {gasNote}
         </p>
       )}
+      {held && !busy && (
+        <p className="text-sm text-muted-foreground" data-testid="cancel-held-note">
+          {copy.earlierOrderMayGoThrough}
+        </p>
+      )}
       <div className="flex flex-col gap-2">
-        <Button className={cn("h-12 w-full text-base")} disabled={busy || !ready || !!gasNote} onClick={onConfirm}>
+        <Button className={cn("h-12 w-full text-base")} disabled={busy || !ready || !!gasNote || held} onClick={onConfirm}>
           {busy && <Spinner className="size-4" />}
           {busy ? copy.limitCancelling : copy.limitCancel}
         </Button>
