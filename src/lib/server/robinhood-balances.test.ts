@@ -6,6 +6,7 @@ import {
   CALLS_PER_REQUEST,
   ROBINHOOD_LISTINGS,
   makeRobinhoodHoldingsReader,
+  safeError,
   readRobinhoodTokenBalances,
   robinhoodTotal,
 } from "./robinhood-balances";
@@ -115,5 +116,16 @@ describe("Robinhood Chain balances on the server", () => {
       TSLA: 1,
     });
     expect(await robinhoodTotal([], makeRobinhoodHoldingsReader())).toEqual({});
+  });
+
+  it("logs an error without call data, RPC URLs or length (rh-ux-sec m4)", () => {
+    const line = safeError(
+      new Error(`HTTP request failed. URL: https://rpc.mainnet.chain.robinhood.com/?key=secret Request body: {"data":"0x82ad56cb${"00".repeat(40)}"}\nmore`),
+    );
+    expect(line).not.toContain("robinhood.com");
+    expect(line).not.toContain("82ad56cb");
+    expect(line.length).toBeLessThanOrEqual(90);
+    expect(line.startsWith("Error: HTTP request failed.")).toBe(true);
+    expect(safeError("plain")).toBe("string: plain");
   });
 });

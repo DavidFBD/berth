@@ -160,11 +160,27 @@ export const readRobinhoodTokenBalances: RobinhoodBalanceReader = async (queries
         });
       });
     } catch (error) {
-      console.warn("[robinhood-balances] request failed, its balances unknown", error instanceof Error ? error.message : error);
+      console.warn("[robinhood-balances] request failed, its balances unknown", safeError(error));
     }
   }
   return out;
 };
+
+/**
+ * An error as a log may carry it (rh-ux-sec m4): its name and a short,
+ * scrubbed message, never call data (owner addresses ride in it), an RPC
+ * URL, or anything past eighty characters.
+ */
+export function safeError(error: unknown): string {
+  const name = error instanceof Error ? error.name : typeof error;
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  const scrubbed = message
+    .split("\n")[0]
+    .replace(/https?:\/\/\S+/gi, "[url]")
+    .replace(/0x[0-9a-f]{16,}/gi, "[hex]")
+    .slice(0, 80);
+  return scrubbed ? `${name}: ${scrubbed}` : name;
+}
 
 /** Symbols already warned about as reverting, so a broken token logs once per process, not once per wallet. */
 const warnedReverting = new Set<string>();
@@ -291,7 +307,8 @@ export async function robinhoodParts(
   const total: Record<string, number> = {};
   for (const owner of wanted) {
     const holdings = answered.get(owner);
-    if (!holdings) throw new Error(`Robinhood Chain balances unread for ${owner}`);
+    // Which wallet stays out of the message: logs never carry addresses.
+    if (!holdings) throw new Error("Robinhood Chain balances unread for a wallet");
     byOwner.set(owner, holdings);
     for (const [symbol, quantity] of Object.entries(holdings)) total[symbol] = (total[symbol] ?? 0) + quantity;
   }

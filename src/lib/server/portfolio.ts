@@ -11,7 +11,7 @@ import { loadListingPrices } from "@/lib/server/listing-prices";
 import { readMarks } from "@/lib/server/marks";
 import { loadOrderFacts } from "@/lib/server/order-marks";
 import { getSodax } from "@/lib/server/pour-verify";
-import { readRobinhoodHoldings, robinhoodParts, type RobinhoodHoldingsReader } from "@/lib/server/robinhood-balances";
+import { readRobinhoodHoldings, robinhoodParts, safeError, type RobinhoodHoldingsReader } from "@/lib/server/robinhood-balances";
 
 /**
  * The portfolio's server half: whose account is where, what it holds, what
@@ -105,7 +105,7 @@ export async function readAccountBalances(
     ),
     robinhoodParts(unique, readRobinhood).catch((error: unknown) => {
       if (onRobinhoodUnread === "throw") throw error;
-      console.warn("[portfolio] Robinhood Chain unread, hub only", error instanceof Error ? error.message : error);
+      console.warn("[portfolio] Robinhood Chain unread, hub only", safeError(error));
       return null;
     }),
   ]);
