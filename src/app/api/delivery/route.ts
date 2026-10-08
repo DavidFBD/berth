@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { Delivery } from "@/lib/delivery";
 import { requestCountry } from "@/lib/server/availability";
-import { decideDelivery } from "@/lib/server/delivery";
+import { decideDelivery, robinhoodSellOn } from "@/lib/server/delivery";
 import { readRewardsCaller, resolveRewardsUser } from "@/lib/server/rewards-route";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,12 @@ export const maxDuration = 15;
  * Robinhood Chain or Sonic (a smart account), and whenever a read fails. Same proof of
  * identity as the rewards routes: a Privy token or a wallet session.
  */
-export type DeliveryResponse = Delivery;
+/**
+ * Beside the delivery, `sell`: whether this account may start a sell from
+ * its wallet on Robinhood Chain (lib/server/delivery robinhoodSellOn, the
+ * sell switch, ROBINHOOD_SELL=off its kill switch).
+ */
+export type DeliveryResponse = Delivery & { sell: boolean };
 
 export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);
@@ -40,12 +45,12 @@ export async function POST(request: NextRequest) {
   const { user } = resolved;
   // The decision itself lives in lib/server/delivery, where the order
   // record makes it again for a buy that was delivered on Robinhood Chain.
-  const delivery = await decideDelivery({
+  const [delivery, sell] = await Promise.all([decideDelivery({
     userId: user.id,
     usersWallet: user.wallet_address,
     signer: read.caller.wallet,
     availability: read.caller.availability,
     country: requestCountry(request.headers, { url: request.url }),
-  });
-  return NextResponse.json(delivery satisfies DeliveryResponse);
+  }), robinhoodSellOn(user.id)]);
+  return NextResponse.json({ ...delivery, sell } satisfies DeliveryResponse);
 }

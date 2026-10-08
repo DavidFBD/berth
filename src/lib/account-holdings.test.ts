@@ -100,9 +100,9 @@ describe("what spends is one place, never the sum", () => {
   it("the home's sell drawer reads each place on its own, never the sum", () => {
     const source = readFileSync("src/components/home.tsx", "utf8");
     const sellDrawer = source.slice(source.indexOf("function SellHost"));
-    expect(sellDrawer.slice(0, 2500)).toContain("useHubHoldings(account.hubWallets)");
-    expect(sellDrawer.slice(0, 2500)).toContain("useRobinhoodSellBalances(listing, account, open)");
-    expect(sellDrawer.slice(0, 2500)).not.toContain("useAccountHoldings");
+    expect(sellDrawer.slice(0, 3000)).toContain("useHubHoldings(account.hubWallets)");
+    expect(sellDrawer.slice(0, 3000)).toContain("useRobinhoodSellBalances(listing, account, open && sellFromWallet)");
+    expect(sellDrawer.slice(0, 3000)).not.toContain("useAccountHoldings");
   });
 
   it("a draft sell opens for a holding in either place, and the sheet sizes it per place", () => {

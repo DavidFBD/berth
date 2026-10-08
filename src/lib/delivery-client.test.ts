@@ -36,15 +36,22 @@ describe("readDeliveryAnswer", () => {
 describe("askDelivery", () => {
   it("posts to the route with the session's headers and reads the answer", async () => {
     const fetcher = respond(200, ROBINHOOD);
-    expect(await askDelivery({ headers: auth, fetcher })).toEqual({ delivery: ROBINHOOD, answered: true });
+    expect(await askDelivery({ headers: auth, fetcher })).toEqual({ delivery: ROBINHOOD, answered: true, sell: false });
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/delivery");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer t");
   });
 
+  it("reads the sell switch only from an answered 200 that says true (rh-ux-sec M1)", async () => {
+    expect((await askDelivery({ headers: auth, fetcher: respond(200, { ...ROBINHOOD, sell: true }) })).sell).toBe(true);
+    expect((await askDelivery({ headers: auth, fetcher: respond(200, { ...ROBINHOOD, sell: "yes" }) })).sell).toBe(false);
+    expect((await askDelivery({ headers: auth, fetcher: respond(500, { ...ROBINHOOD, sell: true }) })).sell).toBe(false);
+    expect((await askDelivery({ headers: auth, fetcher: respond(200, { sell: true }) })).sell).toBe(false);
+  });
+
   it("is the hub, unanswered, on a non-200, a thrown request, no session or a timeout", async () => {
-    const hub = { delivery: hubDelivery("read_failed"), answered: false };
+    const hub = { delivery: hubDelivery("read_failed"), answered: false, sell: false };
     expect(await askDelivery({ headers: auth, fetcher: respond(500, ROBINHOOD) })).toEqual(hub);
     expect(await askDelivery({ headers: auth, fetcher: respond(401, ROBINHOOD) })).toEqual(hub);
     expect(

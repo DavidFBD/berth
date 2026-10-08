@@ -86,6 +86,34 @@ export async function isEmbeddedWallet(userId: string, address: string): Promise
   return rows.some((row) => row.embedded === true);
 }
 
+/**
+ * The sell switch (rh-ux-sec M1): whether this account may start a sell
+ * from its own wallet on Robinhood Chain, a new write path (an approve and
+ * a spoke intent on 4663) that ROBINHOOD_DELIVERY alone does not cover.
+ *
+ *   ROBINHOOD_SELL=off    nobody, whatever else holds (the kill switch)
+ *   ROBINHOOD_DELIVERY=on everyone (delivery is on for all, so selling is)
+ *   otherwise             only an account with a Berth buy delivered to
+ *                         Robinhood Chain on record (orders.holding_chain)
+ *
+ * So with no env change nobody without a Berth delivery there can start
+ * one. Reading and showing what sits there is not affected. Any value of
+ * ROBINHOOD_SELL but "off" changes nothing. A failed read is no.
+ */
+export async function robinhoodSellOn(userId: string): Promise<boolean> {
+  if ((process.env.ROBINHOOD_SELL ?? "").trim().toLowerCase() === "off") return false;
+  if (robinhoodDeliveryMode() === "on") return true;
+  try {
+    const rows = (await getSql().query(
+      `select exists (select 1 from orders where user_id = $1 and direction = 'buy' and holding_chain = 'robinhood') as found`,
+      [userId],
+    )) as { found: boolean }[];
+    return rows[0]?.found === true;
+  } catch {
+    return false;
+  }
+}
+
 /** The chains a destination is asked about: Robinhood Chain itself, and Sonic, the one chain every Berth SIWE names. */
 const CODE_CHAINS: readonly (readonly string[])[] = [getPinnedRpcUrls(ChainKeys.ROBINHOOD_MAINNET), HUB_RPC_URLS];
 

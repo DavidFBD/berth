@@ -50,6 +50,7 @@ import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
 import { ROBINHOOD_CHAIN_KEY, defaultSellSource, hubSellSources, robinhoodSellSources, type SellSource } from "@/lib/robinhood-sell";
 import { useRobinhoodSellBalances } from "@/hooks/use-robinhood-sell";
+import { useDelivery } from "@/hooks/use-delivery";
 import { parseUnits } from "viem";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
@@ -1046,7 +1047,11 @@ function SellHost({
 }) {
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
-  const onRobinhoodChain = useRobinhoodSellBalances(listing, account, open);
+  // The sell switch (lib/server/delivery robinhoodSellOn): no wallet on
+  // Robinhood Chain is offered as a source unless the route says yes.
+  const delivery = useDelivery();
+  const sellFromWallet = delivery.robinhoodSell;
+  const onRobinhoodChain = useRobinhoodSellBalances(listing, account, open && sellFromWallet);
   const addWallet = useAddConnectedWallet();
   // Snapshotted on open, like the single balance was: balances refetch
   // during the flow, and deriving live would unmount the drawer mid-sell.
@@ -1063,13 +1068,13 @@ function SellHost({
         account.signerHubWallet,
       ),
     ),
-    ...robinhoodSellSources(onRobinhoodChain.held, account.signerSpoke),
+    ...(sellFromWallet ? robinhoodSellSources(onRobinhoodChain.held, account.signerSpoke) : []),
   ];
 
   if (!open && snapshot !== null) {
     setSnapshot(null);
     setChosen(null);
-  } else if (open && snapshot === null && holdings.settled && onRobinhoodChain.settled && index >= 0) {
+  } else if (open && snapshot === null && holdings.settled && delivery.settled && onRobinhoodChain.settled && index >= 0) {
     const found = sources();
     setSnapshot(found);
     // One this session can sign for (the wallet on Robinhood Chain first,

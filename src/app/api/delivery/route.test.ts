@@ -54,13 +54,24 @@ const rpc = vi.fn(async (url: string | URL, init?: RequestInit) => {
 
 const { POST } = await import("./route");
 
-const ask = async (country?: string) =>
-  (await POST(
-    new NextRequest("https://www.berthmarkets.com/api/delivery", {
-      method: "POST",
-      headers: country ? { "x-vercel-ip-country": country } : {},
-    }),
-  )).json();
+const answer = async (country?: string) =>
+  (await (
+    await POST(
+      new NextRequest("https://www.berthmarkets.com/api/delivery", {
+        method: "POST",
+        headers: country ? { "x-vercel-ip-country": country } : {},
+      }),
+    )
+  ).json()) as Record<string, unknown>;
+/** The delivery half of the answer; the sell switch is asked on its own (askSell). */
+const ask = async (country?: string) => {
+  const body = await answer(country);
+  delete body.sell;
+  return body;
+};
+const askSell = async () => (await answer("NL")).sell;
+/** The database reads about the account's wallets, leaving out the sell switch's read of its orders. */
+const walletReads = () => query.mock.calls.filter((call) => !String((call as unknown[])[0]).includes("holding_chain"));
 
 const HUB = hubDelivery;
 const RH = (address: string) => ({ chainKey: "robinhood", address: getAddress(address), reason: "switched_on" });
@@ -92,7 +103,7 @@ describe("POST /api/delivery", () => {
       vi.stubEnv("ROBINHOOD_DELIVERY", value);
       expect(await ask("NL"), String(value)).toEqual(HUB("not_listed"));
     }
-    expect(query).not.toHaveBeenCalled();
+    expect(walletReads()).toHaveLength(0);
     expect(rpc).not.toHaveBeenCalled();
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     expect(await ask("NL")).toEqual(RH(SIGNER));
@@ -111,7 +122,7 @@ describe("POST /api/delivery", () => {
     }
     // Off wins over an allow list.
     expect(await ask("NL")).toEqual(HUB("not_listed"));
-    expect(query).not.toHaveBeenCalled();
+    expect(walletReads()).toHaveLength(0);
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -128,7 +139,7 @@ describe("POST /api/delivery", () => {
     vi.stubEnv("ROBINHOOD_DELIVERY", "on");
     expect(await ask("NL")).toEqual(RH(SIGNER));
     // The account's wallets, then whether the signer is its email wallet.
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(walletReads()).toHaveLength(2);
   });
 
   it("keeps a Privy email wallet on the hub while Robinhood Chain is not sponsorable, and an external wallet delivered there (rh-ux-sec B1)", async () => {
@@ -154,7 +165,7 @@ describe("POST /api/delivery", () => {
     expect(await ask("NL")).toEqual(HUB("not_listed"));
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", STRANGER);
     expect(await ask("NL")).toEqual(HUB("not_listed"));
-    expect(query).not.toHaveBeenCalled();
+    expect(walletReads()).toHaveLength(0);
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     expect(await ask("NL")).toEqual(RH(SIGNER));
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", HOME.toUpperCase().replace("0X", "0x"));
@@ -227,5 +238,30 @@ describe("POST /api/delivery", () => {
       throw new Error("db down");
     });
     expect(await ask("NL")).toEqual(HUB("read_failed"));
+  });
+
+  it("lets a sell from Robinhood Chain start only when delivery is on for all, or for an account with a Berth delivery there, and never with ROBINHOOD_SELL=off (rh-ux-sec M1)", async () => {
+    const withOrder = (found: boolean) =>
+      query.mockImplementation(async (text?: string) =>
+        String(text).includes("holding_chain") ? [{ found }] : [linked(HOME, true), linked(SIGNER, false)],
+      );
+    withOrder(false);
+    vi.stubEnv("ROBINHOOD_DELIVERY", "on");
+    expect(await askSell()).toBe(true);
+    vi.stubEnv("ROBINHOOD_DELIVERY", "");
+    expect(await askSell()).toBe(false);
+    withOrder(true);
+    expect(await askSell()).toBe(true);
+    vi.stubEnv("ROBINHOOD_SELL", "off");
+    expect(await askSell()).toBe(false);
+    vi.stubEnv("ROBINHOOD_DELIVERY", "on");
+    expect(await askSell()).toBe(false);
+    vi.stubEnv("ROBINHOOD_SELL", "");
+    query.mockImplementation(async (text?: string) => {
+      if (String(text).includes("holding_chain")) throw new Error("db down");
+      return [linked(HOME, true), linked(SIGNER, false)];
+    });
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    expect(await askSell()).toBe(false);
   });
 });

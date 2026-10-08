@@ -9,7 +9,7 @@ import { askDelivery, onTheSwitch, type DeliveryAnswer } from "@/lib/delivery-cl
 /** The query key root of the delivery answer; the order machine refreshes it when a buy finds the answer changed. */
 export const DELIVERY_QUERY_KEY = ["delivery"] as const;
 
-const UNANSWERED: DeliveryAnswer = { delivery: hubDelivery("read_failed"), answered: false };
+const UNANSWERED: DeliveryAnswer = { delivery: hubDelivery("read_failed"), answered: false, sell: false };
 
 /**
  * Where this session's next buy is delivered (app/api/delivery, plan P1a
@@ -40,6 +40,8 @@ export function useDelivery({ enabled = true }: { enabled?: boolean } = {}) {
   return {
     /** The answer for the next buy; the hub until the route answers otherwise. */
     delivery: answer.delivery,
+    /** Whether a sell from the wallet on Robinhood Chain may start (the sell switch, lib/server/delivery robinhoodSellOn). */
+    robinhoodSell: answer.sell,
     /** The route answered, or gave up: the drawer may quote now. */
     settled: !enabled || key === null || query.isFetched,
     ask,
