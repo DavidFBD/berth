@@ -49,7 +49,7 @@ import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-acc
 import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
 import { ROBINHOOD_CHAIN_KEY, defaultSellSource, hubSellSources, robinhoodSellSources, type SellSource } from "@/lib/robinhood-sell";
-import { useRobinhoodSellBalances } from "@/hooks/use-robinhood-sell";
+import { useRobinhoodGasReady, useRobinhoodSellBalances } from "@/hooks/use-robinhood-sell";
 import { useDelivery } from "@/hooks/use-delivery";
 import { parseUnits } from "viem";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
@@ -1052,6 +1052,9 @@ function SellHost({
   const delivery = useDelivery();
   const sellFromWallet = delivery.robinhoodSell;
   const onRobinhoodChain = useRobinhoodSellBalances(listing, account, open && sellFromWallet);
+  // Whether the signer can pay a sell's fee there, for where the sheet opens (rh-ux-sec M2).
+  const holdsThere = onRobinhoodChain.held.some((held) => held.balance > 0n);
+  const gasThere = useRobinhoodGasReady(account.signerSpoke, open && sellFromWallet && holdsThere);
   const addWallet = useAddConnectedWallet();
   // Snapshotted on open, like the single balance was: balances refetch
   // during the flow, and deriving live would unmount the drawer mid-sell.
@@ -1074,14 +1077,14 @@ function SellHost({
   if (!open && snapshot !== null) {
     setSnapshot(null);
     setChosen(null);
-  } else if (open && snapshot === null && holdings.settled && delivery.settled && onRobinhoodChain.settled && index >= 0) {
+  } else if (open && snapshot === null && holdings.settled && delivery.settled && onRobinhoodChain.settled && gasThere.settled && index >= 0) {
     const found = sources();
     setSnapshot(found);
-    // One this session can sign for (the wallet on Robinhood Chain first,
-    // and for a drafted quantity the one holding all of it), else the
-    // home, else the first.
+    // One this session can sign for and pay the fee for (the wallet on
+    // Robinhood Chain first, and for a drafted quantity the one holding all
+    // of it), else the Berth account, else the home, else the first.
     const wanted = prefill?.quantity ? safeUnits(prefill.quantity, listing?.decimals ?? 18) : undefined;
-    setChosen(defaultSellSource(found, wanted)?.key ?? null);
+    setChosen(defaultSellSource(found, wanted, (candidate) => candidate.chain === "hub" || gasThere.ready)?.key ?? null);
   }
 
   if (!listing || snapshot === null) return null;

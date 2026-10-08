@@ -103,6 +103,19 @@ describe("sell sources", () => {
     expect(defaultSellSource([...hub, ...rh], 7n)?.chain).toBe("robinhood");
   });
 
+  it("opens on the Berth account when the wallet on Robinhood Chain cannot pay its fee, or its fee is unknown (rh-ux-sec M2)", () => {
+    const rh = robinhoodSellSources([{ owner: WALLET, balance: 3n }], WALLET);
+    const noEth = (source: { chain: string }) => source.chain !== "robinhood";
+    expect(defaultSellSource([...hub, ...rh], undefined, noEth)?.chain).toBe("hub");
+    // A drafted quantity only the wallet holds still opens there: the account cannot cover it.
+    expect(defaultSellSource([...hub, ...rh], 3n, noEth)?.chain).toBe("hub");
+    expect(defaultSellSource([...hubSellSources([{ spoke: WALLET, hubWallet: "0xhub", isHome: true, balance: 1n, canSign: true }]), ...rh], 3n, noEth)?.chain).toBe(
+      "robinhood",
+    );
+    // Only the wallet there: it is where the sheet opens, and the gas gate speaks.
+    expect(defaultSellSource(rh, undefined, noEth)?.chain).toBe("robinhood");
+  });
+
   it("falls back to the home, then the first, when nothing can be signed here", () => {
     const unsignable = hubSellSources([
       { spoke: OTHER, hubWallet: "0xb", isHome: false, balance: 1n, canSign: false },

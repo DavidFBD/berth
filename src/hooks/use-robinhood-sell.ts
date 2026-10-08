@@ -1,6 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChainKeys } from "@sodax/sdk";
+import { getAddress, isAddress } from "viem";
+import { useGasSponsored } from "@/hooks/use-gas-sponsor";
+import { feePerGasQueryOptions } from "@/hooks/use-native-gas-buffer";
+import { gasNeed, orderGasShort, withinOrUnknown } from "@/lib/gas-need";
 import type { HubAccount } from "@/hooks/use-hub-account";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 import { robinhoodOwners } from "@/lib/account-holdings";
@@ -54,4 +59,38 @@ export function useRobinhoodSellBalances(
   if (!enabled) return { held: [], settled: true };
   // Never an earlier opening's figure: settled only once this opening's read is in.
   return { held: query.data ?? [], settled: !query.isFetching && (query.isSuccess || query.isError) };
+}
+
+/**
+ * Whether the signing wallet can pay a sell's network fee on Robinhood
+ * Chain, approval included (lib/gas-need at the chain's own price), for
+ * the sell sheet's opening choice (lib/robinhood-sell defaultSellSource,
+ * rh-ux-sec M2). Sponsored: yes. A read that fails or is still out: no,
+ * so the sheet opens on the Berth account rather than on a sell that may
+ * stop for gas; the person can still choose the wallet, where the gas gate
+ * has the last word. `settled` once known or given up.
+ */
+export function useRobinhoodGasReady(signer: string | undefined, enabled: boolean): { ready: boolean; settled: boolean } {
+  const sponsored = useGasSponsored();
+  const free = sponsored(ChainKeys.ROBINHOOD_MAINNET);
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ["robinhood-sell-gas", signer ?? ""],
+    enabled: enabled && !free && !!signer && isAddress(signer, { strict: false }),
+    retry: false,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const [balance, feePerGas] = await Promise.all([
+        withinOrUnknown(robinhoodClient().getBalance({ address: getAddress(signer!) })),
+        withinOrUnknown(queryClient.fetchQuery(feePerGasQueryOptions(ChainKeys.ROBINHOOD_MAINNET, true))),
+      ]);
+      if (balance === undefined || feePerGas === undefined) return false;
+      const need = gasNeed({ chainKey: ChainKeys.ROBINHOOD_MAINNET, feePerGas, approval: true });
+      return !orderGasShort({ chainKey: ChainKeys.ROBINHOOD_MAINNET, isNative: false, nativeBalance: balance, amount: 0n, need });
+    },
+  });
+  if (!enabled) return { ready: false, settled: true };
+  if (free) return { ready: true, settled: true };
+  if (!signer) return { ready: false, settled: true };
+  return { ready: query.data === true, settled: !query.isFetching && (query.isSuccess || query.isError) };
 }

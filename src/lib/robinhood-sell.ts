@@ -116,19 +116,28 @@ export function robinhoodSellSources(
 }
 
 /**
- * Which source the sheet opens on. One this session can sign for, the
- * wallet on Robinhood Chain first (plan P3a: the leg there is sold first),
- * and, for a drafted quantity, the first such that holds all of it; then
- * the home, then the first.
+ * Which source the sheet opens on (rh-ux-sec M2): one this session can
+ * sign for AND pay the network fee for (`payable`, false when unknown),
+ * the wallet on Robinhood Chain first (plan P3a: the leg there is sold
+ * first), and, for a drafted quantity, the first such that holds all of
+ * it. When the wallet there cannot pay its fee, the Berth account it can
+ * sell from comes first. Then the home, then the first. The person can
+ * still pick any place; this is only where the sheet starts.
  */
-export function defaultSellSource(sources: readonly SellSource[], wanted?: bigint): SellSource | undefined {
+export function defaultSellSource(
+  sources: readonly SellSource[],
+  wanted?: bigint,
+  payable: (source: SellSource) => boolean = () => true,
+): SellSource | undefined {
   const signable = [
     ...sources.filter((source) => source.canSign && source.chain === "robinhood"),
     ...sources.filter((source) => source.canSign && source.chain === "hub"),
   ];
+  const ready = signable.filter(payable);
+  const order = [...ready, ...sources.filter((source) => source.canSign && source.chain === "hub" && !ready.includes(source)), ...signable];
   if (wanted !== undefined && wanted > 0n) {
-    const covers = signable.find((source) => source.balance >= wanted);
+    const covers = order.find((source) => source.balance >= wanted);
     if (covers) return covers;
   }
-  return signable[0] ?? sources.find((source) => source.chain === "hub" && source.isHome) ?? sources[0];
+  return order[0] ?? sources.find((source) => source.chain === "hub" && source.isHome) ?? sources[0];
 }
