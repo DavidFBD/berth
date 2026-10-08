@@ -1090,7 +1090,7 @@ function SellHost({
       onOpenChange={onOpenChange}
       availableShares={source?.balance ?? 0n}
       srcChainKey={fromRobinhood ? ROBINHOOD_CHAIN_KEY : HOME_CHAIN}
-      robinhoodSell={fromRobinhood ? { rhAddress: listing.rhAddress! } : undefined}
+      robinhoodSell={fromRobinhood && source ? { rhAddress: listing.rhAddress!, owner: source.spoke } : undefined}
       onConnectWallet={onConnectWallet}
       prefill={prefill}
       sellFrom={

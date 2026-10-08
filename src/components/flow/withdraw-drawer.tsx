@@ -157,9 +157,10 @@ export function WithdrawDrawer({
   /**
    * Selling from the person's own wallet on Robinhood Chain: the listing's
    * token there. `srcChainKey` is then Robinhood Chain and
-   * `availableShares` that wallet's balance.
+   * `availableShares` that wallet's balance. `owner` is that wallet: the
+   * order machine refuses to sign with any other.
    */
-  robinhoodSell?: { rhAddress: Address };
+  robinhoodSell?: { rhAddress: Address; owner: string };
 }) {
   const [dstChainKey, setDstChainKey] = useState<SpokeChainKey | null>(null);
   const [outputToken, setOutputToken] = useState<XToken | null>(null);

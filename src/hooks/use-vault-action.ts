@@ -244,9 +244,11 @@ export interface RunWithdrawArgs {
    * approves the robinhood asset manager for exactly `inputAmount` when its
    * allowance is short, then createVaultIntent without hubWalletSwap,
    * relay and notify, as a buy from Base goes. Market sells only. Unset:
-   * the sell spends the hub wallet exactly as before.
+   * the sell spends the hub wallet exactly as before. `owner` is the wallet
+   * the sheet chose to sell from; the order stops before anything is
+   * signed unless it is `srcAddress`.
    */
-  robinhood?: { rhAddress: Address };
+  robinhood?: { rhAddress: Address; owner: string };
   /**
    * The last gas check before the wallet opens (hooks/use-gas-gate
    * useGasPreflight): resolves to the message to stop with when the signing
@@ -1735,7 +1737,12 @@ export function useVaultAction(options?: {
             fail(COPY.errCouldNotPrepare);
             return false;
           }
-          const sell = { vault: args.vault, rhAddress: args.robinhood.rhAddress, srcAddress: args.srcAddress };
+          const sell = {
+            vault: args.vault,
+            rhAddress: args.robinhood.rhAddress,
+            srcAddress: args.srcAddress,
+            owner: args.robinhood.owner,
+          };
           const toPayload = (value: LeverageYieldSwapPayload): LeverageYieldSwapPayload | null => {
             try {
               return robinhoodSellPayload(value, sell);

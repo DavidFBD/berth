@@ -33,14 +33,19 @@ export const ROBINHOOD_CHAIN_KEY = ChainKeys.ROBINHOOD_MAINNET as SpokeChainKey;
  * - `inputToken`: the listing's native token there (`rhAddress`), which the
  *   SDK maps to its hub asset for the intent.
  *
- * Throws on a build that is not the withdraw of this listing, or that
- * would accept nothing: the minimum stays the quote's, never zero.
+ * Throws on a build that is not the withdraw of this listing, that would
+ * accept nothing (the minimum stays the quote's, never zero), or whose
+ * signer is not the wallet the sheet chose to sell from (`owner`): the
+ * order must spend exactly the tokens the sheet showed and capped.
  */
 export function robinhoodSellPayload(
   built: LeverageYieldSwapPayload,
-  sell: { vault: string; rhAddress: Address; srcAddress: string },
+  sell: { vault: string; rhAddress: Address; srcAddress: string; owner: string },
 ): LeverageYieldSwapPayload {
   const { params } = built;
+  if (sell.owner.toLowerCase() !== sell.srcAddress.toLowerCase()) {
+    throw new Error("the signer is not the wallet chosen to sell from");
+  }
   if (built.hubWalletSwap !== true || params.inputToken.toLowerCase() !== sell.vault.toLowerCase()) {
     throw new Error("not the withdraw build of this listing");
   }

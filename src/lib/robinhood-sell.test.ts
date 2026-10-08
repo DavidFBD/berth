@@ -35,7 +35,7 @@ const built: LeverageYieldSwapPayload = {
 
 describe("robinhoodSellPayload", () => {
   it("replaces exactly the source chain, the signer and the input token, and drops hubWalletSwap", () => {
-    const payload = robinhoodSellPayload(built, { vault: NVDA.address, rhAddress: NVDA.rhAddress!, srcAddress: WALLET });
+    const payload = robinhoodSellPayload(built, { vault: NVDA.address, rhAddress: NVDA.rhAddress!, srcAddress: WALLET, owner: WALLET });
     expect(payload).toEqual({
       params: {
         ...built.params,
@@ -51,13 +51,19 @@ describe("robinhoodSellPayload", () => {
     expect(ROBINHOOD_CHAIN_KEY).toBe("robinhood");
   });
 
+  it("refuses a signer that is not the wallet the sheet chose, in any casing", () => {
+    const sell = { vault: NVDA.address, rhAddress: NVDA.rhAddress!, srcAddress: WALLET };
+    expect(() => robinhoodSellPayload(built, { ...sell, owner: OTHER })).toThrow("not the wallet chosen");
+    expect(robinhoodSellPayload(built, { ...sell, owner: getAddress(WALLET) }).params.srcAddress).toBe(getAddress(WALLET));
+  });
+
   it("keeps a per intent fee the build carried", () => {
     const fee = { address: OTHER as Address, percentage: 40 };
-    expect(robinhoodSellPayload({ ...built, partnerFee: fee }, { vault: NVDA.address, rhAddress: NVDA.rhAddress!, srcAddress: WALLET }).partnerFee).toEqual(fee);
+    expect(robinhoodSellPayload({ ...built, partnerFee: fee }, { vault: NVDA.address, rhAddress: NVDA.rhAddress!, srcAddress: WALLET, owner: WALLET }).partnerFee).toEqual(fee);
   });
 
   it("refuses a build of another listing, a buy, a zero minimum or a zero amount", () => {
-    const sell = { vault: NVDA.address, rhAddress: NVDA.rhAddress!, srcAddress: WALLET };
+    const sell = { vault: NVDA.address, rhAddress: NVDA.rhAddress!, srcAddress: WALLET, owner: WALLET };
     expect(() => robinhoodSellPayload({ ...built, params: { ...built.params, inputToken: OTHER } }, sell)).toThrow();
     expect(() => robinhoodSellPayload({ params: built.params }, sell)).toThrow();
     expect(() => robinhoodSellPayload({ ...built, params: { ...built.params, minOutputAmount: 0n } }, sell)).toThrow();
