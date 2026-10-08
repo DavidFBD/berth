@@ -11,7 +11,7 @@ import { getSodax, ownsIntent } from "@/lib/server/pour-verify";
 import { limitStateFrom, type IntentRecord } from "@/lib/limit-orders";
 import type { RewardList } from "@/lib/profile-types";
 import { holdingChainOf } from "@/lib/orders";
-import { robinhoodPourXp, type PourXpVerdict } from "@/lib/server/robinhood-xp";
+import { payRobinhoodSell, robinhoodPourXp, type PourXpVerdict } from "@/lib/server/robinhood-xp";
 
 /**
  * XP for an order, only once it has filled. A verified intent is not yet
@@ -122,6 +122,29 @@ export async function awardFilledPour(
     if (accepted.awarded > 0) rewards.push({ kind: "invite_accepted", amount: accepted.awarded });
   }
   return { rewards, xp };
+}
+
+/**
+ * awardFilledPour for a sell from Robinhood Chain (D2): the pour_out is
+ * checked against the account's Berth buys there and paid in one locked
+ * step (lib/server/robinhood-xp payRobinhoodSell); only when it is paid
+ * does the rest of the award follow. `wait` and `never` pay nothing.
+ */
+export async function awardRobinhoodSell(
+  user: { id: string; referred_by: string | null },
+  intentTx: string,
+  { announced = true }: { announced?: boolean } = {},
+): Promise<{ verdict: "paid" | "wait" | "never"; rewards: RewardList; xp: number | null }> {
+  const sold = await payRobinhoodSell(intentTx, { userId: user.id, announced });
+  if (sold.verdict !== "paid") return { verdict: sold.verdict === "wait" ? "wait" : "never", rewards: [], xp: null };
+  const rewards: RewardList = sold.awarded > 0 ? [{ kind: "pour_out", amount: sold.awarded }] : [];
+  let xp = sold.xp;
+  if (user.referred_by) {
+    const accepted = await awardXp(user.id, "invite_accepted", null, { announced });
+    xp = accepted.xp;
+    if (accepted.awarded > 0) rewards.push({ kind: "invite_accepted", amount: accepted.awarded });
+  }
+  return { verdict: "paid", rewards, xp };
 }
 
 /** How long the evening pass may keep starting claims (the stage allows ten seconds). */
@@ -303,8 +326,10 @@ export type ClaimPayDeps = {
   record: (claim: SettledClaim, intent: Intent) => Promise<void>;
   /** A claim on a buy delivered on Robinhood Chain: paid only once its delivery is allowed (lib/server/delivery-gate). */
   settleRobinhood?: (claim: SettledClaim, intent: Intent) => Promise<"allowed" | "refused" | "settled" | "wait">;
-  /** Whether an order on Robinhood Chain earns now (lib/server/robinhood-xp, D1 and D2). */
+  /** Whether a buy delivered on Robinhood Chain earns now (lib/server/robinhood-xp, D1). */
   pourXp?: (claim: SettledClaim, intent: Intent) => Promise<PourXpVerdict>;
+  /** A sell from Robinhood Chain, checked and paid in one locked step (D2). */
+  paySell?: (claim: SettledClaim) => Promise<"paid" | "wait" | "never">;
 };
 
 export function defaultClaimPayDeps(): ClaimPayDeps {
@@ -378,11 +403,20 @@ export async function payClaim(
   // claim lives and then never; a sell earns only up to the Berth buys
   // delivered there. A no XP buy is settled by payRecordedClaim as before.
   const onRobinhood = holdingChainOf(claim.direction, intent) === "robinhood";
-  if (onRobinhood && !claim.no_xp && !(claim.direction === "buy" && (await isNoXp(claim.intent_tx)))) {
+  if (onRobinhood && claim.direction === "sell") {
+    const sold = await (deps.paySell ??
+      (async (c: SettledClaim) => (await awardRobinhoodSell({ id: c.user_id, referred_by: c.referred_by }, c.intent_tx, { announced: false })).verdict))(claim);
+    if (sold === "wait" && !outlived(claim, now)) return false;
+    return sold === "paid" ? "paid" : "recorded_no_xp";
+  }
+  if (onRobinhood && !claim.no_xp && !(await isNoXp(claim.intent_tx))) {
     const gate = await (deps.pourXp ?? ((c: SettledClaim) => robinhoodPourXp(c.intent_tx, { onRobinhood: true })))(claim, intent);
     if (gate === "wait" && !outlived(claim, now)) return false;
     if (gate !== "pay") {
-      if (claim.direction === "buy") await forgoHold(claim.intent_tx);
+      // A delivery that never arrived (or cannot be judged) pays nothing,
+      // then or ever, and counts for no later sell (lib/server/no-xp).
+      if (!(await pourPaid(claim.intent_tx))) await markNoXp(claim.intent_tx, "delivery_refused");
+      await forgoHold(claim.intent_tx);
       return "recorded_no_xp";
     }
   }

@@ -19,6 +19,12 @@ export async function makeTestDb(): Promise<{
   return {
     sql: {
       query: async (text, params) => (await db.query(text, params)).rows,
+      transaction: (statements) =>
+        db.transaction(async (tx) => {
+          const out: unknown[][] = [];
+          for (const statement of statements) out.push((await tx.query(statement.text, statement.params)).rows);
+          return out;
+        }),
     },
     close: () => db.close(),
   };

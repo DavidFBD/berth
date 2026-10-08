@@ -10,7 +10,8 @@ import type { SqlClient } from "@/lib/server/db";
  * it never reaches a production bundle.
  */
 export function localPostgres(connectionString: string): SqlClient {
-  type Pool = { query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }> };
+  type Client = { query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>; release: () => void };
+  type Pool = { query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>; connect: () => Promise<Client> };
   let pool: Promise<Pool> | null = null;
   const getPool = () =>
     (pool ??= import(/* webpackIgnore: true */ /* turbopackIgnore: true */ "pg").then(
@@ -18,5 +19,20 @@ export function localPostgres(connectionString: string): SqlClient {
     ));
   return {
     query: async (text, params) => (await (await getPool()).query(text, params)).rows,
+    transaction: async (statements) => {
+      const client = await (await getPool()).connect();
+      try {
+        await client.query("begin");
+        const out: unknown[][] = [];
+        for (const statement of statements) out.push((await client.query(statement.text, statement.params)).rows);
+        await client.query("commit");
+        return out;
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
   };
 }

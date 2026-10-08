@@ -269,6 +269,8 @@ describe("a Robinhood Chain claim in the evening pass", () => {
     expect(await run()).toMatchObject({ paid: 0, recorded: 1 });
     expect(await claimOf(tx(31))).toMatchObject({ outcome: "recorded_no_xp" });
     expect(await xpFor(tx(31))).toBe(0);
+    // Never arrived: it counts for no later sell either.
+    expect(await reason(tx(31))).toBe("delivery_refused");
   });
 
   it("records a sell from Robinhood Chain that Berth's buys there do not cover, and pays it nothing (D2)", async () => {
@@ -278,7 +280,7 @@ describe("a Robinhood Chain claim in the evening pass", () => {
     const run = () =>
       settlePourClaims({
         verdictOf: async () => "filled",
-        pay: (claim) => payClaim(claim, { ...deps(), readIntent: async () => rhSell, pourXp: async () => "never" }),
+        pay: (claim) => payClaim(claim, { ...deps(), readIntent: async () => rhSell, paySell: async () => "never" }),
       });
     expect(await run()).toMatchObject({ paid: 0, recorded: 1 });
     expect(await claimOf(tx(32))).toMatchObject({ outcome: "recorded_no_xp" });

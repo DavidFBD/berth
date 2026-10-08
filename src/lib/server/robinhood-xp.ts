@@ -1,6 +1,8 @@
 import { parseUnits } from "viem";
 import { TOKEN_LISTINGS } from "@/lib/listings";
-import { getSql } from "@/lib/server/db";
+import { getSql, inTransaction } from "@/lib/server/db";
+import { NOT_NO_XP } from "@/lib/server/no-xp";
+import { XP_ACTIONS } from "@/lib/xp";
 import { readRobinhoodTokenBalances, type RobinhoodBalanceReader } from "@/lib/server/robinhood-balances";
 
 /**
@@ -16,7 +18,7 @@ import { readRobinhoodTokenBalances, type RobinhoodBalanceReader } from "@/lib/s
  * the listing can read as arrived early: the rule is the owner's, kept
  * plain.
  *
- * D2, a sell from there: paid only while the account's recorded Berth
+ * D2, a sell from there (payRobinhoodSell): paid only while the account's recorded Berth
  * buys delivered there of that listing, placed no later than the sell,
  * cover this sell on top of every earlier sell from there that was paid.
  * Tokens bought outside Berth and sold through it earn nothing (this also
@@ -75,7 +77,8 @@ export async function robinhoodPourXp(
   const row = rows[0];
   if (!row) return onRobinhood ? "wait" : "pay";
   if (row.holding_chain !== "robinhood") return "pay";
-  return row.direction === "buy" ? buyArrived(row, readBalances) : sellCovered(intentTx.toLowerCase(), row);
+  // A sell is checked and paid in one step (payRobinhoodSell).
+  return row.direction === "buy" ? buyArrived(row, readBalances) : "pay";
 }
 
 /** D1: the delivered quantity is in the wallet it was delivered to. */
@@ -90,24 +93,79 @@ async function buyArrived(row: OrderRow, readBalances: RobinhoodBalanceReader): 
   return balance >= needed ? "pay" : "wait";
 }
 
-/** D2: the account's Berth buys delivered there cover this sell beside every earlier paid one. */
-async function sellCovered(intentTx: string, row: OrderRow): Promise<PourXpVerdict> {
-  const sold = raw(row.quantity);
-  if (!row.user_id || sold === null || sold <= 0n) return "never";
-  const sums = (await getSql().query(
-    `select
-       (select coalesce(sum(b.quantity), 0)::text from orders b
-         where b.user_id = $1 and b.direction = 'buy' and b.holding_chain = 'robinhood'
-           and lower(b.listing_address) = lower($2) and b.quantity is not null
-           and coalesce(b.placed_at, b.created_at) <= $3::timestamptz) as bought,
-       (select coalesce(sum(s.quantity), 0)::text from orders s
-         where s.user_id = $1 and s.direction = 'sell' and s.holding_chain = 'robinhood'
-           and lower(s.listing_address) = lower($2) and s.intent_tx <> $4
-           and coalesce(s.placed_at, s.created_at) <= $3::timestamptz
-           and exists (select 1 from xp_events e where e.kind = 'pour_out' and lower(e.ref) = lower(s.intent_tx))) as paid_sold`,
-    [row.user_id, row.listing_address, new Date(row.at).toISOString(), intentTx],
-  )) as { bought: string; paid_sold: string }[];
-  const bought = raw(sums[0]?.bought ?? "0") ?? 0n;
-  const paidSold = raw(sums[0]?.paid_sold ?? "0") ?? 0n;
-  return paidSold + sold <= bought ? "pay" : "never";
+/**
+ * D2 for one recorded sell from Robinhood Chain, checked and paid in one
+ * step: the sell earns pour_out only while the account's Berth buys of that
+ * listing delivered there (recorded, quantity read, not a no XP buy, which
+ * includes a delivery that never arrived), placed no later than the sell,
+ * cover it beside EVERY other paid sell from there of that listing,
+ * whenever it was placed (rh-delta: a later sell reported first must not
+ * leave room for an earlier one). The check and the award run in one
+ * transaction behind `pg_advisory_xact_lock` on (account, listing), so
+ * sells reported at once are judged one after another, never all against
+ * the same room. While any such buy's quantity is still unread the answer
+ * is `wait`: a sell judged then could be refused for good.
+ *
+ * `paid` also covers a replay of a sell already paid. Throws on a failed
+ * read or write, which leaves the claim for the evening pass.
+ */
+export async function payRobinhoodSell(
+  intentTx: string,
+  { userId, announced = true }: { userId: string; announced?: boolean },
+): Promise<{ verdict: PourXpVerdict | "paid"; awarded: number; xp: number | null }> {
+  const tx = intentTx.toLowerCase();
+  const rows = (await getSql().query(
+    `select s.listing_address,
+            exists (select 1 from orders b
+                     where b.user_id = s.user_id and b.direction = 'buy' and b.holding_chain = 'robinhood'
+                       and lower(b.listing_address) = lower(s.listing_address) and b.quantity is null
+                       and ${NOT_NO_XP("b")}
+                       and coalesce(b.placed_at, b.created_at) <= coalesce(s.placed_at, s.created_at)) as unread
+       from orders s
+      where s.intent_tx = $1 and s.user_id = $2 and s.direction = 'sell' and s.holding_chain = 'robinhood'
+        and s.quantity is not null and s.quantity > 0`,
+    [tx, userId],
+  )) as { listing_address: string; unread: boolean }[];
+  const sell = rows[0];
+  if (!sell) return { verdict: "never", awarded: 0, xp: null };
+  if (sell.unread) return { verdict: "wait", awarded: 0, xp: null };
+  const [, award] = await inTransaction([
+    { text: `select pg_advisory_xact_lock(hashtextextended($1 || '|' || lower($2), 0))`, params: [userId, sell.listing_address] },
+    {
+      text: `with s as (
+               select user_id, listing_address, quantity, coalesce(placed_at, created_at) as at
+                 from orders where intent_tx = $1 and user_id = $2
+             ), cover as (
+               select (
+                 (select coalesce(sum(b.quantity), 0) from orders b, s
+                   where b.user_id = s.user_id and b.direction = 'buy' and b.holding_chain = 'robinhood'
+                     and lower(b.listing_address) = lower(s.listing_address) and b.quantity is not null
+                     and ${NOT_NO_XP("b")}
+                     and coalesce(b.placed_at, b.created_at) <= s.at)
+                 - (select coalesce(sum(o.quantity), 0) from orders o, s
+                     where o.user_id = s.user_id and o.direction = 'sell' and o.holding_chain = 'robinhood'
+                       and lower(o.listing_address) = lower(s.listing_address) and o.intent_tx <> $1
+                       and exists (select 1 from xp_events e where e.kind = 'pour_out' and lower(e.ref) = lower(o.intent_tx)))
+                 - (select quantity from s)
+               ) >= 0 as ok
+             ), already as (
+               select exists (select 1 from xp_events e where e.kind = 'pour_out' and lower(e.ref) = $1) as paid
+             ), ins as (
+               insert into xp_events (user_id, kind, amount, ref, announced)
+               select $2, 'pour_out', $3, $1, $4
+                where (select ok from cover) and not (select paid from already)
+               on conflict do nothing
+               returning amount
+             )
+             update users set xp = xp + coalesce((select amount from ins), 0), updated_at = now()
+              where id = $2
+             returning xp, coalesce((select amount from ins), 0) as awarded,
+                       (select ok from cover) as ok, (select paid from already) as paid`,
+      params: [tx, userId, XP_ACTIONS.pour_out.amount, announced],
+    },
+  ]);
+  const result = (award as { xp: number; awarded: number; ok: boolean; paid: boolean }[])[0];
+  if (!result) return { verdict: "never", awarded: 0, xp: null };
+  if (result.paid || result.awarded > 0) return { verdict: "paid", awarded: result.awarded, xp: result.xp };
+  return { verdict: result.ok ? "paid" : "never", awarded: 0, xp: result.xp };
 }
