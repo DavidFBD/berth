@@ -4,7 +4,7 @@ import { staffAdminIds, staffAudit } from "@/lib/server/staff-auth";
 import { sendNotice } from "@/lib/server/email/notify";
 import { normalizeCampaignCode, REJECT_REASONS, campaignUsd } from "@/lib/campaigns";
 import { claimById, campaignById } from "@/lib/server/campaigns/store";
-import { claimPerson, eligibleMarks, MAX_STAY_DAYS, MIN_STAY_DAYS, staffIneligible, stillEligible } from "@/lib/server/campaigns/eligibility";
+import { campaignTermsAccepted, claimPerson, eligibleMarks, MAX_STAY_DAYS, MIN_STAY_DAYS, staffIneligible, stillEligible } from "@/lib/server/campaigns/eligibility";
 import { personAccounts } from "@/lib/server/campaigns/store";
 import {
   fetchBaseReceipt,
@@ -59,6 +59,7 @@ export type ActionRefusal =
   | "zero_address"
   | "funding_check_required"
   | "no_funding_wallet"
+  | "terms_not_accepted"
   | "error";
 
 /** Never a wallet: USDC sent there is gone. */
@@ -229,6 +230,21 @@ export async function setCampaignActive(
 }
 
 /**
+ * Whether Berth's own X account may post this campaign's link
+ * (campaigns.announce_on_x, lib/server/x-autopost). Off by default; only
+ * this act, by staff, on this one campaign, turns it on. Audited.
+ */
+export async function setCampaignAnnounce(staffUserId: string, campaignId: string, on: unknown): Promise<ActionResult> {
+  if (typeof on !== "boolean") return refused(staffUserId, "campaign.announce", campaignId, "bad_input");
+  const rows = await auditedWrite(
+    { text: `update campaigns set announce_on_x = $2 where id = $1 returning id`, params: [campaignId, on] },
+    { staffUserId, action: on ? "campaign.announce_on" : "campaign.announce_off", target: campaignId, detail: { announceOnX: on } },
+  );
+  if (rows.length === 0) return refused(staffUserId, "campaign.announce", campaignId, "not_found");
+  return { ok: true };
+}
+
+/**
  * Qualified to approved, fixing where the USDC goes: the claim's own
  * account's home address (its live account, after any merge), on Base:
  * the person who opened through the campaign's link is the one paid.
@@ -245,6 +261,11 @@ export async function approveClaim(staffUserId: string, claimId: string): Promis
   if (!campaign || campaign.kind !== "signup") return refused(staffUserId, "claim.approve", claimId, "retired");
   const still = await eligibleMarks(claim);
   if ("refusal" in still) return refused(staffUserId, "claim.approve", claimId, still.refusal);
+  // Accepting the terms is a condition of payment; a record that cannot be read is no yes.
+  const person = await claimPerson(claim);
+  if (!person || !(await campaignTermsAccepted(person.id, { anyVersion: true }))) {
+    return refused(staffUserId, "claim.approve", claimId, "terms_not_accepted");
+  }
   // The approval and the person's marks as they are now (every wallet and
   // folded email, and the payout address itself) in one statement: one
   // payout per person holds for whatever was linked since the place was taken.

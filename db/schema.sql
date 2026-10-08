@@ -1556,6 +1556,14 @@ alter table campaigns drop constraint if exists campaigns_kind_check;
 alter table campaigns add constraint campaigns_kind_check check (kind in ('buy', 'invite', 'signup'));
 alter table campaigns alter column kind set default 'signup';
 alter table campaigns add column if not exists max_per_inviter int not null default 3;
+-- Whether Berth's own X account may post this campaign's link (lib/server/x-autopost
+-- readLiveCampaign). Off unless staff tick "Announce on X" on the campaign: a money
+-- link is never posted on its own.
+alter table campaigns add column if not exists announce_on_x boolean not null default false;
+-- The sign up that made the claim came from a country that could not be told
+-- (often a VPN or a proxy). Not a refusal: the claim is flagged for staff review
+-- (lib/server/campaigns/queue). Only this yes or no is kept, never the country.
+alter table campaign_claims add column if not exists country_unknown boolean not null default false;
 alter table campaigns drop constraint if exists campaigns_max_per_inviter_check;
 alter table campaigns add constraint campaigns_max_per_inviter_check check (max_per_inviter between 1 and 100);
 -- A retired buy campaign never runs again.

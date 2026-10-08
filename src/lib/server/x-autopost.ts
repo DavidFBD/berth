@@ -61,14 +61,16 @@ const msOf = (value: unknown): number => (value instanceof Date ? value.getTime(
  * not ended, a signup campaign (a retired buy or invite campaign is never
  * posted, and before campaigns had a kind there were only buy ones), with
  * places left and budget for at least one more reward, counting the claims
- * that hold a place (lib/campaigns SLOT_STATES). The one place that knows
- * the campaigns table's columns: `kind` is read through to_jsonb so this
- * runs on a schema with or without it (without, nothing is posted).
+ * that hold a place (lib/campaigns SLOT_STATES), and only one staff ticked
+ * "Announce on X" (campaigns.announce_on_x, off by default): a campaign's
+ * money link is never posted on its own. `kind` and `announce_on_x` are
+ * read through to_jsonb so this runs on a schema with or without them
+ * (without, nothing is posted).
  */
 export async function readLiveCampaign(now: number): Promise<LiveCampaign | null> {
   const rows = (await getSql().query(
     `select c.code, c.amount_usd::float8 as amount_usd, c.budget_usd::float8 as budget_usd, c.max_claims, c.hold_days,
-            c.ends_at, to_jsonb(c)->>'kind' as kind,
+            c.ends_at, to_jsonb(c)->>'kind' as kind, to_jsonb(c)->>'announce_on_x' as announce,
             (select count(*)::int from campaign_claims cc where cc.campaign_id = c.id and cc.state = any($2::text[])) as taken
      from campaigns c
      where c.active and c.starts_at <= $1::timestamptz and c.ends_at > $1::timestamptz
@@ -82,10 +84,11 @@ export async function readLiveCampaign(now: number): Promise<LiveCampaign | null
     hold_days: number;
     ends_at: unknown;
     kind: string | null;
+    announce: string | null;
     taken: number;
   }[];
   for (const row of rows) {
-    if (row.kind !== "signup") continue;
+    if (row.kind !== "signup" || row.announce !== "true") continue;
     const amount = Number(row.amount_usd);
     const taken = Number(row.taken);
     const byBudget = Math.floor((Number(row.budget_usd) - taken * amount) / amount + 1e-9);

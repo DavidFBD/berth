@@ -35,8 +35,14 @@ vi.mock("@/lib/server/campaigns/store", () => ({ attributeSignup: (...args: unkn
 
 import { POST } from "./route";
 
-const sync = (body: Record<string, unknown>) =>
-  POST(new NextRequest("http://localhost/api/profile", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }));
+const sync = (body: Record<string, unknown>, country: string | null = "NL") =>
+  POST(
+    new NextRequest("http://localhost/api/profile", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json", ...(country ? { "x-vercel-ip-country": country } : {}) },
+    }),
+  );
 
 describe("POST /api/profile, campaign attribution", () => {
   beforeEach(() => {
@@ -48,7 +54,7 @@ describe("POST /api/profile, campaign attribution", () => {
 
   it("attributes with the pocketed code where Berth is available, normalised", async () => {
     expect((await sync({ campaignCode: " Autumn-5 " })).status).toBe(200);
-    expect(attributeSignup).toHaveBeenCalledWith("u1", "autumn-5");
+    expect(attributeSignup).toHaveBeenCalledWith("u1", "autumn-5", { countryUnknown: false });
   });
 
   it("asks nothing for a personal invite without a campaign code", async () => {
@@ -70,7 +76,15 @@ describe("POST /api/profile, campaign attribution", () => {
   it("attributes an account nobody invited: the campaign link alone counts", async () => {
     user.referred_by = null;
     await sync({ campaignCode: "autumn-5" });
-    expect(attributeSignup).toHaveBeenCalledWith("u1", "autumn-5");
+    expect(attributeSignup).toHaveBeenCalledWith("u1", "autumn-5", { countryUnknown: false });
+  });
+
+  it("lets a sign up from a country that cannot be told make its claim, flagged for staff review", async () => {
+    await sync({ campaignCode: "autumn-5" }, null);
+    expect(attributeSignup).toHaveBeenCalledWith("u1", "autumn-5", { countryUnknown: true });
+    attributeSignup.mockClear();
+    await sync({ campaignCode: "autumn-5" }, "XX1");
+    expect(attributeSignup).toHaveBeenCalledWith("u1", "autumn-5", { countryUnknown: true });
   });
 
   it("a failed attribution never fails the sync", async () => {

@@ -24,7 +24,8 @@ export function TermsSheet({
   pending = false,
 }: {
   open: boolean;
-  purpose: "buy" | "sell";
+  /** "campaign": opened from a campaign's home line, where accepting is a condition of the reward. */
+  purpose: "buy" | "sell" | "campaign";
   /** The account's answer is on its way: the short version shows, quietly, and the buttons wait. */
   pending?: boolean;
   /** Records the yes; true once saved. */
@@ -76,10 +77,10 @@ export function TermsSheet({
               </Button>
             )}
             <Button size="lg" variant="ghost" className="text-muted-foreground" onClick={onLeave} disabled={saving}>
-              {purpose === "buy" ? copy.notNow : copy.continueSell}
+              {purpose === "sell" ? copy.continueSell : copy.notNow}
             </Button>
           </div>
-          <p className="text-center text-xs text-muted-foreground">{purpose === "buy" ? copy.buyNote : copy.sellNote}</p>
+          <p className="text-center text-xs text-muted-foreground">{purpose === "buy" ? copy.buyNote : purpose === "sell" ? copy.sellNote : copy.campaignNote}</p>
         </div>
       </DrawerContent>
     </Drawer>

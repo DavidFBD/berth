@@ -3,6 +3,7 @@
 import { track, trackOnce } from "@/lib/analytics";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { LeverageYieldVault } from "@sodax/dapp-kit";
+import { useQueryClient } from "@tanstack/react-query";
 import { WalletDrawer } from "@/components/wallet";
 import { AccountButton, AddMoneyDrawer, useAssistantReachable, useEmailSession } from "@/components/account-button";
 import { BerthMark } from "@/components/berth-mark";
@@ -44,6 +45,7 @@ import { HomeMore, SectionDrawer } from "@/components/home-more";
 import { ADDRESS_WAIT_MS, hasMoneyAside, homeStage, parseHomeStage, NUDGES_SAID_BY_STEP, type HomeStage } from "@/lib/home-stage";
 import { decideHomeStage, type LastKnownSnapshot } from "@/lib/last-known";
 import { MIN_ORDER_USD } from "@/lib/order-minimum";
+import { campaignLinePlace } from "@/lib/campaigns";
 import { useLimitOrders } from "@/hooks/use-limit-orders";
 import { useAccountWallets, useCloseFirstStock, useFirstStock, useLastKnown, useSaveLastKnown } from "@/hooks/use-profile";
 import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-account-wallets";
@@ -464,7 +466,10 @@ function SignedInHome() {
   if (sellGate !== sellLatch) setSellLatch(sellGate);
   // A sell opened before the answer came counts as let through for the visit.
   if (sellGate === "drawer" && sellLatch === null && terms.state === "loading" && !sellSkippedTerms) setSellSkippedTerms(true);
-  const termsSheetFor = buyGate === "sheet" || buyGate === "wait" ? "buy" : sellGate === "sheet" ? "sell" : null;
+  // The campaign line's "Accept the terms" (lib/server/campaigns/eligibility rule 3): only while no order asks first.
+  const [campaignTermsOpen, setCampaignTermsOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const termsSheetFor = buyGate === "sheet" || buyGate === "wait" ? "buy" : sellGate === "sheet" ? "sell" : campaignTermsOpen ? "campaign" : null;
   // The last check, when a buy is confirmed inside an open drawer (someone
   // who signed in there was never asked): the sheet opens over the drawer,
   // and Accept goes on with the same order. A sell never asks.
@@ -551,6 +556,11 @@ function SignedInHome() {
   };
   const pathShown = pathOnScreen(path);
   const pathWaiting = path.view.kind === "wait";
+  const campaignPlace = campaignLinePlace({
+    pathOnScreen: pathShown || pathWaiting,
+    stageKnown: stage !== undefined,
+    holdingsSettled: holdings.settled,
+  });
   const spendable = funds.totalUsd !== undefined && funds.totalUsd >= MIN_ORDER_USD ? funds.totalUsd : undefined;
 
   // The card payment went through: the wait shows in the Add money drawer,
@@ -680,7 +690,8 @@ function SignedInHome() {
             card: (
               <HomePathCard
                 // No campaign line under the path's cards: the path carries the first buy step, and a
-                // campaign's reward never stands beside a buy (lib/campaigns). It shows once the path is done.
+                // campaign's reward never stands beside a buy. It shows quietly in the second track meanwhile
+                // (lib/campaigns campaignLinePlace).
                 footnote={null}
                 slots={{
                   money: (frame, title) => (
@@ -771,9 +782,9 @@ function SignedInHome() {
                 onParkCash={() => openBuy(CASH_LISTING)}
                 onOpenAccount={() => openAccount()}
               />
-              {/* The campaign line, for an account that opened through a campaign's link (lib/campaigns). Last, and only once the
-                  step and the holdings are settled, so it never lands above anything and pushes it down. */}
-              {stage !== undefined && holdings.settled && !pathShown && !pathWaiting && <CampaignLine enabled={hasAccount} />}
+              {/* The campaign line, for an account that opened through a campaign's link (lib/campaigns campaignLinePlace).
+                  Here once the path is done or skipped: last, and only once the step and the holdings are settled. */}
+              {campaignPlace === "strips" && <CampaignLine enabled={hasAccount} onAcceptTerms={() => setCampaignTermsOpen(true)} />}
             </>
           }
           moneyAside={moneyAside}
@@ -787,11 +798,15 @@ function SignedInHome() {
             )
           }
           more={
-            <HomeMore
-              onBoard={openBoard}
-              onNews={() => setNewsOpen(true)}
-              onAi={assistantReachable ? () => setAiOpen(true) : undefined}
-            />
+            <>
+              <HomeMore
+                onBoard={openBoard}
+                onNews={() => setNewsOpen(true)}
+                onAi={assistantReachable ? () => setAiOpen(true) : undefined}
+              />
+              {/* While the path is on screen: the campaign line from the start, quietly, far from the path's Buy. */}
+              {campaignPlace === "aside" && <CampaignLine enabled={hasAccount} quiet onAcceptTerms={() => setCampaignTermsOpen(true)} />}
+            </>
           }
         />
 
@@ -895,11 +910,17 @@ function SignedInHome() {
           onAccept={async () => {
             const saved = await terms.accept();
             if (saved && confirmAsk) answerConfirm(true);
+            if (saved) {
+              setCampaignTermsOpen(false);
+              // The campaign line reads the yes afresh: "Accept the terms" goes once it is recorded.
+              void queryClient.invalidateQueries({ queryKey: ["campaign"] });
+            }
             return saved;
           }}
           onLeave={() => {
             if (confirmAsk) answerConfirm(false);
             else if (termsSheetFor === "sell") setSellSkippedTerms(true);
+            else if (termsSheetFor === "campaign") setCampaignTermsOpen(false);
             else onBuyOpenChange(false);
           }}
         />

@@ -50,7 +50,7 @@ export const SLOT_STATES: readonly ClaimState[] = ["holding", "qualified", "appr
 /**
  * Where the account's own campaign reward stands (app/api/campaign), for
  * the account that opened through a campaign's link: setting up (not set
- * up yet), waiting (set up, but every place is taken for now), paused (the
+ * up yet), full (not set up yet, and every place is taken for now), waiting (set up, but every place is taken for now), paused (the
  * campaign is paused before a place was taken), staying (set up, waiting out the days), qualified
  * (approved included, not paid yet) or paid. Never anything about a buy,
  * and nothing about anyone else's account.
@@ -58,13 +58,15 @@ export const SLOT_STATES: readonly ClaimState[] = ["holding", "qualified", "appr
 export type CampaignProgress = {
   amountUsd: number;
   stayDays: number;
-  status: "setting_up" | "waiting" | "paused" | "staying" | "qualified" | "paid";
+  status: "setting_up" | "full" | "waiting" | "paused" | "staying" | "qualified" | "paid";
   /** ISO; when the stay is judged, once set up. */
   eligibleAt: string | null;
   /** ISO; when it was paid. */
   paidAt: string | null;
-  /** ISO; while waiting, the last moment a place may still free up (the end plus the stay). */
+  /** ISO; while full or waiting, the last moment a place may still free up (the end plus the stay). */
   deadline: string | null;
+  /** While setting up or full: the current terms are not accepted yet, a condition of payment (the line's "Accept the terms"). */
+  termsDue?: boolean;
 };
 
 export type CampaignResponse = { campaign: CampaignProgress | null };
@@ -79,7 +81,8 @@ export const PAID_LINE_DAYS = 14;
  * nothing on the home.
  */
 export type CampaignLine =
-  | { kind: "setUp"; amountUsd: number; stayDays: number }
+  | { kind: "setUp"; amountUsd: number; stayDays: number; termsDue: boolean }
+  | { kind: "full"; amountUsd: number; stayDays: number; deadline: Date; termsDue: boolean }
   | { kind: "waiting"; amountUsd: number; stayDays: number; deadline: Date }
   | { kind: "paused" }
   | { kind: "staying"; amountUsd: number; eligible: Date }
@@ -97,6 +100,16 @@ export function campaignLine(progress: CampaignProgress | null | undefined, now:
       return { kind: "qualified" };
     case "paused":
       return { kind: "paused" };
+    case "full":
+      return progress.deadline
+        ? {
+            kind: "full",
+            amountUsd: progress.amountUsd,
+            stayDays: progress.stayDays,
+            deadline: new Date(progress.deadline),
+            termsDue: progress.termsDue === true,
+          }
+        : null;
     case "waiting":
       return progress.deadline
         ? { kind: "waiting", amountUsd: progress.amountUsd, stayDays: progress.stayDays, deadline: new Date(progress.deadline) }
@@ -104,7 +117,7 @@ export function campaignLine(progress: CampaignProgress | null | undefined, now:
     case "staying":
       return progress.eligibleAt ? { kind: "staying", amountUsd: progress.amountUsd, eligible: new Date(progress.eligibleAt) } : null;
     default:
-      return { kind: "setUp", amountUsd: progress.amountUsd, stayDays: progress.stayDays };
+      return { kind: "setUp", amountUsd: progress.amountUsd, stayDays: progress.stayDays, termsDue: progress.termsDue === true };
   }
 }
 
@@ -145,4 +158,112 @@ export function activationGaps(input: { wallet: string | null; fundingChecked: b
   else if (!input.fundingChecked) gaps.push("funding");
   if (!input.reviewed) gaps.push("reviewed");
   return gaps;
+}
+
+/**
+ * What the /c/<code> landing says (app/c/[code], components/campaign-landing):
+ * `live` states the offer and pockets the code; every other state says
+ * plainly why there is no offer here and still lets the person sign up,
+ * with nothing promised and nothing pocketed. A campaign never activated
+ * is no campaign at all, so a draft's code says nothing of it.
+ */
+export type CampaignLanding =
+  | { state: "live"; code: string; amountUsd: number; stayDays: number; endsAt: string }
+  | { state: "full" | "ended" | "paused" | "unknown" };
+
+export type LandingCampaign = {
+  code: string;
+  kind: CampaignKind;
+  amountUsd: number;
+  budgetUsd: number;
+  maxClaims: number;
+  stayDays: number;
+  active: boolean;
+  activatedAt: Date | null;
+  startsAt: Date;
+  endsAt: Date;
+  /** Claims holding a place (SLOT_STATES). */
+  taken: number;
+};
+
+/** Places still free: the fewer of the places left and the rewards the budget still covers. Pure. */
+export function placesLeft(campaign: Pick<LandingCampaign, "amountUsd" | "budgetUsd" | "maxClaims" | "taken">): number {
+  if (!(campaign.amountUsd > 0)) return 0;
+  const byBudget = Math.floor((campaign.budgetUsd - campaign.taken * campaign.amountUsd) / campaign.amountUsd + 1e-9);
+  return Math.max(0, Math.min(campaign.maxClaims - campaign.taken, byBudget));
+}
+
+/** The landing's state for a campaign row (or none) at `now`. Pure. */
+export function landingState(campaign: LandingCampaign | null | undefined, now: Date = new Date()): CampaignLanding {
+  if (!campaign) return { state: "unknown" };
+  if (campaign.kind !== "signup") return { state: "ended" };
+  if (!campaign.active && campaign.activatedAt === null) return { state: "unknown" };
+  if (now.getTime() > campaign.endsAt.getTime()) return { state: "ended" };
+  if (now.getTime() < campaign.startsAt.getTime()) return { state: "unknown" };
+  if (!campaign.active) return { state: "paused" };
+  // Every place taken (or the budget spent): the link stops promising.
+  if (placesLeft(campaign) <= 0) return { state: "full" };
+  return {
+    state: "live",
+    code: campaign.code,
+    amountUsd: campaign.amountUsd,
+    stayDays: campaign.stayDays,
+    endsAt: campaign.endsAt.toISOString(),
+  };
+}
+
+/** A landing state from a fixture, for `next dev` previews only (app/c/[code]): null unless `preview` names a state. */
+export function landingPreview(code: string, preview: string | null): CampaignLanding | null {
+  if (preview === "live") {
+    return { state: "live", code: normalizeCampaignCode(code) ?? "preview", amountUsd: 5, stayDays: 14, endsAt: "2026-11-01T00:00:00.000Z" };
+  }
+  if (preview === "full" || preview === "ended" || preview === "paused" || preview === "unknown") return { state: preview };
+  return null;
+}
+
+/**
+ * Where the home shows the campaign line (components/home), or nowhere yet.
+ * While the guided first path is on screen (or still being read) the line
+ * shows from the start, but quietly in the second track, after the
+ * board, the news and your AI: never inside the path's cards and never
+ * beside its Buy, since a reward never stands next to a buy. Once the path
+ * is done or skipped, it is the last of the strips, as before, and only
+ * once the step and the holdings are settled so it never pushes anything
+ * down. Pure.
+ */
+export function campaignLinePlace({
+  pathOnScreen,
+  stageKnown,
+  holdingsSettled,
+}: {
+  pathOnScreen: boolean;
+  stageKnown: boolean;
+  holdingsSettled: boolean;
+}): "aside" | "strips" | null {
+  if (pathOnScreen) return "aside";
+  return stageKnown && holdingsSettled ? "strips" : null;
+}
+
+/**
+ * What the queue suggests for a claim, or null. A sign up from a country
+ * that could not be told (often a VPN) is suggested for rejection unless
+ * staff have reason to override: only a suggestion, never an automatic
+ * reject, and only while the claim still waits on a decision. Pure.
+ */
+export function suggestedAction(claim: { state: ClaimState; signals: readonly string[] }): "reject" | null {
+  if (claim.state !== "holding" && claim.state !== "qualified") return null;
+  return claim.signals.includes("unknown_country") ? "reject" : null;
+}
+
+/**
+ * The landing's end: the day alone when the campaign ends at midnight UTC
+ * (the last whole day, in UTC), else the day and the time in `timeZone`
+ * (the reader's own, on the page), since a sign up after that minute does
+ * not count. Pure.
+ */
+export function landingEnds(endsAt: Date, timeZone?: string): { day: string; time: string | null } {
+  const midnight = endsAt.getUTCHours() === 0 && endsAt.getUTCMinutes() === 0 && endsAt.getUTCSeconds() === 0 && endsAt.getUTCMilliseconds() === 0;
+  if (midnight) return { day: campaignDay(new Date(endsAt.getTime() - 1), "UTC"), time: null };
+  const time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone }).format(endsAt);
+  return { day: campaignDay(endsAt, timeZone), time };
 }

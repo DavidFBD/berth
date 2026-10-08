@@ -10,7 +10,7 @@ import {
   setEmail,
 } from "@/lib/server/accounts";
 import { fetchPrivyEmail } from "@/lib/server/privy";
-import { AVAILABLE } from "@/lib/server/availability";
+import { AVAILABLE, requestCountry } from "@/lib/server/availability";
 import { attributeSignup } from "@/lib/server/campaigns/store";
 import { normalizeCampaignCode } from "@/lib/campaigns";
 import {
@@ -59,7 +59,9 @@ export async function POST(request: NextRequest) {
   const campaignCode = normalizeCampaignCode(read.caller.body.campaignCode);
   if (campaignCode && (read.caller.availability ?? AVAILABLE).available) {
     try {
-      await attributeSignup(user.id, campaignCode);
+      // A country that cannot be told (often a VPN) may sign up, but the claim is flagged for staff review.
+      const countryUnknown = requestCountry(request.headers, { url: request.url }) === null;
+      await attributeSignup(user.id, campaignCode, { countryUnknown });
     } catch (error) {
       console.warn("[campaigns] attribution failed", error instanceof Error ? error.message : error);
     }

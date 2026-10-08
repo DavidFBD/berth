@@ -1,5 +1,12 @@
 import { getSql } from "@/lib/server/db";
-import { normalizeCampaignCode, type CampaignKind, type ClaimState } from "@/lib/campaigns";
+import {
+  landingState,
+  normalizeCampaignCode,
+  SLOT_STATES,
+  type CampaignKind,
+  type CampaignLanding,
+  type ClaimState,
+} from "@/lib/campaigns";
 
 /**
  * Campaign rows and attribution (db/schema.sql, campaigns and
@@ -28,11 +35,13 @@ export type CampaignRow = {
   ends_at: Date;
   active: boolean;
   activated_at: Date | null;
+  /** Staff ticked "Announce on X": Berth's own X account may post its link. Off by default. */
+  announce_on_x: boolean;
   created_at: Date;
 };
 
 export const CAMPAIGN_COLUMNS = `id, code, title, kind, amount_usd::float8 as amount_usd, budget_usd::float8 as budget_usd,
-  max_claims, min_buy_usd::float8 as min_buy_usd, hold_days, starts_at, ends_at, active, activated_at, created_at`;
+  max_claims, min_buy_usd::float8 as min_buy_usd, hold_days, starts_at, ends_at, active, activated_at, announce_on_x, created_at`;
 
 export type ClaimRow = {
   id: string;
@@ -88,6 +97,7 @@ export function toCampaign(row: Record<string, unknown>): CampaignRow {
     starts_at: new Date(row.starts_at as string),
     ends_at: new Date(row.ends_at as string),
     activated_at: asDate(row.activated_at),
+    announce_on_x: row.announce_on_x === true,
     created_at: new Date(row.created_at as string),
   };
 }
@@ -126,26 +136,45 @@ export async function claimById(id: string): Promise<ClaimRow | undefined> {
 }
 
 /**
- * What the /c/<code> landing may say: a signup campaign's promise, only
- * while it is active and inside its dates. Anything else (unknown,
- * inactive, over, a retired campaign, or a database that cannot be read)
- * is no campaign at all.
+ * What the /c/<code> landing may say (lib/campaigns landingState): a
+ * signup campaign's promise only while it is active, inside its dates and
+ * has a place left; otherwise why there is none (full, ended, paused, or
+ * no such offer). A database that cannot be read is no offer at all.
  */
-export async function campaignForLanding(raw: string): Promise<{ code: string; amountUsd: number; stayDays: number } | null> {
+export async function campaignLanding(raw: string, now: Date = new Date()): Promise<CampaignLanding> {
   const code = normalizeCampaignCode(raw);
-  if (!code) return null;
+  if (!code) return { state: "unknown" };
   try {
     const rows = (await getSql().query(
-      `select code, amount_usd::float8 as amount_usd, hold_days
-         from campaigns
-        where code = $1 and kind = 'signup' and active and now() >= starts_at and now() <= ends_at`,
-      [code],
-    )) as { code: string; amount_usd: number; hold_days: number }[];
+      `select c.code, c.kind, c.amount_usd::float8 as amount_usd, c.budget_usd::float8 as budget_usd, c.max_claims, c.hold_days,
+              c.active, c.activated_at, c.starts_at, c.ends_at,
+              (select count(*)::int from campaign_claims cc where cc.campaign_id = c.id and cc.state = any($2::text[])) as taken
+         from campaigns c
+        where c.code = $1`,
+      [code, [...SLOT_STATES]],
+    )) as Record<string, unknown>[];
     const row = rows[0];
-    return row ? { code: row.code, amountUsd: Number(row.amount_usd), stayDays: Number(row.hold_days) } : null;
+    return landingState(
+      row
+        ? {
+            code: String(row.code),
+            kind: row.kind as CampaignKind,
+            amountUsd: Number(row.amount_usd),
+            budgetUsd: Number(row.budget_usd),
+            maxClaims: Number(row.max_claims),
+            stayDays: Number(row.hold_days),
+            active: row.active === true,
+            activatedAt: row.activated_at ? new Date(row.activated_at as string) : null,
+            startsAt: new Date(row.starts_at as string),
+            endsAt: new Date(row.ends_at as string),
+            taken: Number(row.taken),
+          }
+        : null,
+      now,
+    );
   } catch (error) {
     console.warn("[campaigns] landing read failed", error instanceof Error ? error.message : error);
-    return null;
+    return { state: "unknown" };
   }
 }
 
@@ -158,14 +187,20 @@ export async function campaignForLanding(raw: string): Promise<{ code: string; a
  * written: no code, an unknown, inactive, retired or ended campaign, an
  * account not new (older than 72 hours, already synced once, or opened
  * outside the campaign's dates), merged into another, or a claim already
- * made.
+ * made. `countryUnknown`: the sign up came from a country that could not
+ * be told (often a VPN); the claim is made all the same and flagged for
+ * staff review (lib/server/campaigns/queue unknown_country).
  */
-export async function attributeSignup(userId: string, rawCode: unknown): Promise<string | null> {
+export async function attributeSignup(
+  userId: string,
+  rawCode: unknown,
+  { countryUnknown = false }: { countryUnknown?: boolean } = {},
+): Promise<string | null> {
   const code = normalizeCampaignCode(rawCode);
   if (!code) return null;
   const rows = (await getSql().query(
-    `insert into campaign_claims (campaign_id, user_id, state)
-     select c.id, u.id, 'attributed'
+    `insert into campaign_claims (campaign_id, user_id, state, country_unknown)
+     select c.id, u.id, 'attributed', $3
        from users u
        join campaigns c
          on c.code = $2 and c.kind = 'signup' and c.active
@@ -177,7 +212,7 @@ export async function attributeSignup(userId: string, rawCode: unknown): Promise
         and not exists (select 1 from xp_events x where x.user_id = u.id and x.kind = 'account_created')
      on conflict (user_id) do nothing
      returning id`,
-    [userId, code],
+    [userId, code, countryUnknown],
   )) as { id: string }[];
   return rows[0]?.id ?? null;
 }

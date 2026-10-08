@@ -48,6 +48,11 @@ describe("notice templates", () => {
       if (NOTICE_KIND[notice.type] === "security") {
         expect(text).toContain("Not you? Write to us at support@berthmarkets.com.");
         expect(text).not.toContain("/api/email/unsubscribe");
+      } else if (NOTICE_KIND[notice.type] === "account") {
+        // Sent whatever the switches say: no unsubscribe, and no "Not you?" either.
+        expect(text).not.toContain("/api/email/unsubscribe");
+        expect(html).not.toContain("/api/email/unsubscribe");
+        expect(text).not.toContain("Not you?");
       } else {
         expect(text).toContain("Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token");
         expect(html).toContain("/api/email/unsubscribe?t=sample-token");

@@ -3,14 +3,24 @@
  * server (lib/server/email) and the settings drawer's Email section.
  *
  * Security notices are always on: a wallet added or removed, accounts
- * merged, an assistant connected. They cannot be switched off, so they
- * have no switch and no row in email_prefs. Everything else is a switch.
+ * merged, an assistant connected. So are account notices, about money
+ * that is the person's own and not an order: a campaign reward paid to
+ * the account. Neither can be switched off, so they have no switch, no
+ * row in email_prefs and no unsubscribe link. Everything else is a switch.
  * The weekly summary (lib/server/weekly, Monday mornings) is off by
  * default: it is the one kind the person did not trigger, so it goes only
  * to someone who switched it on.
  */
-export const EMAIL_KINDS = ["security", "orders", "friends", "weekly"] as const;
+export const EMAIL_KINDS = ["security", "account", "orders", "friends", "weekly"] as const;
 export type EmailKind = (typeof EMAIL_KINDS)[number];
+
+/** The kinds sent whatever the email settings say: no switch, no unsubscribe link. */
+export const ALWAYS_SENT_KINDS = ["security", "account"] as const;
+export type AlwaysSentKind = (typeof ALWAYS_SENT_KINDS)[number];
+
+export function isAlwaysSent(kind: EmailKind): kind is AlwaysSentKind {
+  return (ALWAYS_SENT_KINDS as readonly string[]).includes(kind);
+}
 
 export const SWITCHABLE_KINDS = ["orders", "friends", "weekly"] as const;
 export type SwitchableKind = (typeof SWITCHABLE_KINDS)[number];

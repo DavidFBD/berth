@@ -4,6 +4,7 @@ import { getOrCreateUser, type UserRow } from "../accounts";
 import { toCaip10 } from "@/lib/identity/caip";
 import { attributeSignup, campaignById, claimById } from "./store";
 import { advanceClaim, runCampaignStep } from "./eligibility";
+import { TERMS_VERSION } from "@/lib/legal-version";
 
 /**
  * Test-only fixtures for the campaign tests (PGlite): campaigns, new
@@ -49,13 +50,19 @@ export async function campaign(
   return rows[0].id;
 }
 
-/** An account with a home wallet and, unless asked not to, a verified email. */
-export async function person({ email = true }: { email?: boolean | string } = {}): Promise<UserRow & { home: string }> {
+/** The account accepts the current terms, as the terms sheet's Accept records it. */
+export async function acceptTerms(user: Pick<UserRow, "id">, version: string = TERMS_VERSION): Promise<void> {
+  await getSql().query(`insert into terms_acceptances (user_id, version) values ($1, $2) on conflict do nothing`, [user.id, version]);
+}
+
+/** An account with a home wallet and, unless asked not to, a verified email and the current terms accepted. */
+export async function person({ email = true, terms = true }: { email?: boolean | string; terms?: boolean } = {}): Promise<UserRow & { home: string }> {
   const n = next();
   const home = hex(0x100000 + n);
   const user = (await getOrCreateUser({ did: `did:privy:kit-${n}`, wallet: home }))!.user;
   const address = typeof email === "string" ? email : email ? `p${n}@example.com` : null;
   if (address) await getSql().query(`update users set email = $2 where id = $1`, [user.id, address]);
+  if (terms) await acceptTerms(user);
   return { ...user, email: address, home };
 }
 
@@ -65,9 +72,14 @@ export async function person({ email = true }: { email?: boolean | string } = {}
  * sync makes it. `expectClaim: false` for the cases where none should be.
  */
 export async function joined(
-  { email = true, code = lastCode, expectClaim = true }: { email?: boolean | string; code?: string; expectClaim?: boolean } = {},
+  {
+    email = true,
+    code = lastCode,
+    expectClaim = true,
+    terms = true,
+  }: { email?: boolean | string; code?: string; expectClaim?: boolean; terms?: boolean } = {},
 ): Promise<{ user: UserRow & { home: string }; claimId: string }> {
-  const user = await person({ email });
+  const user = await person({ email, terms });
   const claimId = await attributeSignup(user.id, code);
   if (expectClaim) expect(claimId).toBeTruthy();
   return { user, claimId: claimId ?? "" };

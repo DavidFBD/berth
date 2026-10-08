@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { ACTIVE_WINDOW_DAYS, activationGaps, campaignDay, campaignLine, campaignUsd, normalizeCampaignCode, type CampaignProgress } from "./campaigns";
+import {
+  ACTIVE_WINDOW_DAYS,
+  activationGaps,
+  campaignDay,
+  campaignLine,
+  campaignLinePlace,
+  campaignUsd,
+  landingEnds,
+  landingPreview,
+  landingState,
+  normalizeCampaignCode,
+  suggestedAction,
+  type CampaignProgress,
+  type LandingCampaign,
+} from "./campaigns";
 import { COPY } from "./copy";
 
 const base: CampaignProgress = {
@@ -29,7 +43,10 @@ describe("campaignLine, the new account's own line", () => {
   });
 
   it("walks setting up, staying, qualified and paid", () => {
-    expect(campaignLine(base)).toEqual({ kind: "setUp", amountUsd: 5, stayDays: 14 });
+    expect(campaignLine(base)).toEqual({ kind: "setUp", amountUsd: 5, stayDays: 14, termsDue: false });
+    expect(campaignLine({ ...base, termsDue: true })).toEqual({ kind: "setUp", amountUsd: 5, stayDays: 14, termsDue: true });
+    expect(COPY.campaign.setUp("$5", 14)).toMatch(/you have accepted the terms/);
+    expect(COPY.campaign.acceptTerms).toBe("Accept the terms");
     const eligible = "2026-10-17T12:00:00.000Z";
     expect(campaignLine({ ...base, status: "staying", eligibleAt: eligible })).toEqual({ kind: "staying", amountUsd: 5, eligible: new Date(eligible) });
     expect(campaignLine({ ...base, status: "qualified", eligibleAt: eligible })).toEqual({ kind: "qualified" });
@@ -66,9 +83,7 @@ describe("the words", () => {
   const words = COPY.campaign;
 
   it("say the lines exactly as agreed, with no dash as punctuation", () => {
-    expect(words.landingLede(campaignUsd(5), 14)).toBe(
-      "Open a new Berth account through this link, set it up and still use Berth 14 days later, and $5 in USDC on Base is added to your account, while places last.",
-    );
+    expect(words.landing.offer(campaignUsd(5))).toBe("$5 in USDC on Base for a new Berth account opened from this link.");
     expect(words.staying("$5", campaignDay(new Date("2026-10-17T12:00:00Z"), "UTC"))).toBe(
       "Your account is set up. If you still use Berth on 17 Oct, $5 in USDC on Base is added to your account.",
     );
@@ -80,8 +95,11 @@ describe("the words", () => {
     );
     const create = words.staff.create;
     const all = [
-      words.landingTitle,
-      words.landingLede("$5", 14),
+      words.landing.title,
+      words.landing.offer("$5"),
+      ...words.landing.rules(14, "31 Oct"),
+      words.landing.sameBrowser,
+      ...[words.landing.full, words.landing.ended, words.landing.paused, words.landing.unknown].flatMap((state) => [state.title, state.body]),
       words.setUp("$5", 14),
       words.waiting("$5", 14, "14 Nov"),
       words.paused,
@@ -109,8 +127,9 @@ describe("the words", () => {
 
   it("never promise anything for a buy: no user facing campaign line names buying, holding or trading as a condition", () => {
     const userFacing = [
-      words.landingTitle,
-      words.landingLede("$5", 14),
+      words.landing.title,
+      words.landing.offer("$5"),
+      ...words.landing.rules(14, "31 Oct"),
       words.setUp("$5", 14),
       words.staying("$5", "17 Oct"),
       words.qualified,
@@ -135,8 +154,8 @@ describe("the words", () => {
     const staff = COPY.campaign.staff;
     const everything = JSON.stringify(
       [
-        words.landingTitle,
-        words.landingLede("$5", 14),
+        words.landing,
+        words.landing.rules(14, "31 Oct"),
         words.setUp("$5", 14),
         words.staying("$5", "17 Oct"),
         words.qualified,
@@ -178,5 +197,121 @@ describe("the words", () => {
   it("formats whole dollars without cents", () => {
     expect(campaignUsd(5)).toBe("$5");
     expect(campaignUsd(5.5)).toBe("$5.50");
+  });
+});
+
+describe("the landing", () => {
+  const now = new Date("2026-10-10T12:00:00Z");
+  const row: LandingCampaign = {
+    code: "fez",
+    kind: "signup",
+    amountUsd: 5,
+    budgetUsd: 90,
+    maxClaims: 18,
+    stayDays: 14,
+    active: true,
+    activatedAt: new Date("2026-10-08T12:00:00Z"),
+    startsAt: new Date("2026-10-08T12:00:00Z"),
+    endsAt: new Date("2026-10-31T23:00:00Z"),
+    taken: 0,
+  };
+
+  it("states a live signup campaign's offer", () => {
+    expect(landingState(row, now)).toEqual({ state: "live", code: "fez", amountUsd: 5, stayDays: 14, endsAt: "2026-10-31T23:00:00.000Z" });
+  });
+
+  it("says the end as a day at midnight UTC, and with its time in the reader's zone otherwise", () => {
+    expect(landingEnds(new Date("2026-11-01T00:00:00Z"))).toEqual({ day: "31 Oct", time: null });
+    expect(landingEnds(new Date("2026-10-31T17:00:00Z"), "Europe/Amsterdam")).toEqual({ day: "31 Oct", time: "18:00" });
+    expect(landingEnds(new Date("2026-10-31T23:30:00Z"), "Europe/Amsterdam")).toEqual({ day: "1 Nov", time: "00:30" });
+    expect(COPY.campaign.landing.endsAt("31 Oct", "18:00")).toBe("31 Oct at 18:00, your time");
+  });
+
+  it("stops promising once every place is taken or the budget is spent", () => {
+    expect(landingState({ ...row, taken: 17 }, now)).toMatchObject({ state: "live" });
+    expect(landingState({ ...row, taken: 18 }, now)).toEqual({ state: "full" });
+    expect(landingState({ ...row, maxClaims: 30, budgetUsd: 50, taken: 10 }, now)).toEqual({ state: "full" });
+  });
+
+  it("promises nothing for an unknown, draft, unopened, paused, ended or retired campaign", () => {
+    expect(landingState(null, now)).toEqual({ state: "unknown" });
+    expect(landingState({ ...row, active: false, activatedAt: null }, now)).toEqual({ state: "unknown" });
+    expect(landingState({ ...row, startsAt: new Date("2026-10-12T00:00:00Z") }, now)).toEqual({ state: "unknown" });
+    expect(landingState({ ...row, active: false }, now)).toEqual({ state: "paused" });
+    expect(landingState({ ...row, endsAt: new Date("2026-10-09T00:00:00Z") }, now)).toEqual({ state: "ended" });
+    expect(landingState({ ...row, kind: "buy" }, now)).toEqual({ state: "ended" });
+  });
+
+  it("previews a state from a fixture only when asked for one", () => {
+    expect(landingPreview("Fez", "live")).toMatchObject({ state: "live", code: "fez" });
+    expect(landingPreview("fez", "full")).toEqual({ state: "full" });
+    expect(landingPreview("fez", null)).toBeNull();
+    expect(landingPreview("fez", "anything")).toBeNull();
+  });
+
+  it("states the offer and the short rules plainly, with the rules link and Start", () => {
+    const words = COPY.campaign.landing;
+    const rules = words.rules(14, "31 Oct").join(" ");
+    expect(rules).toMatch(/in this browser from this link/);
+    expect(rules).toMatch(/until 31 Oct/);
+    expect(rules).toMatch(/verified email, a username and a wallet with an address on Base, and the terms accepted/);
+    expect(rules).toMatch(/14 days after you set it up/);
+    expect(rules).toMatch(/Places are limited/);
+    expect(rules).toMatch(/United States/);
+    expect(rules).toMatch(/One per person/);
+    expect(rules).toMatch(/reviews every reward/);
+    expect(rules).toMatch(/Paid by hand, usually within a few days/);
+    for (const state of [words.full, words.ended, words.paused, words.unknown]) {
+      expect(state.body).toMatch(/You can still open a Berth account/);
+      expect(state.body).not.toMatch(/\$|USDC/);
+    }
+  });
+});
+
+describe("where the home shows the campaign line", () => {
+  it("shows it from the start while the guided path is on screen, away from the path and its Buy", () => {
+    expect(campaignLinePlace({ pathOnScreen: true, stageKnown: false, holdingsSettled: false })).toBe("aside");
+    expect(campaignLinePlace({ pathOnScreen: true, stageKnown: true, holdingsSettled: true })).toBe("aside");
+  });
+
+  it("is the last strip once the path is done or skipped, and only once the home is settled", () => {
+    expect(campaignLinePlace({ pathOnScreen: false, stageKnown: true, holdingsSettled: true })).toBe("strips");
+    expect(campaignLinePlace({ pathOnScreen: false, stageKnown: false, holdingsSettled: true })).toBeNull();
+    expect(campaignLinePlace({ pathOnScreen: false, stageKnown: true, holdingsSettled: false })).toBeNull();
+  });
+});
+
+describe("the full line", () => {
+  it("says every place is taken, with the line a set up account waits in, and no dash", () => {
+    const line = campaignLine({ ...base, status: "full", deadline: "2026-11-14T12:00:00.000Z" });
+    expect(line).toMatchObject({ kind: "full", amountUsd: 5, stayDays: 14, termsDue: false });
+    expect(campaignLine({ ...base, status: "full", deadline: "2026-11-14T12:00:00.000Z", termsDue: true })).toMatchObject({ kind: "full", termsDue: true });
+    const words = COPY.campaign.full("$5", 14, "14 Nov");
+    expect(words).toMatch(/^Every place in the Berth offer you joined through is taken for now\./);
+    expect(words).toMatch(/accept the terms to wait in line/);
+    expect(words).not.toMatch(/ [-–—] |—|–/);
+    expect(words).not.toMatch(/\b(buy|bought|hold|holding|trade|trading)\b/i);
+    expect(campaignLine({ ...base, status: "full", deadline: null })).toBeNull();
+  });
+});
+
+describe("the privacy page on the campaign country signal", () => {
+  it("says only a yes or no is kept, as a reviewer's signal, never the country, and lists it as a change", () => {
+    const text = JSON.stringify(COPY.privacyPolicy.sections);
+    expect(text).toMatch(/we keep only a yes or no for whether the country could not be told, used as a signal for the reviewer, never the country itself/);
+    expect(text).toMatch(/whether the country your connection came from at sign up could not be told/);
+    const changed = COPY.privacyPolicy.sections.find((section) => section.id === "what-changed")!;
+    expect((changed.list ?? [])[0]).toMatch(/could not be told/);
+  });
+});
+
+describe("the queue's suggestion for a country that could not be told", () => {
+  it("suggests a reject while a decision is open, and never decides it", () => {
+    expect(suggestedAction({ state: "qualified", signals: ["unknown_country"] })).toBe("reject");
+    expect(suggestedAction({ state: "holding", signals: ["close_signup", "unknown_country"] })).toBe("reject");
+    expect(suggestedAction({ state: "qualified", signals: ["close_signup"] })).toBeNull();
+    expect(suggestedAction({ state: "approved", signals: ["unknown_country"] })).toBeNull();
+    expect(COPY.campaign.staff.suggestRejectUnknownCountry).toMatch(/^Suggested: reject, unless/);
+    expect(COPY.campaign.staff.suggestRejectUnknownCountry).toMatch(/Nothing is rejected on its own/);
   });
 });

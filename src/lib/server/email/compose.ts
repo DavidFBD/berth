@@ -98,8 +98,9 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   order_filled: "orders",
   order_expired: "orders",
   friend_request: "friends",
-  // Money arriving in the account, like a filled order: under the orders switch.
-  campaign_paid: "orders",
+  // A reward paid to the account: about the person's own money, sent whatever the switches say
+  // (no unsubscribe), so a person who turned order emails off still hears they were paid.
+  campaign_paid: "account",
   // Who may send campaign money is a security matter for staff: no switch.
   payout_source_changed: "security",
   weekly: "weekly",
@@ -141,7 +142,7 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
   const email = COPY.email;
   const kind = NOTICE_KIND[notice.type];
   const button = { label: email.openBerth, href: `${baseUrl}/` };
-  const why = kind === "security" ? email.securityWhy : email.why[kind as "orders" | "friends" | "weekly"];
+  const why = kind === "security" ? email.securityWhy : kind === "account" ? email.accountWhy : email.why[kind];
   switch (notice.type) {
     case "wallet_added":
     case "wallet_removed": {

@@ -128,6 +128,20 @@ describe("deliver", () => {
     expect(order.replyTo).toBe("support@berthmarkets.com");
   });
 
+  it("tells a person their reward was paid whatever their switches say, with no unsubscribe, and the switches stay as they were", async () => {
+    const userId = await account();
+    for (const kind of ["orders", "friends", "weekly"] as const) await setPref(userId, kind, false);
+    expect(await deliver(filled(userId))).toBe("pref_off");
+    expect(await deliver({ userId, ref: "claim-1", notice: { type: "campaign_paid", amount: "$5", chain: "Base" } })).toBe("sent");
+    expect(sent).toHaveLength(1);
+    const [paid] = sent;
+    expect(paid.headers["X-Berth-Type"]).toBe("campaign_paid");
+    expect(paid.headers["List-Unsubscribe"]).toBeUndefined();
+    expect(paid.text).not.toContain("/api/email/unsubscribe");
+    expect(paid.text).toContain("This is about money paid to your account.");
+    expect(await readPrefs(userId)).toEqual({ orders: false, friends: false, weekly: false });
+  });
+
   it("sends nothing to an account without a verified primary email", async () => {
     const userId = await account(null);
     // The legacy column alone is not enough.

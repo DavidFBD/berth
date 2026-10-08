@@ -13,8 +13,9 @@ import { earlyCloses, marketHolidayNames, newYorkDate, nextOpen, sessionOn, shif
  * cron). The sources, in order of preference, the first with something
  * true to say winning:
  *
- * 1. A signup campaign that is active, inside its dates and funded for at
- *    least one more reward, but never two posts in a row (the feed is not
+ * 1. A signup campaign that is active, inside its dates, funded for at
+ *    least one more reward and ticked "Announce on X" by staff (off by
+ *    default: a money link is never posted unless staff chose to), but never two posts in a row (the feed is not
  *    a promotion). When it may not take the slot it may still be the call
  *    to action of a calendar post.
  * 2. The market calendar: a holiday or a 1pm close in the next six days.

@@ -1,7 +1,7 @@
 import { getSql } from "@/lib/server/db";
 import { liveAccount, normalizeWallet, type UserRow } from "@/lib/server/accounts";
 import { parseCaip10 } from "@/lib/identity/caip";
-import { ACTIVE_WINDOW_DAYS, type CampaignProgress, type ClaimState } from "@/lib/campaigns";
+import { ACTIVE_WINDOW_DAYS, placesLeft, SLOT_STATES, type CampaignProgress, type ClaimState } from "@/lib/campaigns";
 import {
   CAMPAIGN_COLUMNS,
   CLAIM_COLUMNS,
@@ -12,6 +12,7 @@ import {
   type ClaimRow,
 } from "@/lib/server/campaigns/store";
 import { foldEmail } from "@/lib/server/campaigns/fold-email";
+import { TERMS_VERSION } from "@/lib/legal-version";
 
 /**
  * Whether a signup claim has earned its USDC, computed on the server from
@@ -42,10 +43,12 @@ import { foldEmail } from "@/lib/server/campaigns/fold-email";
  *    account: a verified email (users.email, written only from Privy's
  *    verified record), a username (a handles row) and an EVM home wallet
  *    (users.wallet_address, 0x and 40 hex: the USDC is paid there on Base;
- *    a Solana or Bitcoin home cannot be paid). Until then the claim stays
- *    `attributed`. The
- *    terms are not asked: Berth asks for them only before a first buy, and
- *    a buy is never a condition.
+ *    a Solana or Bitcoin home cannot be paid). And the current terms
+ *    accepted on that account (terms_acceptances, lib/legal-version
+ *    TERMS_VERSION): a condition of payment, asked on the home line, which
+ *    fails closed (a record that cannot be read is no yes). Buys keep their
+ *    own gate, which fails open (lib/terms-gate); a buy is never a
+ *    condition. Until all of this the claim stays `attributed`.
  * 4. A place, reserved atomically (db/schema.sql campaign_reserve_signup):
  *    the campaign is active; one payout per real person, across every
  *    campaign (any wallet or the folded email of the person already
@@ -190,6 +193,29 @@ export async function campaignSetUp(personId: string): Promise<boolean> {
   return rows[0]?.done === true;
 }
 
+/**
+ * Rule 3, the terms: whether the person's live account accepted the
+ * current terms (`anyVersion`: any version, as approval asks, so a new
+ * version published during the stay does not undo a yes already given).
+ * Fails closed, unlike the buy gate (lib/server/terms-acceptance
+ * termsStatus): a record that cannot be read counts as not accepted, so no
+ * place is reserved and no claim approved on a guess.
+ */
+export async function campaignTermsAccepted(personId: string, { anyVersion = false }: { anyVersion?: boolean } = {}): Promise<boolean> {
+  try {
+    const rows = (await getSql().query(
+      anyVersion
+        ? `select 1 from terms_acceptances where user_id = $1::uuid limit 1`
+        : `select 1 from terms_acceptances where user_id = $1::uuid and version = $2 limit 1`,
+      anyVersion ? [personId] : [personId, TERMS_VERSION],
+    )) as unknown[];
+    return rows.length > 0;
+  } catch (error) {
+    console.warn("[campaigns] terms read failed, counting it as not accepted", error instanceof Error ? error.message : error);
+    return false;
+  }
+}
+
 /** Set up as invite XP defines it (lib/server/invite-xp): a verified email, a username and any wallet. */
 export async function onboarded(personId: string): Promise<boolean> {
   const rows = (await getSql().query(
@@ -315,6 +341,7 @@ export async function advanceClaim(claim: ClaimRow, campaign: CampaignRow, now: 
   }
   const { person, self } = checked.people;
   if (!(await campaignSetUp(person.id))) return "attributed";
+  if (!(await campaignTermsAccepted(person.id))) return "attributed";
   const rows = (await getSql().query(`select campaign_reserve_signup($1, $2::text[], $3::timestamptz) as outcome`, [
     claim.id,
     personMarks(self),
@@ -460,6 +487,20 @@ export async function runCampaignStep({
   return summary;
 }
 
+/** Places a campaign still has free now (lib/campaigns placesLeft), counting the claims that hold one. */
+export async function placesLeftNow(campaign: Pick<CampaignRow, "id" | "amount_usd" | "budget_usd" | "max_claims">): Promise<number> {
+  const rows = (await getSql().query(
+    `select count(*)::int as taken from campaign_claims where campaign_id = $1 and state = any($2::text[])`,
+    [campaign.id, [...SLOT_STATES]],
+  )) as { taken: number }[];
+  return placesLeft({
+    amountUsd: campaign.amount_usd,
+    budgetUsd: campaign.budget_usd,
+    maxClaims: campaign.max_claims,
+    taken: Number(rows[0]?.taken ?? 0),
+  });
+}
+
 /**
  * The account's own reward, as the home reads it: the claim this person's
  * account holds (any account merged into it included, the newest first),
@@ -502,7 +543,12 @@ export async function campaignProgress(userId: string, now: Date = new Date()): 
       // A paused campaign promises nothing new; a waitlisted claim found every place taken.
       if (!campaign.active) return { ...base, status: "paused" };
       if (claim.waitlisted_at !== null) return { ...base, status: "waiting", deadline: claimDeadline(campaign).toISOString() };
-      return { ...base, status: "setting_up" };
+      // Not set up yet, and every place is taken for now: say so rather than promise.
+      // Joining the line needs the terms too (rule 3), so the step is said in both states.
+      const person = await claimPerson(claim);
+      const termsDue = !(person && (await campaignTermsAccepted(person.id)));
+      if ((await placesLeftNow(campaign)) <= 0) return { ...base, status: "full", deadline: claimDeadline(campaign).toISOString(), termsDue };
+      return { ...base, status: "setting_up", termsDue };
     }
     case "holding":
       return { ...base, status: "staying" };

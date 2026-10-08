@@ -3,7 +3,9 @@ import { setSqlClient, type SqlClient } from "../db";
 import { makeTestDb } from "../pglite-test-db";
 import { claimById } from "./store";
 import { activeFrom, campaignProgress, campaignSetUp, onboarded, runCampaignStep, sameHands, stillActive, stillEligible } from "./eligibility";
-import { advance, campaign, DAY, heldWallet, joined, person, qualifiedClaim, seen, state, username } from "./test-kit";
+import { acceptTerms, advance, campaign, DAY, heldWallet, joined, person, qualifiedClaim, seen, state, username } from "./test-kit";
+import { approveClaim } from "./actions";
+import { TERMS_VERSION } from "@/lib/legal-version";
 
 /**
  * Every signup campaign rule against the real schema (PGlite): set up
@@ -31,6 +33,66 @@ afterAll(async () => {
 });
 
 const later = (days: number) => new Date(Date.now() + days * DAY);
+
+describe("the terms, a condition of payment", () => {
+  it("keeps a set up account attributed, its line asking to accept the terms, until it accepts the current terms", async () => {
+    await campaign("terms-rule", { stayDays: 14 });
+    const { user, claimId } = await joined({ terms: false });
+    await username(user);
+    expect(await advance(claimId)).toBe("attributed");
+    expect(await campaignProgress(user.id)).toMatchObject({ status: "setting_up", termsDue: true });
+    // An older version is not the current terms.
+    await acceptTerms(user, "2000-01-01");
+    expect(await advance(claimId)).toBe("attributed");
+    await acceptTerms(user);
+    expect(await campaignProgress(user.id)).toMatchObject({ status: "staying" });
+    expect((await claimById(claimId))!.state).toBe("holding");
+  });
+
+  it("asks for the terms on the full line too, since joining the waiting line needs them", async () => {
+    await campaign("terms-full", { stayDays: 14, maxClaims: 1 });
+    const first = await joined();
+    const { user } = await joined({ terms: false });
+    await username(first.user);
+    expect(await advance(first.claimId)).toBe("holding");
+    expect(await campaignProgress(user.id)).toMatchObject({ status: "full", termsDue: true });
+    await acceptTerms(user);
+    expect(await campaignProgress(user.id)).toMatchObject({ status: "full", termsDue: false });
+  });
+
+  it("says nothing is due once the terms are accepted", async () => {
+    await campaign("terms-done", { stayDays: 14 });
+    const { user } = await joined();
+    expect(await campaignProgress(user.id)).toMatchObject({ status: "setting_up", termsDue: false });
+  });
+
+  it("fails closed: a terms record that cannot be read reserves nothing", async () => {
+    await campaign("terms-closed", { stayDays: 14 });
+    const { user, claimId } = await joined();
+    await username(user);
+    setSqlClient({
+      query: (text, params) => (/terms_acceptances/.test(text) ? Promise.reject(new Error("down")) : sql.query(text, params)),
+    });
+    try {
+      expect(await advance(claimId)).toBe("attributed");
+    } finally {
+      setSqlClient(sql);
+    }
+    expect(await advance(claimId)).toBe("holding");
+  });
+
+  it("is asked again at approval: no acceptance on the live account, no approval", async () => {
+    await campaign("terms-approve", { stayDays: 14 });
+    const staff = await person();
+    const { claimId, user } = await qualifiedClaim("terms-approve");
+    await sql.query(`delete from terms_acceptances where user_id = $1`, [user.id]);
+    expect(await approveClaim(staff.id, claimId)).toEqual({ ok: false, refusal: "terms_not_accepted" });
+    // A yes to the terms in force when it was given still counts after a newer version is published.
+    await acceptTerms(user, "2000-01-01");
+    expect((await approveClaim(staff.id, claimId)).ok).toBe(true);
+    expect(TERMS_VERSION).not.toBe("2000-01-01");
+  });
+});
 
 describe("set up", () => {
   it("keeps a new account attributed until the email, the username and the wallet are all there, then reserves a place", async () => {
@@ -287,13 +349,31 @@ describe("the account's own progress", () => {
     expect(await campaignProgress(signup.user.id)).toBeNull();
   });
 
+  it("says full, never the promise, to an account not set up yet while every place is taken, and the same once the budget is spent", async () => {
+    const id = await campaign("progress-taken", { maxClaims: 1 });
+    const first = await joined({ code: "progress-taken" });
+    const second = await joined({ code: "progress-taken" });
+    expect(await campaignProgress(second.user.id)).toMatchObject({ status: "setting_up" });
+    await username(first.user);
+    expect(await advance(first.claimId)).toBe("holding");
+    const full = await campaignProgress(second.user.id);
+    expect(full).toMatchObject({ status: "full" });
+    expect(full!.deadline).not.toBeNull();
+    // A place freed (the first refused): the promise returns.
+    await sql.query(`update campaign_claims set state = 'rejected', reject_reason = 'abuse' where id = $1`, [first.claimId]);
+    expect(await campaignProgress(second.user.id)).toMatchObject({ status: "setting_up" });
+    await sql.query(`update campaigns set max_claims = 20, budget_usd = 5 where id = $1`, [id]);
+    await sql.query(`update campaign_claims set state = 'paid', paid_at = now() where id = $1`, [first.claimId]);
+    expect(await campaignProgress(second.user.id)).toMatchObject({ status: "full" });
+  });
+
   it("says waiting to an account set up while every place is taken, and paused while the campaign is paused", async () => {
     const id = await campaign("progress-full", { maxClaims: 1 });
     const first = await joined({ code: "progress-full" });
     await username(first.user);
     expect(await advance(first.claimId)).toBe("holding");
     const second = await joined({ code: "progress-full" });
-    expect(await campaignProgress(second.user.id)).toMatchObject({ status: "setting_up", deadline: null });
+    expect(await campaignProgress(second.user.id)).toMatchObject({ status: "full" });
     await username(second.user);
     const waiting = await campaignProgress(second.user.id);
     expect(waiting).toMatchObject({ status: "waiting" });

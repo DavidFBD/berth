@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setSqlClient, type SqlClient } from "../db";
 import { makeTestDb } from "../pglite-test-db";
 import { awardXp, bindReferral, ensureReferralCode, getOrCreateUser, type UserRow } from "../accounts";
-import { attributeSignup, campaignForLanding, claimById } from "./store";
+import { attributeSignup, campaignLanding, claimById } from "./store";
 
 /**
  * Campaign attribution against the real schema: a claim only for a new
@@ -155,15 +155,32 @@ describe("signup attribution", () => {
     expect(await claimsOf(inviter.id)).toHaveLength(0);
   });
 
-  it("the landing shows only a live signup campaign's promise", async () => {
+  it("the landing shows only a live signup campaign's promise, and says plainly why there is none", async () => {
     await pause();
     await campaign("land-signup");
     await campaign("land-buy", { kind: "buy" });
     await campaign("land-invite", { kind: "invite" });
-    expect(await campaignForLanding("Land-Signup")).toEqual({ code: "land-signup", amountUsd: 5, stayDays: 7 });
-    expect(await campaignForLanding("land-buy")).toBeNull();
-    expect(await campaignForLanding("land-invite")).toBeNull();
-    expect(await campaignForLanding("nope!")).toBeNull();
+    await campaign("land-draft", { active: false });
+    const paused = await campaign("land-paused", { active: false });
+    await sql.query(`update campaigns set activated_at = now() - interval '1 day' where id = $1`, [paused]);
+    await campaign("land-over", { startsInDays: -10, endsInDays: -1 });
+    await campaign("land-soon", { startsInDays: 2, endsInDays: 10 });
+    const live = await campaignLanding("Land-Signup");
+    expect(live).toMatchObject({ state: "live", code: "land-signup", amountUsd: 5, stayDays: 7 });
+    expect(await campaignLanding("land-buy")).toEqual({ state: "ended" });
+    expect(await campaignLanding("land-invite")).toEqual({ state: "ended" });
+    expect(await campaignLanding("land-draft")).toEqual({ state: "unknown" });
+    expect(await campaignLanding("land-paused")).toEqual({ state: "paused" });
+    expect(await campaignLanding("land-over")).toEqual({ state: "ended" });
+    expect(await campaignLanding("land-soon")).toEqual({ state: "unknown" });
+    expect(await campaignLanding("no-such-code")).toEqual({ state: "unknown" });
+    // Every place taken: the link stops promising.
+    const full = await campaign("land-full");
+    await sql.query(`update campaigns set max_claims = 1 where id = $1`, [full]);
+    expect(await campaignLanding("land-full")).toMatchObject({ state: "live" });
+    await sql.query(`insert into campaign_claims (campaign_id, user_id, state) values ($1, $2, 'holding')`, [full, (await account()).id]);
+    expect(await campaignLanding("land-full")).toEqual({ state: "full" });
+    expect(await campaignLanding("nope!")).toEqual({ state: "unknown" });
   });
 });
 

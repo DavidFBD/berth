@@ -14,6 +14,7 @@ import {
   rejectClaim,
   removePayoutSource,
   setCampaignActive,
+  setCampaignAnnounce,
   type ActionResult,
 } from "@/lib/server/campaigns/actions";
 
@@ -29,7 +30,7 @@ const id = (value: unknown): string | null =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value) ? value.toLowerCase() : null;
 
 /** The acts that make a promise or record money: a sign in from the last fifteen minutes, by email (requireFreshStaff). */
-const FRESH_ACTIONS = new Set(["activate", "delete", "approve", "reject", "paid", "add_source", "remove_source"]);
+const FRESH_ACTIONS = new Set(["activate", "announce", "delete", "approve", "reject", "paid", "add_source", "remove_source"]);
 
 /**
  * The staff campaigns endpoint (app/staff/campaigns). To anyone not on
@@ -87,6 +88,11 @@ export async function POST(request: NextRequest) {
         result = campaignId
           ? await setCampaignActive(staff, campaignId, action === "activate", body.counselReviewed, body.fundingChecked)
           : { ok: false, refusal: "bad_input" };
+        break;
+      }
+      case "announce": {
+        const campaignId = id(body.campaignId);
+        result = campaignId ? await setCampaignAnnounce(staff, campaignId, body.on) : { ok: false, refusal: "bad_input" };
         break;
       }
       case "delete": {

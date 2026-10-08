@@ -7,6 +7,7 @@ import { claimSend, finishSend, isSuppressed, primaryEmail, readPrefs, sendsToda
 import { NoticeEmail, noticeText } from "@/lib/server/email/template";
 import { issueUnsubscribeToken } from "@/lib/server/email/token";
 import { weeklyRefCurrent } from "@/lib/weekly-window";
+import { isAlwaysSent } from "@/lib/email-kinds";
 
 /**
  * Sending a notice, queue free. A route calls `sendNotice` after its own
@@ -130,8 +131,7 @@ export async function buildEmail({
   const baseUrl = emailBaseUrl();
   const content = composeNotice(notice, baseUrl);
   const kind = NOTICE_KIND[notice.type];
-  const unsubscribe =
-    kind === "security" ? null : unsubscribeUrl(baseUrl, await issueUnsubscribeToken({ userId, kind }));
+  const unsubscribe = isAlwaysSent(kind) ? null : unsubscribeUrl(baseUrl, await issueUnsubscribeToken({ userId, kind }));
   const html = await render(
     <NoticeEmail content={content} markUrl={emailMarkUrl()} unsubscribeUrl={unsubscribe} contact={emailReplyTo()} />,
   );
@@ -178,7 +178,7 @@ async function sendWithBackoff(email: OutgoingEmail): Promise<Awaited<ReturnType
 /** The checks before a claim: whether this person, at this address, may get this notice now. */
 async function recipient(input: NoticeInput): Promise<{ to: string } | DeliverOutcome> {
   const kind = NOTICE_KIND[input.notice.type];
-  if (kind !== "security") {
+  if (!isAlwaysSent(kind)) {
     const prefs = await readPrefs(input.userId);
     if (!prefs[kind]) return "pref_off";
   }
@@ -205,7 +205,7 @@ async function sendClaimed(sendId: string, input: NoticeInput, to: string): Prom
     await finishSend(sendId, { ok: true, providerId: result.id });
     return "sent";
   }
-  if (result.error.startsWith("http_429") && NOTICE_KIND[input.notice.type] === "security") {
+  if (result.error.startsWith("http_429") && isAlwaysSent(NOTICE_KIND[input.notice.type])) {
     await finishSend(sendId, { later: result.error });
     return "deferred";
   }
@@ -217,7 +217,7 @@ export async function deliver(input: NoticeInput): Promise<DeliverOutcome> {
   if (!sendingAllowed()) return "off";
   const checked = await recipient(input);
   if (typeof checked === "string") return checked;
-  if (NOTICE_KIND[input.notice.type] !== "security" && (await sendsToday()) >= dailyCap()) return "daily_volume";
+  if (!isAlwaysSent(NOTICE_KIND[input.notice.type]) && (await sendsToday()) >= dailyCap()) return "daily_volume";
   if (input.notice.type === "weekly" && (await sendsToday("weekly")) >= weeklyDailyCap()) return "daily_volume";
   const claim = await claimSend(input.userId, input.notice.type, input.ref, input.notice);
   if (typeof claim === "string") return claim;
@@ -366,7 +366,7 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
 export async function renderSample(notice: Notice): Promise<{ subject: string; html: string; text: string }> {
   const baseUrl = emailBaseUrl();
   const content = composeNotice(notice, baseUrl);
-  const unsubscribe = NOTICE_KIND[notice.type] === "security" ? null : unsubscribeUrl(baseUrl, "sample-token");
+  const unsubscribe = isAlwaysSent(NOTICE_KIND[notice.type]) ? null : unsubscribeUrl(baseUrl, "sample-token");
   const html = await render(
     <NoticeEmail content={content} markUrl={emailMarkUrl()} unsubscribeUrl={unsubscribe} contact={emailReplyTo()} />,
   );

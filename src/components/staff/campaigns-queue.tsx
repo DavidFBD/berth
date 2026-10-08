@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { usePrivy } from "@privy-io/react-auth";
-import { activationGaps, campaignUsd, normalizeCampaignCode, REJECT_REASONS } from "@/lib/campaigns";
+import { activationGaps, campaignUsd, normalizeCampaignCode, REJECT_REASONS, suggestedAction } from "@/lib/campaigns";
 import { cn, scrollIntoViewGently } from "@/lib/utils";
 import type { StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
 import type { CampaignMeter, QueueClaim } from "@/lib/server/campaigns/queue";
@@ -28,6 +28,7 @@ export type StaffAction =
   | { action: "paid"; claimId: string; txHash: string }
   | { action: "activate"; campaignId: string; counselReviewed: true; fundingChecked: true }
   | { action: "pause"; campaignId: string }
+  | { action: "announce"; campaignId: string; on: boolean }
   | { action: "delete"; campaignId: string; reason: string }
   | { action: "create"; campaign: Record<string, string> }
   | { action: "reveal"; claimId: string; field: "email" | "wallets" }
@@ -308,6 +309,21 @@ function CampaignCard({
           otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
         />
         <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
+        {campaign.kind === "signup" && (
+          <label className="flex items-start gap-2 text-sm text-foreground" data-testid="announce-on-x">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={campaign.announceOnX}
+              disabled={busy}
+              onChange={(event) => onAction({ action: "announce", campaignId: campaign.id, on: event.target.checked })}
+            />
+            <span>
+              {copy.announce}
+              <span className="mt-0.5 block text-xs text-muted-foreground">{copy.announceHint}</span>
+            </span>
+          </label>
+        )}
         {campaign.kind !== "signup" ? null : campaign.active ? (
           <div>
             <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
@@ -564,6 +580,11 @@ function ClaimCard({
         <Fact label={copy.labels.signals}>
           {claim.signals.length === 0 ? copy.noSignals : claim.signals.map((signal) => <span key={signal} className="block">{copy.signals[signal]}</span>)}
           <span className="block text-xs text-muted-foreground">{copy.noDeviceSignals}</span>
+          {suggestedAction(claim) === "reject" && (
+            <span className="mt-1 block text-foreground" data-testid="suggest-reject">
+              {copy.suggestRejectUnknownCountry}
+            </span>
+          )}
         </Fact>
         {(claim.state === "qualified" || claim.state === "approved") && (
           <Fact label={copy.labels.payTo}>

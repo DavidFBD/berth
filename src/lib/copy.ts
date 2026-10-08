@@ -477,6 +477,8 @@ export type Copy = {
     buyNote: string;
     continueSell: string;
     sellNote: string;
+    /** Under the buttons when the sheet is opened from a campaign's home line. */
+    campaignNote: string;
     failed: string;
   };
   newsMoreStories: string;
@@ -1609,13 +1611,12 @@ export type XAutopostCopy = {
  * amount, the minimum, the days. Berth adds nothing it has not promised.
  */
 export type CampaignCopy = {
-  /** The /c/<code> landing, under the mark. */
-  landingTitle: string;
-  landingLede: (amount: string, days: number) => string;
-  /** Under the lede: the link is remembered only in the browser it was opened in, before sign up. */
-  landingSameBrowser: string;
+  /** The /c/<code> landing (components/campaign-landing): the offer, its short rules, and plain words when there is none. */
+  landing: CampaignLandingCopy;
   /** The home line of an account that opened through a campaign's link and has not finished setting up. */
   setUp: (amount: string, days: number) => string;
+  /** Not set up yet, and every place is taken for now: no promise, only the line a set up account waits in. */
+  full: (amount: string, days: number, deadline: string) => string;
   /** Set up, but no place is free for now (all taken, or the campaign paused): it may still free up before `deadline`. */
   waiting: (amount: string, days: number, deadline: string) => string;
   /** The campaign is paused before the account took a place: no promise. */
@@ -1626,7 +1627,32 @@ export type CampaignCopy = {
   paid: (amount: string) => string;
   /** The terms link at the end of the line. */
   termsLink: string;
+  /** The setting up line's step while the current terms are not accepted: opens the terms sheet. */
+  acceptTerms: string;
   staff: CampaignStaffCopy;
+};
+
+/** The /c/<code> landing, in every state it can be in. */
+export type CampaignLandingCopy = {
+  title: string;
+  /** The offer in one plain line. */
+  offer: (amount: string) => string;
+  rulesHeading: string;
+  /** The short rules; `ends` is the campaign's last day. */
+  rules: (days: number, ends: string) => string[];
+  /** The end in the rules when it is not midnight UTC: the day and the time, in the reader's own time zone. */
+  endsAt: (day: string, time: string) => string;
+  /** The link to the campaign section of the terms. */
+  fullRules: string;
+  /** The link is remembered only in the browser it was opened in, before sign up. */
+  sameBrowser: string;
+  /** Continues to sign up. */
+  start: string;
+  /** No offer here: a title and one line, then Start all the same. */
+  full: { title: string; body: string };
+  ended: { title: string; body: string };
+  paused: { title: string; body: string };
+  unknown: { title: string; body: string };
 };
 
 /** The staff page (/staff/campaigns) and pnpm campaign:queue. */
@@ -1644,6 +1670,9 @@ export type CampaignStaffCopy = {
   /** The confirmation before a campaign goes live: the staff member's own reading (no counsel yet, 2026-10-05). */
   activateConfirm: (title: string) => string;
   activateCheck: string;
+  /** The tick that lets Berth's own X account post this campaign's link (off by default), and what it means. */
+  announce: string;
+  announceHint: string;
   /** Deleting a campaign that never took on money: the one confirm line naming it, the button, and what it says after. */
   deleteConfirm: (title: string, code: string) => string;
   /** The reason a delete asks for, kept in the audit log. */
@@ -1727,8 +1756,10 @@ export type CampaignStaffCopy = {
   setUpLine: (setUp: string, judged: string) => string;
   unlinked: string;
   noSignals: string;
+  /** Under the signals of a claim from a country that could not be told: a suggestion, never an automatic reject. */
+  suggestRejectUnknownCountry: string;
   noDeviceSignals: string;
-  signals: Record<"email_alias" | "close_signup" | "shared_wallet" | "same_payout" | "same_email_domain", string>;
+  signals: Record<"email_alias" | "close_signup" | "shared_wallet" | "same_payout" | "same_email_domain" | "unknown_country", string>;
   payTo: (amount: string, chain: string) => string;
   approve: string;
   reject: string;
@@ -2056,6 +2087,8 @@ export type EmailCopy = {
   /** Before the privacy contact's address, at the foot of every security notice. */
   notYou: string;
   securityWhy: string;
+  /** Account notices (a campaign reward paid): sent whatever the settings say. */
+  accountWhy: string;
   why: Record<"orders" | "friends" | "weekly", string>;
   unsubscribe: string;
   signoff: string;
@@ -3157,6 +3190,7 @@ export const COPY: Copy = {
     buyNote: "Selling and withdrawing never wait on this.",
     continueSell: "Sell without accepting",
     sellNote: "You can sell without accepting. Buying waits until you do.",
+    campaignNote: "The offer you joined through is paid only once you accept. Nothing else waits on it.",
     failed: "That did not save. Try again.",
   },
   policyNotice: {
@@ -3975,8 +4009,9 @@ export const COPY: Copy = {
     openBerth: "Open Berth",
     notYou: "Not you? Write to us at",
     securityWhy: "This is a security notice. Berth sends these to every account with an email, whatever your email settings say.",
+    accountWhy: "This is about money paid to your account. Berth sends these to every account with an email, whatever your email settings say.",
     why: {
-      orders: "You get this because emails about your orders and payments are on.",
+      orders: "You get this because emails about your orders are on.",
       friends: "You get this because friend emails are on.",
       weekly: "You get this because the weekly summary is on.",
     },
@@ -4108,9 +4143,10 @@ export const COPY: Copy = {
     settings: {
       sectionLabel: "Email",
       goesTo: (address) => `Notices go to ${address}.`,
-      securityAlways: "Security notices always reach you: a wallet added or removed, accounts merged, an AI connected.",
+      securityAlways:
+        "Security notices always reach you: a wallet added or removed, accounts merged, an AI connected. So does the note that an offer's reward was paid to your account.",
       kinds: {
-        orders: { label: "Orders and payments", sub: "When a limit order fills or expires, and when an offer's USDC is paid." },
+        orders: { label: "Orders", sub: "When a limit order fills or expires." },
         friends: { label: "Friends", sub: "When someone asks to be your friend." },
         weekly: { label: "Weekly summary", sub: "On Mondays, your week beside the S&P 500 ETF." },
       },
@@ -4171,12 +4207,12 @@ export const COPY: Copy = {
           "Recurring buys you set before Berth retired them on 4 October 2026. For each plan: the listing, the dollar amount, weekly or monthly and on which day, your browser's time zone, and, if you chose it, how far under the price to wait. For each time a plan came due: when it was due, whether you opened it, signed it or let it pass, the order that answered it, and whether its reminder went out. Berth no longer reads or adds to this record.",
           "Your daily value. Once a day, after the New York close, we read your balances from the blockchain and keep that day's holdings and value, so your history can be drawn. To show your account and its history, our servers also read the public balances of the EVM wallets linked to your account on Robinhood Chain, through public RPC providers. They read them again when your AI asks about your holdings and when we check what you still hold for XP.",
           "Invite links. When someone opens an invite link, we count the visit against the invite code. We do not record who opened it.",
-          "Campaigns. If you open your account through a campaign's link: which campaign, when your account was opened and set up (a verified email, a username and a wallet), whether you opened Berth signed in on the days the rules look at, and the transaction that paid you. To prevent abuse we compare each claim with other accounts and with the other claims in the same campaign: whether a wallet or an email address, or a variant of one, is shared, whether two claims share an email domain that is not a public mail provider, whether accounts signed up within minutes of each other, and whether a payout address is shared. A reviewer at Berth sees the claim with your email address and wallets, and records the decision and any note about it. We use all of this to pay each reward once, to the right person, and to refuse abuse.",
+          "Campaigns. If you open your account through a campaign's link: which campaign, when your account was opened and set up (a verified email, a username and a wallet), whether you opened Berth signed in on the days the rules look at, and the transaction that paid you. To prevent abuse we compare each claim with other accounts and with the other claims in the same campaign: whether a wallet or an email address, or a variant of one, is shared, whether two claims share an email domain that is not a public mail provider, whether accounts signed up within minutes of each other, whether a payout address is shared, and whether the country your connection came from at sign up could not be told. A reviewer at Berth sees the claim with your email address and wallets, and records the decision and any note about it. We use all of this to pay each reward once, to the right person, and to refuse abuse.",
           "Your AI. If you connect Claude, ChatGPT, Grok or another AI, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what your AI asked or what Berth answered.",
           "Error reports. When an order fails or does not settle, the app sends a report so we can fix the cause: the step it stopped at, the networks, the token and amount, the transaction hashes, a shortened form of your address, the error text, recent app logs, the page address, your screen size and your browser's user agent. Keys and tokens are removed first, and it never includes your email address.",
           "Usage statistics, only if you allow it. We count page views with Vercel Web Analytics, which uses no cookies, and send it each page's address without anything in it that could name you, under the same Help improve Berth choice as product analytics.",
           "Product analytics, only if you allow it. Which screens you open and which steps you take, and a replay of how you moved through the app with every amount, balance, address and name hidden, through PostHog. See Product analytics below.",
-          "Your country. With each visit and each request to your account, our host Vercel tells us the country your connection comes from, and for some countries its region, so Berth can say where it is not offered and not open an account or take an order there. We use it for that one answer and do not store or log it.",
+          "Your country. With each visit and each request to your account, our host Vercel tells us the country your connection comes from, and for some countries its region, so Berth can say where it is not offered and not open an account or take an order there. We use it for that one answer and do not store or log it. For a sign up through a campaign's link, we keep only a yes or no for whether the country could not be told, used as a signal for the reviewer, never the country itself.",
           "Emails we send. For each notice: its type, what it was about (an order, a connection), whether it was sent, and the email provider's message identifier. Never the email's text: while a notice waits to be sent again, we keep only what it will name (such as a listing, a price or a shortened wallet address), and delete that once it is sent. Your choices of which emails to get, and whether mail to your address bounced or was reported as spam.",
         ],
         after: [
@@ -4277,12 +4313,13 @@ export const COPY: Copy = {
         ],
         list: [
           "Security notices: a wallet added to or removed from your account, two accounts merged, an AI connected. These always go out, because they are how you would learn that someone else is using your account. They never ask you for a code or a password.",
+          "Account notices: a reward from an offer was paid to your account. These always go out, because the money is yours.",
           "Order notices: a limit order filled, or expired and the money came back. On unless you turn them off.",
           "Friend notices: someone asked to be your friend, at most one email a day. On unless you turn them off.",
           "The weekly summary: on Mondays, what your account was worth at the week's last close, its change beside the S&P 500 ETF, what you hold and how each moved, what filled and which limit orders expired, and how many new friends and Salutes you had. Off unless you turn it on.",
         ],
         after: [
-          "We do not track whether you open an email or click its links. Every notice other than a security notice has a link to turn that kind off, and you can change them all under Email in the app's settings. If mail to your address bounces or is reported as spam, we stop sending to it.",
+          "We do not track whether you open an email or click its links. Every notice other than a security or account notice has a link to turn that kind off, and you can change them all under Email in the app's settings. If mail to your address bounces or is reported as spam, we stop sending to it.",
         ],
       },
       {
@@ -4414,8 +4451,10 @@ export const COPY: Copy = {
       {
         id: "what-changed",
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
-        body: ["The first change below is new on 8 October 2026. The others came on 6 October 2026."],
+        body: ["The first three changes below are new on 8 October 2026. The others came on 6 October 2026."],
         list: [
+          "For a sign up through a campaign's link, we keep only whether the country your connection came from could not be told, as a signal for the reviewer. Never the country itself.",
+          "A note that a campaign reward was paid to your account is an account notice, sent whatever your email settings say.",
           "During a beta, some accounts can have a buy delivered to their own wallet on Robinhood Chain, where what it holds is public, and our servers read the public balances of your linked EVM wallets there through public RPC providers.",
           "The legal basis for each use of your data is now listed use by use.",
           "A new section on international transfers.",
@@ -5057,14 +5096,49 @@ export const COPY: Copy = {
     campaignLink: "How it works:",
   },
   campaign: {
-    landingTitle: "A Berth welcome offer",
-    landingLede: (amount, days) =>
-      `Open a new Berth account through this link, set it up and still use Berth ${dayCount(days)} later, and ${amount} in USDC on Base is added to your account, while places last.`,
-    landingSameBrowser: "Sign up in this same browser, right after opening the link. The offer is remembered only here, and only for a new account.",
+    landing: {
+      title: "A Berth welcome offer",
+      offer: (amount) => `${amount} in USDC on Base for a new Berth account opened from this link.`,
+      rulesHeading: "The short rules",
+      rules: (days, ends) => [
+        "A new account, opened in this browser from this link.",
+        `Opened while the offer runs, until ${ends}.`,
+        "Set up with a verified email, a username and a wallet with an address on Base, and the terms accepted.",
+        `Still in use ${dayCount(days)} after you set it up.`,
+        "Places are limited.",
+        "Not open in the United States, or anywhere Berth is not available.",
+        "One per person.",
+        "A person at Berth reviews every reward.",
+        "Paid by hand, usually within a few days.",
+      ],
+      endsAt: (day, time) => `${day} at ${time}, your time`,
+      fullRules: "Read the full rules",
+      sameBrowser: "Sign up in this same browser, right after opening the link. The offer is remembered only here, and only for a new account.",
+      start: "Start",
+      full: {
+        title: "Every place in this offer is taken",
+        body: "You can still open a Berth account. No reward comes with it.",
+      },
+      ended: {
+        title: "This offer has ended",
+        body: "You can still open a Berth account. No reward comes with it.",
+      },
+      paused: {
+        title: "This offer is paused for now",
+        body: "You can still open a Berth account. No reward comes with it while the offer is paused.",
+      },
+      unknown: {
+        title: "There is no open offer at this link",
+        body: "You can still open a Berth account. No reward comes with it.",
+      },
+    },
     setUp: (amount, days) =>
-      `You joined through a Berth offer. Once your account is set up, with a verified email, a username and a wallet with an address on Base, and you still use Berth ${dayCount(days)} later, ${amount} in USDC on Base is added to your account, while places last.`,
+      `You joined through a Berth offer. Once your account is set up, with a verified email, a username and a wallet with an address on Base, you have accepted the terms and you still use Berth ${dayCount(days)} later, ${amount} in USDC on Base is added to your account, while places last.`,
+    acceptTerms: "Accept the terms",
     waiting: (amount, days, deadline) =>
       `Your account is set up. Every place in this offer is taken for now. If a place frees up for you before ${deadline}, ${amount} in USDC on Base is added once you still use Berth ${dayCount(days)} after that.`,
+    full: (amount, days, deadline) =>
+      `Every place in the Berth offer you joined through is taken for now. Set up your account and accept the terms to wait in line: if a place frees up for you before ${deadline}, ${amount} in USDC on Base is added once you still use Berth ${dayCount(days)} after that.`,
     paused: "The Berth offer you joined through is paused for now.",
     staying: (amount, eligible) => `Your account is set up. If you still use Berth on ${eligible}, ${amount} in USDC on Base is added to your account.`,
     qualified: "You stayed. Your reward is usually paid within a few days.",
@@ -5085,6 +5159,9 @@ export const COPY: Copy = {
       activateConfirm: (title) =>
         `Activate ${title}? From now on, a new account opened through its link inside its dates, set up and still in use after the stated days, earns its owner the stated amount in USDC on Base. Activate only once you have read this campaign, its rules and the terms yourself, and they say exactly what will happen.`,
       activateCheck: "I have read this campaign, its rules and the terms, and they match what Berth will do.",
+      announce: "Announce on X",
+      announceHint:
+        "Off unless ticked. When ticked, Berth's own X account may post this campaign's link every few days while it is live and has places left. Leave it off to share the link only by hand.",
       activateNeedsReviewed: "Still needed: tick that you have read this campaign, its rules and the terms.",
       activateNeedsFunding: "Still needed: tick the funding check above, once the address and the network are right.",
       deleteConfirm: (title, code) =>
@@ -5191,6 +5268,8 @@ export const COPY: Copy = {
       setUpLine: (setUp, judged) => `${setUp}. Judged on ${judged}.`,
       unlinked: "unlinked",
       noSignals: "None found.",
+      suggestRejectUnknownCountry:
+        "Suggested: reject, unless you have good reason to think this person is not in the United States or another place Berth is not offered. Nothing is rejected on its own.",
       noDeviceSignals: "Berth keeps no device data, so no device signal is shown.",
       signals: {
         email_alias: "Email is an alias of another claim's",
@@ -5198,6 +5277,7 @@ export const COPY: Copy = {
         shared_wallet: "Shares a wallet with another claim",
         same_email_domain: "Its email domain, not a public mail provider, is on another claim of this campaign too",
         same_payout: "Another claim would be paid to the same address",
+        unknown_country: "Signed up from a country that could not be told, often a VPN. Check it is not the United States or another place Berth is not offered",
       },
       payTo: (amount, chain) => `${amount} USDC on ${chain}`,
       approve: "Approve",
@@ -5262,6 +5342,7 @@ export const COPY: Copy = {
         has_places: "A claim of this campaign holds or once held a place, or was paid, so the campaign is kept. Pause it instead.",
         staff_ineligible: "This account is marked not eligible for campaigns. See its page under Users.",
         no_person: "This account is no longer there.",
+        terms_not_accepted: "This account has not accepted the terms. It cannot be approved until it does.",
         fresh_session: "Sign in again to do this. Staff actions need a sign in from the last fifteen minutes, by email.",
         error: "That did not go through. Nothing was changed. Try again.",
         bad_reason: "Choose a reason.",

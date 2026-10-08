@@ -8,12 +8,13 @@ import { createStaffSession } from "../staff-sessions";
 import { mintStaffCookie, staffCookieName, staffSessionKey } from "../staff-session";
 import { claimById } from "./store";
 import { campaignById } from "./store";
-import { addPayoutSource, approveClaim, createCampaign, deleteCampaign, markClaimPaid, rejectClaim, setCampaignActive } from "./actions";
+import { addPayoutSource, approveClaim, createCampaign, deleteCampaign, markClaimPaid, rejectClaim, setCampaignActive, setCampaignAnnounce } from "./actions";
 
 const FUNDING_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-import { deriveSignals, foldEmail, revealClaim, staffQueue } from "./queue";
+import { deriveSignals, foldEmail, formatQueue, revealClaim, staffQueue } from "./queue";
 import { TRANSFER_TOPIC, USDC_BASE, type Receipt } from "./usdc";
-import { advance, heldWallet, joined, qualifiedClaim, username } from "./test-kit";
+import { advance, campaign as kitCampaign, heldWallet, joined, person as kitPerson, qualifiedClaim, username } from "./test-kit";
+import { attributeSignup } from "./store";
 
 /**
  * The staff side against the real schema: the gate (STAFF_ADMIN_IDS, never
@@ -256,6 +257,30 @@ describe("campaigns", () => {
       token: USDC_BASE,
     });
     expect((await audits("campaign.pause")).at(-1)?.detail.outcome).toBe("done");
+  });
+
+  it("are never announced on X until staff tick it on that campaign, audited both ways", async () => {
+    const staff = await person();
+    const created = await createCampaign(staff.id, {
+      code: "announce-5",
+      title: "Announce",
+      amountUsd: 5,
+      budgetUsd: 100,
+      maxClaims: 20,
+      stayDays: 14,
+      startsAt: new Date(Date.now() - 1000).toISOString(),
+      endsAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    });
+    const id = String(created.ok && created.detail?.id);
+    expect((await campaignById(id))!.announce_on_x).toBe(false);
+    expect((await staffQueue()).campaigns.find((campaign) => campaign.id === id)?.announceOnX).toBe(false);
+    expect(await setCampaignAnnounce(staff.id, id, "yes")).toEqual({ ok: false, refusal: "bad_input" });
+    expect((await setCampaignAnnounce(staff.id, id, true)).ok).toBe(true);
+    expect((await campaignById(id))!.announce_on_x).toBe(true);
+    expect((await setCampaignAnnounce(staff.id, id, false)).ok).toBe(true);
+    expect((await campaignById(id))!.announce_on_x).toBe(false);
+    expect((await audits("campaign.announce_on")).at(-1)?.detail).toMatchObject({ announceOnX: true, outcome: "done" });
+    expect((await audits("campaign.announce_off")).at(-1)?.detail).toMatchObject({ announceOnX: false, outcome: "done" });
   });
 
   it("refuses a bad campaign and a taken code, audited", async () => {
@@ -570,6 +595,31 @@ describe("signals", () => {
     // Each claim pays its own account: two people at one address is the signal.
     expect(payouts.get("5")).toEqual(["same_payout"]);
     expect(payouts.get("8")).toEqual([]);
+  });
+});
+
+describe("a sign up from a country that cannot be told", () => {
+  it("makes its claim all the same, and the queue flags it for review", async () => {
+    await kitCampaign("vpn-oct", { stayDays: 14 });
+    const unknown = await kitPerson();
+    const known = await kitPerson();
+    const flagged = await attributeSignup(unknown.id, "vpn-oct", { countryUnknown: true });
+    const plain = await attributeSignup(known.id, "vpn-oct");
+    expect(flagged).toBeTruthy();
+    expect(plain).toBeTruthy();
+    for (const [user, claimId] of [
+      [unknown, flagged!],
+      [known, plain!],
+    ] as const) {
+      await username(user);
+      expect(await advance(claimId)).toBe("holding");
+    }
+    const claims = (await staffQueue()).claims;
+    expect(claims.find((claim) => claim.id === flagged)!.signals).toContain("unknown_country");
+    expect(claims.find((claim) => claim.id === plain)!.signals).not.toContain("unknown_country");
+    // A suggestion only: the claim keeps its place until a person decides.
+    expect(claims.find((claim) => claim.id === flagged)!.state).toBe("holding");
+    expect(formatQueue({ campaigns: [], claims: claims.filter((claim) => claim.id === flagged) })).toContain("suggested: reject, unless staff override");
   });
 });
 

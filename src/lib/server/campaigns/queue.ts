@@ -1,7 +1,9 @@
 import { getAddress } from "viem";
 import { getSql } from "@/lib/server/db";
 import { parseCaip10 } from "@/lib/identity/caip";
-import { CLAIM_STATES, SLOT_STATES, type CampaignKind, type ClaimState } from "@/lib/campaigns";
+import { CLAIM_STATES, SLOT_STATES, suggestedAction, type CampaignKind, type ClaimState } from "@/lib/campaigns";
+
+export { suggestedAction };
 import { CAMPAIGN_COLUMNS, toCampaign, type CampaignRow } from "@/lib/server/campaigns/store";
 import { PAYOUT_CHAIN } from "@/lib/server/campaigns/usdc";
 import { foldEmail } from "@/lib/server/campaigns/fold-email";
@@ -21,7 +23,7 @@ export { foldEmail };
  * device signal exists; the page says so. Read only.
  */
 
-export type SignalCode = "email_alias" | "close_signup" | "shared_wallet" | "same_payout" | "same_email_domain";
+export type SignalCode = "email_alias" | "close_signup" | "shared_wallet" | "same_payout" | "same_email_domain" | "unknown_country";
 
 export { WEBMAIL_DOMAINS };
 
@@ -85,6 +87,8 @@ export type CampaignMeter = {
   stayDays: number;
   /** Never activated: a draft. */
   draft: boolean;
+  /** Staff ticked "Announce on X": Berth's own X account may post its link. */
+  announceOnX: boolean;
   /**
    * Staff may delete it now: a signup campaign, inactive, and no claim of it
    * holds or ever held a place, was paid, or stands on a person's marks
@@ -188,7 +192,7 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
   );
   const rows = (await sql.query(
     `select cl.id, cl.campaign_id, c.code, c.kind, cl.state, cl.created_at, cl.onboarded_at, cl.eligible_at, cl.hold_evidence,
-            cl.payout_address, cl.paid_at, cl.paid_tx, cl.paid_verified,
+            cl.payout_address, cl.paid_at, cl.paid_tx, cl.paid_verified, cl.country_unknown,
             coalesce(cl.reject_reason, cl.expire_reason) as reason, c.amount_usd::float8 as amount_usd,
             p.id as person_id, p.email, p.created_at as signup_at, p.wallet_address as home,
             (select max(x.last_seen_at) from users x where x.id = p.id or x.retired_into = p.id) as last_seen_at,
@@ -289,7 +293,8 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
       },
       paid: row.paid_tx ? { at: iso(row.paid_at), tx: String(row.paid_tx), verified: (row.paid_verified as boolean | null) ?? null } : null,
       reason: (row.reason as string | null) ?? null,
-      signals: signals.get(String(row.id)) ?? [],
+      // The sign up's country could not be told (often a VPN): never refused, always looked at.
+      signals: [...(signals.get(String(row.id)) ?? []), ...(row.country_unknown === true ? (["unknown_country"] as const) : [])],
       staffIneligibleAt: iso(row.staff_ineligible_at),
       eligibilityNow: null,
     });
@@ -319,6 +324,7 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
         maxClaims: campaign.max_claims,
         stayDays: campaign.hold_days,
         draft: campaign.activated_at === null,
+        announceOnX: campaign.announce_on_x,
         deletable: campaign.kind === "signup" && !campaign.active && !kept.has(campaign.id),
         counts: record,
         reservedUsd: reserved * campaign.amount_usd,
@@ -363,6 +369,7 @@ export function formatQueue(queue: StaffQueue): string {
       if (claim.paid) lines.push(`    paid ${day(claim.paid.at)} tx ${claim.paid.tx} ${claim.paid.verified ? "verified" : "NOT verified"}`);
       if (claim.reason) lines.push(`    reason ${claim.reason}`);
       lines.push(`    signals ${claim.signals.join(", ") || "none"} (no device data is kept)`);
+      if (suggestedAction(claim) === "reject") lines.push("    suggested: reject, unless staff override (country could not be told)");
     }
   }
   return lines.join("\n");

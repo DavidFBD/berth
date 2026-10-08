@@ -63,8 +63,7 @@ It is yours to keep, spend or take out, like any other money in your wallet.
 
 Open Berth: https://www.berthmarkets.com/
 
-You get this because emails about your orders and payments are on.
-Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+This is about money paid to your account. Berth sends these to every account with an email, whatever your email settings say.
 
 Berth. Wall Street, in your wallet."
 `;
@@ -93,7 +92,7 @@ Your limit order to buy NVIDIA reached its end date without filling. The money c
 
 Open Berth: https://www.berthmarkets.com/
 
-You get this because emails about your orders and payments are on.
+You get this because emails about your orders are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
 Berth. Wall Street, in your wallet."
@@ -111,7 +110,7 @@ Received: 0.5046 NVIDIA
 
 Open Berth: https://www.berthmarkets.com/
 
-You get this because emails about your orders and payments are on.
+You get this because emails about your orders are on.
 Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
 
 Berth. Wall Street, in your wallet."

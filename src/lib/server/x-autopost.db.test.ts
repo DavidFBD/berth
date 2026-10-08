@@ -326,12 +326,20 @@ describe("the evening's post", () => {
   });
 });
 
-async function signupCampaign({ code = "welcome-oct", maxClaims = 20, budget = 100, amount = 5, active = true, ends = MON + 20 * DAY } = {}) {
+async function signupCampaign({
+  code = "welcome-oct",
+  maxClaims = 20,
+  budget = 100,
+  amount = 5,
+  active = true,
+  ends = MON + 20 * DAY,
+  announce = true,
+} = {}) {
   await sql.query(`alter table campaigns add column if not exists kind text not null default 'buy'`);
   const [{ id }] = (await sql.query(
-    `insert into campaigns (code, title, starts_at, ends_at, active, max_claims, budget_usd, amount_usd, hold_days, kind)
-     values ($1, $1, $2::timestamptz, $3::timestamptz, $4, $5, $6, $7, 7, 'signup') returning id`,
-    [code, new Date(MON - DAY).toISOString(), new Date(ends).toISOString(), active, maxClaims, budget, amount],
+    `insert into campaigns (code, title, starts_at, ends_at, active, max_claims, budget_usd, amount_usd, hold_days, kind, announce_on_x)
+     values ($1, $1, $2::timestamptz, $3::timestamptz, $4, $5, $6, $7, 7, 'signup', $8) returning id`,
+    [code, new Date(MON - DAY).toISOString(), new Date(ends).toISOString(), active, maxClaims, budget, amount, announce],
   )) as { id: string }[];
   return id;
 }
@@ -353,6 +361,25 @@ describe("the campaign", () => {
       [new Date(MON - DAY).toISOString(), new Date(MON + DAY).toISOString()],
     );
     expect(await readLiveCampaign(MON)).toBeNull();
+  });
+
+  it("is never posted unless staff ticked Announce on X on that campaign, which is off by default", async () => {
+    const x = fakeX();
+    const id = await signupCampaign({ announce: false });
+    expect(await readLiveCampaign(MON)).toBeNull();
+    const [{ announce_on_x }] = (await sql.query(
+      `insert into campaigns (code, title, starts_at, ends_at, active, kind) values ('plain-oct', 'x', $1::timestamptz, $2::timestamptz, true, 'signup')
+       returning announce_on_x`,
+      [new Date(MON - DAY).toISOString(), new Date(MON + 20 * DAY).toISOString()],
+    )) as { announce_on_x: boolean }[];
+    expect(announce_on_x).toBe(false);
+    expect(await readLiveCampaign(MON)).toBeNull();
+    // Neither as its own post nor as a calendar post's call to action.
+    const result = await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl });
+    for (const post of x.posts()) expect(JSON.parse(post.body).text).not.toContain("/c/");
+    if (result.ran) expect(result).not.toMatchObject({ source: "campaign" });
+    await sql.query(`update campaigns set announce_on_x = true where id = $1`, [id]);
+    expect(await readLiveCampaign(MON)).toMatchObject({ code: "welcome-oct" });
   });
 
   it("is live only while active, inside its dates, with a place and a reward's budget left", async () => {
