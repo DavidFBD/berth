@@ -35,7 +35,7 @@ import {
 import { preferPayChoice, type PreferPay } from "@/lib/funding-handoff";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
-import { formatTokenAmount, formatUsd } from "@/lib/format";
+import { formatTokenAmount, formatUsd, shortenAddress } from "@/lib/format";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import {
   amountText,
@@ -1068,7 +1068,9 @@ export function DepositDrawer({
                         {/* Where it goes, said once, only when it is not the Berth account. */}
                         {robinhoodToken && (
                           <p className="text-xs text-muted-foreground" data-testid="rh-arrival">
-                            {copy.rhChain.arrival}
+                            {delivery.delivery.address
+                              ? copy.rhChain.arrivalTo(shortenAddress(delivery.delivery.address, 4))
+                              : copy.rhChain.arrival}
                           </p>
                         )}
                         {/* Before signing: a later sell from there is this wallet's own fee to pay (rh-ux-sec B1). */}

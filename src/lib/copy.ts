@@ -208,6 +208,8 @@ export type Copy = {
     buySub: string;
     /** The buy sheet, under the quote: where the token goes. */
     arrival: string;
+    /** The same, naming the wallet by its shortened address (rh-ux-sec M3). */
+    arrivalTo: (shortAddress: string) => string;
     /** The fill toast's line for such a buy. */
     filledToastBody: string;
     /** The filled screen while the token travels from the fill to the wallet. */
@@ -2835,6 +2837,7 @@ export const COPY: Copy = {
     walletUnread: "Your wallet on Robinhood Chain could not be read just now, so what is there is not shown. Berth will try again shortly.",
     buySub: "Pay with what you hold, from more than 20 networks.",
     arrival: "Arrives in your own wallet on Robinhood Chain.",
+    arrivalTo: (shortAddress) => `Arrives in your own wallet ${shortAddress} on Robinhood Chain.`,
     filledToastBody: "It is on its way to your own wallet on Robinhood Chain.",
     onItsWayBody: (name) => `${name} is on its way to your own wallet on Robinhood Chain.`,
     arrivedBody: (name) => `${name} is in your own wallet on Robinhood Chain.`,
