@@ -13,7 +13,7 @@ import { useAvailability } from "@/components/availability/availability-context"
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useFirstLook } from "@/hooks/use-first-look";
-import { FIRST_LOOK_SYMBOLS } from "@/lib/first-look";
+import { FIRST_LOOK_SYMBOLS, holdProposals, type FirstBuyProposals } from "@/lib/first-look";
 import { FirstLookReadingView } from "@/components/first-look";
 import { STOCK_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
 import type { StoryCard } from "@/lib/news-stories";
@@ -243,12 +243,16 @@ export function FirstBuyStep({
   const prices = useListingPrices();
   const performance = useListingPerformance();
   const [picked, setChosen] = useState<TokenListing | null>(null);
-  const { lookOf, proposals } = useFirstLook();
+  const { lookOf, proposals: latest } = useFirstLook();
+  // The first settled list holds for the step's life (lib/first-look holdProposals).
+  const [held, setHeld] = useState<FirstBuyProposals | null>(null);
+  if (held === null && latest.kind !== "loading") setHeld(latest);
+  const proposals = holdProposals(held, latest);
   // Only names with news this week while any has it, each with its headline;
   // all four with no news line when none has (lib/first-look firstBuyProposals).
   const picks: TokenListing[] =
     proposals.kind === "loading" ? [] : proposals.symbols.flatMap((symbol) => LISTING_OF.get(symbol) ?? []);
-  // A choice the list no longer offers (the look came in after it) is no choice.
+  // Belt and braces: the held list always offers the choice, but a choice not on it is none.
   const chosen = picked && picks.some((listing) => listing.address === picked.address) ? picked : null;
   const line = unfunded ? (
     copy.firstPath.firstUnfunded

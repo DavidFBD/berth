@@ -204,6 +204,17 @@ export type FirstBuyProposals =
   | { kind: "news"; symbols: string[] }
   | { kind: "plain"; symbols: string[] };
 
+/**
+ * The list a first buy keeps once it has one: the first settled answer holds
+ * for the step's life, so a later read (a story aging out of the week, a
+ * refetch on focus) never reorders the rows or takes away a name the person
+ * chose. The news lines beside them still follow the latest answer, so
+ * nothing is claimed that it no longer backs.
+ */
+export function holdProposals(held: FirstBuyProposals | null, next: FirstBuyProposals): FirstBuyProposals {
+  return held && held.kind !== "loading" ? held : next;
+}
+
 export function firstBuyProposals({
   data,
   loading,

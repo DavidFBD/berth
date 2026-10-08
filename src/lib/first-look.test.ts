@@ -3,6 +3,7 @@ import {
   FIRST_LOOK_ABOUT_FLOOR,
   FIRST_LOOK_SYMBOLS,
   firstBuyProposals,
+  holdProposals,
   firstLookSymbols,
   judgeRecent,
   newsOf,
@@ -237,6 +238,17 @@ describe("firstBuyProposals", () => {
       const state = lookStateFor({ symbol, data: data({ SPY: silent, NVDA: { looked: true, inNews: true } }), loading: false, now: NOW });
       expect(state.kind === "shown" && newsOf(state.look)).toBeFalsy();
     }
+  });
+
+  it("keeps the first settled list for the step's life, so a later read never takes a chosen name away", () => {
+    const first = firstBuyProposals({ data: data({ NVDA: week("NVDA"), AAPL: week("AAPL") }), loading: false, now: NOW });
+    // A refetch where Apple's story aged out of the week.
+    const later = firstBuyProposals({ data: data({ NVDA: week("NVDA") }), loading: false, now: NOW });
+    expect(later).toEqual({ kind: "news", symbols: ["NVDA"] });
+    expect(holdProposals(first, later)).toBe(first);
+    // Until one settles, the latest is shown.
+    expect(holdProposals(null, { kind: "loading" })).toEqual({ kind: "loading" });
+    expect(holdProposals({ kind: "loading" }, later)).toBe(later);
   });
 
   it("holds the place while the look is on its way", () => {
