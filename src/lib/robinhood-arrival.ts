@@ -33,3 +33,14 @@ export function arrivalState({
   if (balance !== undefined && baseline !== undefined && balance > baseline) return { kind: "arrived" };
   return waitedOut ? { kind: "slow" } : { kind: "arriving" };
 }
+
+/** How often the wallet's balance is read while the delivery is awaited. */
+export const ARRIVAL_POLL_MS = 5_000;
+/** The same once the screen says the delivery is slow (rh-ux-sec m1): it carries on without the page. */
+export const ARRIVAL_SLOW_POLL_MS = 30_000;
+
+/** The arrival poll's interval: none once arrived, slower once the wait has run out. */
+export function arrivalPollMs({ arrived, slow }: { arrived: boolean; slow: boolean }): number | false {
+  if (arrived) return false;
+  return slow ? ARRIVAL_SLOW_POLL_MS : ARRIVAL_POLL_MS;
+}

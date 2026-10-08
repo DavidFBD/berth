@@ -5,13 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useSodaxContext } from "@sodax/dapp-kit";
 import { ChainKeys } from "@sodax/sdk";
 import type { RobinhoodRun } from "@/hooks/use-vault-action";
-import { arrivalState, type ArrivalState } from "@/lib/robinhood-arrival";
+import { arrivalPollMs, arrivalState, type ArrivalState } from "@/lib/robinhood-arrival";
 import { readRobinhoodBalances, robinhoodClient } from "@/lib/robinhood-chain";
 
 /** How long the relay's own record is waited for, the SDK's default; then the screen says it is slow. */
 const PACKET_WAIT_MS = 120_000;
-/** How often the wallet's balance is read meanwhile, once the fill is in. */
-const BALANCE_POLL_MS = 5_000;
 
 /**
  * Whether a buy delivered to Robinhood Chain has arrived (plan P2b), once
@@ -53,17 +51,6 @@ export function useRobinhoodArrival({
       return found.value.dst_tx_hash;
     },
   });
-  const baseline = run?.baseline;
-  const balance = useQuery({
-    queryKey: ["robinhood-arrival", "balance", run?.address, run?.rhAddress, fillTxHash ?? ""],
-    enabled: on && baseline !== undefined && !packet.data,
-    refetchInterval: (query) => (query.state.data !== undefined && baseline !== undefined && query.state.data > baseline ? false : BALANCE_POLL_MS),
-    retry: false,
-    queryFn: async (): Promise<bigint> => {
-      const [held] = await readRobinhoodBalances(robinhoodClient(), [{ rhAddress: run!.rhAddress }], [run!.address]);
-      return held ?? 0n;
-    },
-  });
   // The wait, counted from the moment the fill is in, per order: the key
   // that ran out is kept, so a new order starts its own wait.
   const waitKey = on ? `${run!.address}:${run!.rhAddress}:${fillTxHash ?? ""}` : null;
@@ -74,12 +61,26 @@ export function useRobinhoodArrival({
     return () => clearTimeout(timer);
   }, [waitKey]);
   const waitedOut = waitKey !== null && waitedOutKey === waitKey;
+  const slow = waitedOut || packet.isError;
+  const baseline = run?.baseline;
+  const balance = useQuery({
+    queryKey: ["robinhood-arrival", "balance", run?.address, run?.rhAddress, fillTxHash ?? ""],
+    enabled: on && baseline !== undefined && !packet.data,
+    // Every five seconds, every thirty once the screen says slow (rh-ux-sec m1).
+    refetchInterval: (query) =>
+      arrivalPollMs({ arrived: query.state.data !== undefined && baseline !== undefined && query.state.data > baseline, slow }),
+    retry: false,
+    queryFn: async (): Promise<bigint> => {
+      const [held] = await readRobinhoodBalances(robinhoodClient(), [{ rhAddress: run!.rhAddress }], [run!.address]);
+      return held ?? 0n;
+    },
+  });
 
   return arrivalState({
     enabled: on,
     deliveryTx: packet.data,
     balance: balance.data,
     baseline,
-    waitedOut: waitedOut || packet.isError,
+    waitedOut: slow,
   });
 }

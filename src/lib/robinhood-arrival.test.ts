@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrivalState } from "./robinhood-arrival";
+import { arrivalPollMs, arrivalState } from "./robinhood-arrival";
 
 const base = { enabled: true, deliveryTx: undefined, balance: undefined, baseline: undefined, waitedOut: false };
 
@@ -28,5 +28,13 @@ describe("arrivalState", () => {
   it("is slow, not failed, when neither sign comes inside the wait", () => {
     expect(arrivalState({ ...base, waitedOut: true })).toEqual({ kind: "slow" });
     expect(arrivalState({ ...base, waitedOut: true, deliveryTx: "0xdead" })).toEqual({ kind: "arrived", deliveryTx: "0xdead" });
+  });
+});
+
+describe("arrivalPollMs", () => {
+  it("reads every five seconds, every thirty once slow, and stops once arrived (rh-ux-sec m1)", () => {
+    expect(arrivalPollMs({ arrived: false, slow: false })).toBe(5_000);
+    expect(arrivalPollMs({ arrived: false, slow: true })).toBe(30_000);
+    expect(arrivalPollMs({ arrived: true, slow: true })).toBe(false);
   });
 });
