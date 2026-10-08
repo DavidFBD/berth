@@ -726,6 +726,37 @@ describe("Robinhood Chain in the portfolio", () => {
     expect(hubOnly).toMatchObject({ total: { NVDA: 1 }, robinhood: null });
   });
 
+  it("keeps the Robinhood Chain part on the day, and treats an account holding there by transfer as on Robinhood Chain (rh-server m4)", async () => {
+    const transferred = await account(1);
+    await placeOrder(transferred.id);
+    await writeMarks("NVDA", [{ day: "2026-09-24", close: 200 }], []);
+    // Thursday: read, with one NVDA in the wallet on Robinhood Chain, though no Berth order went there.
+    expect(
+      await runPortfolioSnapshot({
+        now: new Date("2026-09-24T23:05:00Z"),
+        readRobinhood: onRobinhood({ [wallet(1)]: { NVDA: 1 } }),
+        deriveHubWallet: async (spoke) => spoke,
+        readBalances: async () => ({ NVDA: 1 }),
+        livePrices: async () => ({}),
+      }),
+    ).toMatchObject({ written: 1 });
+    expect((await loadPortfolioDays(transferred.id))[0].holdings).toEqual([{ symbol: "NVDA", quantity: 2, price: 200, source: "mark", robinhood: 1 }]);
+    expect(await hasRobinhoodOrders(transferred.id)).toBe(true);
+    expect((await snapshotAccounts())[0].robinhoodOrders).toBe(true);
+    // Friday: Robinhood Chain does not answer. No low day that would look like a sale.
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    expect(
+      await runPortfolioSnapshot({
+        now: FRIDAY_EVENING,
+        readRobinhood: onRobinhood({}),
+        deriveHubWallet: async (spoke) => spoke,
+        readBalances: async () => ({ NVDA: 1 }),
+        livePrices: async () => ({}),
+      }),
+    ).toMatchObject({ written: 0, failed: 1 });
+    expect((await loadPortfolioDays(transferred.id)).map((day) => day.day)).toEqual(["2026-09-24"]);
+  });
+
   it("knows whether one account has an order there", async () => {
     const delivered = await account(1);
     const hubOnly = await account(2);

@@ -123,15 +123,28 @@ export function sumBalances(parts: readonly Record<string, number>[]): Record<st
 }
 
 /**
- * Whether any of the account's orders was delivered to, or sold from,
- * Robinhood Chain (`orders.holding_chain`): what decides whether a read
- * that could not reach that chain may stand on the hub alone.
+ * Whether an account (`u`) is on Robinhood Chain: any of its orders was
+ * delivered to or sold from there (`orders.holding_chain`), or its latest
+ * stored day held something in its own wallets there (`holdings[].robinhood`,
+ * so tokens that arrived by transfer count too, rh-server m4). What decides
+ * whether a read that could not reach that chain may stand on the hub alone.
  */
+const ON_ROBINHOOD_SQL = `(
+  exists (select 1 from orders r where r.user_id = u.id and r.holding_chain = 'robinhood')
+  or exists (
+    select 1 from portfolio_days p
+      cross join lateral jsonb_array_elements(case when jsonb_typeof(p.holdings) = 'array' then p.holdings else '[]'::jsonb end) h
+     where p.user_id = u.id
+       and p.day = (select max(q.day) from portfolio_days q where q.user_id = u.id)
+       and coalesce((h->>'robinhood')::numeric, 0) > 0
+  )
+)`;
+
+/** ON_ROBINHOOD_SQL for one account. */
 export async function hasRobinhoodOrders(userId: string): Promise<boolean> {
-  const rows = (await getSql().query(
-    `select exists (select 1 from orders where user_id = $1 and holding_chain = 'robinhood') as found`,
-    [userId],
-  )) as { found: boolean }[];
+  const rows = (await getSql().query(`select ${ON_ROBINHOOD_SQL} as found from users u where u.id = $1`, [userId])) as {
+    found: boolean;
+  }[];
   return rows[0]?.found === true;
 }
 
@@ -283,7 +296,16 @@ export function combineAccountDays(own: AccountDays, retired: readonly AccountDa
     for (const part of parts) {
       for (const holding of part.holdings) {
         const known = holdings.get(holding.symbol);
-        holdings.set(holding.symbol, known ? { ...known, quantity: known.quantity + holding.quantity } : { ...holding });
+        holdings.set(
+          holding.symbol,
+          known
+            ? {
+                ...known,
+                quantity: known.quantity + holding.quantity,
+                ...((known.robinhood ?? 0) + (holding.robinhood ?? 0) > 0 && { robinhood: (known.robinhood ?? 0) + (holding.robinhood ?? 0) }),
+              }
+            : { ...holding },
+        );
       }
     }
     // A snapshot only when every part is a snapshot taken that very day;
@@ -339,7 +361,7 @@ export async function savePortfolioDay(
 export async function snapshotAccounts(): Promise<SnapshotAccount[]> {
   const rows = (await getSql().query(
     `select u.id, u.wallet_address,
-            exists (select 1 from orders r where r.user_id = u.id and r.holding_chain = 'robinhood') as robinhood_orders
+            ${ON_ROBINHOOD_SQL} as robinhood_orders
        from users u
       where u.wallet_address ~ '^0x[0-9a-f]{40}$'
         and (exists (select 1 from orders o where o.user_id = u.id)
@@ -524,7 +546,7 @@ export async function runPortfolioSnapshot({
   const runRobinhood: RobinhoodHoldingsReader = (owners) => withinBudget(readRobinhood(owners), robinhoodBudgetMs);
 
   const snapshotOne = async (account: SnapshotAccount, expired: () => boolean) => {
-    const { total: balances } = await readAccountBalances(
+    const { total: balances, robinhood } = await readAccountBalances(
       walletsOf(account),
       readBalances,
       deriveHubWallet,
@@ -539,6 +561,13 @@ export async function runPortfolioSnapshot({
     });
     // Already counted as failed: a late answer counts and writes nothing.
     if (expired()) return;
+    // Keep the Robinhood Chain part beside each holding, so a later run
+    // knows this account holds there (rh-server m4).
+    if (valued.ok && robinhood) {
+      valued.day.holdings = valued.day.holdings.map((holding) =>
+        (robinhood[holding.symbol] ?? 0) > 0 ? { ...holding, robinhood: Math.min(robinhood[holding.symbol], holding.quantity) } : holding,
+      );
+    }
     if (!valued.ok) {
       console.warn("[portfolio] unpriced, no row", account.id, valued.unpriced.join(","));
       summary.failed += 1;
