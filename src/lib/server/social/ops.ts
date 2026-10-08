@@ -51,10 +51,11 @@ export async function runSocialOp(
       // fixed answer, with no lookup.
       if (!hasVerifiedEmail(viewer)) return ok(NOT_FOUND);
       if (!(await take("find"))) return slow;
-      return ok(await readCard(viewer, body.handle));
+      // The profile page's own read: the card and its extras (profile-more).
+      return ok(await readCard(viewer, body.handle, new Date(), { more: true }));
     }
     if (!(await take("card"))) return slow;
-    const answer: CardAnswer = await readLinkCard(viewer, body.token);
+    const answer: CardAnswer = await readLinkCard(viewer, body.token, { more: true });
     return ok(answer);
   }
 

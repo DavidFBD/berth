@@ -4,7 +4,7 @@ import { lookupKey } from "@/lib/handle";
 import type { CardAnswer, FriendAction, FriendsList, Person } from "@/lib/social-types";
 import { socialAudit } from "@/lib/server/social/audit";
 import { sendNotice } from "@/lib/server/email/notify";
-import { NOT_FOUND, readCardOf, relationTo, SIGN_IN } from "@/lib/server/social/cards";
+import { NOT_FOUND, readCardOf, relationTo, SIGN_IN, type CardOptions } from "@/lib/server/social/cards";
 import { anyTarget, hasVerifiedEmail, SHOWN_SQL, visibleTarget, type SocialViewer } from "@/lib/server/social/people";
 
 /**
@@ -335,8 +335,8 @@ async function linkOwner(token: unknown): Promise<string | null> {
 }
 
 /** The card a friend link opens, as the viewer may see it: NOT_FOUND for a dead link, a hidden card or a block. */
-export async function readLinkCard(viewer: SocialViewer | null, token: unknown): Promise<CardAnswer> {
+export async function readLinkCard(viewer: SocialViewer | null, token: unknown, options: CardOptions = {}): Promise<CardAnswer> {
   if (!viewer) return SIGN_IN;
   const owner = await linkOwner(token);
-  return owner ? readCardOf(viewer, owner) : NOT_FOUND;
+  return owner ? readCardOf(viewer, owner, new Date(), options) : NOT_FOUND;
 }

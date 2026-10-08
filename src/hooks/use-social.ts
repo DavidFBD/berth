@@ -19,6 +19,7 @@ import type {
   ReportReason,
 } from "@/lib/social-types";
 import type { HandleRefusal } from "@/lib/handle";
+import { carryMore } from "@/lib/profile-more";
 import type { FriendsHolding, FriendsHoldingResponse } from "@/lib/social-proof";
 
 /**
@@ -281,6 +282,9 @@ export function useCard(target: { handle: string } | { token: string }) {
     queryKey: KEYS.card(key, id),
     enabled: !privy.enabled || privy.ready,
     staleTime: 30_000,
+    // Find a friend caches the plain card under the same key: the page asks
+    // again for its extras (CardAnswer.more) rather than show it without them.
+    refetchOnMount: (query) => (query.state.data?.found && !query.state.data.more ? "always" : true),
     retry: 1,
     queryFn: () =>
       must(call<CardAnswer>("handle" in target ? "card" : "link-card", "handle" in target ? { handle: target.handle } : { token: target.token })),
@@ -341,7 +345,10 @@ export function useSocialAction() {
       return { done: true, card: null };
     },
     onSuccess: (result, vars) => {
-      if (result.card) queryClient.setQueryData(KEYS.card(key, vars.handle), result.card);
+      if (result.card) {
+        const next = result.card;
+        queryClient.setQueryData<CardAnswer>(KEYS.card(key, vars.handle), (previous) => carryMore(previous, next));
+      }
       if (vars.kind === "friend" && vars.token) void queryClient.invalidateQueries({ queryKey: ["social-card", key] });
       if (vars.kind !== "report") {
         void queryClient.invalidateQueries({ queryKey: KEYS.friends(key) });

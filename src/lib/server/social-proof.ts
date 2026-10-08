@@ -226,9 +226,27 @@ export async function friendsHolding(viewer: SocialViewer, now = new Date()): Pr
  * card as the viewer sees it. Null when it may not be said: not friends,
  * either side not sharing, a block, or no recent daily value.
  */
-export async function friendHolds(viewer: SocialViewer, friendId: string, now = new Date()): Promise<string[] | null> {
-  if (friendId === viewer.id || !(await viewerShares(viewer.id))) return null;
+export async function friendHolds(viewer: SocialViewer, friendId: string, now = new Date(), shares?: boolean): Promise<string[] | null> {
+  // `shares`: the caller already read SHARES_HOLDINGS_SQL for the viewer (the card does), saving a round trip.
+  if (friendId === viewer.id || !(shares ?? (await viewerShares(viewer.id)))) return null;
   const rows = await sharingFriendDays(viewer.id, now, friendId);
+  if (!rows[0]) return null;
+  return holdsListings(parseHoldings(rows[0].holdings), COUNTED_SYMBOLS);
+}
+
+/**
+ * The board listings the viewer holds, read the way a friend's are (their
+ * last daily value, no older than FRIEND_HOLDINGS_MAX_AGE_DAYS), for "You
+ * both hold" on a friend's card. Null unless the viewer shares too: it is
+ * only ever set beside friendHolds, which asks the same.
+ */
+export async function ownHolds(viewer: SocialViewer, now = new Date(), shares?: boolean): Promise<string[] | null> {
+  if (!(shares ?? (await viewerShares(viewer.id)))) return null;
+  const since = new Date(now.getTime() - FRIEND_HOLDINGS_MAX_AGE_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const rows = (await getSql().query(
+    `select holdings from portfolio_days where user_id = $1 and day >= $2::date order by day desc limit 1`,
+    [viewer.id, since],
+  )) as { holdings: unknown }[];
   if (!rows[0]) return null;
   return holdsListings(parseHoldings(rows[0].holdings), COUNTED_SYMBOLS);
 }

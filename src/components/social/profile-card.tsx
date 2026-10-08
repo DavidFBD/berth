@@ -10,6 +10,7 @@ import { useCopy } from "@/components/settings-provider";
 import { rankForXp } from "@/lib/xp";
 import { STOCK_LISTINGS, rowName } from "@/lib/listings";
 import { REPORT_REASONS, type CardAnswer, type FriendAction, type ReportReason } from "@/lib/social-types";
+import { saluteDirection } from "@/lib/profile-more";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,7 +34,8 @@ export function monthLabel(month: string, style: "short" | "long" = "short"): st
 }
 
 export type CardHandlers = {
-  onSalute: (on: boolean) => void;
+  /** May answer whether the Salute landed, so a refused one never plays the tick. */
+  onSalute: (on: boolean) => void | Promise<boolean>;
   onFriend: (action: FriendAction) => void;
   onBlock: () => void;
   onReport: (reason: ReportReason) => void;
@@ -62,6 +64,15 @@ export function ProfileCardView({
   const [confirmBlock, setConfirmBlock] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [removing, setRemoving] = useState(false);
+  // Set by the tap that gives a Salute, so its tick settles in once: never
+  // for a Salute that was already standing when the page opened.
+  const [acked, setAcked] = useState(false);
+  const salutedNow = viewer.saluted;
+  useEffect(() => {
+    if (!acked || !salutedNow) return;
+    const timer = setTimeout(() => setAcked(false), 1_500);
+    return () => clearTimeout(timer);
+  }, [acked, salutedNow]);
   useEffect(() => {
     if (!removing) return;
     const timer = setTimeout(() => setRemoving(false), CONFIRM_MS);
@@ -127,10 +138,16 @@ export function ProfileCardView({
               disabled={!viewer.hasEmail || handlers.busy}
               aria-pressed={viewer.saluted}
               aria-label={viewer.saluted ? copy.saluteUndoLabel(card.handle) : undefined}
-              onClick={() => handlers.onSalute(!viewer.saluted)}
+              onClick={() => {
+                const giving = !viewer.saluted;
+                setAcked(giving);
+                const landed = handlers.onSalute(giving);
+                // Refused (a 429, a network error): no tick later, without a tap.
+                if (giving && landed) void landed.then((ok) => !ok && setAcked(false));
+              }}
             >
               {viewer.saluted ? (
-                <CheckCircle weight="duotone" className="size-4.5" aria-hidden />
+                <CheckCircle weight="duotone" className="size-4.5" aria-hidden data-salute-ack={acked ? "" : undefined} />
               ) : (
                 <HandPalm weight="duotone" className="size-4.5" aria-hidden />
               )}
@@ -147,6 +164,14 @@ export function ProfileCardView({
               }}
             />
           </div>
+          {answer.more?.salutesBetween !== undefined && (
+            <p data-salutes-between className="text-center text-xs text-muted-foreground">
+              {copy.profileSalutesBetween(saluteDirection(answer.more.salutesBetween, viewer.saluted), card.handle)}
+            </p>
+          )}
+          <span aria-live="polite" className="sr-only">
+            {acked && viewer.saluted ? copy.profileSaluteDone(card.handle) : ""}
+          </span>
           {!viewer.hasEmail ? (
             <p className="text-center text-xs text-muted-foreground">{copy.saluteNeedsEmail}</p>
           ) : !viewer.hasHandle && viewer.relation === "none" ? (

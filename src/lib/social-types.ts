@@ -52,7 +52,59 @@ export type CardAnswer =
        * Absent otherwise, and never on a stranger's card.
        */
       holds?: string[];
+      /**
+       * The profile page's extras (lib/server/social/profile-more), only on
+       * the page's own reads (the `card` and `link-card` operations), never
+       * on Find a friend or an action's answer.
+       */
+      more?: ProfileMore;
     };
+
+/**
+ * A moment on a profile's short timeline. Dates are days ("2026-10-03",
+ * UTC), never times; nothing here carries an amount, an order or a holding.
+ */
+export type Moment =
+  /** The day the account's XP first reached a rung of the ladder. */
+  | { kind: "rank"; level: number; on: string }
+  /** A Salute between the viewer and this friend, still standing. */
+  | { kind: "salute"; from: "you" | "them"; on: string }
+  /** The day the two became friends. */
+  | { kind: "friends"; on: string }
+  /** The month the account opened, as the card already says. */
+  | { kind: "joined"; month: string };
+
+/**
+ * What the profile page adds to a card. A stranger's card carries only the
+ * viewer's own XP, for the ladder's comparison line; everything else needs
+ * the two to be friends (or the card to be the viewer's own).
+ */
+export type ProfileMore = {
+  /** The viewer's own XP. Absent on the viewer's own card. */
+  yourXp?: number;
+  /**
+   * Friends and the viewer's own card only: at most five, newest first,
+   * the month they joined last.
+   */
+  moments?: Moment[];
+  /** Friends only: the day they became friends. */
+  friendsSince?: string;
+  /**
+   * Friends only: friends of both whose cards the viewer may see, at most
+   * four faces and how many more.
+   */
+  mutual?: { faces: Face[]; more: number };
+  /**
+   * Friends only, and only while both share what they hold under the same
+   * rule as "Your friends hold": the board listings both hold, by symbol.
+   */
+  bothHold?: string[];
+  /** Friends only: the Salutes standing between the two, either way (0 to 2: one each at most). */
+  salutesBetween?: number;
+};
+
+/** A face in "In common": username, avatar and rank level, as their own card shows them. Never XP. */
+export type Face = { handle: string; avatarId: string | null; level: number };
 
 /** The signed in person's own social state, for the account drawer. */
 export type MySocial = {

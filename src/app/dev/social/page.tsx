@@ -6,10 +6,11 @@ import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { NamePickerView, type PickerStatus } from "@/components/social/name-picker";
 import { NotFoundCard, ProfileCardView, SignInCard } from "@/components/social/profile-card";
+import { ProfileExtras } from "@/components/social/profile-extras";
 import { BoardView } from "@/components/social/friends-board";
 import { SocialSection, type SocialDemo } from "@/components/social/social-section";
 import { FindFriend } from "@/components/social/find-friend";
-import type { CardAnswer, FriendsBoard, Relation, Viewer } from "@/lib/social-types";
+import type { CardAnswer, FriendsBoard, ProfileMore, Relation, Viewer } from "@/lib/social-types";
 import { PolicyNoticeLineView, SocialNoticeLineView } from "@/components/board/social-notice-line";
 import { TermsSheet } from "@/components/terms-sheet";
 import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
@@ -18,7 +19,7 @@ import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
  * Dev-only gallery of the social screens, from fixtures (404 in prod). No
  * request leaves the page; buttons do nothing.
  *
- *   /dev/social?state=profile-friends    a friend's profile
+ *   /dev/social?state=profile-friends    a friend's profile, with the page's sections under the card
  *   /dev/social?state=profile-received   a request waiting for you
  *   /dev/social?state=profile-none       someone you are not friends with
  *   /dev/social?state=profile-sent       your request, not yet answered
@@ -55,16 +56,47 @@ const viewer = (relation: Relation, extra: Partial<Viewer> = {}): Viewer => ({
   ...extra,
 });
 
-const PROFILES: Record<string, CardAnswer> = {
-  "profile-friends": { found: true, card: CARD, viewer: viewer("friends") },
-  "profile-holds": { found: true, card: CARD, viewer: viewer("friends"), holds: ["NVDA", "AAPL", "QQQ"] },
-  "profile-received": { found: true, card: CARD, viewer: viewer("received") },
-  "profile-received-sharing": { found: true, card: CARD, viewer: viewer("received", { sharesHoldings: true }) },
-  "profile-none": { found: true, card: CARD, viewer: viewer("none") },
-  "profile-sent": { found: true, card: CARD, viewer: viewer("sent") },
-  "profile-noemail": { found: true, card: CARD, viewer: viewer("none", { hasEmail: false, hasHandle: false }) },
-  "profile-self": { found: true, card: { ...CARD, handle: "old_salt", avatarId: null, xp: 180, salutes: 2 }, viewer: viewer("self") },
+/** The profile page's extras (CardAnswer.more), as a friend's page would carry them. */
+const MORE_FRIENDS: ProfileMore = {
+  yourXp: 1120,
+  moments: [
+    { kind: "rank", level: 5, on: "2026-10-03" },
+    { kind: "salute", from: "them", on: "2026-10-02" },
+    { kind: "rank", level: 4, on: "2026-09-21" },
+    { kind: "friends", on: "2026-09-14" },
+    { kind: "joined", month: "2026-07" },
+  ],
+  friendsSince: "2026-09-14",
+  salutesBetween: 2,
+  mutual: {
+    faces: [
+      { handle: "juno", avatarId: "compass", level: 7 },
+      { handle: "harbour_kit", avatarId: "buoy", level: 4 },
+      { handle: "old_salt", avatarId: null, level: 2 },
+      { handle: "tidewater", avatarId: "rope", level: 1 },
+    ],
+    more: 2,
+  },
 };
+/** Both share what they hold: "You both hold" joins In common. */
+const MORE_FRIENDS_HOLDS: ProfileMore = { ...MORE_FRIENDS, bothHold: ["NVDA", "AAPL"] };
+/** A stranger's page: only the viewer's own XP, for the ladder's comparison line. */
+const MORE_STRANGER: ProfileMore = { yourXp: 1360 };
+const MORE_SELF: ProfileMore = { moments: [{ kind: "rank", level: 2, on: "2026-09-12" }, { kind: "joined", month: "2026-07" }] };
+
+const PROFILES: Record<string, CardAnswer> = {
+  "profile-friends": { found: true, card: CARD, viewer: viewer("friends"), more: MORE_FRIENDS },
+  "profile-holds": { found: true, card: CARD, viewer: viewer("friends"), holds: ["NVDA", "AAPL", "QQQ"], more: MORE_FRIENDS_HOLDS },
+  "profile-received": { found: true, card: CARD, viewer: viewer("received"), more: MORE_STRANGER },
+  "profile-received-sharing": { found: true, card: CARD, viewer: viewer("received", { sharesHoldings: true }), more: MORE_STRANGER },
+  "profile-none": { found: true, card: CARD, viewer: viewer("none"), more: MORE_STRANGER },
+  "profile-sent": { found: true, card: CARD, viewer: viewer("sent"), more: MORE_STRANGER },
+  "profile-noemail": { found: true, card: CARD, viewer: viewer("none", { hasEmail: false, hasHandle: false }), more: MORE_STRANGER },
+  "profile-self": { found: true, card: { ...CARD, handle: "old_salt", avatarId: null, xp: 180, salutes: 2 }, viewer: viewer("self"), more: MORE_SELF },
+};
+
+/** Find a friend shows the plain card: the extras are the page's alone. */
+const plain = (answer: CardAnswer): CardAnswer => (answer.found ? { ...answer, more: undefined } : answer);
 
 const PEOPLE = [
   { handle: "juno", avatarId: "compass", xp: 2600 },
@@ -115,7 +147,13 @@ function Picker({ value, status }: { value: string; status: PickerStatus }) {
 function Gallery() {
   const state = useSearchParams().get("state") ?? "profile-friends";
   const profile = PROFILES[state];
-  if (profile?.found) return <ProfileCardView answer={profile} handlers={NOOP} />;
+  if (profile?.found)
+    return (
+      <>
+        <ProfileCardView answer={profile} handlers={NOOP} />
+        <ProfileExtras answer={profile} />
+      </>
+    );
   if (state === "not-found") return <NotFoundCard />;
   if (state === "profile-signedout") return <SignInCard />;
   if (state === "picker") return <Picker value="mira_k" status={{ kind: "free" }} />;
@@ -130,7 +168,7 @@ function Gallery() {
             state === "find"
               ? { value: "", result: null }
               : state === "find-found"
-                ? { value: "mira_k", result: { kind: "answer", answer: PROFILES["profile-none"] } }
+                ? { value: "mira_k", result: { kind: "answer", answer: plain(PROFILES["profile-none"]) } }
                 : { value: "someone_else", result: { kind: "answer", answer: { found: false } } }
           }
         />
@@ -158,7 +196,7 @@ function Gallery() {
   if (state === "section-find")
     return (
       <Panel>
-        <SocialSection demo={{ ...SECTION, find: { value: "mira_k", result: { kind: "answer", answer: PROFILES["profile-none"] } } }} />
+        <SocialSection demo={{ ...SECTION, find: { value: "mira_k", result: { kind: "answer", answer: plain(PROFILES["profile-none"]) } } }} />
       </Panel>
     );
   if (state === "section-new")

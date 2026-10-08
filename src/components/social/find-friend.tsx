@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "@/lib/toast";
+import { saluteLanded } from "@/lib/profile-more";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCopy } from "@/components/settings-provider";
@@ -89,15 +90,21 @@ export function FindFriend({ demo }: { demo?: { value: string; result: FindResul
   const action = useSocialAction();
   const answer = result?.kind === "answer" && result.answer.found ? result.answer : null;
 
-  const run = async (vars: Parameters<typeof action.mutateAsync>[0], success?: (next: CardAnswer | null) => string | null) => {
-    if (demo) return;
+  /** Runs one action; the card it answers with, or null when it did not go through. */
+  const run = async (
+    vars: Parameters<typeof action.mutateAsync>[0],
+    success?: (next: CardAnswer | null) => string | null,
+  ): Promise<CardAnswer | null> => {
+    if (demo) return null;
     try {
       const outcome = await action.mutateAsync(vars);
       if (outcome.card) setResult({ kind: "answer", answer: outcome.card });
       const message = success?.(outcome.card);
       if (message) toast.success(message);
+      return outcome.card;
     } catch {
       toast.error(copy.actionFailed);
+      return null;
     }
   };
 
@@ -123,7 +130,7 @@ export function FindFriend({ demo }: { demo?: { value: string; result: FindResul
       }}
       handlers={{
         busy: action.isPending,
-        onSalute: (on) => void run({ kind: "salute", handle, on }),
+        onSalute: (on) => run({ kind: "salute", handle, on }).then((next) => saluteLanded(next, on)),
         onFriend: (friendAction) =>
           void run({ kind: "friend", handle, action: friendAction }, (next) =>
             next?.found && next.viewer.relation === "friends" && friendAction !== "remove"

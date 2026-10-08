@@ -21,6 +21,7 @@ import type { ConsentParty } from "@/lib/assistant-party";
 import type { HandleRefusal } from "@/lib/handle";
 import type { Currency } from "@/lib/currencies";
 import type { Relation, ReportReason } from "@/lib/social-types";
+import type { SaluteDirection } from "@/lib/profile-more";
 
 export type Copy = {
   /* — brand and shell — */
@@ -2044,6 +2045,42 @@ export type SocialCopy = {
   boardEmpty: string;
   boardNoHandle: string;
   boardSignedOut: string;
+  /* — the profile page, under the card — */
+  /** The ladder's heading and its list's name for screen readers. */
+  profileLadderTitle: string;
+  /** Each rung: its name, the XP it opens at, and whose rank it is. */
+  profileRungAria: (name: string, xp: string, theirs: boolean, yours: boolean) => string;
+  /** Under the ladder: the rank they hold and how far the next is. */
+  profileLadderNext: (rankName: string, xp: string, nextName: string) => string;
+  profileLadderTop: (rankName: string) => string;
+  /** The viewer's quiet comparison line. */
+  profileAhead: (xp: string) => string;
+  profileBehind: (xp: string) => string;
+  profileLevel: string;
+  /** The shelf of faces: which the person has opened, the rest as silhouettes. */
+  profileShelfTitle: string;
+  profileShelfCount: (open: number, total: number) => string;
+  profileShelfFace: (face: string, wearing: boolean) => string;
+  profileShelfLocked: (face: string, rankName: string) => string;
+  /** The short timeline: never an amount, a trade or a holding. */
+  profileMomentsTitle: string;
+  profileMomentRank: (rankName: string) => string;
+  profileMomentFriends: string;
+  profileMomentSaluteYou: (handle: string) => string;
+  profileMomentSaluteThem: (handle: string) => string;
+  profileMomentJoined: (month: string) => string;
+  /** What the two share: the friendship, friends, and which stocks both hold (names only). */
+  profileInCommonTitle: string;
+  profileFriendsSince: (day: string) => string;
+  profileMutual: (count: number) => string;
+  profileMutualMore: (count: number) => string;
+  profileMutualMoreAria: (count: number) => string;
+  profileFaceLink: (handle: string) => string;
+  profileBothHold: (names: readonly string[]) => string;
+  /** Under Salute, between friends: which way the Salutes between the two stand (lib/profile-more saluteDirection). */
+  profileSalutesBetween: (direction: SaluteDirection, handle: string) => string;
+  /** Said once to a screen reader when a Salute lands. */
+  profileSaluteDone: (handle: string) => string;
 };
 
 export type AssistantsHelp = {
@@ -4350,9 +4387,9 @@ export const COPY: Copy = {
         id: "profiles",
         heading: "Your profile and friends",
         body: [
-          "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your avatar, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets or your money, and what you own only to friends, as below.",
+          "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your avatar, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets or your money, and what you own only to friends, as below. Your friends also see the day you became friends, the days you reached each rank and the Salutes between the two of you, including whether you saluted them.",
           "The preview of a link to your profile or of your invite link, its picture, title and description, names no one unless you turn on Show my avatar, username and rank on links I share. Then a profile link's preview shows your username, your avatar (or your rank mark if you have not picked one) and your rank name, and an invite link's preview shows your username and your avatar or rank mark, to anyone who opens or previews the link, or guesses your username. Never your email, your wallets, your money or what you own. It is off unless you turn it on, and it shows no one while your profile is hidden. When you turn it off or hide your profile, Berth stops serving your preview within ten minutes. Apps where a link was already shared may keep their own copy of its preview for longer, and we cannot remove it from them.",
-          "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. Nobody else can see your friends or who you block. The record of changes is kept for a year.",
+          "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. A friend can see whether you saluted them. Nobody else can see who you block. A friend who opens your profile sees which of their own friends are also yours, by username and avatar, unless that person's profile is hidden. The record of changes is kept for a year.",
           "If you turn on Let my friends see which stocks and funds I hold, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username and avatar, for up to four of the friends who hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
           "Most bought on Berth is public: anyone who opens the board sees it. It counts how many people bought each listing in one week, Monday to Sunday in UTC, from the orders we keep. Each week is counted once, after it ends, and kept as it was published; the first week counted begins on 5 October 2026. It names no one and shows no amount. Two accounts merged into one count as one person. Only buys of at least $10, from accounts at least a week old with a verified email, are counted, and staff accounts and buys that earn no XP are not. A listing bought by fewer than five people is left out, counts above ten are rounded down to a multiple of five, and the list is not shown at all in a week when fewer than ten people bought.",
           "Most held on Berth is public too. Once a week, published on Tuesday for the week before, Monday to Sunday in UTC, the board shows for each stock or fund a rounded share, such as 1 in 4, of the people who own a stock or fund on Berth who hold that one. It is never a count of people and never an amount, and never anything about one person. The people counted are those with a verified email whose account is at least 7 days old and held at least $10 of stocks and funds at its last daily value of the week; staff accounts are not counted. A listing is shown only when at least 20 people hold it, and nothing is shown in a week when fewer than 50 people hold a stock or fund. Each week is counted once, after it ends, and kept as published. The first week counted is the week of 19 October 2026, published on 27 October 2026.",
@@ -4504,7 +4541,7 @@ export const COPY: Copy = {
       {
         id: "what-changed",
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
-        body: ["The first three changes below are new on 8 October 2026. The others came on 6 October 2026."],
+        body: ["The first three changes below are new on 8 October 2026 and the last is new on 9 October 2026. The others came on 6 October 2026."],
         list: [
           "For a sign up through a campaign's link, we keep only whether the country your connection came from could not be told, as a signal for the reviewer. Never the country itself.",
           "A note that a campaign reward was paid to your account is an account notice, sent whatever your email settings say.",
@@ -4516,6 +4553,7 @@ export const COPY: Copy = {
           "What to do with an email account's wallet before you ask us to delete your account.",
           "The record of which version of the terms you accepted, and when.",
           "Campaigns now record the account opened through a campaign's own link, which is the one paid, instead of who invited whom. Inviting someone with your own invite link never earns money.",
+          "A friend who opens your profile now sees the friends you have in common, the day you became friends, the days you reached each rank and the Salutes between the two of you, including whether you saluted them.",
         ],
       },
       {
@@ -4962,7 +5000,7 @@ export const COPY: Copy = {
   social: {
     sectionTitle: "Your profile",
     sectionWhy:
-      "Only people who know your username can open your profile. It shows your avatar, rank, XP and Salutes, never money. Which stocks and funds you hold is shown only to friends, and only if you turn it on.",
+      "Only people who know your username can open your profile. It shows your avatar, rank, XP and Salutes, never money. Friends also see the friends you have in common, the day you became friends, the days you reached each rank and the Salutes between you, including whether you saluted them. Which stocks and funds you hold is shown only to friends, and only if you turn it on.",
     addEmail: "Add an email to get a profile",
     addEmailSub: "A profile needs a verified email.",
     pickTitle: "Pick a username",
@@ -5072,6 +5110,41 @@ export const COPY: Copy = {
     boardEmpty: "Add friends and they appear here.",
     boardNoHandle: "Pick a username in your account to have friends.",
     boardSignedOut: "Sign in to see your friends board.",
+    profileLadderTitle: "On the ladder",
+    profileRungAria: (name, xp, theirs, yours) =>
+      [`${name}, from ${xp} XP`, theirs ? "their rank" : null, yours ? "your rank" : null].filter(Boolean).join(", "),
+    profileLadderNext: (rankName, xp, nextName) => `${rankName}. ${xp} XP to ${nextName}.`,
+    profileLadderTop: (rankName) => `${rankName}, the top of the ladder.`,
+    profileAhead: (xp) => `You're ${xp} XP ahead.`,
+    profileBehind: (xp) => `${xp} XP to catch up.`,
+    profileLevel: "You have the same XP.",
+    profileShelfTitle: "Faces",
+    profileShelfCount: (open, total) => `${open} of ${total} open.`,
+    profileShelfFace: (face, wearing) => (wearing ? `${face}, wearing it` : face),
+    profileShelfLocked: (face, rankName) => `${face}, opens at ${rankName}`,
+    profileMomentsTitle: "Recent moments",
+    profileMomentRank: (rankName) => `Reached ${rankName}`,
+    profileMomentFriends: "Became friends",
+    profileMomentSaluteYou: (handle) => `You saluted ${handle}`,
+    profileMomentSaluteThem: (handle) => `${handle} saluted you`,
+    profileMomentJoined: (month) => `Joined Berth, ${month}`,
+    profileInCommonTitle: "In common",
+    profileFriendsSince: (day) => `Friends since ${day}`,
+    profileMutual: (count) => (count === 1 ? "1 friend in common" : `${count} friends in common`),
+    profileMutualMore: (count) => `+${count}`,
+    profileMutualMoreAria: (count) => (count === 1 ? "and 1 more" : `and ${count} more`),
+    profileFaceLink: (handle) => `Open the profile of ${handle}`,
+    profileSalutesBetween: (direction, handle) =>
+      direction === "each"
+        ? `You and ${handle} have saluted each other.`
+        : direction === "you"
+          ? `You saluted ${handle}.`
+          : direction === "them"
+            ? `${handle} saluted you.`
+            : "No Salutes between you yet.",
+    profileSaluteDone: (handle) => `You saluted ${handle}.`,
+    profileBothHold: (names) =>
+      names.length === 1 ? `You both hold ${names[0]}.` : `You both hold ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}.`,
   },
   og: {
     domain: "berthmarkets.com",

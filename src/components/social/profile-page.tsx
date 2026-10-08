@@ -1,10 +1,12 @@
 "use client";
 
 import { toast } from "@/lib/toast";
+import { saluteLanded } from "@/lib/profile-more";
 import { WayBack } from "@/components/social/way-back";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy } from "@/components/settings-provider";
 import { NotFoundCard, ProfileCardView, SignInCard } from "@/components/social/profile-card";
+import { ProfileExtras } from "@/components/social/profile-extras";
 import { useCard, useMySocial, useSocialAction } from "@/hooks/use-social";
 import type { CardAnswer } from "@/lib/social-types";
 
@@ -23,14 +25,20 @@ export function ProfilePage({ target }: { target: { handle: string } | { token: 
   const answer: CardAnswer | undefined = card.data;
   const token = "token" in target ? target.token : undefined;
 
-  const run = async (vars: Parameters<typeof action.mutateAsync>[0], success?: (next: CardAnswer | null) => string | null) => {
+  /** Runs one action; the card it answers with, or null when it did not go through. */
+  const run = async (
+    vars: Parameters<typeof action.mutateAsync>[0],
+    success?: (next: CardAnswer | null) => string | null,
+  ): Promise<CardAnswer | null> => {
     try {
       const result = await action.mutateAsync(vars);
       const message = success?.(result.card);
       if (message) toast.success(message);
       void card.refetch();
+      return result.card;
     } catch {
       toast.error(copy.social.actionFailed);
+      return null;
     }
   };
 
@@ -42,12 +50,15 @@ export function ProfilePage({ target }: { target: { handle: string } | { token: 
       ) : !answer.found ? (
         "signIn" in answer ? <SignInCard /> : <NotFoundCard />
       ) : (
+        <>
         <ProfileCardView
           answer={answer}
           hidden={me.data ? !me.data.visible : false}
           handlers={{
             busy: action.isPending,
-            onSalute: (on) => void run({ kind: "salute", handle: answer.card.handle, on }),
+            // Landed only when the answer shows the Salute as asked: a refusal (429, a network error) is not one.
+            onSalute: (on) =>
+              run({ kind: "salute", handle: answer.card.handle, on }).then((next) => saluteLanded(next, on)),
             onFriend: (friendAction) =>
               void run(
                 { kind: "friend", handle: answer.card.handle, action: friendAction, token: friendAction === "request" ? token : undefined },
@@ -62,6 +73,8 @@ export function ProfilePage({ target }: { target: { handle: string } | { token: 
             onReport: (reason) => void run({ kind: "report", handle: answer.card.handle, reason }, () => copy.social.reportDone),
           }}
         />
+        <ProfileExtras answer={answer} />
+        </>
       )}
     </main>
   );

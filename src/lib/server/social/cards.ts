@@ -2,7 +2,11 @@ import { getSql } from "@/lib/server/db";
 import { lookupKey } from "@/lib/handle";
 import type { CardAnswer, Relation } from "@/lib/social-types";
 import { hasVerifiedEmail, VISIBLE_SQL, type SocialViewer } from "@/lib/server/social/people";
-import { friendHolds } from "@/lib/server/social-proof";
+import { friendHolds, SHARES_HOLDINGS_SQL } from "@/lib/server/social-proof";
+import { profileMore } from "@/lib/server/social/profile-more";
+
+/** `more`: the profile page's own read, which adds lib/server/social/profile-more. */
+export type CardOptions = { more?: boolean };
 
 /**
  * The card: face, username, XP (the rank is derived from it), the month the
@@ -58,7 +62,7 @@ export async function relationTo(viewerId: string, targetId: string): Promise<Re
   return "none";
 }
 
-async function answer(viewer: SocialViewer, row: CardRow | null, now: Date): Promise<CardAnswer> {
+async function answer(viewer: SocialViewer, row: CardRow | null, now: Date, options: CardOptions = {}): Promise<CardAnswer> {
   if (!row) return NOT_FOUND;
   const created = new Date(row.created_at);
   const card = {
@@ -68,7 +72,7 @@ async function answer(viewer: SocialViewer, row: CardRow | null, now: Date): Pro
     memberSince: `${created.getUTCFullYear()}-${String(created.getUTCMonth() + 1).padStart(2, "0")}`,
     salutes: row.salutes,
   };
-  const [relation, saluted, hasHandle, sharesHoldings] = await Promise.all([
+  const [relation, saluted, hasHandle, sharing] = await Promise.all([
     relationTo(viewer.id, row.user_id),
     viewer.id === row.user_id
       ? Promise.resolve(false)
@@ -78,16 +82,28 @@ async function answer(viewer: SocialViewer, row: CardRow | null, now: Date): Pro
     getSql()
       .query(`select 1 from handles where user_id = $1`, [viewer.id])
       .then((rows) => (rows as unknown[]).length > 0),
+    // The switch alone (said beside Add friend), and the full rule friendHolds asks (the switch and a shown card), read once.
     getSql()
-      .query(`select 1 from profiles where user_id = $1 and share_holdings`, [viewer.id])
-      .then((rows) => (rows as unknown[]).length > 0),
+      .query(
+        `select coalesce((select share_holdings from profiles where user_id = $1::uuid), false) as switch_on, ${SHARES_HOLDINGS_SQL("$1::uuid")} as shares`,
+        [viewer.id],
+      )
+      .then((rows) => (rows as { switch_on: boolean; shares: boolean }[])[0] ?? { switch_on: false, shares: false }),
   ]);
-  const holds = relation === "friends" ? await friendHolds(viewer, row.user_id, now) : null;
+  const sharesHoldings = sharing.switch_on === true;
+  const holdsRead = relation === "friends" && sharing.shares ? friendHolds(viewer, row.user_id, now, true) : Promise.resolve(null);
+  const [holds, more] = await Promise.all([
+    holdsRead,
+    options.more
+      ? profileMore({ viewer, targetId: row.user_id, relation, targetXp: card.xp, memberSince: card.memberSince, holds: holdsRead, viewerShares: sharing.shares === true, now })
+      : Promise.resolve(null),
+  ]);
   return {
     found: true,
     card,
     viewer: { relation, saluted, hasEmail: hasVerifiedEmail(viewer), hasHandle, ...(sharesHoldings ? { sharesHoldings: true } : {}) },
     ...(holds && holds.length > 0 ? { holds } : {}),
+    ...(more ? { more } : {}),
   };
 }
 
@@ -95,15 +111,15 @@ async function answer(viewer: SocialViewer, row: CardRow | null, now: Date): Pro
  * The card behind a username as typed or as it sits in a URL. `now` dates
  * the friend's holdings read (a daily value must be recent); tests pin it.
  */
-export async function readCard(viewer: SocialViewer | null, handle: unknown, now = new Date()): Promise<CardAnswer> {
+export async function readCard(viewer: SocialViewer | null, handle: unknown, now = new Date(), options: CardOptions = {}): Promise<CardAnswer> {
   if (!viewer) return SIGN_IN;
   const norm = lookupKey(handle);
   if (!norm) return NOT_FOUND;
-  return answer(viewer, await cardRow(viewer.id, "h.handle_norm = $1", norm), now);
+  return answer(viewer, await cardRow(viewer.id, "h.handle_norm = $1", norm), now, options);
 }
 
 /** The card of a known account, by the same visibility rule. */
-export async function readCardOf(viewer: SocialViewer | null, userId: string, now = new Date()): Promise<CardAnswer> {
+export async function readCardOf(viewer: SocialViewer | null, userId: string, now = new Date(), options: CardOptions = {}): Promise<CardAnswer> {
   if (!viewer) return SIGN_IN;
-  return answer(viewer, await cardRow(viewer.id, "h.user_id = $1::uuid", userId), now);
+  return answer(viewer, await cardRow(viewer.id, "h.user_id = $1::uuid", userId), now, options);
 }
