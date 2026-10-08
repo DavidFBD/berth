@@ -255,6 +255,21 @@ describe("blockingNeed: what a wallet that pays its own fee reserves", () => {
   });
 });
 
+describe("Ethereum: the tip is in the fee read already", () => {
+  const ETH = ChainKeys.ETHEREUM_MAINNET;
+  it("asks twice the fee read, not the tip again on top", () => {
+    // 1 gwei base, 1 gwei tip: viem reads 2.2 gwei; the wallet reserves about 3.
+    const fee = 2_200_000_000n;
+    const reserve = walletReserve({ chainKey: ETH, feePerGas: fee, approval: false })!;
+    expect(reserve).toBe(GATE_DEPOSIT_GAS * 2n * fee);
+    expect(reserve).toBeGreaterThan(229_000n * 3n * GWEI);
+  });
+
+  it("assumes 3 gwei when the read fails", () => {
+    expect(walletReserve({ chainKey: ETH, feePerGas: undefined, approval: false })).toBe(GATE_DEPOSIT_GAS * 6n * GWEI);
+  });
+});
+
 describe("walletFeeFloor: per chain, from what wallets attach there", () => {
   it("keeps Base at the 2 gwei seen on issues #23 and #27", () => {
     expect(walletFeeFloor(ChainKeys.BASE_MAINNET)).toBe(2n * GWEI);

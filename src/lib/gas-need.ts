@@ -53,8 +53,9 @@ import {
  *   little or nothing on top.
  * - Avalanche: 1 gwei. Base fee near zero since ACP-176; wallets attach a
  *   tip of up to about 1 gwei.
- * - Ethereum: 2 gwei, MetaMask's market tip; the chain's own price is
- *   usually higher and then governs.
+ * - Ethereum: 2 gwei, MetaMask's market tip, but unused by walletReserve:
+ *   wallets there take the chain's suggested tip, which the fee read
+ *   already carries (TIP_IN_FEE).
  * - Polygon: 30 gwei, the network's enforced minimum tip.
  * - Sonic: 1 gwei; its own price (tens of gwei) governs in practice.
  * - Any other EVM chain: 2 gwei (DEFAULT_WALLET_FEE_FLOOR), the cautious
@@ -97,10 +98,17 @@ const ASSUMED_FEE_PER_GAS: Partial<Record<EvmChainKey, bigint>> = {
   [ChainKeys.BSC_MAINNET]: GWEI / 10n,
   [ChainKeys.HYPEREVM_MAINNET]: GWEI,
   [ChainKeys.AVALANCHE_MAINNET]: 2n * GWEI,
-  [ChainKeys.ETHEREUM_MAINNET]: 10n * GWEI,
+  [ChainKeys.ETHEREUM_MAINNET]: 3n * GWEI,
   [ChainKeys.POLYGON_MAINNET]: 100n * GWEI,
   [ChainKeys.SONIC_MAINNET]: 100n * GWEI,
 };
+
+/**
+ * Chains whose wallets sign at the chain's own suggested tip (MetaMask's
+ * market fee on Ethereum), so the fee per gas read (base x 1.2 plus that
+ * tip) already holds the tip: walletReserve does not add it twice.
+ */
+const TIP_IN_FEE: ReadonlySet<SpokeChainKey> = new Set([ChainKeys.ETHEREUM_MAINNET]);
 
 export function assumedFeePerGas(chainKey: SpokeChainKey): bigint {
   return ASSUMED_FEE_PER_GAS[chainKey as EvmChainKey] ?? GWEI;
@@ -240,7 +248,12 @@ export function walletReserve({
 }): bigint | undefined {
   if (gasModel(chainKey, sponsored).kind !== "evm") return undefined;
   const gas = (order === "sell" ? GATE_SELL_GAS : GATE_DEPOSIT_GAS) + (approval ? GATE_APPROVE_GAS : 0n);
-  return gas * (2n * (feePerGas ?? assumedFeePerGas(chainKey)) + tip);
+  const fee = feePerGas ?? assumedFeePerGas(chainKey);
+  // Where wallets take the chain's own suggested tip, the fee read already
+  // carries it: twice the fee covers twice the base plus the tip, and adding
+  // the tip again would refuse wallets that can pay.
+  if (TIP_IN_FEE.has(chainKey)) return gas * 2n * fee;
+  return gas * (2n * fee + tip);
 }
 
 /**
