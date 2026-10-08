@@ -686,10 +686,11 @@ export type Copy = {
   /** The buy or sell button while the signing chain cannot pay its fee. */
   ctaNeedsGas: (symbol: string) => string;
   /**
-   * Under the button when the chain's own price is covered but not what
-   * some wallets attach on top (lib/gas-need floorWarns). The person may sign.
+   * The top-up guidance that stops an order whose wallet pays its own fee
+   * and holds too little for it (lib/gas-need blockingNeed, gasToAdd).
+   * `amount` is a plain decimal rounded up, "0.00034".
    */
-  gasFloorWarning: (symbol: string) => string;
+  gasToAdd: (amount: string, symbol: string, chainName: string) => string;
   /**
    * Where the network fee would be mentioned, when Privy pays it for an
    * email user's embedded wallet on this chain (lib/gas-sponsor). The
@@ -3175,8 +3176,8 @@ export const COPY: Copy = {
     `Your ${symbol} on ${chainName} would all go to the network fee. Add a little more to pay with it.`,
   gasHelpLabel: "Why this cannot pay",
   ctaNeedsGas: (symbol) => `Not enough ${symbol} for the network fee`,
-  gasFloorWarning: (symbol) =>
-    `Some wallets ask for a higher network fee. If yours refuses, add a little ${symbol}.`,
+  gasToAdd: (amount, symbol, chainName) =>
+    `Add about ${amount} ${symbol} on ${chainName} to pay the network fee, then this order can start.`,
   noNetworkFeeOn: (chainName) => `No network fee to pay on ${chainName}.`,
   noNetworkFeeNote: "no network fee",
   gasCoveredChains: (chainNames) => `Buying from ${chainNames} has no network fee to pay.`,

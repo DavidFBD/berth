@@ -11,7 +11,7 @@ import {
   type XToken,
 } from "@sodax/sdk";
 import { pinnedEvmTransport } from "@/lib/sodax-config";
-import { OBSERVED_DEPOSIT_GAS, walletFeeFloor } from "@/lib/gas-need";
+import { floorNeed } from "@/lib/gas-need";
 
 /**
  * How much of the NATIVE token to hold back from a "Max" pour so the
@@ -68,11 +68,13 @@ const FALLBACK_BUFFER_FRACTION = 100n; // 1% of balance
 const GAS_PRICE_STALE_MS = 30_000;
 
 /**
- * The least a Max may withhold on an EVM chain, whatever the RPC reports.
+ * The least a Max may withhold on an EVM chain, whatever the RPC reports:
+ * exactly the wallet floor the gate refuses below (lib/gas-need floorNeed),
+ * so a Max order is never refused by the gate that set it.
  * Exported for the test that pins issue #23's arithmetic.
  */
 export function evmFeeFloorBuffer(chainKey: SpokeChainKey): bigint {
-  return walletFeeFloor(chainKey) * OBSERVED_DEPOSIT_GAS;
+  return floorNeed(chainKey, false) ?? 0n;
 }
 
 /**

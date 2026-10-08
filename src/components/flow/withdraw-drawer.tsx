@@ -26,8 +26,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { EASE_LIFT } from "@/lib/motion";
 import { getChainName, getNativeGasToken, isTypedEvmAddress, toBalanceReadToken } from "@/lib/chains";
-import { floorWarns, orderGasShort } from "@/lib/gas-need";
-import { useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { gasToAdd, orderGasShort } from "@/lib/gas-need";
+import { gasShortMessage, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
@@ -189,24 +189,20 @@ export function WithdrawDrawer({
     signNative && signNativeQuery.data
       ? (signNativeQuery.data[toBalanceReadToken(signNative).address] ?? 0n)
       : undefined;
+  // A wallet that pays its own fee is stopped here, before the flow
+  // starts, below the larger of the chain's price and what wallets attach
+  // on top (lib/gas-need blockingNeed); a sponsored sell is never stopped.
   const signGas = useGasGate([srcChainKey], open);
-  const signGasShort = orderGasShort({
+  const signGasFacts = {
     chainKey: srcChainKey,
     isNative: false,
     nativeBalance: signNativeBalance,
     amount: 0n,
-    need: signGas.needFor(srcChainKey, false),
+    need: signGas.needFor(srcChainKey, false, "sell"),
     sponsored: signGas.sponsored(srcChainKey),
-  });
-  const signGasFloorWarn = floorWarns({
-    chainKey: srcChainKey,
-    isNative: false,
-    nativeBalance: signNativeBalance,
-    amount: 0n,
-    need: signGas.needFor(srcChainKey, false),
-    approval: false,
-    sponsored: signGas.sponsored(srcChainKey),
-  });
+  };
+  const signGasShort = orderGasShort(signGasFacts);
+  const signGasToAdd = signGasShort ? gasToAdd(signGasFacts) : undefined;
   const gasPreflight = useGasPreflight();
   // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
   const outcomeHold = useOutcomeHold();
@@ -450,7 +446,7 @@ export function WithdrawDrawer({
       walletProvider,
       walletMode: mode,
       gasCheck: () =>
-        gasPreflight({ chainKey: srcChainKey, address, amount: 0n, approval: false }),
+        gasPreflight({ chainKey: srcChainKey, address, amount: 0n, approval: false, order: "sell" }),
       fillToasts: {
         successTitle: isSell ? copy.soldTitle : copy.withdrawnTitle,
         successDescription: copy.deliveredBody(getChainName(dstChainKey)),
@@ -843,7 +839,7 @@ export function WithdrawDrawer({
                   </p>
                   {signGasShort && signNative && (
                     <p className="text-xs text-warn">
-                      {copy.gasNeededToPay(signNative.symbol, getChainName(srcChainKey))}
+                      {gasShortMessage(copy, signNative, srcChainKey, signGasToAdd)}
                     </p>
                   )}
                   {totalShares !== undefined &&
@@ -1027,11 +1023,6 @@ export function WithdrawDrawer({
                   {cta.busy && <Spinner className="size-4" />}
                   {cta.label}
                 </Button>
-                {signGasFloorWarn && signNative && (
-                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                    {copy.gasFloorWarning(signNative.symbol)}
-                  </p>
-                )}
                 {signGas.sponsored(srcChainKey) && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="no-network-fee">
                     {copy.noNetworkFeeOn(getChainName(srcChainKey))}

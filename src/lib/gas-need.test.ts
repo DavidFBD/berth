@@ -6,10 +6,12 @@ import {
   GATE_DEPOSIT_GAS,
   SOLANA_GATE_LAMPORTS,
   SUI_GATE_MIST,
+  GATE_SELL_GAS,
+  blockingNeed,
   byGasStatus,
   floorNeed,
-  floorWarns,
   gasModel,
+  gasToAdd,
   gasNeed,
   orderGasShort,
   payTokenGas,
@@ -87,7 +89,7 @@ describe("gasNeed", () => {
     expect(withApproval - without).toBe((GWEI * GATE_APPROVE_GAS * 3n) / 2n);
   });
 
-  it("never uses the 2 gwei wallet floor (issue #23 made it a warning, not a refusal)", () => {
+  it("is the chain's own price alone; the 2 gwei wallet floor joins it in blockingNeed", () => {
     const need = gasNeed({ chainKey: ChainKeys.BASE_MAINNET, feePerGas: 7_000_000n, approval: false })!;
     expect(need).toBeLessThan(DEFAULT_WALLET_FEE_FLOOR * GATE_DEPOSIT_GAS);
   });
@@ -170,26 +172,87 @@ describe("orderGasShort", () => {
   });
 });
 
-describe("floorWarns", () => {
-  const base = { chainKey: ChainKeys.BASE_MAINNET, isNative: false, amount: 0n, approval: false } as const;
-  const need = gasNeed({ chainKey: ChainKeys.BASE_MAINNET, feePerGas: 7_000_000n, approval: false })!;
-  const floor = floorNeed(ChainKeys.BASE_MAINNET, false)!;
+describe("blockingNeed: the wallet floor refuses a wallet that pays its own fee", () => {
+  const BASE = ChainKeys.BASE_MAINNET;
+  // Base's own price when issue #27 happened: a few thousandths of a gwei.
+  const chainNeed = (approval: boolean) => gasNeed({ chainKey: BASE, feePerGas: 7_000_000n, approval })!;
 
-  it("warns, without refusing, a wallet that covers the chain's price but not the floor", () => {
-    const balance = (need + floor) / 2n;
-    expect(orderGasShort({ ...base, nativeBalance: balance, need })).toBe(false);
-    expect(floorWarns({ ...base, nativeBalance: balance, need })).toBe(true);
+  it("is the floor on a cheap L2, for a buy and for a sell", () => {
+    const buy = blockingNeed({ chainKey: BASE, need: chainNeed(false), approval: false });
+    const sell = blockingNeed({ chainKey: BASE, need: chainNeed(false), approval: false, order: "sell" });
+    expect(buy).toBe(DEFAULT_WALLET_FEE_FLOOR * GATE_DEPOSIT_GAS);
+    expect(sell).toBe(DEFAULT_WALLET_FEE_FLOOR * GATE_SELL_GAS);
+    expect(blockingNeed({ chainKey: BASE, need: chainNeed(true), approval: true })).toBe(
+      DEFAULT_WALLET_FEE_FLOOR * (GATE_DEPOSIT_GAS + GATE_APPROVE_GAS),
+    );
   });
 
-  it("says nothing once the floor is covered, or when the order is refused anyway", () => {
-    expect(floorWarns({ ...base, nativeBalance: floor, need })).toBe(false);
-    expect(floorWarns({ ...base, nativeBalance: need - 1n, need })).toBe(false);
+  it("stands in with the floor while the fee per gas is still loading", () => {
+    expect(blockingNeed({ chainKey: BASE, need: undefined, approval: false })).toBe(floorNeed(BASE, false));
   });
 
-  it("says nothing where the chain's own price is above the floor, or off EVM", () => {
+  it("keeps the chain's price where it is above the floor", () => {
     const dear = gasNeed({ chainKey: ChainKeys.ETHEREUM_MAINNET, feePerGas: 10n * GWEI, approval: false })!;
-    expect(floorWarns({ ...base, chainKey: ChainKeys.ETHEREUM_MAINNET, nativeBalance: dear, need: dear })).toBe(false);
-    expect(floorWarns({ ...base, chainKey: ChainKeys.SOLANA_MAINNET, nativeBalance: 2_000_000n, need: SOLANA_GATE_LAMPORTS })).toBe(false);
+    expect(blockingNeed({ chainKey: ChainKeys.ETHEREUM_MAINNET, need: dear, approval: false })).toBe(dear);
+  });
+
+  it("leaves off EVM and sponsored orders exactly as the chain's need", () => {
+    expect(blockingNeed({ chainKey: ChainKeys.SOLANA_MAINNET, need: SOLANA_GATE_LAMPORTS, approval: false })).toBe(
+      SOLANA_GATE_LAMPORTS,
+    );
+    expect(blockingNeed({ chainKey: BASE, need: 0n, approval: false, sponsored: true })).toBe(0n);
+  });
+
+  it("refuses issue #27's sell: an external wallet on Base short of the 61,401 gas at 2 gwei it was asked for", () => {
+    // The wallet reserved 61,401 gas at about 2 gwei, ~0.000123 ETH, and held less.
+    const asked = 61_401n * (DEFAULT_WALLET_FEE_FLOOR + 2n * 6_000_000n);
+    const held = asked - 1n;
+    const need = blockingNeed({ chainKey: BASE, need: chainNeed(false), approval: false, order: "sell" });
+    // The chain's own price alone let it through, which is how it reached the wallet.
+    expect(orderGasShort({ chainKey: BASE, isNative: false, nativeBalance: held, amount: 0n, need: chainNeed(false) })).toBe(false);
+    expect(orderGasShort({ chainKey: BASE, isNative: false, nativeBalance: held, amount: 0n, need })).toBe(true);
+    expect(need!).toBeGreaterThan(asked);
+  });
+
+  it("refuses a buy paid in a token whose chain holds less than the floor, and lets through one that holds it", () => {
+    const need = blockingNeed({ chainKey: BASE, need: chainNeed(false), approval: false })!;
+    const facts = { chainKey: BASE, isNative: false, amount: 10n ** 6n } as const;
+    expect(orderGasShort({ ...facts, nativeBalance: need - 1n, need })).toBe(true);
+    expect(orderGasShort({ ...facts, nativeBalance: need, need })).toBe(false);
+  });
+
+  it("never refuses a sponsored order, even with an empty wallet", () => {
+    const need = blockingNeed({ chainKey: BASE, need: 0n, approval: false, sponsored: true });
+    expect(orderGasShort({ chainKey: BASE, isNative: false, nativeBalance: 0n, amount: 0n, need, sponsored: true })).toBe(false);
+  });
+
+  it("never refuses a native Max: the Max buffer holds back the floor", () => {
+    const need = blockingNeed({ chainKey: BASE, need: chainNeed(false), approval: false })!;
+    const balance = 743_300_593_668_700n; // issue #23's balance
+    const max = balance - evmFeeFloorBuffer(BASE);
+    expect(orderGasShort({ chainKey: BASE, isNative: true, nativeBalance: balance, amount: max, need })).toBe(false);
+    expect(orderGasShort({ chainKey: BASE, isNative: true, nativeBalance: balance, amount: max + need / 10n, need })).toBe(true);
+  });
+});
+
+describe("gasToAdd", () => {
+  const BASE = ChainKeys.BASE_MAINNET;
+  const need = DEFAULT_WALLET_FEE_FLOOR * GATE_SELL_GAS; // 0.0002 ETH
+
+  it("names what is missing, rounded up to two significant digits", () => {
+    const toAdd = gasToAdd({ chainKey: BASE, isNative: false, nativeBalance: need - 37_123_000_000_000n, amount: 0n, need });
+    expect(toAdd).toBe(38_000_000_000_000n); // 0.000038 ETH
+  });
+
+  it("counts the amount when the order pays in the native token itself", () => {
+    expect(gasToAdd({ chainKey: BASE, isNative: true, nativeBalance: need, amount: 5n * 10n ** 14n, need })).toBe(5n * 10n ** 14n);
+  });
+
+  it("is nothing when nothing is missing, unknown, or Privy pays", () => {
+    expect(gasToAdd({ chainKey: BASE, isNative: false, nativeBalance: need, amount: 0n, need })).toBeUndefined();
+    expect(gasToAdd({ chainKey: BASE, isNative: false, nativeBalance: undefined, amount: 0n, need })).toBeUndefined();
+    expect(gasToAdd({ chainKey: BASE, isNative: false, nativeBalance: 0n, amount: 0n, need: undefined })).toBeUndefined();
+    expect(gasToAdd({ chainKey: BASE, isNative: false, nativeBalance: 0n, amount: 0n, need, sponsored: true })).toBeUndefined();
   });
 });
 
@@ -220,9 +283,7 @@ describe("a sponsored order (Privy pays the fee)", () => {
     expect(payTokenGas({ chainKey: base, isNative: false, nativeBalance: 0n, need: undefined, sponsored: true })).toBe("ok");
     expect(orderGasShort({ chainKey: base, isNative: false, nativeBalance: 0n, amount: 0n, need: undefined, sponsored: true })).toBe(false);
     expect(floorNeed(base, true, true)).toBeUndefined();
-    expect(
-      floorWarns({ chainKey: base, isNative: false, nativeBalance: 0n, amount: 0n, need: 0n, approval: false, sponsored: true }),
-    ).toBe(false);
+    expect(floorNeed(base, false, true, "sell")).toBeUndefined();
   });
   it("leaves the unsponsored gate exactly as it was", () => {
     expect(payTokenGas({ chainKey: base, isNative: false, nativeBalance: 0n, need: undefined })).toBe("short");

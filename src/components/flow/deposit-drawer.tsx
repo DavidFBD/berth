@@ -79,9 +79,9 @@ import {
 } from "@/lib/pay-token-pick";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
-import { isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { gasShortMessage, isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
-import { byGasStatus, floorWarns, orderGasShort } from "@/lib/gas-need";
+import { byGasStatus, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import {
   ActionError,
   ActionStepper,
@@ -381,30 +381,20 @@ export function DepositDrawer({
   const worthUsd =
     token && buildAmount ? prices.usdValue(token, buildAmount) : undefined;
   // The chosen token's chain cannot pay: with no amount yet, whether any
-  // order could; with one, whether this one leaves enough for the fee.
-  const selectedGasShort =
-    !!token &&
-    orderGasShort({
-      chainKey: srcChainKey,
-      isNative: payingNative,
-      nativeBalance,
-      amount: payingNative ? (buildAmount ?? 1n) : 0n,
-      need: gasNeed,
-      sponsored: gas.sponsored(srcChainKey),
-    });
-  // Enough at the chain's price, not at what some wallets attach: say so
-  // calmly and let the person sign.
-  const gasFloorWarn =
-    !!token &&
-    floorWarns({
-      chainKey: srcChainKey,
-      isNative: payingNative,
-      nativeBalance,
-      amount: payingNative ? (buildAmount ?? 0n) : 0n,
-      need: gasNeed,
-      approval: false,
-      sponsored: gas.sponsored(srcChainKey),
-    });
+  // order could; with one, whether this one leaves enough for the fee. The
+  // need is the larger of the chain's price and what wallets attach on top
+  // (lib/gas-need blockingNeed), so a wallet paying its own fee is stopped
+  // here, before the flow starts, and told roughly how much to add.
+  const selectedGasFacts = {
+    chainKey: srcChainKey,
+    isNative: payingNative,
+    nativeBalance,
+    amount: payingNative ? (buildAmount ?? 1n) : 0n,
+    need: gasNeed,
+    sponsored: gas.sponsored(srcChainKey),
+  };
+  const selectedGasShort = !!token && orderGasShort(selectedGasFacts);
+  const selectedGasToAdd = selectedGasShort ? gasToAdd(selectedGasFacts) : undefined;
   const balanceWorthUsd =
     token && balance !== undefined && balance > 0n
       ? prices.usdValue(token, balance)
@@ -896,7 +886,9 @@ export function DepositDrawer({
                           <p className="text-foreground">
                             {gasShortChains.includes(srcChainKey)
                               ? copy.gasShortWarning(getChainName(srcChainKey), symbol)
-                              : copy.gasNeededToPay(symbol, getChainName(srcChainKey))}
+                              : native
+                                ? gasShortMessage(copy, native, srcChainKey, selectedGasToAdd)
+                                : copy.gasNeededToPay(symbol, getChainName(srcChainKey))}
                           </p>
                           {onTopUp && (
                             <button
@@ -1055,11 +1047,6 @@ export function DepositDrawer({
                   {cta.busy && <Spinner className="size-4" />}
                   {cta.label}
                 </Button>
-                {gasFloorWarn && nativeToken && (
-                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                    {copy.gasFloorWarning(nativeToken.symbol)}
-                  </p>
-                )}
                 {token && gas.sponsored(srcChainKey) && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="no-network-fee">
                     {copy.noNetworkFeeOn(getChainName(srcChainKey))}

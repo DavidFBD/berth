@@ -12,12 +12,14 @@ import {
  * cannot pay its own fee is not offered as a way to pay (the picker greys
  * it), and the order machine checks again right before the wallet opens.
  *
- * A refusal must never be wrong the other way: an order that would have
- * gone through, refused, is a person who cannot buy or sell at all. So only
- * the chain's OWN live price refuses (gasNeed). What some wallets attach on
- * top of it (WALLET_FEE_FLOOR) only warns (floorWarns): measured on chain
- * 2026-10-02, most signers reserve fifty times less than the floor, and a
- * floor that greyed would block everyone holding "a little ETH" on an L2.
+ * What refuses is the larger of two needs (blockingNeed): the chain's own
+ * live price (gasNeed), and what some wallets attach on top of it whatever
+ * the chain suggests (WALLET_FEE_FLOOR, floorNeed). The floor used to only
+ * warn; issues #23 and #27 were wallets that paid their own gas, held "a
+ * little ETH" on Base, and were refused by the wallet at the very end. So
+ * since 2026-10-08 a wallet that pays its own fee is stopped before the
+ * flow starts, and told roughly how much to add (gasToAdd). A sponsored
+ * order (Privy pays) is never gated by either.
  *
  * Pure: the fee per gas and balances come in as arguments, so a table of
  * inputs pins every branch (gas-need.test.ts). The hook that feeds it live
@@ -27,9 +29,9 @@ import {
 /**
  * The fee per gas some wallets attach REGARDLESS of what the chain suggests
  * (issue #23: Base suggested a 0.001 gwei tip, a MetaMask-like wallet signed
- * at 2 gwei; on Arbitrum some wallets attach 2 gwei, others 0.1). It holds
- * back the Max button's buffer (hooks/use-native-gas-buffer) and raises the
- * calm warning under the button; it never greys a token or refuses an order.
+ * at 2 gwei; on Arbitrum some wallets attach 2 gwei, others 0.1). It sets
+ * the Max button's least buffer (hooks/use-native-gas-buffer) and, through
+ * blockingNeed, the least native balance an unsponsored order must find.
  */
 export const DEFAULT_WALLET_FEE_FLOOR = 2_000_000_000n; // 2 gwei
 
@@ -45,17 +47,22 @@ export function walletFeeFloor(chainKey: SpokeChainKey): bigint {
 }
 
 /**
- * What a deposit burns, measured: 119,335 gas on Base in issue #23. The Max
- * buffer's floor multiplies by this (a realistic burn at a worst-case price).
- */
-export const OBSERVED_DEPOSIT_GAS = 150_000n;
-
-/**
  * The gas a wallet RESERVES for a deposit: the largest limit seen on recent
  * SODAX deposits to the Base asset manager (119k to 229k), rounded up. A
  * wallet needs limit x maxFee in hand, not the gas burned.
  */
 export const GATE_DEPOSIT_GAS = 230_000n;
+
+/**
+ * The gas a wallet reserves for a sell (or a vault withdrawal): one message
+ * from the signing chain. Issue #27's sell on Base carried a 61,401 gas
+ * limit; rounded up with room. Only the floor uses it (floorNeed): the
+ * chain-priced need keeps the deposit's larger limit.
+ */
+export const GATE_SELL_GAS = 100_000n;
+
+/** Which transaction the person signs: a buy (a deposit) or a sell. */
+export type GasOrder = "buy" | "sell";
 
 /** An ERC-20 approve, measured at 46k to 56k; rounded up. Only when the read allowance needs one. */
 export const GATE_APPROVE_GAS = 60_000n;
@@ -151,10 +158,41 @@ export function gasNeed({
 
 /**
  * What a wallet that attaches the floor (WALLET_FEE_FLOOR) would reserve
- * for the same order. Warning only (floorWarns), never a refusal.
+ * for the same order; `undefined` off EVM and when Privy pays.
  */
-export function floorNeed(chainKey: SpokeChainKey, approval: boolean, sponsored = false): bigint | undefined {
-  return gasModel(chainKey, sponsored).kind === "evm" ? walletFeeFloor(chainKey) * evmGas(approval) : undefined;
+export function floorNeed(
+  chainKey: SpokeChainKey,
+  approval: boolean,
+  sponsored = false,
+  order: GasOrder = "buy",
+): bigint | undefined {
+  if (gasModel(chainKey, sponsored).kind !== "evm") return undefined;
+  return walletFeeFloor(chainKey) * (order === "sell" ? GATE_SELL_GAS + (approval ? GATE_APPROVE_GAS : 0n) : evmGas(approval));
+}
+
+/**
+ * The native balance that refuses an order: the larger of the chain's own
+ * price (gasNeed) and the wallet floor (floorNeed). The floor needs no live
+ * read, so while the fee per gas is loading the floor alone stands in for
+ * it, and the pre-sign check reads the fee afresh. Off EVM and when Privy
+ * pays, the chain's need unchanged.
+ */
+export function blockingNeed({
+  chainKey,
+  need,
+  approval,
+  sponsored = false,
+  order = "buy",
+}: {
+  chainKey: SpokeChainKey;
+  need: bigint | undefined;
+  approval: boolean;
+  sponsored?: boolean;
+  order?: GasOrder;
+}): bigint | undefined {
+  const floor = floorNeed(chainKey, approval, sponsored, order);
+  if (floor === undefined) return need;
+  return need !== undefined && need > floor ? need : floor;
 }
 
 /**
@@ -237,18 +275,26 @@ export function orderGasShort({
   return nativeBalance < amount + (need * NATIVE_SLACK_PCT) / 100n;
 }
 
+/** Rounds up to two significant digits: 0.000337 becomes 0.00034. */
+function roundUpTwoDigits(value: bigint): bigint {
+  const digits = value.toString().length;
+  if (digits <= 2) return value;
+  const step = 10n ** BigInt(digits - 2);
+  return ((value + step - 1n) / step) * step;
+}
+
 /**
- * Whether the order clears the chain's own price but not what a wallet
- * attaching the floor would reserve: the person may sign, and is told
- * calmly that some wallets ask for more.
+ * Roughly how much native to add so the order can pay its fee, in native
+ * units, rounded up to two significant digits: the number the top-up
+ * guidance names. `undefined` when nothing is missing or it cannot be told.
+ * Pass the blocking need (blockingNeed).
  */
-export function floorWarns({
+export function gasToAdd({
   chainKey,
   isNative,
-  nativeBalance,
+  nativeBalance: raw,
   amount,
   need,
-  approval,
   sponsored = false,
 }: {
   chainKey: SpokeChainKey;
@@ -256,14 +302,13 @@ export function floorWarns({
   nativeBalance: bigint | undefined;
   amount: bigint;
   need: bigint | undefined;
-  approval: boolean;
   sponsored?: boolean;
-}): boolean {
-  const floor = floorNeed(chainKey, approval, sponsored);
-  if (floor === undefined || nativeBalance === undefined) return false;
-  if (orderGasShort({ chainKey, isNative, nativeBalance, amount, need })) return false;
-  if (need !== undefined && need >= floor) return false;
-  return nativeBalance < (isNative ? amount : 0n) + floor;
+}): bigint | undefined {
+  if (gasModel(chainKey, sponsored).kind === "free") return undefined;
+  const nativeBalance = trustedNativeBalance(chainKey, raw);
+  if (nativeBalance === undefined || need === undefined) return undefined;
+  const required = (isNative ? amount : 0n) + need;
+  return required > nativeBalance ? roundUpTwoDigits(required - nativeBalance) : undefined;
 }
 
 /** Sort key: what can pay first, what cannot last, order kept otherwise. */
