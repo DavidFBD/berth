@@ -237,17 +237,29 @@ export const CANDIDATES_SQL = `select o.id, o.intent_tx, u.id as user_id, u.wall
        o.listing_address, ${CHAIN_OF("o")} as holding_chain, o.delivered_to, o.quantity::text as quantity,
        case when lower(o.listing_address) = any($5::text[]) then
          -- A listing with a token on Robinhood Chain (ACCOUNT_WIDE): every
-         -- paid buy of it by the account, on either chain, net of every
-         -- sell of it, never below zero.
+         -- paid buy of it by the account, on either chain, less what sells
+         -- placed BEFORE this buy took out of those paid lots. A sell first
+         -- spends the unpaid buys before it (forfeited or still waiting), so
+         -- buying and selling the same amount again each month never eats
+         -- into a paid lot (rh-final 1); a paid lot that was really sold
+         -- before this buy no longer counts against it.
          greatest(0,
            (select coalesce(sum(p.quantity), 0) from orders p
              where p.direction = 'buy' and p.hold_outcome = 'paid'
                and lower(p.listing_address) = lower(o.listing_address)
                and (p.user_id = u.id or (p.user_id is null and p.wallet_address = u.wallet_address)))
-           - (select coalesce(sum(s.quantity), 0) from orders s
-               where s.direction = 'sell' and s.quantity is not null
-                 and lower(s.listing_address) = lower(o.listing_address)
-                 and s.user_id = u.id)
+           - greatest(0,
+               (select coalesce(sum(s.quantity), 0) from orders s
+                 where s.direction = 'sell' and s.quantity is not null
+                   and lower(s.listing_address) = lower(o.listing_address)
+                   and (s.user_id = u.id or (s.user_id is null and s.wallet_address = u.wallet_address))
+                   and coalesce(s.placed_at, s.filled_at, s.created_at) < ${EFFECTIVE_AT})
+               - (select coalesce(sum(b.quantity), 0) from orders b
+                   where b.direction = 'buy' and b.id <> o.id and b.quantity is not null
+                     and b.hold_outcome is distinct from 'paid'
+                     and lower(b.listing_address) = lower(o.listing_address)
+                     and (b.user_id = u.id or (b.user_id is null and b.wallet_address = u.wallet_address))
+                     and coalesce(b.filled_at, b.placed_at, b.created_at) < ${EFFECTIVE_AT}))
          )::text
        else
          -- Any other listing: per delivery wallet on the hub, as always.
@@ -382,8 +394,10 @@ export const readDeliveredBalances: BalanceReader = deliveredBalancesReader();
  * wallet and the hub wallet of every EVM address linked now) plus every
  * EVM wallet linked to the account now on Robinhood Chain (a wallet since
  * unlinked counts for nobody here), against every paid buy of it on
- * either chain, net of every sell of it, so an honest holder who sold a
- * paid lot never forfeits a new buy. Moving tokens between the account's
+ * either chain, less what sells placed before the buy took out of paid
+ * lots (a sell spends unpaid buys first), so an honest holder who sold a
+ * paid lot never forfeits a new buy, and buying and selling again never
+ * eats into a paid lot. Moving tokens between the account's
  * places changes nothing; moving them out of the account forfeits, as
  * selling does. Chosen over reading Transfer logs since each fill: no log
  * scan over a month of blocks on the public RPC, and no window to game.

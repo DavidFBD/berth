@@ -619,6 +619,22 @@ describe("a buy delivered to Robinhood Chain", () => {
     expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: twoChains(0n, ONE) })).toMatchObject({ paid: 0, forfeited: 1 });
   });
 
+  it("never lets a monthly buy and sell of the same amount ride on a paid lot (rh-final 1)", async () => {
+    const owner = await account(46);
+    const a = owner.wallet_address!;
+    const lot = await order({ owner: a, quantity: "10", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(120) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(90), lot]);
+    // Month one: bought 10 and sold 10 at once; that buy was forfeited.
+    const first = await order({ owner: a, quantity: "10", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(70) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'forfeit' where intent_tx = $2", [daysAgo(40), first]);
+    await order({ owner: a, userId: owner.id, direction: "sell", quantity: "10", filledAt: new Date(daysAgo(70).getTime() + 3_600_000) });
+    // Month two: the same again; the paid lot of 10 is all that is held.
+    const second = await order({ owner: a, quantity: "10", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(35) });
+    await order({ owner: a, userId: owner.id, direction: "sell", quantity: "10", filledAt: new Date(daysAgo(35).getTime() + 3_600_000) });
+    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.paidBefore])).toEqual([[second, "10"]]);
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: twoChains(10n * ONE, 0n) })).toMatchObject({ paid: 0, forfeited: 1 });
+  });
+
   it("nets sells out of what was paid, so an honest holder who sold a paid lot never forfeits a new buy (rh-delta)", async () => {
     const owner = await account(44);
     const a = owner.wallet_address!;
