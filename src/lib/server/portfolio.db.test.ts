@@ -7,6 +7,8 @@ import { runEvening } from "./evening";
 import { fillOrderMarks, loadOrderFacts, loadOrderLog, ordersMissingMarks } from "./order-marks";
 import { recordOrderMarks } from "./orders";
 import { robinhoodRpcFake } from "./robinhood-rpc-fake";
+import { makeRobinhoodHoldingsReader } from "./robinhood-balances";
+import { TOKEN_LISTINGS } from "@/lib/listings";
 import {
   hasRobinhoodOrders,
   loadPortfolioDays,
@@ -633,26 +635,61 @@ describe("Robinhood Chain in the portfolio", () => {
   const deliveredThere = (orderId: string) =>
     sql.query(`update orders set holding_chain = 'robinhood' where id = $1`, [orderId]);
 
-  it("adds what the account's wallets hold on Robinhood Chain to the hub, read once for the whole run", async () => {
+  it("adds what the account's wallets hold on Robinhood Chain to the hub, every wallet asked in one request for the whole run", async () => {
     const holder = await account(1);
     const other = await account(2);
     await deliveredThere(await placeOrder(holder.id));
     await placeOrder(other.id);
     await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
-    const asked: string[][] = [];
+    // The live reader's shape: remembered per wallet, over a chain read that counts its requests.
+    const nvda = TOKEN_LISTINGS.find((listing) => listing.symbol === "NVDA")!;
+    const requests: number[] = [];
+    const readRobinhood = makeRobinhoodHoldingsReader(async (queries) => {
+      requests.push(queries.length);
+      return queries.map((query) =>
+        query.holder === wallet(1) && query.token.toLowerCase() === nvda.rhAddress!.toLowerCase() ? 15n * 10n ** 17n : 0n,
+      );
+    });
     const summary = await runPortfolioSnapshot({
       now: FRIDAY_EVENING,
-      readRobinhood: onRobinhood({ [wallet(1)]: { NVDA: 1.5 }, [wallet(2)]: {} }, asked),
+      readRobinhood,
       deriveHubWallet: async (spoke) => `hub-${spoke}`,
       readBalances: async (hub): Promise<Record<string, number>> => (hub === `hub-${wallet(1)}` ? { NVDA: 1 } : { NVDA: 2 }),
       livePrices: async () => ({}),
     });
     expect(summary).toMatchObject({ written: 2, failed: 0 });
     const [mine] = await loadPortfolioDays(holder.id);
-    expect(mine.holdings).toEqual([{ symbol: "NVDA", quantity: 2.5, price: 200, source: "mark" }]);
+    expect(mine.holdings[0]).toMatchObject({ symbol: "NVDA", quantity: 2.5, price: 200, source: "mark" });
     expect(mine.value).toBeCloseTo(500, 10);
-    // One read up front for every wallet; each account answered from it.
-    expect(asked).toEqual([[wallet(1), wallet(2)]]);
+    // One request for both wallets; each account answered from it.
+    expect(requests).toHaveLength(1);
+  });
+
+  it("with a Robinhood Chain that does not answer in time, still writes every hub-only day and lets the Robinhood account fall back (rh-server M1)", async () => {
+    const delivered = await account(1);
+    const hubOnly = [await account(2), await account(3), await account(4)];
+    await deliveredThere(await placeOrder(delivered.id));
+    for (const user of hubOnly) await placeOrder(user.id);
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    // A chain read that takes far longer than any account may wait.
+    const slow = makeRobinhoodHoldingsReader(async (queries) => {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      return queries.map(() => 0n);
+    });
+    const started = Date.now();
+    const summary = await runPortfolioSnapshot({
+      now: FRIDAY_EVENING,
+      readRobinhood: slow,
+      robinhoodBudgetMs: 100,
+      accountTimeoutMs: 1_000,
+      deriveHubWallet: async (spoke) => spoke,
+      readBalances: async () => ({ NVDA: 1 }),
+      livePrices: async () => ({}),
+    });
+    expect(Date.now() - started).toBeLessThan(2_500);
+    expect(summary).toMatchObject({ accounts: 4, written: 3, failed: 1 });
+    expect(await loadPortfolioDays(delivered.id)).toEqual([]);
+    for (const user of hubOnly) expect((await loadPortfolioDays(user.id)).map((day) => day.value)).toEqual([200]);
   });
 
   it("writes no row for an account delivered there whose Robinhood Chain read failed, and the hub's for one never delivered there", async () => {

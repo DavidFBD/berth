@@ -434,8 +434,13 @@ export function snapshotPrice(
   return { price: close, source: "mark" };
 }
 
-/** How long the run's one up front Robinhood Chain read may take before accounts read their own. */
-export const ROBINHOOD_PREFETCH_MS = 15_000;
+/**
+ * How long one account's Robinhood Chain read may take in the snapshot
+ * before it counts as unread: well under ACCOUNT_TIMEOUT_MS, so an account
+ * Berth never delivered there still writes its hub day in time, and one it
+ * did falls back as designed (rh-server M1).
+ */
+export const ROBINHOOD_ACCOUNT_BUDGET_MS = 4_000;
 
 /**
  * Today's row for every account: balances read on chain, valued at today's
@@ -444,20 +449,22 @@ export const ROBINHOOD_PREFETCH_MS = 15_000;
  * longer than ACCOUNT_TIMEOUT_MS, costs that account its row and nothing
  * else.
  *
- * Robinhood Chain is read once for every account up front, many wallets to
- * a call (lib/server/robinhood-balances), within ROBINHOOD_PREFETCH_MS, and
- * each account's own read answers from it. An account with an order
- * delivered there whose Robinhood Chain read fails writes no row (a day
- * missing what it holds there would read low and look like money moved);
- * an account Berth never delivered there keeps its hub total, so a slow
- * public RPC never costs everyone their day.
+ * Robinhood Chain is asked once for every account's wallets as the run
+ * starts, many wallets to a request (lib/server/robinhood-balances), never
+ * waited on as a whole: each wallet's answer lands with its own request,
+ * and each account's own read waits for its wallets at most
+ * ROBINHOOD_ACCOUNT_BUDGET_MS, then counts as unread. An account on
+ * Robinhood Chain whose read is unread writes no row (a day missing what
+ * it holds there would read low and look like money moved); an account
+ * Berth never delivered there keeps its hub total, so a slow public RPC
+ * never costs everyone their day.
  */
 export async function runPortfolioSnapshot({
   now = new Date(),
   readBalances = readListingBalances,
   deriveHubWallet = hubWalletFor,
   readRobinhood = readRobinhoodHoldings,
-  robinhoodPrefetchMs = ROBINHOOD_PREFETCH_MS,
+  robinhoodBudgetMs = ROBINHOOD_ACCOUNT_BUDGET_MS,
   livePrices = liveListingPrices,
   accounts,
   accountTimeoutMs = ACCOUNT_TIMEOUT_MS,
@@ -470,7 +477,8 @@ export async function runPortfolioSnapshot({
   readBalances?: ListingBalanceReader;
   deriveHubWallet?: (spokeAddress: string) => Promise<string>;
   readRobinhood?: RobinhoodHoldingsReader;
-  robinhoodPrefetchMs?: number;
+  /** Each account's Robinhood Chain read, past which it is unread. */
+  robinhoodBudgetMs?: number;
   livePrices?: () => Promise<Record<string, number>>;
   accounts?: SnapshotAccount[];
 } = {}): Promise<SnapshotSummary> {
@@ -508,18 +516,12 @@ export async function runPortfolioSnapshot({
 
   const walletsOf = (account: SnapshotAccount) =>
     account.wallets && account.wallets.length > 0 ? account.wallets : [account.wallet];
-  const prefetched = await prefetchRobinhood(list.flatMap(walletsOf), readRobinhood, Math.min(robinhoodPrefetchMs, deadline - Date.now()));
-  const runRobinhood: RobinhoodHoldingsReader = async (owners) => {
-    const missing = owners.filter((owner) => !prefetched.has(owner.toLowerCase()));
-    const late = missing.length > 0 ? await readRobinhood(missing) : new Map<string, Record<string, number>>();
-    const out = new Map<string, Record<string, number>>();
-    for (const owner of owners) {
-      const key = owner.toLowerCase();
-      const holdings = prefetched.get(key) ?? late.get(key);
-      if (holdings) out.set(key, holdings);
-    }
-    return out;
-  };
+  // Every wallet asked at once, request by request, never awaited: the
+  // live reader remembers each wallet's answer as its request lands, and
+  // each account's read below takes it from there.
+  const allWallets = list.flatMap(walletsOf);
+  if (allWallets.length > 0) void readRobinhood(allWallets).catch(() => undefined);
+  const runRobinhood: RobinhoodHoldingsReader = (owners) => withinBudget(readRobinhood(owners), robinhoodBudgetMs);
 
   const snapshotOne = async (account: SnapshotAccount, expired: () => boolean) => {
     const { total: balances } = await readAccountBalances(
@@ -574,24 +576,19 @@ export async function runPortfolioSnapshot({
   return summary;
 }
 
-/** The run's one Robinhood Chain read, given up after `ms`; whatever it could not read in time is read per account. */
-async function prefetchRobinhood(
-  owners: readonly string[],
-  read: RobinhoodHoldingsReader,
+/** A Robinhood Chain read, or nothing read (every wallet unread) once it fails or outlasts `ms`. */
+async function withinBudget(
+  read: Promise<Map<string, Record<string, number>>>,
   ms: number,
 ): Promise<Map<string, Record<string, number>>> {
-  if (owners.length === 0 || ms <= 0) return new Map();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      read(owners),
+      read.catch(() => new Map<string, Record<string, number>>()),
       new Promise<Map<string, Record<string, number>>>((resolve) => {
         timer = setTimeout(() => resolve(new Map()), ms);
       }),
     ]);
-  } catch (error) {
-    console.warn("[portfolio] Robinhood Chain prefetch failed", error instanceof Error ? error.message : error);
-    return new Map();
   } finally {
     clearTimeout(timer);
   }

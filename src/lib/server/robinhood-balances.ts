@@ -193,6 +193,9 @@ function holdingsFrom(raw: readonly RobinhoodBalance[]): Record<string, number> 
   return out;
 }
 
+/** Owners whose balances fit one HTTP request (CALLS_PER_REQUEST aggregate calls of BALANCES_PER_CALL). */
+export const OWNERS_PER_REQUEST = Math.max(1, Math.floor((BALANCES_PER_CALL * CALLS_PER_REQUEST) / Math.max(1, ROBINHOOD_LISTINGS.length)));
+
 /**
  * Every owner's Robinhood Chain listings (RobinhoodHoldingsReader), each
  * owner read at most once per ROBINHOOD_MEMO_MS and the owners not
@@ -216,11 +219,14 @@ export function makeRobinhoodHoldingsReader(
       const hit = memo.get(owner);
       return !hit || now - hit.at >= memoMs;
     });
-    if (stale.length > 0 && ROBINHOOD_LISTINGS.length > 0) {
+    // One read per request's worth of owners, each owner's answer tied to
+    // its own request (rh-server M1): a wallet early in a long read is known
+    // as soon as its request lands, never only when the whole read ends.
+    for (const batch of ROBINHOOD_LISTINGS.length > 0 ? chunks(stale, OWNERS_PER_REQUEST) : []) {
       const read = readBalances(
-        stale.flatMap((holder) => ROBINHOOD_LISTINGS.map((listing) => ({ holder, token: listing.rhAddress }))),
-      ).catch(() => stale.flatMap(() => ROBINHOOD_LISTINGS.map(() => null)));
-      stale.forEach((owner, position) => {
+        batch.flatMap((holder) => ROBINHOOD_LISTINGS.map((listing) => ({ holder, token: listing.rhAddress }))),
+      ).catch(() => batch.flatMap(() => ROBINHOOD_LISTINGS.map(() => null)));
+      batch.forEach((owner, position) => {
         const entry = {
           at: now,
           read: read.then((raw) =>
