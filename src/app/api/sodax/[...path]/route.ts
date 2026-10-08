@@ -70,7 +70,12 @@ export async function POST(
     );
   }
 
-  return new Response(await upstream.text(), {
+  const text = await upstream.text();
+  if (!upstream.ok) {
+    // Pair, amount and the solver's own error only: no wallet, no account.
+    console.warn("sodax proxy", path.join("/"), upstream.status, body.slice(0, 400), text.slice(0, 400));
+  }
+  return new Response(text, {
     status: upstream.status,
     headers: {
       "content-type":
