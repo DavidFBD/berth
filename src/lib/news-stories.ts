@@ -1,6 +1,7 @@
 import { chooseLead } from "@/lib/news-fold";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { mergeBySymbol } from "@/lib/news";
+import { decodeEntities } from "@/lib/html-entities";
 
 const LISTING_NAMES: ReadonlyMap<string, string> = new Map(TOKEN_LISTINGS.map((listing) => [listing.symbol, listing.name]));
 import type { Verdict } from "@/lib/x-feed";
@@ -157,7 +158,8 @@ export function toCard(
     id: lead.source === "x" ? lead.sourceId : `s${story.id}`,
     storyId: story.id,
     kind: lead.source === "x" ? "post" : "article",
-    title: lead.title,
+    // Decoded once here, for every reader of a card: the column, the first look, the tools.
+    title: decodeEntities(lead.title),
     url: lead.url,
     publisher: lead.publisher,
     publishedAt: lead.publishedAt,
