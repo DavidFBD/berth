@@ -397,7 +397,7 @@ export function NewsFeed({
                         data-focused={pin && story.storyId === pin.storyId ? "" : undefined}
                         // Focusable from code only: focus lands here, and its first words say what it is.
                         tabIndex={pin && story.storyId === pin.storyId ? -1 : undefined}
-                        className={pin && story.storyId === pin.storyId ? "bg-muted/50 outline-none" : undefined}
+                        className={pin && story.storyId === pin.storyId ? "bg-muted/50 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset" : undefined}
                         variants={CARD}
                         exit="leave"
                         layout="position"
