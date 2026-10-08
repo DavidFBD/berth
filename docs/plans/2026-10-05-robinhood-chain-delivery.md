@@ -176,6 +176,8 @@ As in section 1. Files: the branch as is, plus the stepper and drawer merge reso
 - **Ships dark:** the switch.
 - **Verified by:** `pnpm shot` of the sell sheet with both sources. Then David sells the $5 NVDA back to Base USDC, once from the email (sponsored) account if decision 2 allows, otherwise from an external wallet holding ETH on 4663.
 
+**Built 8 Oct on `feat/robinhood-sell` (with P1b), unreviewed.** A sell from the wallet on Robinhood Chain goes through `runWithdraw` with `robinhood: { rhAddress }`: the SDK's `leverageYield.withdraw` build becomes a robinhood spoke intent (`lib/robinhood-sell` `robinhoodSellPayload`: `srcChainKey`, `srcAddress`, `inputToken` replaced, `hubWalletSwap` dropped), then `sodax.swaps.isAllowanceValid` / `useSwapApprove` (the asset manager, for exactly `inputAmount`), `createVaultIntent`, relay and `notifySolver` through `sendMarket`. The sheet lists each place that holds the stock with its own Max and never sums them; it opens on the wallet on Robinhood Chain when this session signs for it. Market only. 6a48526 is undone in `lib/orders` `listingOfIntent`. Open: whether SODAX's relayer picks up an intent sent from inside a sponsored 7702 bundle on 4663 (decision 2); a refused sponsorship falls back to the ordinary send as on every chain.
+
 ### P4d. Demo copy (session 3)
 
 - `src/lib/copy.ts`:
@@ -198,6 +200,8 @@ As in section 1. Files: the branch as is, plus the stepper and drawer merge reso
 - **Ships dark:** the reads are a no-op for anyone with nothing on 4663.
 - **Verified by:** db tests, MCP output snapshots, and a dry run of the evening snapshot for David's account (SELECT-only).
 - Must land before **4 Nov**, the first possible 30-day hold of a demo buy. The P0b guard keeps it safe until then.
+
+**Built 8 Oct on `feat/robinhood-sell`, unreviewed.** `lib/server/robinhood-balances` reads every wallet's 4663 balances in Multicall3 `aggregate3` calls (240 balances each, three to a request, one request at a time per process, 429s waited out by the multiplier reader's `robinhoodRpcBatch`, two minute memo). `readAccountBalances` adds them to the hub, so the snapshot (and the weekly email and Most held through `portfolio_days`), the history chart's live point, the assistant and the wallet removal check count them. The snapshot reads every wallet once up front; an account with a Robinhood Chain order writes no day when that chain does not answer, any other keeps its hub figure. The hold check reads `balanceOf(rhAddress, delivered_to)` on 4663 for a Robinhood row and the ON_SONIC guard is gone: a delivery that never arrived is never paid.
 
 ### P3b. Send out from Robinhood Chain (session 4)
 
