@@ -27,17 +27,53 @@ import {
  */
 
 /**
- * The fee per gas some wallets attach REGARDLESS of what the chain suggests
- * (issue #23: Base suggested a 0.001 gwei tip, a MetaMask-like wallet signed
- * at 2 gwei; on Arbitrum some wallets attach 2 gwei, others 0.1). It sets
- * the Max button's least buffer (hooks/use-native-gas-buffer) and, through
- * blockingNeed, the least native balance an unsponsored order must find.
+ * The fee per gas some wallets attach REGARDLESS of what the chain suggests,
+ * per chain. It sets the Max button's least buffer
+ * (hooks/use-native-gas-buffer) and, through blockingNeed, the least native
+ * balance an unsponsored order must find, so a value too high refuses
+ * wallets that could pay. Each is the max priority fee common wallets
+ * (MetaMask, Rabby, Coinbase Wallet) are seen or known to attach there,
+ * rounded up, never the worst outlier:
+ *
+ * - Base: 2 gwei. Observed twice on our own orders: issue #23 (a deposit
+ *   signed at 2 gwei against a 0.001 gwei suggestion) and issue #27 (a
+ *   sell reserving 61,401 gas at about 2 gwei). Evidence beats the chain's
+ *   own suggestion here.
+ * - Optimism: 0.1 gwei. The same OP stack as Base but no order of ours has
+ *   shown 2 gwei there; wallets follow eth_maxPriorityFeePerGas, which
+ *   answers about 0.001 gwei. 0.1 is a hundredfold margin over that.
+ * - Arbitrum and Robinhood Chain (an Arbitrum Orbit chain): 0.1 gwei.
+ *   ArbOS ignores the tip, wallets reserve against a 0.01 gwei base fee,
+ *   and 0.1 is the larger of the two values seen there (the other was 2
+ *   gwei from one wallet, which the insufficient-funds read-out catches).
+ * - BSC: 0.1 gwei, the validators' minimum gas price since 2025 and what
+ *   wallets sign at by default.
+ * - HyperEVM: 0.1 gwei. Base fee of a fraction of a gwei, wallets attach
+ *   little or nothing on top.
+ * - Avalanche: 1 gwei. Base fee near zero since ACP-176; wallets attach a
+ *   tip of up to about 1 gwei.
+ * - Ethereum: 2 gwei, MetaMask's market tip; the chain's own price is
+ *   usually higher and then governs.
+ * - Polygon: 30 gwei, the network's enforced minimum tip.
+ * - Sonic: 1 gwei; its own price (tens of gwei) governs in practice.
+ * - Any other EVM chain: 2 gwei (DEFAULT_WALLET_FEE_FLOOR), the cautious
+ *   value until one is measured, since a new L2 can repeat issue #23.
  */
 export const DEFAULT_WALLET_FEE_FLOOR = 2_000_000_000n; // 2 gwei
 
+const GWEI = 1_000_000_000n;
+
 export const WALLET_FEE_FLOOR: Partial<Record<EvmChainKey, bigint>> = {
-  // Observed: 2 gwei priority on a 0.006 gwei base fee (issue #23).
-  [ChainKeys.BASE_MAINNET]: DEFAULT_WALLET_FEE_FLOOR,
+  [ChainKeys.BASE_MAINNET]: 2n * GWEI,
+  [ChainKeys.OPTIMISM_MAINNET]: GWEI / 10n,
+  [ChainKeys.ARBITRUM_MAINNET]: GWEI / 10n,
+  [ChainKeys.ROBINHOOD_MAINNET]: GWEI / 10n,
+  [ChainKeys.BSC_MAINNET]: GWEI / 10n,
+  [ChainKeys.HYPEREVM_MAINNET]: GWEI / 10n,
+  [ChainKeys.AVALANCHE_MAINNET]: GWEI,
+  [ChainKeys.ETHEREUM_MAINNET]: 2n * GWEI,
+  [ChainKeys.POLYGON_MAINNET]: 30n * GWEI,
+  [ChainKeys.SONIC_MAINNET]: GWEI,
 };
 
 export function walletFeeFloor(chainKey: SpokeChainKey): bigint {
@@ -56,10 +92,11 @@ export const GATE_DEPOSIT_GAS = 230_000n;
 /**
  * The gas a wallet reserves for a sell (or a vault withdrawal): one message
  * from the signing chain. Issue #27's sell on Base carried a 61,401 gas
- * limit; rounded up with room. Only the floor uses it (floorNeed): the
+ * limit; 70,000 leaves 14% room and still refuses #27 at Base's 2 gwei
+ * floor (0.00014 ETH needed, the wallet asked about 0.000123). Only the floor uses it (floorNeed): the
  * chain-priced need keeps the deposit's larger limit.
  */
-export const GATE_SELL_GAS = 100_000n;
+export const GATE_SELL_GAS = 70_000n;
 
 /** Which transaction the person signs: a buy (a deposit) or a sell. */
 export type GasOrder = "buy" | "sell";

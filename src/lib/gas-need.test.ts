@@ -16,6 +16,7 @@ import {
   orderGasShort,
   payTokenGas,
   trustedNativeBalance,
+  walletFeeFloor,
 } from "./gas-need";
 import { evmFeeFloorBuffer } from "@/hooks/use-native-gas-buffer";
 
@@ -232,6 +233,34 @@ describe("blockingNeed: the wallet floor refuses a wallet that pays its own fee"
     const max = balance - evmFeeFloorBuffer(BASE);
     expect(orderGasShort({ chainKey: BASE, isNative: true, nativeBalance: balance, amount: max, need })).toBe(false);
     expect(orderGasShort({ chainKey: BASE, isNative: true, nativeBalance: balance, amount: max + need / 10n, need })).toBe(true);
+  });
+});
+
+describe("walletFeeFloor: per chain, from what wallets attach there", () => {
+  it("keeps Base at the 2 gwei seen on issues #23 and #27", () => {
+    expect(walletFeeFloor(ChainKeys.BASE_MAINNET)).toBe(2n * GWEI);
+  });
+
+  it("does not hold cheap L2s to Base's 2 gwei", () => {
+    for (const chain of [ChainKeys.ARBITRUM_MAINNET, ChainKeys.OPTIMISM_MAINNET, ChainKeys.BSC_MAINNET, ChainKeys.HYPEREVM_MAINNET, ChainKeys.ROBINHOOD_MAINNET]) {
+      expect(walletFeeFloor(chain)).toBe(GWEI / 10n);
+    }
+    // A sell on Arbitrum is refused only under 0.000007 ETH, not 0.0002.
+    expect(floorNeed(ChainKeys.ARBITRUM_MAINNET, false, false, "sell")).toBe(7_000_000_000_000n);
+  });
+
+  it("meets Polygon's enforced 30 gwei tip, and keeps 2 gwei for an EVM chain not yet measured", () => {
+    expect(walletFeeFloor(ChainKeys.POLYGON_MAINNET)).toBe(30n * GWEI);
+    expect(walletFeeFloor(ChainKeys.LIGHTLINK_MAINNET)).toBe(DEFAULT_WALLET_FEE_FLOOR);
+  });
+
+  it("never refuses a native Max on any listed chain", () => {
+    for (const chain of [ChainKeys.ARBITRUM_MAINNET, ChainKeys.POLYGON_MAINNET, ChainKeys.AVALANCHE_MAINNET, ChainKeys.BASE_MAINNET]) {
+      const need = blockingNeed({ chainKey: chain, need: undefined, approval: false })!;
+      const balance = 10n ** 17n;
+      const max = balance - evmFeeFloorBuffer(chain);
+      expect(orderGasShort({ chainKey: chain, isNative: true, nativeBalance: balance, amount: max, need })).toBe(false);
+    }
   });
 });
 
