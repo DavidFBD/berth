@@ -117,9 +117,13 @@ describe("berthFilledIntents", () => {
     expect(kept.map((entry) => [entry.intentTx, entry.direction])).toEqual([[tx(8), "buy"]]);
   });
 
-  it("passes by a sell paid from Robinhood Chain, as on master (until P3a)", () => {
+  it("finds a sell from Robinhood Chain as a sell of its listing", () => {
     const sell = item({ txHash: tx(10), input: NVDA.rhHubAsset!, output: USDC_HUB });
-    expect(berthFilledIntents([{ ...sell, intent: { ...sell.intent, srcChain: 21071 } }], listings)).toEqual([]);
+    expect(
+      berthFilledIntents([{ ...sell, intent: { ...sell.intent, srcChain: 21071 } }], listings).map((entry) => [entry.intentTx, entry.direction]),
+    ).toEqual([[tx(10), "sell"]]);
+    // The Sonic token named from Robinhood Chain is no listing's.
+    expect(berthFilledIntents([{ ...sell, intent: { ...sell.intent, inputToken: NVDA.address, srcChain: 21071 } }], listings)).toEqual([]);
   });
 });
 

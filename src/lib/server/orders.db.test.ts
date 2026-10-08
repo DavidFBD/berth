@@ -80,6 +80,17 @@ describe("saveOrder and the holding chain", () => {
     expect(row.listing_address).toBe("0xlisting");
   });
 
+  it("names a sell from Robinhood Chain robinhood too, a sell like any other", async () => {
+    await saveOrder(null, { ...base, intentTx: "0xrhsell", direction: "sell", holdingChain: "robinhood", quantity: "0.5", deliveredTo: "0xpayout" });
+    expect(await chainOf("0xrhsell")).toBe("robinhood");
+    const row = ((await sql.query(`select direction, listing_address, quantity::text from orders where intent_tx = '0xrhsell'`, [])) as {
+      direction: string;
+      listing_address: string;
+      quantity: string;
+    }[])[0];
+    expect(row).toEqual({ direction: "sell", listing_address: "0xlisting", quantity: "0.5" });
+  });
+
   it("never moves a row's chain once named, and fills a legacy null in", async () => {
     await saveOrder(null, { ...base, intentTx: "0xrh1", holdingChain: "sonic", quantity: "1" });
     expect(await chainOf("0xrh1")).toBe("robinhood");

@@ -846,3 +846,39 @@ describe("a buy delivered on Robinhood Chain (plan P2a)", () => {
     expect(await proveOwnership({ direction: "buy", intent: buyFrom(F.sui, HOME, RH), wallets: [late], reads: unread })).toMatchObject({ ok: false, unknown: true });
   });
 });
+
+describe("a sell from Robinhood Chain (plan P3a)", () => {
+  const RH = 21071n;
+  /** The hub wallet the factory derives for (Robinhood Chain, HOME): the intent's creator. */
+  const RH_HUB = "0x5555555555555555555555555555555555555555";
+  const sell = {
+    ...SPEND,
+    creator: RH_HUB,
+    srcChain: RH,
+    srcAddress: HOME,
+    dstChain: 4n,
+    dstAddress: HOME,
+  };
+
+  it("fits the generic spoke source rule: paid by the hub wallet its wallet derives there, the wallet on the account", () => {
+    expect(judgeOwnership(facts({ direction: "sell", intent: sell, sourceHub: RH_HUB }))).toEqual({
+      ok: true,
+      payer: { family: "evm", address: HOME },
+    });
+  });
+
+  it("is refused from a wallet not on the account, a creator not its own, or a payment its creator did not make", () => {
+    expect(judgeOwnership(facts({ direction: "sell", intent: { ...sell, srcAddress: STRANGER }, sourceHub: RH_HUB }))).toEqual({
+      ok: false,
+      why: "payer not on account",
+    });
+    expect(judgeOwnership(facts({ direction: "sell", intent: sell, sourceHub: STRANGER_HUB }))).toEqual({
+      ok: false,
+      why: "creator not the source's",
+    });
+    expect(judgeOwnership(facts({ direction: "sell", intent: sell, sourceHub: RH_HUB, funding: paidBy(STRANGER_HUB) }))).toEqual({
+      ok: false,
+      why: "not funded by its creator",
+    });
+  });
+});

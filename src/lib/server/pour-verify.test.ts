@@ -39,10 +39,12 @@ describe("judgePour", () => {
     expect(judgePour({ direction: "in", intent: { ...rh, outputToken: VAULT }, listings })).toEqual({ ok: false, reason: "not a pour" });
   });
 
-  it("answers a sell paid from Robinhood Chain as on master, not a pour (until P3a)", () => {
+  it("answers a sell from Robinhood Chain of a listing's token there as a pour, and of anything else as not one", () => {
     const sell = { ...intent({ inputToken: listings[0].rhHubAsset, outputToken: OTHER_TOKEN }), srcChain: 21071n, dstChain: 146n };
-    expect(judgePour({ direction: "out", intent: sell, listings })).toEqual({ ok: false, reason: "not a pour" });
+    expect(judgePour({ direction: "out", intent: sell, listings })).toEqual({ ok: true });
     expect(judgePour({ direction: "out", intent: { ...sell, inputToken: VAULT }, listings })).toEqual({ ok: false, reason: "not a pour" });
+    // Claimed as a buy, a sell is still not one.
+    expect(judgePour({ direction: "in", intent: sell, listings })).toEqual({ ok: false, reason: "not a pour" });
   });
 
   it("rejects a buy hash claimed as a sell (and vice versa)", () => {
