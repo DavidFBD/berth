@@ -855,7 +855,13 @@ export function WithdrawDrawer({
                   )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
-                      {(isSell ? copy.youHold : copy.vaultHolds)(
+                      {(isSell
+                        ? sellFrom?.sources.some((source) => source.chain === "robinhood")
+                          ? fromRobinhood
+                            ? copy.rhChain.youHoldInWallet
+                            : copy.rhChain.youHoldInAccount
+                          : copy.youHold
+                        : copy.vaultHolds)(
                         sharePriceUsd !== undefined
                           ? `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)} (${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol})`
                           : `${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol}`,

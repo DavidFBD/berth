@@ -234,6 +234,9 @@ export type Copy = {
     sellSignWallet: string;
     /** The buy sheet, under the arrival line, for a wallet that pays its own fee there: a later sell costs ETH on Robinhood Chain. */
     sellFeeLater: string;
+    /** The sell sheet's "You hold" when a holding is in both places: the chosen place named (rh-ux-sec m2). */
+    youHoldInAccount: (amount: string) => string;
+    youHoldInWallet: (amount: string) => string;
   };
   /**
    * The signed-in home's one next step per state (components/home-next-step):
@@ -2853,6 +2856,8 @@ export const COPY: Copy = {
     sellSignWallet:
       "You sign on Robinhood Chain, from the wallet that holds it. The first sell of a stock from there also asks you to approve it.",
     sellFeeLater: "Selling it later from your wallet there costs a small network fee in ETH on Robinhood Chain.",
+    youHoldInAccount: (amount) => `In your Berth account: ${amount}`,
+    youHoldInWallet: (amount) => `In your own wallet on Robinhood Chain: ${amount}`,
   },
   calmHome: {
     addTitle: "Add money to begin",
