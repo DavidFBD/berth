@@ -40,7 +40,8 @@ export function useFirstLook(also?: string): {
       if (!response.ok) throw new Error(`first look ${response.status}`);
       return (await response.json()) as FirstLookResponse;
     },
-    staleTime: 10 * 60 * 1000,
+    // As short as the edge, so a headline hidden since is not kept beside Buy for long.
+    staleTime: 2 * 60 * 1000,
     retry: false,
   });
   return {

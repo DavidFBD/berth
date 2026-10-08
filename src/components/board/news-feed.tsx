@@ -114,7 +114,7 @@ export function NewsFeed({
   /**
    * A headline to show first while the column is pointed at its listing: the
    * one the first look showed and the reader tapped (components/first-look).
-   * The column's own card for it when it has one, else the look's.
+   * Pinned only when the column itself returned that story (lib/news-stories pinnedRiver).
    */
   focus?: StoryCard | null;
   onClearFilter?: () => void;

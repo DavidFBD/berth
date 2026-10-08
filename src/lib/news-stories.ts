@@ -354,8 +354,10 @@ export type NewsColumnResponse = {
 /**
  * The column pointed at one listing with a headline the reader tapped
  * (components/first-look): that card, taken out of the river and the
- * reserve, to sit first while only the cards after it rotate. The column's
- * own card for the story when it has one, else the focus as given.
+ * reserve, to sit first while only the cards after it rotate. Only the
+ * column's own card for the story is pinned: one the column no longer
+ * returns (hidden, or read differently since the look was cached) is not
+ * brought back from the look's copy, and the column shows as it is.
  */
 export function pinnedRiver({
   stories,
@@ -366,11 +368,11 @@ export function pinnedRiver({
   reserve: readonly StoryCard[];
   focus: StoryCard | undefined;
 }): { pin?: StoryCard; river: StoryCard[]; reserve: StoryCard[] } {
-  if (!focus) return { river: [...stories], reserve: [...reserve] };
-  const pin = stories.concat(reserve).find((card) => card.storyId === focus.storyId) ?? focus;
+  const pin = focus && stories.concat(reserve).find((card) => card.storyId === focus.storyId);
+  if (!pin) return { river: [...stories], reserve: [...reserve] };
   return {
     pin,
-    river: stories.filter((card) => card.storyId !== focus.storyId),
-    reserve: reserve.filter((card) => card.storyId !== focus.storyId),
+    river: stories.filter((card) => card.storyId !== pin.storyId),
+    reserve: reserve.filter((card) => card.storyId !== pin.storyId),
   };
 }

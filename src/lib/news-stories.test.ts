@@ -220,4 +220,8 @@ describe("pinnedRiver", () => {
   it("leaves the column as it is without a focus", () => {
     expect(pinnedRiver({ stories: river, reserve, focus: undefined })).toEqual({ river, reserve });
   });
+
+  it("never brings back a story the column no longer returns, hidden since the look was cached", () => {
+    expect(pinnedRiver({ stories: river, reserve, focus: card(9, "NVDA", "fact", 5) })).toEqual({ river, reserve });
+  });
 });
