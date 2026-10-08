@@ -5,6 +5,7 @@ import { getSql } from "@/lib/server/db";
 import { fetchPrivyWallet } from "@/lib/server/privy";
 import { accountEvmAddresses } from "@/lib/server/identities";
 import { liveListingPrices, readAccountBalances } from "@/lib/server/portfolio";
+import { readRobinhoodHoldingsFresh } from "@/lib/server/robinhood-balances";
 
 /**
  * The account reads the Berth tools share (lib/server/berth-tools/registry):
@@ -102,7 +103,9 @@ export async function readHoldings(spokes: string | readonly string[]): Promise<
   const [read, prices] = await Promise.all([
     // Robinhood Chain unread leaves the hub's lines, said as such: a sell cap
     // from them can only be lower than the truth, never higher.
-    withTimeout(readAccountBalances(list, undefined, undefined, undefined, "hub only"), CHAIN_READ_MS, "balance read"),
+    // Read fresh, never from the two minute memo: the sell cap must not see
+    // a balance a sell has just spent (rh-server m5).
+    withTimeout(readAccountBalances(list, undefined, undefined, readRobinhoodHoldingsFresh, "hub only"), CHAIN_READ_MS, "balance read"),
     liveListingPrices().catch(() => ({}) as Record<string, number>),
   ]);
   const balances = read.total;

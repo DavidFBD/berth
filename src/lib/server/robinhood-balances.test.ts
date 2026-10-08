@@ -47,6 +47,15 @@ describe("Robinhood Chain balances on the server", () => {
     expect(requests.count).toBe(2);
   });
 
+  it("reads afresh every time with no memory, for reads a sell may have just changed (rh-server m5)", async () => {
+    const requests = { count: 0, calls: 0 };
+    vi.stubGlobal("fetch", vi.fn(robinhoodRpcFake({ balances: { [owner(1)]: { NVDA: 1 } }, requests })));
+    const fresh = makeRobinhoodHoldingsReader(undefined, 0);
+    await fresh([owner(1)]);
+    await fresh([owner(1)]);
+    expect(requests.count).toBe(2);
+  });
+
   it("waits out a 429 and answers", async () => {
     const requests = { count: 0, calls: 0 };
     vi.stubGlobal("fetch", vi.fn(robinhoodRpcFake({ balances: { [owner(1)]: { AAPL: 3 } }, throttle: 1, requests })));

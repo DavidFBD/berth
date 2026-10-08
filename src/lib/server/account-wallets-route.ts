@@ -6,6 +6,7 @@ import { parseSiwsMessage } from "@/lib/siws";
 import { parseSiwbMessage } from "@/lib/siwb";
 import { getSql } from "@/lib/server/db";
 import { readAccountBalances } from "@/lib/server/portfolio";
+import { readRobinhoodHoldingsFresh } from "@/lib/server/robinhood-balances";
 import { emailProofFresh, fetchPrivyEmailVerifiedAt, fetchPrivyEmbeddedWallet } from "@/lib/server/privy";
 import { normalizeWallet, type UserRow } from "@/lib/server/accounts";
 import { walletsOf } from "@/lib/server/account-wallets";
@@ -60,7 +61,7 @@ export type HoldingsCheck = (address: string) => Promise<boolean>;
 
 /** The hub wallet derived from the address, and the address's own wallet on Robinhood Chain (lib/server/portfolio). */
 const readHolds: HoldingsCheck = async (address) =>
-  Object.keys((await readAccountBalances([address])).total).length > 0;
+  Object.keys((await readAccountBalances([address], undefined, undefined, readRobinhoodHoldingsFresh)).total).length > 0;
 
 let holdsCheck: HoldingsCheck = readHolds;
 /** Test-only: swap the chain read (null restores it). */

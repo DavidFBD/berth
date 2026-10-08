@@ -257,6 +257,14 @@ export function makeRobinhoodHoldingsReader(
 export const readRobinhoodHoldings: RobinhoodHoldingsReader = makeRobinhoodHoldingsReader();
 
 /**
+ * The live reader with no memory: every ask reads the chain. For reads a
+ * person acts on right after a sell (the assistant's sell cap, the wallet
+ * removal check), where a two minute old balance could read high
+ * (rh-server m5). The snapshot and the history chart keep the memo.
+ */
+export const readRobinhoodHoldingsFresh: RobinhoodHoldingsReader = makeRobinhoodHoldingsReader(readRobinhoodTokenBalances, 0);
+
+/**
  * The owners' Robinhood Chain listings added up by symbol, with each
  * owner's own part (`byOwner`, lowercased owner to holdings: a sell spends
  * one wallet, never the sum). Throws when any owner could not be read: a
