@@ -172,7 +172,8 @@ Playwright browser each take gigabytes, so these are rules, not advice:
 - Plain, exact, calm, adult, unhurried, never clever about money. Names, not
   tickers, wherever a person is reading.
 - No dashes as punctuation in user-facing copy (reads as AI). Commas, periods.
-- No raw emoji in UI; glyphs are Phosphor duotone or nothing.
+- No raw emoji in UI; glyphs are Phosphor duotone or nothing. The hairline
+  line figures on the 404 and error states are drawings, not glyphs (see Brand).
   Four exceptions: the assistant buttons carry Claude's, OpenAI's and Grok's
   own marks (`src/components/assistant/provider-marks.tsx`), a listing's
   ticker tile carries the listed company's own mark where one is pinned
@@ -207,6 +208,12 @@ Playwright browser each take gigabytes, so these are rules, not advice:
 - The one animated status element allowed is the thinking orb
   (`src/components/ui/thinking-orb.tsx`, MIT `thinking-orbs`), in ink or
   muted only, and only while something is actually working.
+- One exception to "only the orb animates", David's call 2026-10-09: Lucas
+  Marques' hairline line figures (MIT, `@lucasmarkes/hairline`) are allowed
+  on the 404 and error states, today the Plug on `src/app/not-found.tsx`
+  (`src/components/plug-figure.tsx`). Monochrome in ink and stone tokens, no
+  accent, and pointer-reactive only: never moving on their own, never a
+  status, held still under prefers-reduced-motion. Not near money.
 - Before 2026-09-14 this repo was LSTeaTime, a leveraged staking app in a
   tea-house voice. The tea is gone from the code; git history keeps it.
 

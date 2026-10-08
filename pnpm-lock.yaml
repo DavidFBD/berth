@@ -32,6 +32,9 @@ importers:
       '@fontsource/inter-tight':
         specifier: 5.3.0
         version: 5.3.0
+      '@lucasmarkes/hairline':
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.4)
       '@modelcontextprotocol/server':
         specifier: 2.1.0
         version: 2.1.0
@@ -1197,6 +1200,14 @@ packages:
 
   '@lobstrco/signer-extension-api@1.0.0-beta.0':
     resolution: {integrity: sha512-16V34W9MyTgunGvgkzv1JmV+k59OjNWCrNOH+KH+6vWamcGDGBnFhvRgGEarEhINYITMGkdqEvaEy7qTD5s5cw==}
+
+  '@lucasmarkes/hairline@0.3.0':
+    resolution: {integrity: sha512-BFaBv/T+0lhr9YudW/s/BTY1dVGPqXbWB3kt0zza6HplV/KMMoghejqb6q2njGBXFeyXgMZMuVtGYfJJAgDj0g==}
+    peerDependencies:
+      react: '>=18'
+    peerDependenciesMeta:
+      react:
+        optional: true
 
   '@marsidev/react-turnstile@1.5.4':
     resolution: {integrity: sha512-2+ulBzQPYcC5jZ4Pghlcc6a6+CQ6L0cgTxtbavZbcHcG5/wSQsTAM+vDudF94L9AUPG4uSNQF1kotmvx0Ns/QA==}
@@ -10475,6 +10486,10 @@ snapshots:
       '@lit/reactive-element': 2.1.2
 
   '@lobstrco/signer-extension-api@1.0.0-beta.0': {}
+
+  '@lucasmarkes/hairline@0.3.0(react@19.2.4)':
+    optionalDependencies:
+      react: 19.2.4
 
   '@marsidev/react-turnstile@1.5.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:

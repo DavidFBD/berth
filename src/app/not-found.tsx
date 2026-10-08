@@ -4,6 +4,7 @@ import { BerthMark } from "@/components/berth-mark";
 import { buttonVariants } from "@/components/ui/button";
 import { COPY } from "@/lib/copy";
 import { cn } from "@/lib/utils";
+import { PlugFigure } from "@/components/plug-figure";
 import { StaffDoor } from "@/components/staff/fresh";
 import { DOOR_SCRIPT } from "@/lib/staff/door";
 
@@ -36,6 +37,7 @@ export default function NotFound() {
         </Link>
 
         <section className="mt-10 flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:p-6">
+          <PlugFigure />
           <h1 className="font-display text-2xl tracking-[-0.02em] text-foreground">{words.title}</h1>
           <p className="text-[15px] leading-relaxed text-foreground">{words.body}</p>
           <Link href="/" className={cn(buttonVariants(), "self-start rounded-full")}>
