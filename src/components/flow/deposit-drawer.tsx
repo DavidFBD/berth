@@ -80,6 +80,7 @@ import {
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { gasShortMessage, isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { useWalletOnlySession } from "@/hooks/use-account";
 import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { byGasStatus, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import {
@@ -323,6 +324,9 @@ export function DepositDrawer({
   const gas = useGasGate([srcChainKey], open && !!token);
   const gasNeed = gas.needFor(srcChainKey, false);
   const gasPreflight = useGasPreflight();
+  // A session with no email signs every order with its own wallet and pays
+  // every fee itself: said calmly near the fee line, every time.
+  const walletSession = useWalletOnlySession();
   // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
   const outcomeHold = useOutcomeHold();
 
@@ -1047,6 +1051,11 @@ export function DepositDrawer({
                   {cta.busy && <Spinner className="size-4" />}
                   {cta.label}
                 </Button>
+                {token && walletSession && address && !gas.sponsored(srcChainKey) && nativeToken && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
+                    {copy.selfPaidFeeNote(nativeToken.symbol, getChainName(srcChainKey))}
+                  </p>
+                )}
                 {token && gas.sponsored(srcChainKey) && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="no-network-fee">
                     {copy.noNetworkFeeOn(getChainName(srcChainKey))}

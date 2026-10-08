@@ -28,6 +28,7 @@ import { EASE_LIFT } from "@/lib/motion";
 import { getChainName, getNativeGasToken, isTypedEvmAddress, toBalanceReadToken } from "@/lib/chains";
 import { gasToAdd, orderGasShort } from "@/lib/gas-need";
 import { gasShortMessage, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { useWalletOnlySession } from "@/hooks/use-account";
 import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
@@ -204,6 +205,9 @@ export function WithdrawDrawer({
   const signGasShort = orderGasShort(signGasFacts);
   const signGasToAdd = signGasShort ? gasToAdd(signGasFacts) : undefined;
   const gasPreflight = useGasPreflight();
+  // A session with no email signs every order with its own wallet and pays
+  // every fee itself: said calmly near the fee line, every time.
+  const walletSession = useWalletOnlySession();
   // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
   const outcomeHold = useOutcomeHold();
   // Funds are delivered to the user's wallet ON the destination chain (the
@@ -1023,6 +1027,11 @@ export function WithdrawDrawer({
                   {cta.busy && <Spinner className="size-4" />}
                   {cta.label}
                 </Button>
+                {walletSession && address && !signGas.sponsored(srcChainKey) && signNative && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
+                    {copy.selfPaidFeeNote(signNative.symbol, getChainName(srcChainKey))}
+                  </p>
+                )}
                 {signGas.sponsored(srcChainKey) && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="no-network-fee">
                     {copy.noNetworkFeeOn(getChainName(srcChainKey))}

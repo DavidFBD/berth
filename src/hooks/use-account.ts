@@ -45,3 +45,18 @@ export function useAccount(
     chainKey ? store.address : undefined,
   );
 }
+
+/**
+ * Whether this browser's session is a wallet with no email sign-in behind
+ * it, known for sure: every order is signed by that wallet, which pays its
+ * own network fee (lib/gas-sponsor sponsors only the email's embedded
+ * wallet). False while Privy is still answering, so an email session never
+ * flashes the wallet's notice.
+ */
+export function useWalletOnlySession(): boolean {
+  const privy = usePrivyEmbeddedWallet();
+  const session = useAccountSession();
+  if (session.emailSession) return false;
+  if (privy.enabled && (!privy.ready || (privy.authenticated && !privy.embedded))) return false;
+  return true;
+}

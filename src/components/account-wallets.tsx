@@ -11,6 +11,7 @@ import { useAddConnectedWallet, useAddWallets, useSignerFor, walletActMessage } 
 import { MergeCard } from "@/components/account-merge";
 import { useWalletMerge } from "@/hooks/use-account-merge";
 import { useHubAccount } from "@/hooks/use-hub-account";
+import { useWalletOnlySession } from "@/hooks/use-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
 import { useAccountWallets, useIdentityLabel, useWalletAct } from "@/hooks/use-profile";
 import { shortenAddress } from "@/lib/format";
@@ -70,6 +71,7 @@ export function WalletsSection() {
   const act = useWalletAct();
   const addable = useAddWallets();
   const connect = useConnectNetwork();
+  const walletOnly = useWalletOnlySession();
 
   const all = list.data?.wallets ?? [];
   const evm = all.filter((wallet) => wallet.family === "evm");
@@ -148,6 +150,13 @@ export function WalletsSection() {
         />
       }
     />
+    {/* A wallet session pays its own network fees (lib/gas-sponsor sponsors
+        only an email's embedded wallet): said once, calmly, beside its wallets. */}
+    {walletOnly && (
+      <p className="px-1 pt-3 text-xs leading-relaxed text-muted-foreground" data-testid="wallet-pays-own-fees">
+        {copy.walletPaysOwnFees}
+      </p>
+    )}
     {connect.drawer}
     </Panel>
   );

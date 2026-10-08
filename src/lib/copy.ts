@@ -692,6 +692,14 @@ export type Copy = {
    */
   gasToAdd: (amount: string, symbol: string, chainName: string) => string;
   /**
+   * Near the fee line in the buy and sell drawers, when the session is a
+   * browser-extension or other external wallet: Berth covers the network
+   * fee only for email sign-ins, so this wallet pays its own.
+   */
+  selfPaidFeeNote: (symbol: string, chainName: string) => string;
+  /** The same, once, in the account's Wallets section for a wallet session. */
+  walletPaysOwnFees: string;
+  /**
    * Where the network fee would be mentioned, when Privy pays it for an
    * email user's embedded wallet on this chain (lib/gas-sponsor). The
    * trade's own fees still apply, so never "free".
@@ -3178,6 +3186,10 @@ export const COPY: Copy = {
   ctaNeedsGas: (symbol) => `Not enough ${symbol} for the network fee`,
   gasToAdd: (amount, symbol, chainName) =>
     `Add about ${amount} ${symbol} on ${chainName} to pay the network fee, then this order can start.`,
+  selfPaidFeeNote: (symbol, chainName) =>
+    `Berth covers network fees only for email sign-ins. With this wallet you pay the fee yourself, in ${symbol} on ${chainName}, so keep a little there or the order can fail.`,
+  walletPaysOwnFees:
+    "Berth covers network fees only for email sign-ins. With this wallet you pay each fee yourself, on the network you sign on, so keep a little of its gas token there, such as ETH on Base, or orders can fail.",
   noNetworkFeeOn: (chainName) => `No network fee to pay on ${chainName}.`,
   noNetworkFeeNote: "no network fee",
   gasCoveredChains: (chainNames) => `Buying from ${chainNames} has no network fee to pay.`,
