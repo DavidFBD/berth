@@ -28,7 +28,7 @@ import { EASE_LIFT } from "@/lib/motion";
 import { getChainName, getNativeGasToken, isTypedEvmAddress, toBalanceReadToken } from "@/lib/chains";
 import { floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import { useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
-import { gasShortMessage } from "@/lib/gas-message";
+import { gasShortMessage, shortfallProp } from "@/lib/gas-message";
 import { useWalletOnlySession } from "@/hooks/use-account";
 import { useOutcomeHold, useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
 import { getVaultMeta } from "@/lib/vaults-meta";
@@ -376,6 +376,10 @@ export function WithdrawDrawer({
     usd: buildAmount ? sharesWorthUsd(buildAmount) : undefined,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
+    gasBlocked:
+      signGasShort && signNative
+        ? { chainKey: srcChainKey, shortfall: shortfallProp(signGasToAdd, signNative.decimals) }
+        : null,
   });
 
   const finish = () => {

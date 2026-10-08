@@ -18,6 +18,7 @@ export function useDrawerFunnel({
   usd,
   quoted,
   limitActive,
+  gasBlocked,
 }: {
   side: "buy" | "sell";
   open: boolean;
@@ -27,6 +28,8 @@ export function useDrawerFunnel({
   usd: number | undefined;
   quoted: boolean;
   limitActive: boolean;
+  /** The signing chain and shortfall while the order is stopped for gas (lib/gas-need). */
+  gasBlocked?: { chainKey: SpokeChainKey; shortfall: string } | null;
 }): void {
   const said = useRef(new Set<string>());
   const once = (key: string, send: () => void) => {
@@ -69,5 +72,12 @@ export function useDrawerFunnel({
 
   useEffect(() => {
     if (open && limitActive) once("limit", () => track("limit_started", { side }));
+  });
+
+  useEffect(() => {
+    if (open && gasBlocked)
+      once(`gas:${gasBlocked.chainKey}`, () =>
+        track("gas_blocked", { side, chain: gasBlocked.chainKey, shortfall: gasBlocked.shortfall }),
+      );
   });
 }

@@ -5,7 +5,8 @@ import { getXChainType, getXService, useXService } from "@sodax/wallet-sdk-react
 import { useXBalances } from "@sodax/dapp-kit";
 import { isEvmChainKeyType, type EvmChainKey, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import { getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
-import { gasShortMessage, type GasPurpose } from "@/lib/gas-message";
+import { gasShortMessage, shortfallProp, type GasPurpose } from "@/lib/gas-message";
+import { track } from "@/lib/analytics";
 import {
   amountLeavesNoFee,
   blockingNeed,
@@ -137,7 +138,13 @@ export function useGasPreflight(): (args: {
     const facts = { chainKey, isNative, nativeBalance, amount: isNative ? amount : 0n };
     const need = blockingNeed({ chainKey, feePerGas, approval, order });
     if (!orderGasShort({ ...facts, need })) return null;
-    return gasShortMessage(copy, native, chainKey, gasToAdd({ ...facts, need }), purpose, amountLeavesNoFee({ ...facts, need }));
+    const toAdd = gasToAdd({ ...facts, need });
+    track("gas_blocked", {
+      side: purpose === "cancel" ? "cancel" : order,
+      chain: chainKey,
+      shortfall: shortfallProp(toAdd, native.decimals),
+    });
+    return gasShortMessage(copy, native, chainKey, toAdd, purpose, amountLeavesNoFee({ ...facts, need }));
   };
 }
 
@@ -147,7 +154,8 @@ export function useGasPreflight(): (args: {
  * Whether the wallet at `address` can pay one signature's fee on
  * `chainKey` right now, read live: the same need as the drawers
  * (blockingNeed), for screens with no drawer of their own, such as the
- * cancel check. `message` is the calm guidance when it cannot; `null`
+ * cancel check. `message` is the calm guidance when it cannot, with the
+ * shortfall as analytics carries it; `null`
  * while it can, while anything is unknown, or when Privy pays.
  */
 export function useSignGasCheck({
@@ -162,7 +170,7 @@ export function useSignGasCheck({
   enabled: boolean;
   order?: GasOrder;
   purpose?: GasPurpose;
-}): string | null {
+}): { message: string; shortfall: string } | null {
   const copy = useCopy();
   const gate = useGasGate([chainKey], enabled);
   const native = getNativeGasToken(chainKey);
@@ -186,5 +194,6 @@ export function useSignGasCheck({
     sponsored: gate.sponsored(chainKey),
   };
   if (!orderGasShort(facts)) return null;
-  return gasShortMessage(copy, native, chainKey, gasToAdd(facts), purpose);
+  const toAdd = gasToAdd(facts);
+  return { message: gasShortMessage(copy, native, chainKey, toAdd, purpose), shortfall: shortfallProp(toAdd, native.decimals) };
 }

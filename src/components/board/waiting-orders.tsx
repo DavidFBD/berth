@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "@/lib/toast";
 import { formatUnits } from "viem";
 import { CaretRight, Hourglass } from "@phosphor-icons/react";
@@ -30,6 +30,7 @@ import {
 } from "@/hooks/use-limit-orders";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useSignGasCheck } from "@/hooks/use-gas-gate";
+import { trackOnce } from "@/lib/analytics";
 
 /**
  * Waiting orders (lib/limit-orders): a thin line under the account total,
@@ -249,7 +250,12 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
   const cancel = useCancelWaitingOrder();
   // Said before the tap: a wallet that cannot pay the cancel's fee is told
   // how much to add and the button waits (hooks/use-gas-gate).
-  const gasNote = useSignGasCheck({ chainKey, address: wallet.address, enabled: true, order: "sell", purpose: "cancel" });
+  const gasShort = useSignGasCheck({ chainKey, address: wallet.address, enabled: true, order: "sell", purpose: "cancel" });
+  const gasNote = gasShort?.message ?? null;
+  const shortfall = gasShort?.shortfall;
+  useEffect(() => {
+    if (shortfall) trackOnce(`gas_blocked:cancel:${order.intentTx}`, "gas_blocked", { side: "cancel", chain: chainKey, shortfall });
+  }, [shortfall, chainKey, order.intentTx]);
   const confirm = async () => {
     if (!wallet.walletProvider || !wallet.address) return;
     onBusy(true);

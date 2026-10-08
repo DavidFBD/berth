@@ -2,6 +2,7 @@ import type { SpokeChainKey } from "@sodax/sdk";
 import { getChainName } from "@/lib/chains";
 import type { Copy } from "@/lib/copy";
 import { formatTokenAmount } from "@/lib/format";
+import { formatUnits } from "viem";
 
 /**
  * The top-up guidance for an order its wallet cannot pay the fee for: the
@@ -34,3 +35,11 @@ export function gasShortMessage(
 
 /** What the signature is for: an order, or cancelling a waiting one. The words differ. */
 export type GasPurpose = "order" | "cancel";
+
+/**
+ * The shortfall as the gas_blocked event carries it (lib/analytics): a plain
+ * decimal in native units, two significant digits, or "unknown".
+ */
+export function shortfallProp(toAdd: bigint | undefined, decimals: number): string {
+  return toAdd === undefined ? "unknown" : formatUnits(toAdd, decimals);
+}

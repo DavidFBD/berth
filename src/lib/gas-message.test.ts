@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys } from "@sodax/sdk";
 import { COPY } from "@/lib/copy";
-import { gasShortMessage } from "./gas-message";
+import { gasShortMessage, shortfallProp } from "./gas-message";
+import { cleanProps } from "./analytics";
 
 const ETH = { symbol: "ETH", decimals: 18 };
 
@@ -24,5 +25,15 @@ describe("gasShortMessage", () => {
 
   it("asks to lower the amount when the typed amount is the cause", () => {
     expect(gasShortMessage(COPY, ETH, ChainKeys.BASE_MAINNET, 5n, "order", true)).toBe(COPY.gasLowerAmount("ETH", "Base"));
+  });
+});
+
+describe("the gas_blocked event", () => {
+  it("carries the side, the chain and the shortfall, and nothing personal survives the allowlist", () => {
+    expect(shortfallProp(340_000_000_000_000n, 18)).toBe("0.00034");
+    expect(shortfallProp(undefined, 18)).toBe("unknown");
+    expect(
+      cleanProps("gas_blocked", { side: "sell", chain: ChainKeys.BASE_MAINNET, shortfall: "0.00034", address: "0xE0000000000000000000000000000000000000dd" }),
+    ).toEqual({ side: "sell", chain: ChainKeys.BASE_MAINNET, shortfall: "0.00034" });
   });
 });

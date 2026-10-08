@@ -80,7 +80,7 @@ import {
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
-import { gasShortMessage } from "@/lib/gas-message";
+import { gasShortMessage, shortfallProp } from "@/lib/gas-message";
 import { useWalletOnlySession } from "@/hooks/use-account";
 import { useOutcomeHold, useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
 import { amountLeavesNoFee, byGasStatus, floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
@@ -461,6 +461,10 @@ export function DepositDrawer({
     usd: worthUsd,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
+    gasBlocked:
+      selectedGasShort && nativeToken
+        ? { chainKey: srcChainKey, shortfall: shortfallProp(selectedGasToAdd, nativeToken.decimals) }
+        : null,
   });
 
   const finish = () => {
