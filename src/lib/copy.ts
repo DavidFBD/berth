@@ -692,6 +692,11 @@ export type Copy = {
    */
   gasToAdd: (amount: string, symbol: string, chainName: string) => string;
   /**
+   * Under the button when the order clears the gate but a wallet attaching
+   * 2 gwei would ask for more (lib/gas-need floorWarns). The person may sign.
+   */
+  gasFloorWarning: (symbol: string) => string;
+  /**
    * Near the fee line in the buy and sell drawers, when the session is a
    * browser-extension or other external wallet: Berth covers the network
    * fee only for email sign-ins, so this wallet pays its own.
@@ -3186,6 +3191,8 @@ export const COPY: Copy = {
   ctaNeedsGas: (symbol) => `Not enough ${symbol} for the network fee`,
   gasToAdd: (amount, symbol, chainName) =>
     `Add about ${amount} ${symbol} on ${chainName} to pay the network fee, then this order can start.`,
+  gasFloorWarning: (symbol) =>
+    `Some wallets ask for a higher network fee. If yours refuses, add a little ${symbol}.`,
   selfPaidFeeNote: (symbol, chainName) =>
     `Berth covers network fees only for email sign-ins. With this wallet you pay the fee yourself, in ${symbol} on ${chainName}, so keep a little there or the order can fail.`,
   walletPaysOwnFees:

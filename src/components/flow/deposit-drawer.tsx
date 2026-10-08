@@ -82,7 +82,7 @@ import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { gasShortMessage, isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { useWalletOnlySession } from "@/hooks/use-account";
 import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
-import { byGasStatus, gasToAdd, orderGasShort } from "@/lib/gas-need";
+import { byGasStatus, floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import {
   ActionError,
   ActionStepper,
@@ -399,6 +399,15 @@ export function DepositDrawer({
   };
   const selectedGasShort = !!token && orderGasShort(selectedGasFacts);
   const selectedGasToAdd = selectedGasShort ? gasToAdd(selectedGasFacts) : undefined;
+  // Clears the gate, but a wallet attaching 2 gwei would ask for more: say
+  // so calmly and let the person sign (lib/gas-need warnReserve).
+  const gasFloorWarn =
+    !!token &&
+    floorWarns({
+      ...selectedGasFacts,
+      amount: payingNative ? (buildAmount ?? 0n) : 0n,
+      warnNeed: gas.warnNeedFor(srcChainKey, false),
+    });
   const balanceWorthUsd =
     token && balance !== undefined && balance > 0n
       ? prices.usdValue(token, balance)
@@ -1051,6 +1060,11 @@ export function DepositDrawer({
                   {cta.busy && <Spinner className="size-4" />}
                   {cta.label}
                 </Button>
+                {gasFloorWarn && nativeToken && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                    {copy.gasFloorWarning(nativeToken.symbol)}
+                  </p>
+                )}
                 {token && walletSession && address && !gas.sponsored(srcChainKey) && nativeToken && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
                     {copy.selfPaidFeeNote(nativeToken.symbol, getChainName(srcChainKey))}

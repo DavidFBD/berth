@@ -11,6 +11,7 @@ import {
   orderGasShort,
   payTokenGas,
   withinOrUnknown,
+  warnReserve,
   type GasOrder,
   type GasStatus,
 } from "@/lib/gas-need";
@@ -33,6 +34,11 @@ export type GasGate = {
    * blockingNeed). A sell reserves less gas than a buy.
    */
   needFor: (chainKey: SpokeChainKey, approval: boolean, order?: GasOrder) => bigint | undefined;
+  /**
+   * What a wallet attaching 2 gwei would reserve, on chains whose floor is
+   * lower (lib/gas-need warnReserve): pass it to floorWarns.
+   */
+  warnNeedFor: (chainKey: SpokeChainKey, approval: boolean, order?: GasOrder) => bigint | undefined;
   /**
    * Whether Privy pays this person's fee on `chainKey` (hooks/use-gas-sponsor).
    * Pass it on as `sponsored` to orderGasShort and gasToAdd.
@@ -71,8 +77,12 @@ export function useGasGate(chains: readonly SpokeChainKey[], enabled = true): Ga
       order,
     });
 
+  const warnNeedFor = (chainKey: SpokeChainKey, approval: boolean, order: GasOrder = "buy") =>
+    warnReserve({ chainKey, feePerGas: feeOf(chainKey), approval, sponsored: sponsored(chainKey), order });
+
   return {
     needFor,
+    warnNeedFor,
     sponsored,
     statusFor: (chainKey, token, nativeBalance) =>
       payTokenGas({

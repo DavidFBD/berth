@@ -244,6 +244,32 @@ export function walletReserve({
 }
 
 /**
+ * What a wallet that attaches the old 2 gwei tip (DEFAULT_WALLET_FEE_FLOOR)
+ * would reserve, on a chain whose floor is lower: the top of the band in
+ * which an order clears the gate but some wallets may still refuse it.
+ * `undefined` where the floor is already 2 gwei or more, off EVM and when
+ * Privy pays.
+ *
+ * Why warn and not block there: on Arbitrum, Optimism, BSC, HyperEVM and
+ * Robinhood Chain most wallets attach about 0.1 gwei, and one has been
+ * seen attaching 2 gwei. Blocking at 2 gwei would refuse the many to save
+ * the few (the per-chain floor was lowered for exactly that); saying
+ * nothing would leave the few to be refused in the wallet. A calm line
+ * under the button lets the person sign and tells them what to do if
+ * their wallet refuses.
+ */
+export function warnReserve(args: {
+  chainKey: SpokeChainKey;
+  feePerGas: bigint | undefined;
+  approval: boolean;
+  sponsored?: boolean;
+  order?: GasOrder;
+}): bigint | undefined {
+  if (walletFeeFloor(args.chainKey) >= DEFAULT_WALLET_FEE_FLOOR) return undefined;
+  return walletReserve({ ...args, tip: DEFAULT_WALLET_FEE_FLOOR });
+}
+
+/**
  * The native balance that refuses an order: the larger of the chain's own
  * price (gasNeed) and what a wallet reserves (walletReserve). The wallet
  * reserve needs no live read to be told, so while the fee per gas is
@@ -387,6 +413,36 @@ export function gasToAdd({
   if (nativeBalance === undefined || need === undefined) return undefined;
   const required = (isNative ? amount : 0n) + need;
   return required > nativeBalance ? roundUpTwoDigits(required - nativeBalance) : undefined;
+}
+
+/**
+ * Whether the order clears the gate (orderGasShort) but not what a wallet
+ * attaching 2 gwei would reserve (warnReserve): the person may sign, and is
+ * told calmly that some wallets ask for more. Never on a refused order,
+ * never with an unknown balance, never when Privy pays.
+ */
+export function floorWarns({
+  chainKey,
+  isNative,
+  nativeBalance: raw,
+  amount,
+  need,
+  warnNeed,
+  sponsored = false,
+}: {
+  chainKey: SpokeChainKey;
+  isNative: boolean;
+  nativeBalance: bigint | undefined;
+  amount: bigint;
+  need: bigint | undefined;
+  warnNeed: bigint | undefined;
+  sponsored?: boolean;
+}): boolean {
+  if (warnNeed === undefined || gasModel(chainKey, sponsored).kind === "free") return false;
+  const nativeBalance = trustedNativeBalance(chainKey, raw);
+  if (nativeBalance === undefined) return false;
+  if (orderGasShort({ chainKey, isNative, nativeBalance, amount, need, sponsored })) return false;
+  return nativeBalance < (isNative ? amount : 0n) + warnNeed;
 }
 
 /** Sort key: what can pay first, what cannot last, order kept otherwise. */

@@ -11,7 +11,7 @@ import {
   type XToken,
 } from "@sodax/sdk";
 import { pinnedEvmTransport } from "@/lib/sodax-config";
-import { assumedFeePerGas, walletReserve } from "@/lib/gas-need";
+import { DEFAULT_WALLET_FEE_FLOOR, assumedFeePerGas, walletFeeFloor, walletReserve } from "@/lib/gas-need";
 
 /**
  * How much of the NATIVE token to hold back from a "Max" pour so the
@@ -70,13 +70,19 @@ const GAS_PRICE_STALE_MS = 30_000;
 /**
  * The least a Max may withhold on an EVM chain: what a wallet reserves for
  * the deposit (lib/gas-need walletReserve) at three times the fee per gas
- * read now (or assumed, with no read), so a Max order clears the gate and
- * the wallet's own balance check even if the fee triples before signing.
+ * read now (or assumed, with no read), at a tip of at least 2 gwei, so a
+ * Max order clears the gate, the warning and the wallet's own balance
+ * check even if the fee triples before signing.
  * Exported for the test that pins issue #23's arithmetic.
  */
 export function evmFeeFloorBuffer(chainKey: SpokeChainKey, feePerGas?: bigint): bigint {
   const fee = feePerGas ?? assumedFeePerGas(chainKey);
-  return walletReserve({ chainKey, feePerGas: fee * GAS_PRICE_SAFETY, approval: false }) ?? 0n;
+  // At least the old 2 gwei tip, even where the chain's floor is lower
+  // (lib/gas-need warnReserve): about 0.0005 ETH on Arbitrum, cents, so a
+  // Max order never raises the "some wallets ask for more" line either.
+  const floor = walletFeeFloor(chainKey);
+  const tip = floor > DEFAULT_WALLET_FEE_FLOOR ? floor : DEFAULT_WALLET_FEE_FLOOR;
+  return walletReserve({ chainKey, feePerGas: fee * GAS_PRICE_SAFETY, approval: false, tip }) ?? 0n;
 }
 
 /**

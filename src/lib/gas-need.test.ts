@@ -17,6 +17,8 @@ import {
   trustedNativeBalance,
   walletFeeFloor,
   walletReserve,
+  warnReserve,
+  floorWarns,
 } from "./gas-need";
 import { evmFeeFloorBuffer } from "@/hooks/use-native-gas-buffer";
 
@@ -280,6 +282,43 @@ describe("walletFeeFloor: per chain, from what wallets attach there", () => {
         expect(orderGasShort({ chainKey: chain, isNative: true, nativeBalance: balance, amount: max, need })).toBe(false);
       }
     }
+  });
+});
+
+describe("floorWarns: the band between the gate and a wallet attaching 2 gwei", () => {
+  const ARB = ChainKeys.ARBITRUM_MAINNET;
+  const fee = 20_000_000n;
+  const need = blockingNeed({ chainKey: ARB, feePerGas: fee, approval: false, order: "sell" })!;
+  const warnNeed = warnReserve({ chainKey: ARB, feePerGas: fee, approval: false, order: "sell" })!;
+  const facts = { chainKey: ARB, isNative: false, amount: 0n, need, warnNeed } as const;
+
+  it("warns an Arbitrum wallet that clears the gate but not 2 gwei, the review's 0.0001 ETH case", () => {
+    expect(warnNeed).toBe(GATE_SELL_GAS * (2n * fee + 2n * GWEI));
+    const balance = 10n ** 14n; // 0.0001 ETH
+    expect(orderGasShort({ ...facts, nativeBalance: balance })).toBe(false);
+    expect(floorWarns({ ...facts, nativeBalance: balance })).toBe(true);
+  });
+
+  it("says nothing once 2 gwei is covered, or when the order is refused anyway", () => {
+    expect(floorWarns({ ...facts, nativeBalance: warnNeed })).toBe(false);
+    expect(floorWarns({ ...facts, nativeBalance: need - 1n })).toBe(false);
+    expect(floorWarns({ ...facts, nativeBalance: undefined })).toBe(false);
+  });
+
+  it("has no band where the floor is already 2 gwei or more, off EVM, or when Privy pays", () => {
+    expect(warnReserve({ chainKey: ChainKeys.BASE_MAINNET, feePerGas: fee, approval: false })).toBeUndefined();
+    expect(warnReserve({ chainKey: ChainKeys.POLYGON_MAINNET, feePerGas: fee, approval: false })).toBeUndefined();
+    expect(warnReserve({ chainKey: ChainKeys.SOLANA_MAINNET, feePerGas: undefined, approval: false })).toBeUndefined();
+    expect(warnReserve({ chainKey: ARB, feePerGas: fee, approval: false, sponsored: true })).toBeUndefined();
+  });
+
+  it("keeps Max clear of the warning, and at no less than the old 0.0003 ETH hold-back", () => {
+    const buyWarn = warnReserve({ chainKey: ARB, feePerGas: fee, approval: false })!;
+    const buyNeed = blockingNeed({ chainKey: ARB, feePerGas: fee, approval: false })!;
+    const balance = 10n ** 16n;
+    const max = balance - evmFeeFloorBuffer(ARB, fee);
+    expect(floorWarns({ chainKey: ARB, isNative: true, nativeBalance: balance, amount: max, need: buyNeed, warnNeed: buyWarn })).toBe(false);
+    expect(evmFeeFloorBuffer(ARB, fee)).toBeGreaterThanOrEqual(300_000_000_000_000n);
   });
 });
 

@@ -26,7 +26,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { EASE_LIFT } from "@/lib/motion";
 import { getChainName, getNativeGasToken, isTypedEvmAddress, toBalanceReadToken } from "@/lib/chains";
-import { gasToAdd, orderGasShort } from "@/lib/gas-need";
+import { floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import { gasShortMessage, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { useWalletOnlySession } from "@/hooks/use-account";
 import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
@@ -204,6 +204,9 @@ export function WithdrawDrawer({
   };
   const signGasShort = orderGasShort(signGasFacts);
   const signGasToAdd = signGasShort ? gasToAdd(signGasFacts) : undefined;
+  // Clears the gate, but a wallet attaching 2 gwei would ask for more: say
+  // so calmly and let the person sign (lib/gas-need warnReserve).
+  const signGasFloorWarn = floorWarns({ ...signGasFacts, warnNeed: signGas.warnNeedFor(srcChainKey, false, "sell") });
   const gasPreflight = useGasPreflight();
   // A session with no email signs every order with its own wallet and pays
   // every fee itself: said calmly near the fee line, every time.
@@ -1027,6 +1030,11 @@ export function WithdrawDrawer({
                   {cta.busy && <Spinner className="size-4" />}
                   {cta.label}
                 </Button>
+                {signGasFloorWarn && signNative && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                    {copy.gasFloorWarning(signNative.symbol)}
+                  </p>
+                )}
                 {walletSession && address && !signGas.sponsored(srcChainKey) && signNative && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
                     {copy.selfPaidFeeNote(signNative.symbol, getChainName(srcChainKey))}
