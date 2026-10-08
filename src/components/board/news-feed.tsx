@@ -172,6 +172,17 @@ export function NewsFeed({
   const reserve = room ? [...riverRest.slice(room), ...reserveAll] : reserveAll;
   const { visible: turning, ref: riverRef, handlers: riverHandlers, node: riverNode } = useRotatingFeed(shownRiver, reserve, true);
   const rotated = pin ? [pin, ...turning] : turning;
+  // Focus moves to the story the reader tapped, once it is on screen, so a
+  // screen reader starts there and reads "The story you opened" first; Tab
+  // goes on to its link.
+  const pinId = pin?.storyId;
+  useEffect(() => {
+    if (pinId === undefined || !riverNode) return;
+    const timer = window.setTimeout(() => {
+      riverNode.querySelector<HTMLElement>("[data-focused]")?.focus({ preventScroll: false });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [pinId, riverNode]);
   const seen = useSeenPosts(riverAll.concat(reserveAll), rotated, true, riverNode);
 
   const updatedAt = news.data.updatedAt;
@@ -383,13 +394,16 @@ export function NewsFeed({
                       <motion.li
                         key={story.id}
                         data-post-id={story.id}
-                        data-focused={pinned && story.storyId === pinned.storyId ? "" : undefined}
-                        className={pinned && story.storyId === pinned.storyId ? "bg-muted/50" : undefined}
+                        data-focused={pin && story.storyId === pin.storyId ? "" : undefined}
+                        // Focusable from code only: focus lands here, and its first words say what it is.
+                        tabIndex={pin && story.storyId === pin.storyId ? -1 : undefined}
+                        className={pin && story.storyId === pin.storyId ? "bg-muted/50 outline-none" : undefined}
                         variants={CARD}
                         exit="leave"
                         layout="position"
                         transition={{ layout: ARRIVE }}
                       >
+                        {pin && story.storyId === pin.storyId && <span className="sr-only">{copy.newsOpenedStory}</span>}
                         {card(story)}
                       </motion.li>
                     ))}

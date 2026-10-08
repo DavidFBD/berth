@@ -573,6 +573,8 @@ export type Copy = {
   newsEmptyFor: (name: string) => string;
   /** Follows the listing's name: "NVIDIA The Motley Fool, 2 hours ago". */
   newsByline: (source: string, when: string) => string;
+  /** Read by a screen reader before the story a reader tapped from the first buy, pinned first in the panel. */
+  newsOpenedStory: string;
   /** The column's refresh control, for a screen reader, and while it works. */
   newsRefresh: string;
   newsRefreshing: string;
@@ -3137,6 +3139,7 @@ export const COPY: Copy = {
   newsShowAll: "Show all",
   newsEmptyFor: (name) => `Nothing new about ${name} right now.`,
   newsByline: (source, when) => `${source}, ${when}`,
+  newsOpenedStory: "The story you opened",
   newsRefresh: "Refresh the news",
   newsRefreshing: "Refreshing the news",
   newsUpdated: (when) => `Updated ${when}`,
