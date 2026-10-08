@@ -5,7 +5,7 @@ import { normalizeAddress } from "@/lib/identity/caip";
 import { parseSiwsMessage } from "@/lib/siws";
 import { parseSiwbMessage } from "@/lib/siwb";
 import { getSql } from "@/lib/server/db";
-import { hubWalletFor, readListingBalances } from "@/lib/server/portfolio";
+import { readAccountBalances } from "@/lib/server/portfolio";
 import { emailProofFresh, fetchPrivyEmailVerifiedAt, fetchPrivyEmbeddedWallet } from "@/lib/server/privy";
 import { normalizeWallet, type UserRow } from "@/lib/server/accounts";
 import { walletsOf } from "@/lib/server/account-wallets";
@@ -52,13 +52,15 @@ export type WalletsResponse = {
 };
 
 /**
- * Whether the hub wallet derived from `address` holds any listing now, read
+ * Whether the hub wallet derived from `address`, or the address itself on
+ * Robinhood Chain, holds any listing now, read
  * on chain. Throws when the read fails: unknown is never "empty".
  */
 export type HoldingsCheck = (address: string) => Promise<boolean>;
 
+/** The hub wallet derived from the address, and the address's own wallet on Robinhood Chain (lib/server/portfolio). */
 const readHolds: HoldingsCheck = async (address) =>
-  Object.keys(await readListingBalances(await hubWalletFor(address))).length > 0;
+  Object.keys((await readAccountBalances([address])).total).length > 0;
 
 let holdsCheck: HoldingsCheck = readHolds;
 /** Test-only: swap the chain read (null restores it). */

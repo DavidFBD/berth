@@ -53,14 +53,21 @@ export type MultiplierRead = {
 
 export type MultiplierReader = (symbols: readonly string[], sinceMs: number) => Promise<MultiplierRead>;
 
-type RpcCall = { method: string; params: unknown[] };
-type RpcAnswer = { id?: number; result?: unknown; error?: { message?: string } };
+export type RpcCall = { method: string; params: unknown[] };
+export type RpcAnswer = { id?: number; result?: unknown; error?: { message?: string } };
 
 /** Tries per batch; the public RPC answers 429 when a burst of calls arrives. */
 const BATCH_TRIES = 4;
 const RETRY_BASE_MS = 750;
 
-async function batch(calls: readonly RpcCall[], timeoutMs: number): Promise<RpcAnswer[]> {
+/**
+ * One batched JSON-RPC request to Robinhood Chain, answered in call order,
+ * with 429s waited out (BATCH_TRIES, backing off from RETRY_BASE_MS)
+ * inside `timeoutMs`. Shared with the balance reads
+ * (lib/server/robinhood-balances), so every server read of the chain meets
+ * the public RPC's meter the same way.
+ */
+export async function robinhoodRpcBatch(calls: readonly RpcCall[], timeoutMs: number): Promise<RpcAnswer[]> {
   const deadline = Date.now() + timeoutMs;
   for (let attempt = 1; ; attempt += 1) {
     const response = await fetch(ROBINHOOD_RPC, {
@@ -142,7 +149,7 @@ export async function readMultiplierHistories(
   for (const group of groups(tokens, TOKENS_PER_BATCH)) {
     let head: RpcAnswer[];
     try {
-      head = await batch(
+      head = await robinhoodRpcBatch(
         [
           { method: "eth_blockNumber", params: [] },
           ...group.map(({ address }) => ({
@@ -186,7 +193,7 @@ export async function readMultiplierHistories(
       const start = Math.max(0, end - LOG_SPAN_BLOCKS + 1);
       let answers: RpcAnswer[];
       try {
-        answers = await batch(
+        answers = await robinhoodRpcBatch(
           [
             { method: "eth_getBlockByNumber", params: [hex(start), false] },
             ...group.map(({ address }) => ({
