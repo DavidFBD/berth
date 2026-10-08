@@ -33,6 +33,8 @@ export type AccountFigures = {
   waiting?: number;
   /** Whether the account owns any stock or fund, which is when the comparison is drawn. */
   holdsAnything: boolean;
+  /** The wallet on Robinhood Chain could not be read: the figure leaves it out, and says so (rh-ux-sec m5). */
+  robinhoodUnread?: boolean;
 };
 
 /**
@@ -76,6 +78,7 @@ export function useLiveFigures() {
     funds: funds.isLoading ? undefined : (funds.totalUsd ?? 0),
     waiting,
     holdsAnything: holdings.settled && holdings.held.some((holding) => holding.listing.kind === "stock"),
+    robinhoodUnread: holdings.robinhoodState === "failed",
   };
   return {
     hasAccount: Boolean(account.spokeAddress),
@@ -147,6 +150,7 @@ export function AccountTotal() {
         funds: funds.value,
         waiting: live.figures.waiting,
         holdsAnything: live.figures.holdsAnything || (live.figures.holdings === undefined && known?.stage === "owns"),
+        robinhoodUnread: live.figures.robinhoodUnread,
       }}
       updating={
         holdings.lastKnown || cash.lastKnown || funds.lastKnown
@@ -223,7 +227,14 @@ export function AccountTotalView({
           {figures.holdsAnything && <p className="mt-1.5 text-muted-foreground">{copy.holdingsBenchmarkNote}</p>}
           {figures.holdsAnything && money.converted && <p className="mt-1.5 text-muted-foreground">{copy.inUsDollarsNote}</p>}
           {updating && when && <p className="mt-1.5 text-muted-foreground">{copy.lastKnownAsOf(when)}</p>}
+          {figures.robinhoodUnread && <p className="mt-1.5 text-muted-foreground">{copy.rhChain.totalUnread}</p>}
         </InfoTip>
+        {/* A figure missing a part says so where it is read, not only in the list (rh-ux-sec m5). */}
+        {figures.robinhoodUnread && !updating && (
+          <span className="ml-auto text-xs text-muted-foreground" data-testid="rh-total-unread">
+            {copy.rhChain.totalUnreadShort}
+          </span>
+        )}
         {/* The last reading stands in while the live one arrives: said quietly, once. */}
         {updating && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">

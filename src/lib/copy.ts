@@ -239,6 +239,9 @@ export type Copy = {
     /** The sell sheet's "You hold" when a holding is in both places: the chosen place named (rh-ux-sec m2). */
     youHoldInAccount: (amount: string) => string;
     youHoldInWallet: (amount: string) => string;
+    /** The account total when the wallet on Robinhood Chain could not be read: a short mark beside it, and the (i)'s line. */
+    totalUnreadShort: string;
+    totalUnread: string;
   };
   /**
    * The signed-in home's one next step per state (components/home-next-step):
@@ -2862,6 +2865,9 @@ export const COPY: Copy = {
     sellFeeLater: "Selling it later from your wallet there costs a small network fee in ETH on Robinhood Chain.",
     youHoldInAccount: (amount) => `In your Berth account: ${amount}`,
     youHoldInWallet: (amount) => `In your own wallet on Robinhood Chain: ${amount}`,
+    totalUnreadShort: "Without Robinhood Chain",
+    totalUnread:
+      "Your wallet on Robinhood Chain could not be read just now, so this total leaves out what is there. Berth will try again shortly.",
   },
   calmHome: {
     addTitle: "Add money to begin",
