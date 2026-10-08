@@ -8,16 +8,43 @@ import { accountEvmAddresses } from "@/lib/server/identities";
 import { HUB_RPC_URLS, getPinnedRpcUrls } from "@/lib/sodax-config";
 
 /**
- * The Robinhood Chain delivery switch: `ROBINHOOD_DELIVERY_USERS`, a comma
- * separated list of Berth user ids or wallet addresses (lib/limit-orders
- * switchedOn, the same reading as LIMIT_ORDERS_USERS). Unset or empty
- * switches nobody on, which is how it ships: every buy then delivers to the
- * hub exactly as before. Read server side on every call and never through a
- * NEXT_PUBLIC_ variable; the browser learns its own answer from
- * app/api/delivery and nothing about anyone else.
+ * How the Robinhood Chain delivery switch stands, from `ROBINHOOD_DELIVERY`:
+ *
+ *   unset, empty or "on"  every eligible account (the default, David,
+ *                          2026-10-08: Robinhood Chain is the network people
+ *                          know, so as much as can goes there)
+ *   "listed"              only the accounts in ROBINHOOD_DELIVERY_USERS, the
+ *                          beta's allow list, for a staged way back
+ *   "off"                 nobody: every buy delivers to the hub, as before
+ *
+ * Any other value reads as "off": a typo in the kill switch must never
+ * widen delivery, and the hub is the path every buy has always taken.
+ */
+export type RobinhoodDeliveryMode = "on" | "listed" | "off";
+
+export function robinhoodDeliveryMode(raw: string | null | undefined = process.env.ROBINHOOD_DELIVERY): RobinhoodDeliveryMode {
+  const mode = (raw ?? "").trim().toLowerCase();
+  if (mode === "" || mode === "on") return "on";
+  if (mode === "listed") return "listed";
+  return "off";
+}
+
+/**
+ * Whether the switch lets an account's buys be delivered on Robinhood
+ * Chain, before any of the checks that keep the rest on the hub (where
+ * Berth takes buys, the country, the signing wallet, a plain key).
+ * `ROBINHOOD_DELIVERY_DENY` is a comma separated list of Berth user ids or
+ * wallet addresses that stay on the hub in every mode (lib/limit-orders
+ * switchedOn, the same reading as LIMIT_ORDERS_USERS). Read server side on
+ * every call and never through a NEXT_PUBLIC_ variable; the browser learns
+ * its own answer from app/api/delivery and nothing about anyone else.
  */
 export function robinhoodDeliveryOn(identifiers: readonly (string | null | undefined)[]): boolean {
-  return switchedOn(process.env.ROBINHOOD_DELIVERY_USERS, identifiers);
+  if (switchedOn(process.env.ROBINHOOD_DELIVERY_DENY, identifiers)) return false;
+  const mode = robinhoodDeliveryMode();
+  if (mode === "off") return false;
+  if (mode === "listed") return switchedOn(process.env.ROBINHOOD_DELIVERY_USERS, identifiers);
+  return true;
 }
 
 /** The chains a destination is asked about: Robinhood Chain itself, and Sonic, the one chain every Berth SIWE names. */

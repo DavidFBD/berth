@@ -42,7 +42,11 @@ const answering = (check: DestinationCheck) => vi.fn<typeof recheckDestination>(
 const claimOf = async (intentTx: string) =>
   (await q(`select delivery_ok, delivery_signer, delivery_place_ok, settled_at is not null as settled, outcome from pour_claims where intent_tx = $1`, [intentTx]))[0];
 
-beforeEach(() => vi.stubEnv("ROBINHOOD_DELIVERY_USERS", SWITCHED));
+beforeEach(() => {
+  // As it ships: on for every account; SWITCHED is named for the cases that narrow it.
+  vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+  vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
+});
 afterEach(() => vi.unstubAllEnvs());
 
 describe("gateRobinhoodBuy (the pour route)", () => {
@@ -54,8 +58,8 @@ describe("gateRobinhoodBuy (the pour route)", () => {
     expect(await reason(tx(1))).toBeUndefined();
   });
 
-  it("refuses a Robinhood Chain buy from an account not switched on, from the place alone", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
+  it("refuses a Robinhood Chain buy from an account the switch leaves off, from the place alone", async () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "off");
     const recheck = answering({ verdict: "refused", reason: "not_listed" });
     expect(await gateRobinhoodBuy({ intentTx: tx(2), direction: "buy", intent: rhBuy, inputs, recheck })).toEqual({
       outcome: "refused",
@@ -99,7 +103,6 @@ describe("gateRobinhoodBuy (the pour route)", () => {
   it("keeps a claim's decision once written, and an open claim's first facts", async () => {
     const user = await account("0x3434343434343434343434343434343434343434");
     const mine = { ...inputs, userId: user };
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", user);
     await savePourClaim(user, tx(7), "buy", null, "NVDA", { delivery: { ok: true, signer: BUYER, placeOk: true } });
     const recheck = answering({ verdict: "refused", reason: "other_address" });
     expect((await gateRobinhoodBuy({ intentTx: tx(7), direction: "buy", intent: rhBuy, inputs: mine, recheck })).outcome).toBe("allowed");

@@ -9,8 +9,10 @@ export const maxDuration = 15;
 
 /**
  * Where the signed-in account's next buy is delivered (lib/delivery),
- * behind the ROBINHOOD_DELIVERY_USERS switch (lib/server/delivery). One
- * POST, no body, answered as
+ * behind the ROBINHOOD_DELIVERY switch (lib/server/delivery: on for every
+ * account by default, "off" for nobody, "listed" for
+ * ROBINHOOD_DELIVERY_USERS only, and never for ROBINHOOD_DELIVERY_DENY).
+ * One POST, no body, answered as
  *
  *   { chainKey: "robinhood", address, reason: "switched_on" }
  *       delivered to `address`, the session's own linked EVM wallet, on Robinhood Chain
@@ -19,8 +21,8 @@ export const maxDuration = 15;
  *       (not_listed, no_new_buys, read_failed, no_evm_wallet, not_eoa,
  *       restricted_country, unknown_country)
  *
- * Everyone not switched on gets the hub and nothing else, before any
- * further read. Switched on, the hub is still the answer where Berth takes
+ * An account the switch leaves off gets the hub (`not_listed`) and nothing
+ * else, before any further read. Otherwise the hub is still the answer where Berth takes
  * no new buy, where Robinhood does not offer its tokens
  * (ROBINHOOD_RESTRICTED_COUNTRIES), when the country is unknown, for an
  * account with no EVM wallet, for an address with contract code on

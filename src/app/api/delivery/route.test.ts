@@ -6,10 +6,11 @@ import { hubDelivery } from "@/lib/delivery";
 import { toCaip10 } from "@/lib/identity/caip";
 
 /**
- * The delivery route behind ROBINHOOD_DELIVERY_USERS: off for everyone
- * unless listed, and even then the hub wherever Berth takes no new buy,
- * where Robinhood does not offer its tokens, when nothing is known, and
- * whenever a read fails. The caller is stubbed; the account's wallets are
+ * The delivery route: Robinhood Chain by default for every eligible
+ * account, the hub when ROBINHOOD_DELIVERY turns it off, narrows it to
+ * ROBINHOOD_DELIVERY_USERS, or ROBINHOOD_DELIVERY_DENY names the account,
+ * and the hub wherever Berth takes no new buy, where Robinhood does not
+ * offer its tokens, when nothing is known, and whenever a read fails. The caller is stubbed; the account's wallets are
  * read by the real lib/server/identities over a stubbed database, so a
  * failure is thrown where the real one would be.
  */
@@ -73,6 +74,10 @@ beforeEach(() => {
   rpcDown = false;
   rpc.mockClear();
   vi.stubGlobal("fetch", rpc);
+  // As it ships: no switch variable set at all, whatever this shell has.
+  vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+  vi.stubEnv("ROBINHOOD_DELIVERY_USERS", undefined);
+  vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -80,36 +85,63 @@ afterEach(() => {
 });
 
 describe("POST /api/delivery", () => {
-  it("answers the hub for everyone while the switch is empty, without reading wallets", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
-    expect(await ask("NL")).toEqual(HUB("not_listed"));
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "someone-else");
-    expect(await ask("NL")).toEqual(HUB("not_listed"));
-    expect(query).not.toHaveBeenCalled();
-  });
-
-  it("delivers to the wallet this session signs with, not the home wallet, when both are the account's", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+  it("delivers to Robinhood Chain by default, with no switch variable set and no allow list", async () => {
+    expect(await ask("NL")).toEqual(RH(SIGNER));
+    vi.stubEnv("ROBINHOOD_DELIVERY", " On ");
     expect(await ask("NL")).toEqual(RH(SIGNER));
   });
 
-  it("switches on by the account's home wallet or by the signing wallet, and delivers to the signer either way", async () => {
+  it("answers the hub for everyone when the kill switch is off, or set to anything it does not know, without reading wallets", async () => {
+    for (const value of ["off", "OFF", "false", "0", "no", "of"]) {
+      vi.stubEnv("ROBINHOOD_DELIVERY", value);
+      expect(await ask("NL"), value).toEqual(HUB("not_listed"));
+    }
+    // Off wins over an allow list.
+    expect(await ask("NL")).toEqual(HUB("not_listed"));
+    expect(query).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("keeps an account on the deny list on the hub, by user id, home wallet or signing wallet, in every mode", async () => {
+    for (const deny of ["u1", HOME.toUpperCase().replace("0X", "0x"), SIGNER]) {
+      vi.stubEnv("ROBINHOOD_DELIVERY_DENY", `someone-else, ${deny}`);
+      vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+      expect(await ask("NL"), deny).toEqual(HUB("not_listed"));
+      vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+      vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+      expect(await ask("NL"), deny).toEqual(HUB("not_listed"));
+    }
+    vi.stubEnv("ROBINHOOD_DELIVERY_DENY", STRANGER);
+    vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+    expect(await ask("NL")).toEqual(RH(SIGNER));
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("in listed mode delivers only to the accounts on ROBINHOOD_DELIVERY_USERS, by user id, home wallet or signing wallet", async () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
+    expect(await ask("NL")).toEqual(HUB("not_listed"));
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", STRANGER);
+    expect(await ask("NL")).toEqual(HUB("not_listed"));
+    expect(query).not.toHaveBeenCalled();
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+    expect(await ask("NL")).toEqual(RH(SIGNER));
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", HOME.toUpperCase().replace("0X", "0x"));
     expect(await ask("NL")).toEqual(RH(SIGNER));
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", SIGNER);
     expect(await ask("NL")).toEqual(RH(SIGNER));
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", STRANGER);
-    expect(await ask("NL")).toEqual(HUB("not_listed"));
+  });
+
+  it("delivers to the wallet this session signs with, not the home wallet, when both are the account's", async () => {
+    expect(await ask("NL")).toEqual(RH(SIGNER));
   });
 
   it("delivers to the home wallet when that is the one signing", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     wallet = HOME;
     expect(await ask("NL")).toEqual(RH(HOME));
   });
 
   it("answers the hub when the signing wallet is not one of the account's own EVM wallets", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     wallet = STRANGER;
     expect(await ask("NL")).toEqual(HUB("no_evm_wallet"));
     // A Solana session has nothing Robinhood Chain can pay.
@@ -117,21 +149,18 @@ describe("POST /api/delivery", () => {
     expect(await ask("NL")).toEqual(HUB("no_evm_wallet"));
   });
 
-  it("keeps a switched account on the hub from a restricted country, or nowhere known", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+  it("keeps an account on the hub from a restricted country, or nowhere known", async () => {
     for (const country of ["GB", "CA", "CH", "JE"]) expect(await ask(country), country).toEqual(HUB("restricted_country"));
     expect(await ask()).toEqual(HUB("unknown_country"));
     expect(await ask("XX")).toEqual(HUB("unknown_country"));
   });
 
-  it("keeps a switched account on the hub where Berth takes no new buy", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+  it("keeps an account on the hub where Berth takes no new buy", async () => {
     availability = { available: false, reason: "united-states" };
     expect(await ask("US")).toEqual(HUB("no_new_buys"));
   });
 
   it("asks both Robinhood Chain and Sonic whether the address is a plain key", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     expect(await ask("NL")).toEqual(RH(SIGNER));
     const hosts = rpc.mock.calls.map(([url]) => new URL(String(url)).host);
     expect(hosts).toContain("robinhood-rpc.publicnode.com");
@@ -139,7 +168,6 @@ describe("POST /api/delivery", () => {
   });
 
   it("answers the hub for a smart account, with code on Robinhood Chain or on Sonic", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     code = { [`robinhood-rpc.publicnode.com:${SIGNER}`]: "0x6080" };
     expect(await ask("NL")).toEqual(HUB("not_eoa"));
     // A Safe on Sonic, nothing at the address on Robinhood Chain: nobody's there.
@@ -151,19 +179,16 @@ describe("POST /api/delivery", () => {
   });
 
   it("answers the hub when the chain cannot be asked", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     rpcDown = true;
     expect(await ask("NL")).toEqual(HUB("not_eoa"));
   });
 
   it("asks no chain unless the answer would be Robinhood Chain", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     expect(await ask("GB")).toEqual(HUB("restricted_country"));
     expect(rpc).not.toHaveBeenCalled();
   });
 
   it("answers the hub when the account's wallets cannot be read, rather than trusting the signing wallet", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
     // users.wallet_address is the signer here, so the stand-in linkedWallets
     // uses for other callers would have answered Robinhood Chain.
     usersWallet = SIGNER;

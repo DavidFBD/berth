@@ -39,7 +39,9 @@ const check = (over: Partial<Parameters<typeof recheckRobinhoodDestination>[0]> 
   recheckRobinhoodDestination({ userId: "u1", usersWallet: HOME, signer: SIGNER, availability: undefined, country: "NL", dstAddress: SIGNER, ...over });
 
 beforeEach(() => {
-  vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+  // As it ships: on for every account, nothing listed or denied.
+  vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+  vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
   query.mockReset();
   query.mockImplementation(async () => [linked(HOME, true), linked(SIGNER, false)]);
   code = {};
@@ -57,8 +59,11 @@ describe("recheckRobinhoodDestination", () => {
     expect(await check({ dstAddress: SIGNER.toUpperCase().replace("0X", "0x") })).toEqual({ verdict: "allowed" });
   });
 
-  it("refuses an account that is not switched on, while the switch is empty above all", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
+  it("refuses an account the switch leaves off, by the kill switch or the deny list, above all", async () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY_DENY", "u1");
+    expect(await check()).toEqual({ verdict: "refused", reason: "not_listed" });
+    vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
+    vi.stubEnv("ROBINHOOD_DELIVERY", "off");
     expect(await check()).toEqual({ verdict: "refused", reason: "not_listed" });
     expect(query).not.toHaveBeenCalled();
   });
