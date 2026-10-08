@@ -49,6 +49,20 @@ export type Notice =
       /** The staff account id's first eight characters, never a name or an address. */
       staff: string;
     }
+  | {
+      /**
+       * To staff admins only (lib/server/quote-canary): the quote canary
+       * failed twice in a row in US market hours. Pairs and the solver's
+       * own words, never a person.
+       */
+      type: "quotes_down";
+      /** Only stock routes refused with -4 while the crypto control quoted. */
+      solverSide: boolean;
+      failed: number;
+      total: number;
+      /** One failing pair and the solver's answer, cut short: "USDC on Base to NVDA: -4 No path was found". */
+      example: string;
+    }
   | WeeklyNotice;
 
 /**
@@ -106,6 +120,7 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   weekly: "weekly",
   budget_low: "security",
   staff_reveals: "security",
+  quotes_down: "security",
 };
 
 export type EmailContent = {
@@ -235,6 +250,21 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
         paragraphs: notice.daysLeft === null ? [body] : [body, words.runway(notice.daysLeft)],
         after: [words.after],
         button: { label: words.button, href: `${baseUrl}/staff/budgets` },
+        why: words.why,
+      };
+    }
+    case "quotes_down": {
+      const words = email.quotesDown;
+      const body = words.body(notice.failed, notice.total, notice.solverSide);
+      return {
+        kind,
+        subject: words.subject(notice.solverSide),
+        preview: body,
+        heading: words.heading,
+        paragraphs: [body],
+        facts: [{ label: words.example, value: plain(notice.example, 140) }],
+        after: [notice.solverSide ? words.afterSolver : words.afterOther, words.rate],
+        button: { label: words.button, href: `${baseUrl}/staff/health` },
         why: words.why,
       };
     }

@@ -322,6 +322,10 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
   { name: "wallet-removed", notice: { type: "wallet_removed", family: "solana", address: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV" } },
   { name: "accounts-merged", notice: { type: "accounts_merged" } },
   { name: "staff-reveals", notice: { type: "staff_reveals", count: 10, staff: "aaaaaaaa" } },
+  {
+    name: "quotes-down",
+    notice: { type: "quotes_down", solverSide: true, failed: 16, total: 17, example: "USDC on Base to NVDA: -4 No path was found" },
+  },
   { name: "budget-low", notice: { type: "budget_low", service: "jev", remaining: "$0.80", daysLeft: 4, estimate: true } },
   { name: "assistant-connected", notice: { type: "assistant_connected", app: "Claude", scopes: ["berth.read", "berth.draft"] } },
   { name: "order-filled", notice: { type: "order_filled", side: "buy", name: "NVIDIA", price: "$198.20", received: "0.5046 NVIDIA" } },

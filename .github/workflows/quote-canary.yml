@@ -1,0 +1,55 @@
+# The quote canary: every 30 minutes in US market hours, ask production's
+# /api/cron/canary to run the quick live quote matrix (lib/server/quote-canary).
+# Not a Vercel cron: Hobby allows two and both are taken.
+#
+# Needs one repository secret, CRON_SECRET, with the same value as Vercel's
+# CRON_SECRET (Settings, Secrets and variables, Actions). David adds it; until
+# then the job says so and stops, red, without calling anything.
+#
+# Schedule: 13:30, 14:00, ..., 20:00, 20:30 UTC on weekdays, 15 runs a day,
+# about 300 to 330 a month. That is the New York session in summer time
+# (13:30 to 20:00 UTC); in winter time (14:30 to 21:00 UTC) the first run is
+# before the open and the last half hour is not watched. The route decides
+# market hours itself from lib/market-calendar, holidays included: runs
+# outside them are kept on the Health page and never email anyone.
+#
+# Actions minutes: each job is billed rounded up to a whole minute, so this
+# costs roughly 330 minutes a month of the plan's 2,000 (GitHub Free,
+# private repo), beside checks.yml's 4 to 5 minutes per PR or master push.
+# When the minutes run out, Actions stops: both CI and this canary go quiet.
+# GitHub may start a scheduled run a few minutes late; that is fine here.
+name: quote-canary
+on:
+  schedule:
+    - cron: "30 13-20 * * 1-5"
+    - cron: "0 14-20 * * 1-5"
+  workflow_dispatch:
+concurrency:
+  group: quote-canary
+  cancel-in-progress: false
+permissions: {}
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ask the canary
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BERTH_ORIGIN: https://www.berthmarkets.com
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::The CRON_SECRET repository secret is not set. Add it with Vercel's CRON_SECRET value."
+            exit 1
+          fi
+          status=$(curl -sS -o body.json -w '%{http_code}' --max-time 90 \
+            -H "Authorization: Bearer $CRON_SECRET" "$BERTH_ORIGIN/api/cron/canary")
+          cat body.json; echo
+          if [ "$status" != "200" ]; then
+            echo "::error::The canary route answered $status."
+            exit 1
+          fi
+          verdict=$(node -e 'try { process.stdout.write(String(JSON.parse(require("fs").readFileSync("body.json", "utf8")).verdict ?? "unknown")) } catch { process.stdout.write("unreadable") }')
+          if [ "$verdict" != "pass" ]; then
+            echo "::warning::Quotes: $verdict. Staff are emailed after two failing runs in a row in market hours."
+          fi

@@ -5,6 +5,7 @@ import { COPY } from "@/lib/copy";
 import { staffGate } from "@/lib/server/staff-gate";
 import { readHealth } from "@/lib/server/staff/health";
 import { stageOutcomes, type CronRun } from "@/lib/server/cron-runs";
+import type { CanaryRun } from "@/lib/server/quote-canary";
 import { count, when } from "@/lib/staff/format";
 
 function CronCard({ title, runs }: { title: string; runs: CronRun[] }) {
@@ -47,6 +48,56 @@ function CronCard({ title, runs }: { title: string; runs: CronRun[] }) {
   );
 }
 
+/** The quote canary's last run, its failing pairs and the runs before it (lib/server/quote-canary). */
+function QuotesCard({ runs }: { runs: CanaryRun[] | null }) {
+  const h = COPY.staff.health;
+  const last = runs?.[0];
+  return (
+    <StaffSection title={h.quotes} hint={h.quotesNote}>
+      {runs === null ? (
+        <p className="text-[13.5px] text-muted-foreground">{h.quotesUnread}</p>
+      ) : !last ? (
+        <p className="text-[13.5px] text-muted-foreground">{h.quotesNever}</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <p className="flex flex-wrap items-center gap-2 text-[13.5px] text-foreground">
+            {h.lastRun} {when(last.startedAt)}{" "}
+            <Tag tone={last.verdict === "pass" ? "good" : "low"}>{h.quotesVerdict[last.verdict] ?? last.verdict}</Tag>
+            <span className="text-muted-foreground">{h.quotesCount(last.quoted, last.total)}</span>
+            {last.flapping > 0 && <Tag>{h.quotesFlapping(last.flapping)}</Tag>}
+            {!last.marketOpen && <Tag>{h.quotesClosed}</Tag>}
+            {last.alerted && <Tag tone="low">{h.quotesEmailed}</Tag>}
+          </p>
+          {last.failed.length > 0 && (
+            <Table
+              rows={last.failed}
+              rowKey={(row) => `${row.dir}:${row.src}:${row.dst}:${row.usd}`}
+              columns={[
+                { key: "pair", label: "", mono: true, render: (row) => `${row.src} to ${row.dst}` },
+                { key: "code", label: "", mono: true, render: (row) => (row.code === null ? row.status : String(row.code)) },
+                {
+                  key: "message",
+                  label: "",
+                  render: (row) => (
+                    <span title={row.message ?? undefined} className="inline-block max-w-[280px] truncate align-bottom font-money text-[12px] text-muted-foreground">
+                      {row.message ?? ""}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          )}
+          {runs.length > 1 && (
+            <p className="text-[12.5px] text-muted-foreground">
+              {h.recent}: {runs.slice(1).map((run) => h.quotesRecent(when(run.startedAt), h.quotesVerdict[run.verdict] ?? run.verdict)).join("; ")}
+            </p>
+          )}
+        </div>
+      )}
+    </StaffSection>
+  );
+}
+
 /** The staff Health page: is the machinery running (lib/server/staff/health). */
 export default async function StaffHealthPage() {
   const staff = await staffGate("page");
@@ -62,6 +113,8 @@ export default async function StaffHealthPage() {
         <CronCard title={h.job.morning} runs={health.morning} />
         <CronCard title={h.job.evening} runs={health.evening} />
       </div>
+
+      <QuotesCard runs={health.quotes} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <StaffSection title={h.email} hint={h.emailNote}>

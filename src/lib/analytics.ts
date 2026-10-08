@@ -72,6 +72,19 @@ export type AnalyticsEvents = {
    * native is missing ("0.00034", or "unknown"): no address, no balance.
    */
   gas_blocked: { side: "buy" | "sell" | "cancel"; chain: string; shortfall: string };
+  /**
+   * The drawer showed a quote refusal, more than a blip (lib/quote-hold).
+   * `reason` is no_path, unavailable or no_route; `error_number` the
+   * solver's number without its sign ("4", "999") or "none". Once per
+   * opening per reason, so a flapping solver counts people, not refreshes.
+   */
+  quote_refused: {
+    side: "buy" | "sell";
+    pair_kind: "stock" | "crypto";
+    reason: string;
+    error_number: string;
+    amount_bucket?: AmountBucket;
+  };
 
   account_screen_opened: { screen: string };
   news_story_opened: { listing: string; source_kind: string };
@@ -123,6 +136,7 @@ export const EVENT_PROPS = {
   limit_started: ["side"],
   limit_saved: ["side"],
   gas_blocked: ["side", "chain", "shortfall"],
+  quote_refused: ["side", "pair_kind", "reason", "error_number", "amount_bucket"],
 
   account_screen_opened: ["screen"],
   news_story_opened: ["listing", "source_kind"],

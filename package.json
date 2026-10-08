@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "verify": "node scripts/verify.mjs",
+    "smoke:quotes": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/smoke-quotes.mjs",
     "shot": "node scripts/screenshot.mjs",
     "email:test": "node scripts/email-test.mjs",
     "db:push": "node scripts/db-push.mjs",

@@ -3,6 +3,7 @@ import { latestCronRuns, type CronRun } from "@/lib/server/cron-runs";
 import { dailyCap, weeklyDailyCap } from "@/lib/server/email/send";
 import { dailyPostCap } from "@/lib/x-schedule";
 import { scrubText } from "@/lib/staff/mask";
+import { lastCanaryRuns, type CanaryRun } from "@/lib/server/quote-canary";
 
 /**
  * The staff Health page: is the machinery running. Counts, states and
@@ -171,16 +172,19 @@ export type Health = {
   x: XHealth;
   waiting: WaitingWork;
   issues: IssueList;
+  /** The quote canary's latest runs, newest first; null when they cannot be read (the table not pushed yet). */
+  quotes: CanaryRun[] | null;
 };
 
 export async function readHealth(): Promise<Health> {
-  const [morning, evening, email, x, waiting, issues] = await Promise.all([
+  const [morning, evening, email, x, waiting, issues, quotes] = await Promise.all([
     latestCronRuns("morning", 7),
     latestCronRuns("evening", 7),
     emailToday(),
     xHealth(),
     waitingWork(),
     errorReports(),
+    lastCanaryRuns(8).catch(() => null),
   ]);
-  return { morning, evening, email, x, waiting, issues };
+  return { morning, evening, email, x, waiting, issues, quotes };
 }

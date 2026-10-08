@@ -133,6 +133,26 @@ Not you? Write to us at support@berthmarkets.com.
 Berth. Wall Street, in your wallet."
 `;
 
+exports[`notice templates > quotes-down renders HTML and text without personal data 1`] = `
+"Subject: Stock quotes are failing, solver side
+
+Quotes failed twice in a row
+
+The quote canary asked the live solver 17 pairs and 16 did not quote, two runs in a row during US market hours. The crypto control quoted, so the solver is refusing stock routes, not Berth's request.
+
+Tell the SODAX solver team. People see a calm line in the drawer saying the market is not answering.
+This email comes at most once an hour.
+
+For example: USDC on Base to NVDA: -4 No path was found
+
+Open Health: https://www.berthmarkets.com/staff/health
+
+You get this because you are a staff admin of Berth.
+Not you? Write to us at support@berthmarkets.com.
+
+Berth. Wall Street, in your wallet."
+`;
+
 exports[`notice templates > staff-reveals renders HTML and text without personal data 1`] = `
 "Subject: Many reveals in the staff area
 

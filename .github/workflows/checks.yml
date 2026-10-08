@@ -1,0 +1,35 @@
+# The same static gate as `pnpm verify` steps 3 (tsc, lint, test), on every
+# pull request and every push to master. No secrets: the tests need none
+# (Neon is PGlite in the db project, the network is stubbed). It cannot stop a
+# push, Vercel deploys master regardless; it makes a red master visible and
+# gives a pull request a check to wait for. Requiring it before a merge is a
+# GitHub branch protection setting, which David turns on himself.
+name: checks
+on:
+  pull_request:
+  push:
+    branches: [master]
+concurrency:
+  group: checks-${{ github.ref }}
+  # A newer push to a pull request replaces its run; a run on master is never
+  # cancelled, so a red master cannot be hidden by the push after it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# Read the code, nothing more.
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/check-privy-patch.mjs
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm lint
+      - run: pnpm test

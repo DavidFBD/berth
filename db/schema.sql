@@ -2196,3 +2196,28 @@ create table if not exists invite_setups (
 );
 
 create index if not exists invite_setups_open_idx on invite_setups (checked_at nulls first, set_up_at) where settled_at is null;
+
+-- The quote canary (app/api/cron/canary, lib/server/quote-canary): every
+-- 15 minutes in US market hours a GitHub Actions schedule asks the live
+-- solver the quick quote matrix (lib/quote-smoke) and the answer is kept
+-- here for the staff Health page's Quotes card and the "two failing runs
+-- in a row" staff email. Pairs, codes and the solver's own message only:
+-- nothing in it is about a person. Rows older than 30 days are pruned on
+-- each write.
+create table if not exists quote_canary_runs (
+  id bigint generated always as identity primary key,
+  started_at timestamptz not null,
+  finished_at timestamptz not null default now(),
+  verdict text not null check (verdict in ('pass', 'solver_down', 'fail')),
+  market_open boolean not null,
+  quoted integer not null,
+  total integer not null,
+  flapping integer not null default 0,
+  control_ok boolean not null,
+  -- The failing pairs: [{dir, src, dst, usd, status, code, message}], at most 20.
+  failed jsonb not null default '[]'::jsonb,
+  -- Whether this run emailed staff (at most once an hour, email_sends' unique ref).
+  alerted boolean not null default false
+);
+
+create index if not exists quote_canary_runs_started_idx on quote_canary_runs (started_at desc);

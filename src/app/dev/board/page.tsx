@@ -313,6 +313,7 @@ function Gallery() {
             prefill={buyPrefill}
             devHoldings={devHoldings}
             devDelivery={params.get("rh") === "1" ? DEV_ROBINHOOD_DELIVERY : undefined}
+            devQuote={DEV_QUOTE_REFUSALS[params.get("quote") ?? ""]}
             open={buyOpen}
             onOpenChange={setBuyOpen}
           />
@@ -328,6 +329,13 @@ function Gallery() {
     </>
   );
 }
+
+/** ?quote=market|prices|none: the buy drawer's quote as refused, to see its words without an outage. */
+const DEV_QUOTE_REFUSALS: Record<string, "noPath" | "unavailable" | "noRoute" | undefined> = {
+  market: "noPath",
+  prices: "unavailable",
+  none: "noRoute",
+};
 
 /** A switched account's answer, for ?rh=1: buys go to this wallet on Robinhood Chain. */
 const DEV_ROBINHOOD_DELIVERY: Delivery = {

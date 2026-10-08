@@ -816,6 +816,16 @@ export type Copy = {
   atLeastLabel: string;
   fetchingQuote: string;
   noRouteForPair: string;
+  /** A stock's route refused (-4) twice in a row: the solver has dropped stock routes for a while. */
+  marketQuietForPair: string;
+  /** The proxy, the server or a rate limit failed twice in a row. */
+  pricesQuietForPair: string;
+  /** The fresh quote asked for just before signing did not come back. */
+  quoteRefreshFailed: string;
+  /** The fresh minimum just before signing is below the one shown: nothing was signed. */
+  priceMoved: string;
+  /** Beside a quote that is held: the next answer is late or was a refusal. */
+  quoteHeld: string;
   gasCostChecking: string;
   nothingLeftForGas: string;
   connectChainWallet: (chainName: string) => string;
@@ -823,6 +833,8 @@ export type Copy = {
   ctaTooMuch: string;
   ctaSwitchNetwork: string;
   ctaNoRoute: string;
+  ctaMarketQuiet: string;
+  ctaPricesQuiet: string;
   /** `amount` arrives pre-formatted in the user's currency: "€1.00". */
   ctaAtLeast: (amount: string) => string;
   smallestOrder: (amount: string) => string;
@@ -2099,6 +2111,18 @@ export type EmailCopy = {
   accountsMerged: { subject: string; heading: string; body: string };
   /** To the other staff admins (lib/server/staff/reveal-limit). */
   staffReveals: { subject: string; heading: string; body: (staff: string, count: number) => string; after: string; button: string };
+  /** To staff admins only (lib/server/quote-canary): quotes failed twice in a row in market hours. */
+  quotesDown: {
+    subject: (solverSide: boolean) => string;
+    heading: string;
+    body: (failed: number, total: number, solverSide: boolean) => string;
+    example: string;
+    afterSolver: string;
+    afterOther: string;
+    rate: string;
+    button: string;
+    why: string;
+  };
   /** To staff admins only (lib/server/staff/budgets): a paid service is running low. */
   budgetLow: {
     service: Record<"openai" | "jev" | "x" | "resend", string>;
@@ -2553,6 +2577,16 @@ export const STAFF_COPY = {
     oldestCheck: "Oldest check",
     listings: "Listing registry",
     listingsNote: "pnpm listings:verify runs on a laptop against the live token list and the chain, and stores nothing. Run it before a release.",
+    quotes: "Quotes",
+    quotesNote: "The canary asks the live solver 16 quick pairs and a crypto control every 30 minutes in US market hours, from GitHub Actions. Two failing runs in a row in market hours email staff admins, at most once an hour.",
+    quotesNever: "No canary run recorded yet. It needs the CRON_SECRET secret on GitHub and the quote_canary_runs table.",
+    quotesUnread: "The canary's runs could not be read. Has db:push run since quote_canary_runs was added?",
+    quotesVerdict: { pass: "All quoted", solver_down: "Solver side", fail: "Failing" } as Record<string, string>,
+    quotesCount: (quoted: number, total: number) => `${quoted} of ${total} quoted`,
+    quotesFlapping: (n: number) => (n === 1 ? "1 flapping" : `${n} flapping`),
+    quotesClosed: "Market closed",
+    quotesEmailed: "Staff emailed",
+    quotesRecent: (at: string, verdict: string) => `${at}, ${verdict}`,
   },
   budgets: {
     title: "Budgets",
@@ -3385,6 +3419,11 @@ export const COPY: Copy = {
   atLeastLabel: "At least, after price movement",
   fetchingQuote: "Getting a quote…",
   noRouteForPair: "No route for this pair right now",
+  marketQuietForPair: "The market for this stock isn't answering right now. Try again in a minute.",
+  pricesQuietForPair: "Prices aren't answering right now. Try again in a minute.",
+  quoteRefreshFailed: "The price did not refresh. Try again in a moment.",
+  priceMoved: "The price moved. Check the new amount and tap again.",
+  quoteHeld: "Checking the price again…",
   gasCostChecking: "Checking the network fee. One moment.",
   nothingLeftForGas: "Not enough left over for the network fee",
   connectChainWallet: (chainName) => `Connect a ${chainName} wallet`,
@@ -3392,6 +3431,8 @@ export const COPY: Copy = {
   ctaTooMuch: "More than you have",
   ctaSwitchNetwork: "Switch network",
   ctaNoRoute: "No route for this pair",
+  ctaMarketQuiet: "Market not answering",
+  ctaPricesQuiet: "Prices not answering",
   ctaAtLeast: (amount) => `Minimum ${amount}`,
   smallestOrder: (amount) => `The smallest order is ${amount}.`,
   ctaGettingQuote: "Getting a quote…",
@@ -4035,6 +4076,18 @@ export const COPY: Copy = {
       body: (staff, count) => `The staff account starting ${staff} revealed ${count} email or wallet addresses in the last hour.`,
       after: "If that was not expected, use Sign out everywhere for that account and take it off the staff list. Each reveal and its reason is in the audit log.",
       button: "Open the audit log",
+    },
+    quotesDown: {
+      subject: (solverSide) => (solverSide ? "Stock quotes are failing, solver side" : "Quotes are failing"),
+      heading: "Quotes failed twice in a row",
+      body: (failed, total, solverSide) =>
+        `The quote canary asked the live solver ${total} pairs and ${failed} did not quote, two runs in a row during US market hours.${solverSide ? " The crypto control quoted, so the solver is refusing stock routes, not Berth's request." : ""}`,
+      example: "For example",
+      afterSolver: "Tell the SODAX solver team. People see a calm line in the drawer saying the market is not answering.",
+      afterOther: "This is not only the solver's known stock outage. Read the failing pairs on the Health page.",
+      rate: "This email comes at most once an hour.",
+      button: "Open Health",
+      why: "You get this because you are a staff admin of Berth.",
     },
     budgetLow: {
       service: { openai: "the Assistant's OpenAI budget", jev: "the news model credit", x: "the X API credit", resend: "the Resend email quota" },

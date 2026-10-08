@@ -20,6 +20,7 @@ export function useDrawerFunnel({
   quoted,
   limitActive,
   gasBlocked,
+  refused,
 }: {
   side: "buy" | "sell";
   open: boolean;
@@ -35,6 +36,12 @@ export function useDrawerFunnel({
    * amount, never for a token merely preselected on opening.
    */
   gasBlocked?: { chainKey: SpokeChainKey; shortfall: string } | null;
+  /**
+   * The quote refusal on screen (lib/quote-hold), once it is more than a
+   * blip: the pair's kind, the reason as a code and the solver's error
+   * number. No pair, no address, no amount beyond the bucket.
+   */
+  refused?: { pairKind: "stock" | "crypto"; reason: string; errorNumber: string } | null;
 }): void {
   const said = useRef(new Set<string>());
   const once = (key: string, send: () => void) => {
@@ -77,6 +84,20 @@ export function useDrawerFunnel({
 
   useEffect(() => {
     if (open && limitActive) once("limit", () => track("limit_started", { side }));
+  });
+
+  useEffect(() => {
+    if (!open || !refused) return;
+    // Once per opening for each kind of refusal: a flapping solver is one event, not one per refresh.
+    once(`refused:${refused.pairKind}:${refused.reason}`, () =>
+      track("quote_refused", {
+        side,
+        pair_kind: refused.pairKind,
+        reason: refused.reason,
+        error_number: refused.errorNumber,
+        ...(bucket && { amount_bucket: bucket }),
+      }),
+    );
   });
 
   useEffect(() => {

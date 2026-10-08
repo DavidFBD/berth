@@ -307,8 +307,13 @@ describe("refreshIfDue", () => {
 
 describe("gatherPosts", () => {
   it("never goes to X for a reader other than the column, and reads what is kept", async () => {
-    const { search } = fakeSearch(2);
-    await refreshIfDue({ now: Date.now(), jobs: JOBS, search, cap: 1000 });
+    // Posts from half an hour before the real now: this test runs on the
+    // wall clock, and fakeSearch's fixed Wednesday passed the eight day prune
+    // on 8 October 2026, which turned this test red on master.
+    const now = Date.now();
+    const search: XSearch = async (_query, options) =>
+      Array.from({ length: Math.min(2, options.maxResults) }, () => tweet(now - 30 * MINUTE));
+    await refreshIfDue({ now, jobs: JOBS, search, cap: 1000 });
     const fetchSpy = vi.fn(async () => new Response("{}", { status: 500 }));
     vi.stubGlobal("fetch", fetchSpy);
     process.env.X_BEARER_TOKEN = "test-token";

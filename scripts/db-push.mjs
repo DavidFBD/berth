@@ -3,6 +3,7 @@
 // Usage: node scripts/db-push.mjs
 import { readFileSync } from "node:fs";
 import { neon } from "@neondatabase/serverless";
+import { markSchemaPushed } from "./lib/verify-marker.mjs";
 
 if (!process.env.DATABASE_URL) {
   try {
@@ -43,3 +44,10 @@ try {
   process.exit(1);
 }
 console.log(`Applied ${statements.length} statements in one transaction. Schema is up to date.`);
+// Record which schema reached Neon, so `pnpm verify` knows a schema change
+// in the branch was applied before its code ships.
+try {
+  markSchemaPushed(schema);
+} catch {
+  // outside a git checkout: nothing to record
+}

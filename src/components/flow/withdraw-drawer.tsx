@@ -57,6 +57,8 @@ import { useLimitDraft, type LimitPrefill } from "@/hooks/use-limit-draft";
 import { LimitPlaced, LimitPriceFields, LimitSummary } from "./limit-price";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { usePourQuote } from "@/hooks/use-pour-quote";
+import { errorNumber, minimumToSign, refusalReason, refusalWords, type SignPlan } from "@/lib/quote-hold";
+import { outcomeHoldUntil } from "@/lib/gas-sponsor";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useVaultAction } from "@/hooks/use-vault-action";
@@ -341,6 +343,7 @@ export function WithdrawDrawer({
     money.rate,
   );
   const smallestOrderLabel = money.format(minPourUsd(money.rate));
+  const pairKind = listing?.kind === "stock" ? "stock" : "crypto";
   const quote = usePourQuote({
     enabled: open && !!listing && !!dstChainKey && !!outputToken && !tooSmall,
     // From Robinhood Chain the solver is asked for the token there, as the intent will name it.
@@ -355,7 +358,23 @@ export function WithdrawDrawer({
         : null,
     buildAmount,
     signingChainKey: srcChainKey,
+    pairKind,
   });
+  // A refusal says what it is (lib/quote-hold): a stock's market not
+  // answering, prices not answering, or truly no route.
+  const refusedWords = quote.refusal ? refusalWords(quote.refusal, pairKind, quote.refusalPersistent) : "noRoute";
+  const quoteRefusedText =
+    refusedWords === "marketQuiet"
+      ? copy.marketQuietForPair
+      : refusedWords === "pricesQuiet"
+        ? copy.pricesQuietForPair
+        : copy.noRouteForPair;
+  const quoteRefusedCta =
+    refusedWords === "marketQuiet"
+      ? copy.ctaMarketQuiet
+      : refusedWords === "pricesQuiet"
+        ? copy.ctaPricesQuiet
+        : copy.ctaNoRoute;
   const dustBlocked = belowBtcDust(dstChainKey, outputToken?.symbol, quote.minOut);
   // What the quote is worth in the user's money; undefined for unpriced
   // output tokens, which keep their token-denominated rows.
@@ -409,6 +428,10 @@ export function WithdrawDrawer({
     usd: buildAmount ? sharesWorthUsd(buildAmount) : undefined,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
+    refused:
+      !limit.active && quote.refusal
+        ? { pairKind, reason: refusalReason(quote.refusal), errorNumber: errorNumber(quote.refusalCode) }
+        : null,
     // Only once the person is making this order (an amount typed), never
     // for a token preselected on opening.
     gasBlocked:
@@ -462,7 +485,12 @@ export function WithdrawDrawer({
     }
   };
 
+  // Busy on Sell from the tap until the order starts: the fresh quote.
+  const [preparing, setPreparing] = useState(false);
+  // The amount whose fresh quote came back lower than shown: the new figure is on screen, a second tap goes.
+  const [priceMovedFor, setPriceMovedFor] = useState<bigint | null>(null);
   const handleWithdraw = async () => {
+    if (preparing) return;
     const minOut = limit.active ? limitMin : quote.minOut;
     if (
       (limit.active && (limit.deadline === undefined || !limit.price || !limitTokenFits || limit.recheck() !== null)) ||
@@ -477,6 +505,41 @@ export function WithdrawDrawer({
     ) {
       return;
     }
+    setPreparing(true);
+    setPriceMovedFor(null);
+    let plan: SignPlan;
+    try {
+      // What is signed is the minimum the person saw, and only while a quote
+      // no older than the SDK's refresh still clears it (lib/quote-hold). The
+      // dust check runs again on that minimum.
+      const dst = dstChainKey;
+      const symbol = outputToken.symbol;
+      plan = await minimumToSign({
+        limitMin: limit.active ? minOut : undefined,
+        shown: minOut,
+        checkPrice: quote.checkPrice,
+        belowDust: (min) => belowBtcDust(dst, symbol, min),
+        sendHeld: () => outcomeHoldUntil() > Date.now(),
+      });
+    } finally {
+      setPreparing(false);
+    }
+    if (plan.kind === "moved") {
+      // An earlier run's error would sit under the new figure as if this tap failed.
+      if (action.error) action.reset();
+      setPriceMovedFor(buildAmount);
+      return;
+    }
+    if (plan.kind === "unavailable") {
+      toast(copy.quoteRefreshFailed);
+      return;
+    }
+    if (plan.kind === "dust") {
+      toast(copy.ctaTooSmallForBtc);
+      return;
+    }
+    if (plan.kind !== "go") return;
+    const signMin = plan.minOut;
     await action.runWithdraw({
       vault: listing.address,
       vaultName: listing.symbol,
@@ -486,7 +549,8 @@ export function WithdrawDrawer({
       outputToken: outputToken.address,
       outputTokenSymbol: outputToken.symbol,
       inputAmount: buildAmount,
-      minOutputAmount: minOut,
+      minOutputAmount: signMin,
+      priceCheck: plan.check,
       recipient,
       ...(limit.active &&
         limit.deadline !== undefined &&
@@ -543,7 +607,7 @@ export function WithdrawDrawer({
     canSignSource: chosenSource ? chosenSource.canSign : undefined,
     gasShort: signGasShort,
   });
-  const cta: Cta = (() => {
+  const cta: Cta = preparing ? { label: copy.sell, disabled: true, busy: true } : (() => {
     switch (gate.kind) {
       case "walletNotLinked":
         return { label: copy.ctaAddWalletFirst, disabled: !onAddWallet, onClick: onAddWallet };
@@ -600,7 +664,7 @@ export function WithdrawDrawer({
           onClick: handleSwitchChain,
         };
       case "noRoute":
-        return { label: copy.ctaNoRoute, disabled: true };
+        return { label: quoteRefusedCta, disabled: true };
       case "belowDust":
         return { label: copy.ctaTooSmallForBtc, disabled: true };
       case "wakeWallet":
@@ -1049,8 +1113,12 @@ export function WithdrawDrawer({
                         {copy.smallestOrder(smallestOrderLabel)}
                       </span>
                     ) : quote.noRoute ? (
-                      <span className="text-destructive">
-                        {copy.noRouteForPair}
+                      <span
+                        // Calm when it is not the person's doing: the market or prices not answering, or a stock route down for minutes.
+                        className={refusedWords === "noRoute" && !quote.refusalPersistent ? "text-destructive" : "text-muted-foreground"}
+                        data-testid="quote-refused"
+                      >
+                        {quoteRefusedText}
                       </span>
                     ) : quote.quoted !== undefined && quote.minOut !== undefined ? (
                       <>
@@ -1081,6 +1149,17 @@ export function WithdrawDrawer({
                               : formatTokenAmount(quote.minOut, outputToken.decimals)}
                           </span>
                         </div>
+                        {/* The fresh quote at the tap came back lower: the figure above is the new one. */}
+                        {priceMovedFor !== null && priceMovedFor === buildAmount && (
+                          <p className="text-xs text-foreground" data-testid="price-moved">
+                            {copy.priceMoved}
+                          </p>
+                        )}
+                        {quote.held && priceMovedFor !== buildAmount && (
+                          <p className="text-xs text-muted-foreground" data-testid="quote-held">
+                            {copy.quoteHeld}
+                          </p>
+                        )}
                       </>
                     ) : (
                       <div className="flex items-center gap-2 text-muted-foreground">

@@ -58,6 +58,8 @@ import {
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useLimitDraft, type LimitPrefill } from "@/hooks/use-limit-draft";
 import { usePourQuote } from "@/hooks/use-pour-quote";
+import { errorNumber, minimumToSign, refusalReason, refusalWords, type QuoteRefusal, type SignPlan } from "@/lib/quote-hold";
+import { outcomeHoldUntil } from "@/lib/gas-sponsor";
 import { useDelivery } from "@/hooks/use-delivery";
 import type { Delivery } from "@/lib/delivery";
 import { useRobinhoodArrival } from "@/hooks/use-robinhood-arrival";
@@ -121,6 +123,7 @@ export function DepositDrawer({
   devHoldings,
   devLimit,
   devDelivery,
+  devQuote,
   confirmTerms,
 }: {
   listing: Listing | null;
@@ -165,6 +168,8 @@ export function DepositDrawer({
   devLimit?: boolean;
   /** Dev galleries only: stands in for the delivery answer (hooks/use-delivery), so a Robinhood Chain buy sheet can be seen without a session. */
   devDelivery?: Delivery;
+  /** Dev galleries only: the quote as refused, so the drawer's refusal words can be seen without an outage. */
+  devQuote?: Exclude<QuoteRefusal, "tooSmall">;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
     DEPOSIT_SOURCE_CHAINS[0],
@@ -443,7 +448,8 @@ export function DepositDrawer({
   // fine, so it isn't asked: the field gets the real reason instead.
   const tooSmall = belowMinimum(worthUsd, money.rate);
   const smallestOrderLabel = money.format(minPourUsd(money.rate));
-  const quote = usePourQuote({
+  const pairKind = listing?.kind === "stock" ? "stock" : "crypto";
+  const liveQuote = usePourQuote({
     // A buy waits for where it is delivered, so its quote is taken to the
     // token it will actually receive.
     enabled: open && !!listing && !!token && !tooSmall && (!isBuy || delivery.settled),
@@ -455,7 +461,26 @@ export function DepositDrawer({
         : null,
     buildAmount,
     signingChainKey: srcChainKey,
+    pairKind,
   });
+  const quote = devQuote
+    ? { ...liveQuote, quoted: undefined, minOut: undefined, noRoute: true, refusal: devQuote, refusalCode: devQuote === "noPath" ? -4 : -999, tooSmall: false }
+    : liveQuote;
+  // A refusal says what it is (lib/quote-hold): a stock's market not
+  // answering, prices not answering, or truly no route.
+  const refusedWords = quote.refusal ? refusalWords(quote.refusal, pairKind, quote.refusalPersistent) : "noRoute";
+  const quoteRefusedText =
+    refusedWords === "marketQuiet"
+      ? copy.marketQuietForPair
+      : refusedWords === "pricesQuiet"
+        ? copy.pricesQuietForPair
+        : copy.noRouteForPair;
+  const quoteRefusedCta =
+    refusedWords === "marketQuiet"
+      ? copy.ctaMarketQuiet
+      : refusedWords === "pricesQuiet"
+        ? copy.ctaPricesQuiet
+        : copy.ctaNoRoute;
 
   // A limit buy (lib/limit-orders): the price, not a quote, sets the
   // minimum, computed on what is actually swapped after the fee and
@@ -488,6 +513,10 @@ export function DepositDrawer({
     usd: worthUsd,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
+    refused:
+      !limit.active && quote.refusal
+        ? { pairKind, reason: refusalReason(quote.refusal), errorNumber: errorNumber(quote.refusalCode) }
+        : null,
     // Only once the person is making this order (an amount typed), never
     // for a token preselected on opening.
     gasBlocked:
@@ -547,8 +576,12 @@ export function DepositDrawer({
     }
   };
 
-  const [checkingTerms, setCheckingTerms] = useState(false);
+  // Busy on Buy from the tap until the order starts: the terms, then the fresh quote.
+  const [preparing, setPreparing] = useState(false);
+  // The amount whose fresh quote came back lower than shown: the new figure is on screen, a second tap goes.
+  const [priceMovedFor, setPriceMovedFor] = useState<bigint | null>(null);
   const handleDeposit = async () => {
+    if (preparing) return;
     const minOut = limit.active ? limitMin : quote.minOut;
     if (
       !listing ||
@@ -563,12 +596,35 @@ export function DepositDrawer({
       limit.setReviewing(false);
       return;
     }
-    if (confirmTerms) {
+    setPreparing(true);
+    setPriceMovedFor(null);
+    let plan: SignPlan;
+    try {
       // A spinner on Buy while the terms are read (at most a few seconds, lib/terms-gate).
-      setCheckingTerms(true);
-      const go = await confirmTerms().finally(() => setCheckingTerms(false));
-      if (!go) return;
+      if (confirmTerms && !(await confirmTerms())) return;
+      // What is signed is the minimum the person saw, and only while a quote
+      // no older than the SDK's refresh still clears it (lib/quote-hold).
+      plan = await minimumToSign({
+        limitMin: limit.active ? minOut : undefined,
+        shown: minOut,
+        checkPrice: quote.checkPrice,
+        sendHeld: () => outcomeHoldUntil() > Date.now(),
+      });
+    } finally {
+      setPreparing(false);
     }
+    if (plan.kind === "moved") {
+      // An earlier run's error would sit under the new figure as if this tap failed.
+      if (action.error) action.reset();
+      setPriceMovedFor(buildAmount);
+      return;
+    }
+    if (plan.kind === "unavailable") {
+      toast(copy.quoteRefreshFailed);
+      return;
+    }
+    if (plan.kind !== "go") return;
+    const signMin = plan.minOut;
     await action.runDeposit({
       vault: listing.address,
       vaultName: listing.symbol,
@@ -582,7 +638,8 @@ export function DepositDrawer({
       srcAddress: address,
       token,
       inputAmount: buildAmount,
-      minOutputAmount: minOut,
+      minOutputAmount: signMin,
+      priceCheck: plan.check,
       walletProvider,
       walletMode: mode,
       ...(limit.active &&
@@ -628,7 +685,7 @@ export function DepositDrawer({
     payerLinked: !isBuy || (isEvmChainKeyType(srcChainKey) ? account.signerLinked : payer.state !== "unlinked"),
     gasShort: selectedGasShort,
   });
-  const cta: Cta = checkingTerms ? { label: copy.buy, disabled: true, busy: true } : (() => {
+  const cta: Cta = preparing ? { label: copy.buy, disabled: true, busy: true } : (() => {
     switch (gate.kind) {
       case "noAccount":
         return {
@@ -692,7 +749,7 @@ export function DepositDrawer({
           onClick: handleSwitchChain,
         };
       case "noRoute":
-        return { label: copy.ctaNoRoute, disabled: true };
+        return { label: quoteRefusedCta, disabled: true };
       case "wakeWallet":
         // Signed in on the session alone (lib/wallet-restore): the one
         // prompt is here, when the person asked for a signature.
@@ -1072,8 +1129,12 @@ export function DepositDrawer({
                         {copy.smallestOrder(smallestOrderLabel)}
                       </span>
                     ) : quote.noRoute ? (
-                      <span className="text-destructive">
-                        {copy.noRouteForPair}
+                      <span
+                        // Calm when it is not the person's doing: the market or prices not answering, or a stock route down for minutes.
+                        className={refusedWords === "noRoute" && !quote.refusalPersistent ? "text-destructive" : "text-muted-foreground"}
+                        data-testid="quote-refused"
+                      >
+                        {quoteRefusedText}
                       </span>
                     ) : quote.quoted !== undefined && quote.minOut !== undefined ? (
                       <>
@@ -1091,6 +1152,17 @@ export function DepositDrawer({
                             {formatTokenAmount(quote.minOut, listing.decimals, 6)}
                           </span>
                         </div>
+                        {/* The fresh quote at the tap came back lower: the figure above is the new one. */}
+                        {priceMovedFor !== null && priceMovedFor === buildAmount && (
+                          <p className="text-xs text-foreground" data-testid="price-moved">
+                            {copy.priceMoved}
+                          </p>
+                        )}
+                        {quote.held && priceMovedFor !== buildAmount && (
+                          <p className="text-xs text-muted-foreground" data-testid="quote-held">
+                            {copy.quoteHeld}
+                          </p>
+                        )}
                         {/* Where it goes, said once, only when it is not the Berth account. */}
                         {robinhoodToken && (
                           <p className="text-xs text-muted-foreground" data-testid="rh-arrival">

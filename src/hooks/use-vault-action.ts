@@ -202,6 +202,16 @@ export interface RunDepositArgs {
    * approve will be sent first.
    */
   gasCheck?: (approval: boolean) => Promise<string | null>;
+  /**
+   * The quote check just before signing (hooks/use-pour-quote checkPrice):
+   * asked after the delivery re-ask, the gas check, the approval and its
+   * rebuild, so the minimum signed is still cleared by a quote seconds old,
+   * not one from the tap. "moved" (the fresh minimum is below the confirmed
+   * one) and "unavailable" stop the order before the wallet signs, with no
+   * report: the drawer shows the new figure and the person taps again.
+   * Unset for a limit order, whose minimum is its price.
+   */
+  priceCheck?: () => Promise<"ok" | "moved" | "unavailable">;
 }
 
 export interface RunWithdrawArgs {
@@ -257,6 +267,8 @@ export interface RunWithdrawArgs {
    * approve will be sent first.
    */
   gasCheck?: (approval: boolean) => Promise<string | null>;
+  /** See RunDepositArgs.priceCheck. */
+  priceCheck?: () => Promise<"ok" | "moved" | "unavailable">;
 }
 
 export interface UseVaultActionResult {
@@ -1435,6 +1447,25 @@ export function useVaultAction(options?: {
     [advance, fail, failStalled, queryClient, sendSlow, sodax, tellSolver],
   );
 
+  /**
+   * The last quote check before the wallet signs (RunDepositArgs.priceCheck).
+   * True to go on; false when it stopped the order (and said why) or a newer
+   * run owns the screen.
+   */
+  const priceHolds = useCallback(
+    async (check: (() => Promise<"ok" | "moved" | "unavailable">) | undefined): Promise<boolean> => {
+      if (!check) return true;
+      const run = runRef.current;
+      const verdict = await check().catch(() => "unavailable" as const);
+      if (runRef.current !== run) return false;
+      if (verdict === "ok") return true;
+      // Not a bug and nothing sent: the drawer shows the new figure.
+      fail(verdict === "moved" ? COPY.priceMoved : COPY.quoteRefreshFailed, undefined, { report: false });
+      return false;
+    },
+    [fail],
+  );
+
   const runDeposit = useCallback(
     async (args: RunDepositArgs): Promise<boolean> => {
       if (runningRef.current) return false;
@@ -1675,6 +1706,8 @@ export function useVaultAction(options?: {
         // 4. Execute: one signature on the spoke chain, then verify → relay → notify solver.
         advance("signing");
         if (!(await onRightChain())) return false;
+        // The last step before the signature: the minimum is still cleared by a quote seconds old.
+        if (!(await priceHolds(args.priceCheck))) return false;
         // Robinhood Chain: three params replaced, after the last build, as
         // the hub's `deliverTo` is (lib/delivery-client robinhoodParams).
         const payload = toRobinhood
@@ -1711,7 +1744,7 @@ export function useVaultAction(options?: {
         runningRef.current = false;
       }
     },
-    [advance, approve, buildDeposit, fail, failStalled, queryClient, resetReport, sendLimit, sendMarket, sendSlow, sodax, waitForAllowance],
+    [advance, approve, buildDeposit, fail, failStalled, priceHolds, queryClient, resetReport, sendLimit, sendMarket, sendSlow, sodax, waitForAllowance],
   );
 
   const runWithdraw = useCallback(
@@ -1909,6 +1942,8 @@ export function useVaultAction(options?: {
 
           advance("signing");
           if (!(await onRightChain())) return false;
+          // The last step before the signature: the minimum is still cleared by a quote seconds old.
+          if (!(await priceHolds(args.priceCheck))) return false;
           return await sendMarket({
             payload,
             walletProvider: args.walletProvider,
@@ -1930,6 +1965,8 @@ export function useVaultAction(options?: {
         }
         advance("signing");
         if (!(await onRightChain())) return false;
+        // The last step before the signature: the minimum is still cleared by a quote seconds old.
+        if (!(await priceHolds(args.priceCheck))) return false;
         const slow = slowSource(args.srcChainKey);
         if (slow && args.limit) {
           fail(COPY.errCouldNotPrepare);
@@ -1961,7 +1998,7 @@ export function useVaultAction(options?: {
         runningRef.current = false;
       }
     },
-    [advance, approve, buildWithdraw, fail, failStalled, resetReport, sendLimit, sendMarket, sendSlow, sodax, waitForAllowance],
+    [advance, approve, buildWithdraw, fail, failStalled, priceHolds, resetReport, sendLimit, sendMarket, sendSlow, sodax, waitForAllowance],
   );
 
   const reset = useCallback(() => {
