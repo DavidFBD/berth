@@ -8,6 +8,7 @@ import { accountEvmAddresses } from "@/lib/server/identities";
 import { HUB_RPC_URLS, getPinnedRpcUrls } from "@/lib/sodax-config";
 import { PRIVY_SPONSORABLE_CHAIN_IDS } from "@/lib/gas-sponsor";
 import { getSql } from "@/lib/server/db";
+import { readPrivyEmbeddedWallet } from "@/lib/server/privy";
 
 /**
  * How the Robinhood Chain delivery switch stands, from `ROBINHOOD_DELIVERY`:
@@ -70,20 +71,33 @@ export function embeddedEligible(ids: ReadonlySet<number> = PRIVY_SPONSORABLE_CH
 /**
  * Whether the account's wallet `address` is its Privy email wallet: linked
  * with Privy's own proof ('privy_wallet'), or, for an email account whose
- * wallet row predates proofs ('legacy', or none yet), its home address.
- * Throws when the tables cannot be read; the callers answer the hub or
- * "unknown".
+ * wallet row predates proofs ('legacy', or none yet), its home address, or
+ * the embedded wallet Privy itself names for the account's DID (as the
+ * wallets list asks it, rh-final 3). Throws when the tables cannot be read
+ * or Privy cannot be asked: any doubt answers the hub (decide) or unknown
+ * (recheckDestination), never Robinhood Chain.
  */
-export async function isEmbeddedWallet(userId: string, address: string): Promise<boolean> {
+export async function isEmbeddedWallet(
+  userId: string,
+  address: string,
+  readPrivy: typeof readPrivyEmbeddedWallet = readPrivyEmbeddedWallet,
+): Promise<boolean> {
+  const value = address.toLowerCase();
   const rows = (await getSql().query(
-    `select (i.proof = 'privy_wallet'
+    `select u.privy_did,
+            (i.proof = 'privy_wallet'
              or (u.privy_did is not null and lower(u.wallet_address) = $2 and coalesce(i.proof, 'legacy') = 'legacy')) as embedded
        from users u
        left join user_identities i on i.user_id = u.id and i.kind = 'wallet' and i.value = $2 and i.unlinked_at is null
       where u.id = $1`,
-    [userId, address.toLowerCase()],
-  )) as { embedded: boolean | null }[];
-  return rows.some((row) => row.embedded === true);
+    [userId, value],
+  )) as { privy_did: string | null; embedded: boolean | null }[];
+  if (rows.some((row) => row.embedded === true)) return true;
+  const did = rows.find((row) => row.privy_did)?.privy_did;
+  if (!did?.startsWith("did:privy:")) return false;
+  const privy = await readPrivy(did);
+  if (!privy.ok) throw new Error("Privy could not be asked");
+  return privy.address === value;
 }
 
 /**

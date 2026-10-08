@@ -74,4 +74,22 @@ describe("a Privy email wallet on Robinhood Chain", () => {
       await recheckDestination({ userId: external, usersWallet: EXTERNAL, signer: EXTERNAL, place, dstAddress: EXTERNAL, fetcher: plainChain }),
     ).toEqual({ verdict: "allowed" });
   });
+
+  it("asks Privy for the account's embedded wallet when the tables do not say, and any doubt is an error, never a no (rh-final 3)", async () => {
+    const linkedLater = await user("did:privy:d", "0x00000000000000000000000000000000000000e4");
+    await recordHomeWallet(linkedLater, "0x00000000000000000000000000000000000000e4", "privy_wallet");
+    await sql.query(`insert into user_identities (user_id, kind, value, family, is_home, proof) values ($1, 'wallet', $2, 'evm', false, 'siwe')`, [
+      linkedLater,
+      EMAIL_WALLET,
+    ]);
+    const privySays = (address: string | null) => async () => ({ ok: true as const, address });
+    expect(await isEmbeddedWallet(linkedLater, EMAIL_WALLET, privySays(EMAIL_WALLET))).toBe(true);
+    expect(await isEmbeddedWallet(linkedLater, EMAIL_WALLET, privySays("0x00000000000000000000000000000000000000e4"))).toBe(false);
+    await expect(isEmbeddedWallet(linkedLater, EMAIL_WALLET, async () => ({ ok: false as const }))).rejects.toThrow("Privy");
+    // An account with no Privy sign in is never asked.
+    const external = await user(null, EXTERNAL);
+    const never = vi.fn(privySays(EXTERNAL));
+    expect(await isEmbeddedWallet(external, EXTERNAL, never)).toBe(false);
+    expect(never).not.toHaveBeenCalled();
+  });
 });
