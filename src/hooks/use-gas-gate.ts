@@ -100,13 +100,17 @@ export function useGasGate(chains: readonly SpokeChainKey[], enabled = true): Ga
 /**
  * The last check before a wallet opens: a fresh read of the native balance
  * and the fee, and the plain message to stop with when the order's fee
- * cannot be paid, at the chain's own price or the wallet floor (lib/gas-need
- * blockingNeed), naming roughly how much to add (`null` to go on). The picker already greys such a
- * token; this catches the race, a balance spent or a fee risen since.
+ * cannot be paid, at the chain's own price or what a wallet reserves
+ * (lib/gas-need blockingNeed), naming roughly how much to add (`null` to go
+ * on). The picker already greys such a token; this catches the race, a
+ * balance spent or a fee risen since.
  *
- * Unknown never stops an order: a failed or slow read (lib/gas-need PREFLIGHT_TIMEOUT_MS)
- * goes on to the wallet as before, and so does a 0 off EVM, where the SDK
- * answers 0 for a failed read (lib/gas-need trustedNativeBalance).
+ * An unknown balance never stops an order: a failed or slow balance read
+ * (lib/gas-need PREFLIGHT_TIMEOUT_MS) goes on to the wallet, and so does a
+ * 0 off EVM, where the SDK answers 0 for a failed read (lib/gas-need
+ * trustedNativeBalance). A failed or slow FEE read does not wave an order
+ * through: the chain's assumed busy-day fee stands in for it (lib/gas-need
+ * assumedFeePerGas), so a known balance below that need still stops.
  */
 export function useGasPreflight(): (args: {
   chainKey: SpokeChainKey;
