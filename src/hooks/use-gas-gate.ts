@@ -4,8 +4,8 @@ import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { getXChainType, getXService, useXService } from "@sodax/wallet-sdk-react";
 import { useXBalances } from "@sodax/dapp-kit";
 import { isEvmChainKeyType, type EvmChainKey, type SpokeChainKey, type XToken } from "@sodax/sdk";
-import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
-import { formatUnits } from "viem";
+import { getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
+import { gasShortMessage, type GasPurpose } from "@/lib/gas-message";
 import {
   amountLeavesNoFee,
   blockingNeed,
@@ -18,7 +18,6 @@ import {
   type GasStatus,
 } from "@/lib/gas-need";
 import { useCopy } from "@/components/settings-provider";
-import type { Copy } from "@/lib/copy";
 import { feePerGasQueryOptions } from "@/hooks/use-native-gas-buffer";
 import { useGasSponsored } from "@/hooks/use-gas-sponsor";
 
@@ -142,34 +141,7 @@ export function useGasPreflight(): (args: {
   };
 }
 
-/**
- * The top-up guidance for an order its wallet cannot pay the fee for: the
- * token, the network and roughly how much to add when that can be told.
- */
-export function gasShortMessage(
-  copy: Pick<Copy, "gasToAdd" | "gasNeededToPay" | "gasToAddCancel" | "gasNeededToCancel" | "gasLowerAmount">,
-  native: { symbol: string; decimals: number },
-  chainKey: SpokeChainKey,
-  toAdd: bigint | undefined,
-  purpose: GasPurpose = "order",
-  /** Paying in the gas token, and the amount typed is what leaves no fee (lib/gas-need amountLeavesNoFee). */
-  lowerAmount = false,
-): string {
-  const chainName = getChainName(chainKey);
-  if (lowerAmount) return copy.gasLowerAmount(native.symbol, chainName);
-  if (toAdd === undefined) {
-    return purpose === "cancel"
-      ? copy.gasNeededToCancel(native.symbol, chainName)
-      : copy.gasNeededToPay(native.symbol, chainName);
-  }
-  const amount = formatUnits(toAdd, native.decimals);
-  return purpose === "cancel"
-    ? copy.gasToAddCancel(amount, native.symbol, chainName)
-    : copy.gasToAdd(amount, native.symbol, chainName);
-}
 
-/** What the signature is for: an order, or cancelling a waiting one. The words differ. */
-export type GasPurpose = "order" | "cancel";
 
 /**
  * Whether the wallet at `address` can pay one signature's fee on

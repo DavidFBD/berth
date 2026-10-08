@@ -79,7 +79,8 @@ import {
 } from "@/lib/pay-token-pick";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
-import { gasShortMessage, isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
+import { gasShortMessage } from "@/lib/gas-message";
 import { useWalletOnlySession } from "@/hooks/use-account";
 import { useOutcomeHold, useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
 import { amountLeavesNoFee, byGasStatus, floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
