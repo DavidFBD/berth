@@ -20,6 +20,7 @@ import {
   warnReserve,
   floorWarns,
   paidSendNeed,
+  amountLeavesNoFee,
 } from "./gas-need";
 import { evmFeeFloorBuffer } from "@/hooks/use-native-gas-buffer";
 
@@ -336,6 +337,15 @@ describe("paidSendNeed: the embedded wallet's paid fallback", () => {
       gasNeed({ chainKey: ChainKeys.BASE_MAINNET, feePerGas: fee, approval: false }),
     );
     expect(paidSendNeed({ chainKey: ChainKeys.BASE_MAINNET, gas: undefined, maxFeePerGas: undefined, feePerGas: undefined })).toBeUndefined();
+  });
+});
+
+describe("amountLeavesNoFee", () => {
+  it("blames the typed amount only when the gas token pays and the balance alone covers the fee", () => {
+    expect(amountLeavesNoFee({ isNative: true, nativeBalance: 1_000n, need: 400n })).toBe(true);
+    expect(amountLeavesNoFee({ isNative: true, nativeBalance: 300n, need: 400n })).toBe(false);
+    expect(amountLeavesNoFee({ isNative: false, nativeBalance: 1_000n, need: 400n })).toBe(false);
+    expect(amountLeavesNoFee({ isNative: true, nativeBalance: undefined, need: 400n })).toBe(false);
   });
 });
 

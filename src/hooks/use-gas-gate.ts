@@ -7,6 +7,7 @@ import { isEvmChainKeyType, type EvmChainKey, type SpokeChainKey, type XToken } 
 import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
 import { formatUnits } from "viem";
 import {
+  amountLeavesNoFee,
   blockingNeed,
   gasToAdd,
   orderGasShort,
@@ -137,7 +138,7 @@ export function useGasPreflight(): (args: {
     const facts = { chainKey, isNative, nativeBalance, amount: isNative ? amount : 0n };
     const need = blockingNeed({ chainKey, feePerGas, approval, order });
     if (!orderGasShort({ ...facts, need })) return null;
-    return gasShortMessage(copy, native, chainKey, gasToAdd({ ...facts, need }), purpose);
+    return gasShortMessage(copy, native, chainKey, gasToAdd({ ...facts, need }), purpose, amountLeavesNoFee({ ...facts, need }));
   };
 }
 
@@ -146,13 +147,16 @@ export function useGasPreflight(): (args: {
  * token, the network and roughly how much to add when that can be told.
  */
 export function gasShortMessage(
-  copy: Pick<Copy, "gasToAdd" | "gasNeededToPay" | "gasToAddCancel" | "gasNeededToCancel">,
+  copy: Pick<Copy, "gasToAdd" | "gasNeededToPay" | "gasToAddCancel" | "gasNeededToCancel" | "gasLowerAmount">,
   native: { symbol: string; decimals: number },
   chainKey: SpokeChainKey,
   toAdd: bigint | undefined,
   purpose: GasPurpose = "order",
+  /** Paying in the gas token, and the amount typed is what leaves no fee (lib/gas-need amountLeavesNoFee). */
+  lowerAmount = false,
 ): string {
   const chainName = getChainName(chainKey);
+  if (lowerAmount) return copy.gasLowerAmount(native.symbol, chainName);
   if (toAdd === undefined) {
     return purpose === "cancel"
       ? copy.gasNeededToCancel(native.symbol, chainName)

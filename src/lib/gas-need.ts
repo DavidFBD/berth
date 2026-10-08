@@ -483,6 +483,23 @@ export class InsufficientFundsForPaidSend extends Error {
   }
 }
 
+/**
+ * Whether an order paid in the gas token itself is short only because of
+ * the amount typed: the balance alone covers the fee, so lowering the
+ * amount (or Max) is the fix, not adding more.
+ */
+export function amountLeavesNoFee({
+  isNative,
+  nativeBalance,
+  need,
+}: {
+  isNative: boolean;
+  nativeBalance: bigint | undefined;
+  need: bigint | undefined;
+}): boolean {
+  return isNative && nativeBalance !== undefined && need !== undefined && nativeBalance >= need;
+}
+
 /** Sort key: what can pay first, what cannot last, order kept otherwise. */
 export function byGasStatus<T>(rows: readonly T[], statusOf: (row: T) => GasStatus): T[] {
   return rows

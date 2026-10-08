@@ -82,7 +82,7 @@ import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { gasShortMessage, isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
 import { useWalletOnlySession } from "@/hooks/use-account";
 import { useOutcomeHold, useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
-import { byGasStatus, floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
+import { amountLeavesNoFee, byGasStatus, floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import {
   ActionError,
   ActionStepper,
@@ -902,7 +902,7 @@ export function DepositDrawer({
                           <p className="text-foreground">
                             {/* An amount whenever one can be told, an empty wallet included. */}
                             {native && selectedGasToAdd !== undefined
-                              ? gasShortMessage(copy, native, srcChainKey, selectedGasToAdd)
+                              ? gasShortMessage(copy, native, srcChainKey, selectedGasToAdd, "order", amountLeavesNoFee(selectedGasFacts))
                               : gasShortChains.includes(srcChainKey)
                                 ? copy.gasShortWarning(getChainName(srcChainKey), symbol)
                                 : native

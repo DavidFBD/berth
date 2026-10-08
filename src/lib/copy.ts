@@ -691,6 +691,8 @@ export type Copy = {
    * `amount` is a plain decimal rounded up, "0.00034".
    */
   gasToAdd: (amount: string, symbol: string, chainName: string) => string;
+  /** Paying in the gas token itself, when the amount typed leaves too little for the fee. */
+  gasLowerAmount: (symbol: string, chainName: string) => string;
   /** The same guidance when the signature would cancel a waiting order. */
   gasToAddCancel: (amount: string, symbol: string, chainName: string) => string;
   /** The same, when how much cannot be told. */
@@ -3200,6 +3202,8 @@ export const COPY: Copy = {
   ctaNeedsGas: (symbol) => `Not enough ${symbol} for the network fee`,
   gasToAdd: (amount, symbol, chainName) =>
     `Add about ${amount} ${symbol} on ${chainName} to pay the network fee, then this order can start.`,
+  gasLowerAmount: (symbol, chainName) =>
+    `This leaves too little ${symbol} on ${chainName} for the network fee. Lower the amount, or use Max.`,
   gasToAddCancel: (amount, symbol, chainName) =>
     `Cancelling has a network fee. Add about ${amount} ${symbol} on ${chainName}, then you can cancel this order.`,
   gasNeededToCancel: (symbol, chainName) =>
