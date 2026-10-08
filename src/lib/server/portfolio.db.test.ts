@@ -680,12 +680,14 @@ describe("Robinhood Chain in the portfolio", () => {
     const summary = await runPortfolioSnapshot({
       now: FRIDAY_EVENING,
       readRobinhood: slow,
-      robinhoodBudgetMs: 100,
+      robinhoodBudgetMs: 400,
+      robinhoodHubOnlyBudgetMs: 50,
       accountTimeoutMs: 1_000,
       deriveHubWallet: async (spoke) => spoke,
       readBalances: async () => ({ NVDA: 1 }),
       livePrices: async () => ({}),
     });
+    // Three hub-only accounts wait 50 ms each, not the Robinhood account's 400.
     expect(Date.now() - started).toBeLessThan(2_500);
     expect(summary).toMatchObject({ accounts: 4, written: 3, failed: 1 });
     expect(await loadPortfolioDays(delivered.id)).toEqual([]);

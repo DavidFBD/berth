@@ -465,6 +465,14 @@ export function snapshotPrice(
 export const ROBINHOOD_ACCOUNT_BUDGET_MS = 4_000;
 
 /**
+ * The same for an account not on Robinhood Chain (no order there, nothing
+ * there on its latest day): it writes its hub day whatever the answer, so
+ * it waits only briefly, and a Robinhood Chain that is down never slows the
+ * run to the four second budget per account (rh-delta on 910f997).
+ */
+export const ROBINHOOD_HUB_ONLY_BUDGET_MS = 500;
+
+/**
  * Today's row for every account: balances read on chain, valued at today's
  * stored close, or the oracle's live price where the close is missing or
  * out of line with it (snapshotPrice). One account failing, or taking
@@ -487,6 +495,7 @@ export async function runPortfolioSnapshot({
   deriveHubWallet = hubWalletFor,
   readRobinhood = readRobinhoodHoldings,
   robinhoodBudgetMs = ROBINHOOD_ACCOUNT_BUDGET_MS,
+  robinhoodHubOnlyBudgetMs = ROBINHOOD_HUB_ONLY_BUDGET_MS,
   livePrices = liveListingPrices,
   accounts,
   accountTimeoutMs = ACCOUNT_TIMEOUT_MS,
@@ -501,6 +510,8 @@ export async function runPortfolioSnapshot({
   readRobinhood?: RobinhoodHoldingsReader;
   /** Each account's Robinhood Chain read, past which it is unread. */
   robinhoodBudgetMs?: number;
+  /** The same for an account not on Robinhood Chain. */
+  robinhoodHubOnlyBudgetMs?: number;
   livePrices?: () => Promise<Record<string, number>>;
   accounts?: SnapshotAccount[];
 } = {}): Promise<SnapshotSummary> {
@@ -543,14 +554,15 @@ export async function runPortfolioSnapshot({
   // each account's read below takes it from there.
   const allWallets = list.flatMap(walletsOf);
   if (allWallets.length > 0) void readRobinhood(allWallets).catch(() => undefined);
-  const runRobinhood: RobinhoodHoldingsReader = (owners) => withinBudget(readRobinhood(owners), robinhoodBudgetMs);
+  const runRobinhood = (onRobinhood: boolean): RobinhoodHoldingsReader => (owners) =>
+    withinBudget(readRobinhood(owners), onRobinhood ? robinhoodBudgetMs : robinhoodHubOnlyBudgetMs);
 
   const snapshotOne = async (account: SnapshotAccount, expired: () => boolean) => {
     const { total: balances, robinhood } = await readAccountBalances(
       walletsOf(account),
       readBalances,
       deriveHubWallet,
-      runRobinhood,
+      runRobinhood(account.robinhoodOrders !== false),
       account.robinhoodOrders === false ? "hub only" : "throw",
     );
     const live = Object.keys(balances).length > 0 ? await oraclePrices() : {};
