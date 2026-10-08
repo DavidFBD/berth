@@ -33,6 +33,7 @@ const q = <T = Record<string, unknown>>(text: string, params: unknown[] = []) =>
 const account = async (wallet: string) => (await q<{ id: string }>(`insert into users (wallet_address) values ($1) returning id`, [wallet]))[0].id;
 const BUYER = "0x1111111111111111111111111111111111111111";
 const rhBuy = { srcChain: 30n, dstChain: 21071n, dstAddress: BUYER } as unknown as Intent;
+const rhSell = { srcChain: 21071n, dstChain: 30n, dstAddress: BUYER } as unknown as Intent;
 const hubBuy = { srcChain: 30n, dstChain: 146n, dstAddress: "0x2222222222222222222222222222222222222222" } as unknown as Intent;
 const SWITCHED = "00000000-0000-4000-8000-000000000001";
 const inputs = { userId: SWITCHED, usersWallet: BUYER, signer: BUYER, availability: undefined, country: "NL" };
@@ -268,6 +269,20 @@ describe("a Robinhood Chain claim in the evening pass", () => {
     expect(await run()).toMatchObject({ paid: 0, recorded: 1 });
     expect(await claimOf(tx(31))).toMatchObject({ outcome: "recorded_no_xp" });
     expect(await xpFor(tx(31))).toBe(0);
+  });
+
+  it("records a sell from Robinhood Chain that Berth's buys there do not cover, and pays it nothing (D2)", async () => {
+    await settleAll();
+    const user = await account("0x4646464646464646464646464646464646464646");
+    await savePourClaim(user, tx(32), "sell", null, "NVDA");
+    const run = () =>
+      settlePourClaims({
+        verdictOf: async () => "filled",
+        pay: (claim) => payClaim(claim, { ...deps(), readIntent: async () => rhSell, pourXp: async () => "never" }),
+      });
+    expect(await run()).toMatchObject({ paid: 0, recorded: 1 });
+    expect(await claimOf(tx(32))).toMatchObject({ outcome: "recorded_no_xp" });
+    expect(await xpFor(tx(32))).toBe(0);
   });
 
   it("settleRobinhoodClaim leaves a paid one alone", async () => {

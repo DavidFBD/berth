@@ -56,6 +56,9 @@ async function order(
   return intentTx;
 }
 
+const paidOut = (userId: string, intentTx: string) =>
+  sql.query(`insert into xp_events (user_id, kind, amount, ref) values ($1, 'pour_out', 100, $2)`, [userId, intentTx]);
+
 const holding = (balance: bigint | null): RobinhoodBalanceReader & { mock: { calls: unknown[][] } } =>
   vi.fn(async (queries) => queries.map(() => balance)) as never;
 
@@ -85,5 +88,33 @@ describe("a buy delivered on Robinhood Chain (D1)", () => {
     const reader = holding(0n);
     expect(await robinhoodPourXp(intentTx, { onRobinhood: false, readBalances: reader })).toBe("pay");
     expect(reader).not.toHaveBeenCalled();
+  });
+});
+
+describe("a sell from Robinhood Chain (D2)", () => {
+  it("earns nothing for tokens Berth never delivered there", async () => {
+    const sell = await order(await user(), { direction: "sell", quantity: "0.5" });
+    expect(await robinhoodPourXp(sell, { onRobinhood: true })).toBe("never");
+  });
+
+  it("earns up to the Berth buys delivered there before it, beside every earlier sell that was paid", async () => {
+    const id = await user();
+    await order(id, { quantity: "1", at: "2026-10-01T10:00:00Z" });
+    const first = await order(id, { direction: "sell", quantity: "0.6", at: "2026-10-02T10:00:00Z" });
+    expect(await robinhoodPourXp(first, { onRobinhood: true })).toBe("pay");
+    await paidOut(id, first);
+    const second = await order(id, { direction: "sell", quantity: "0.6", at: "2026-10-03T10:00:00Z" });
+    expect(await robinhoodPourXp(second, { onRobinhood: true })).toBe("never");
+    const third = await order(id, { direction: "sell", quantity: "0.4", at: "2026-10-04T10:00:00Z" });
+    expect(await robinhoodPourXp(third, { onRobinhood: true })).toBe("pay");
+  });
+
+  it("never counts a buy made after the sell, a hub buy, or another listing's", async () => {
+    const id = await user();
+    const sell = await order(id, { direction: "sell", quantity: "1", at: "2026-10-02T10:00:00Z" });
+    await order(id, { quantity: "5", at: "2026-10-03T10:00:00Z" });
+    await order(id, { quantity: "5", chain: "sonic", at: "2026-10-01T10:00:00Z" });
+    await order(id, { quantity: "5", at: "2026-10-01T10:00:00Z", listing: "0x00000000000000000000000000000000000000ff" });
+    expect(await robinhoodPourXp(sell, { onRobinhood: true })).toBe("never");
   });
 });
