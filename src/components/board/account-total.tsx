@@ -44,7 +44,7 @@ export type AccountFigures = {
 export function useLiveFigures() {
   const funds = useEmbeddedHoldings();
   const account = useHubAccount();
-  // Both chains (plan P1a): a switched account's Robinhood Chain tokens
+  // Both chains (plan P1a): an account's Robinhood Chain tokens
   // count in its figure. A failed read there leaves them out, and the
   // reading is then not whole, so it is never kept as the last known.
   const hubHoldings = useHubHoldings(account.hubWallets);

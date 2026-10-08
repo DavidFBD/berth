@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { HubAccount } from "@/hooks/use-hub-account";
 import { LISTINGS_QUERY_KEY, type HubHoldings } from "@/hooks/use-hub-holdings";
-import { useDelivery } from "@/hooks/use-delivery";
 import {
   heldOnly,
   mergeChainHoldings,
@@ -22,10 +21,11 @@ const ROBINHOOD_READ_CAP_MS = 12_000;
 
 /**
  * The account's holdings on both chains (lib/account-holdings), for showing
- * and valuing. Robinhood Chain is read only for an account the route says
- * is on the switch (hooks/use-delivery): for everyone else no Robinhood
- * Chain client is built and no call leaves the browser, and the rows are
- * the hub's exactly, with `robinhood` 0.
+ * and valuing. Robinhood Chain is read for every account with an EVM
+ * wallet, whatever the delivery switch says (lib/account-holdings
+ * robinhoodReadPlan): for an account without one no Robinhood Chain client
+ * is built and no call leaves the browser, and the rows are the hub's
+ * exactly, with `robinhood` 0.
  *
  * `hub` is the caller's own useHubHoldings result, passed in so the two
  * share one read. Never spend from `balance`: a sell spends the hub only.
@@ -40,8 +40,7 @@ export function useAccountHoldings(
   settled: boolean;
   robinhoodState: RobinhoodReadState;
 } {
-  const { switched } = useDelivery({ enabled: Boolean(account.spokeAddress) });
-  const plan = robinhoodReadPlan({ switched, account, listings: hub.holdings.map((holding) => holding.listing) });
+  const plan = robinhoodReadPlan({ account, listings: hub.holdings.map((holding) => holding.listing) });
   const listingCount = hub.holdings.length;
   const query = useQuery({
     queryKey: [...LISTINGS_QUERY_KEY, "robinhood", plan?.owners.join(",") ?? ""],
@@ -50,7 +49,7 @@ export function useAccountHoldings(
     retry: 1,
     retryDelay: 800,
     queryFn: async (): Promise<bigint[]> => {
-      if (!plan) throw new Error("not on the switch");
+      if (!plan) throw new Error("no EVM wallet to read");
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const totals = await Promise.race([

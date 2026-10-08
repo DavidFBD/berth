@@ -3,9 +3,10 @@ import type { Listing } from "@/lib/listings";
 
 /**
  * What an account holds on two chains (plan P1a): the hub on Sonic, as
- * every holding has always been read (hooks/use-hub-holdings), and, for an
- * account on the Robinhood Chain switch, the native Robinhood tokens in its
- * own EVM wallets on Robinhood Chain (chain 4663).
+ * every holding has always been read (hooks/use-hub-holdings), and, for any
+ * account with an EVM wallet, the native Robinhood tokens in its own EVM
+ * wallets on Robinhood Chain (chain 4663), where buys are delivered by
+ * default.
  *
  * One row per listing, summed, with where each part sits. This is for
  * showing and valuing only. Anything that spends (a sell, a limit sell,
@@ -13,7 +14,7 @@ import type { Listing } from "@/lib/listings";
  * here: a hub sell cannot spend what sits on Robinhood Chain.
  */
 
-/** Where the Robinhood Chain read stands: off (not switched), loading, read, or failed (unknown, shown as nothing, never as zero). */
+/** Where the Robinhood Chain read stands: off (no EVM wallet), loading, read, or failed (unknown, shown as nothing, never as zero). */
 export type RobinhoodReadState = "off" | "loading" | "read" | "failed";
 
 export type AccountHolding = {
@@ -77,21 +78,20 @@ export type RobinhoodReadPlan = {
 
 /**
  * Whether to read Robinhood Chain at all, and what. Null, so no client is
- * built and no call is made, unless the route said the account is on the
- * switch, it has an EVM wallet, and some listing has a token there. Stocks
+ * built and no call is made, unless the account has an EVM wallet and some
+ * listing has a token there. Not tied to the delivery switch: delivery is
+ * on by default, and a switch turned off later (the kill switch, the deny
+ * list) must never hide what was delivered before it. Stocks
  * and funds only: cash (SGOV) is parked and unparked on the hub, and only a
  * stock buy is delivered to Robinhood Chain (lib/delivery-client).
  */
 export function robinhoodReadPlan({
-  switched,
   account,
   listings,
 }: {
-  switched: boolean;
   account: Parameters<typeof robinhoodOwners>[0];
   listings: readonly Listing[];
 }): RobinhoodReadPlan | null {
-  if (!switched) return null;
   const owners = robinhoodOwners(account);
   const tokens = listings.flatMap((listing, index) =>
     listing.kind === "stock" && listing.rhAddress ? [{ rhAddress: listing.rhAddress, index }] : [],

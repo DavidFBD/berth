@@ -41,10 +41,12 @@ export function readDeliveryAnswer(status: number, body: unknown): Delivery {
 export type DeliveryAnswer = { delivery: Delivery; answered: boolean };
 
 /**
- * Whether the account is on the switch at all, whatever the answer for
- * this buy: a switched account abroad, or whose wallet read failed on the
- * server, still holds what was delivered before and sees it. Only an
- * answer from the route counts; a request that failed is not a yes.
+ * Whether the switch lets the account's buys go to Robinhood Chain at all,
+ * whatever the answer for this buy (abroad, or a wallet read that failed
+ * on the server, is still on). Only an answer from the route counts; a
+ * request that failed is not a yes. It decides only how long the answer
+ * is kept (hooks/use-delivery), never whether Robinhood Chain holdings are
+ * read or shown.
  */
 export function onTheSwitch(answer: DeliveryAnswer): boolean {
   return answer.answered && answer.delivery.reason !== "not_listed";

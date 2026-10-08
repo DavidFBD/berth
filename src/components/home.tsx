@@ -184,7 +184,7 @@ function SignedInHome() {
   // something, its total and holdings lead and Buy follows.
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
-  // Both chains decide the step and the first stock (plan P1a): a switched
+  // Both chains decide the step and the first stock (plan P1a): an
   // account's first buy may sit in its own wallet on Robinhood Chain. A
   // draft sell still reads `holdings`, the hub, which is all a sell spends.
   const ownedHoldings = useAccountHoldings(account, holdings);

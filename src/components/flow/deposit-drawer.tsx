@@ -200,7 +200,7 @@ export function DepositDrawer({
   // as the order starts.
   const fetchedDelivery = useDelivery({ enabled: open && isBuy && !devDelivery });
   const delivery = devDelivery
-    ? { delivery: devDelivery, switched: true, settled: true, ask: async () => devDelivery }
+    ? { delivery: devDelivery, settled: true, ask: async () => devDelivery }
     : fetchedDelivery;
   const robinhoodToken =
     listing?.kind === "stock" && delivery.delivery.chainKey === "robinhood" ? listing.rhAddress : undefined;

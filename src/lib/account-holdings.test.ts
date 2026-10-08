@@ -49,17 +49,16 @@ describe("mergeChainHoldings", () => {
 describe("robinhoodReadPlan", () => {
   const account = { wallets: [{ spoke: WALLET }], signerSpoke: WALLET };
 
-  it("plans nothing for an account off the switch: no client, no call", () => {
-    expect(robinhoodReadPlan({ switched: false, account, listings: LISTINGS })).toBeNull();
+  it("plans a read for any account with an EVM wallet, whatever the delivery switch says, so turning it off never hides what was delivered", () => {
+    expect(robinhoodReadPlan({ account, listings: LISTINGS })?.owners).toEqual([getAddress(WALLET)]);
   });
 
   it("plans nothing without an EVM wallet", () => {
-    expect(robinhoodReadPlan({ switched: true, account: { wallets: [{ spoke: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU" }] }, listings: LISTINGS })).toBeNull();
+    expect(robinhoodReadPlan({ account: { wallets: [{ spoke: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU" }] }, listings: LISTINGS })).toBeNull();
   });
 
   it("reads every linked EVM wallet once, checksummed, for the stocks with a Robinhood Chain token", () => {
     const plan = robinhoodReadPlan({
-      switched: true,
       account: { wallets: [{ spoke: WALLET }, { spoke: OTHER }], signerSpoke: getAddress(WALLET) },
       listings: LISTINGS,
     });
@@ -72,7 +71,7 @@ describe("robinhoodReadPlan", () => {
   });
 
   it("places the totals back at their listings", () => {
-    const plan = robinhoodReadPlan({ switched: true, account, listings: LISTINGS })!;
+    const plan = robinhoodReadPlan({ account, listings: LISTINGS })!;
     expect(placeRobinhoodTotals(plan, [9n, 8n], LISTINGS.length)).toEqual([9n, 8n, 0n]);
   });
 

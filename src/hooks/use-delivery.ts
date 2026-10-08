@@ -14,7 +14,8 @@ const UNANSWERED: DeliveryAnswer = { delivery: hubDelivery("read_failed"), answe
 /**
  * Where this session's next buy is delivered (app/api/delivery, plan P1a
  * and P2b), asked once per account and kept: an account the switch leaves
- * off is never asked again in the visit. Never asks a wallet for a
+ * off is not asked again in the visit. What the account holds on Robinhood
+ * Chain is read whatever the answer (hooks/use-account-holdings). Never asks a wallet for a
  * signature (`prompt: false`): a wallet browser without a pocketed
  * session simply reads as unanswered, the hub. The answer is the hub
  * until the route says otherwise, and on any failure.
@@ -39,8 +40,6 @@ export function useDelivery({ enabled = true }: { enabled?: boolean } = {}) {
   return {
     /** The answer for the next buy; the hub until the route answers otherwise. */
     delivery: answer.delivery,
-    /** Whether the account is on the switch, so its Robinhood Chain wallet is worth reading. */
-    switched: onTheSwitch(answer),
     /** The route answered, or gave up: the drawer may quote now. */
     settled: !enabled || key === null || query.isFetched,
     ask,
