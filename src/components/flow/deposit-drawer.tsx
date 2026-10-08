@@ -900,11 +900,14 @@ export function DepositDrawer({
                         <GasPump className="mt-0.5 size-5 shrink-0 text-warn" />
                         <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
                           <p className="text-foreground">
-                            {gasShortChains.includes(srcChainKey)
-                              ? copy.gasShortWarning(getChainName(srcChainKey), symbol)
-                              : native
-                                ? gasShortMessage(copy, native, srcChainKey, selectedGasToAdd)
-                                : copy.gasNeededToPay(symbol, getChainName(srcChainKey))}
+                            {/* An amount whenever one can be told, an empty wallet included. */}
+                            {native && selectedGasToAdd !== undefined
+                              ? gasShortMessage(copy, native, srcChainKey, selectedGasToAdd)
+                              : gasShortChains.includes(srcChainKey)
+                                ? copy.gasShortWarning(getChainName(srcChainKey), symbol)
+                                : native
+                                  ? gasShortMessage(copy, native, srcChainKey, undefined)
+                                  : copy.gasNeededToPay(symbol, getChainName(srcChainKey))}
                           </p>
                           {onTopUp && (
                             <button
