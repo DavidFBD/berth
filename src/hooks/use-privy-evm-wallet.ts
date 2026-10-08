@@ -25,7 +25,7 @@ import { readEvmFeePerGas } from "@/hooks/use-native-gas-buffer";
 export function usePrivyEmbeddedWallet() {
   const { ready, authenticated, user, login, logout, getAccessToken } =
     usePrivy();
-  const { wallets } = useWallets();
+  const { wallets, ready: walletsReady } = useWallets();
   // Newer embedded wallets report "privy-v2"; both are Privy's, and the
   // server's pickAccountWallet reads them the same way.
   const embedded = wallets.find(
@@ -34,6 +34,8 @@ export function usePrivyEmbeddedWallet() {
   return {
     enabled: PRIVY_ENABLED,
     ready,
+    /** Privy has listed this session's wallets, so a missing embedded wallet is really missing. */
+    walletsReady,
     authenticated,
     /** See `isWalletAccountUser`: a session the app has no screen for. */
     walletAccountSession: authenticated && isWalletAccountUser(user),

@@ -3,6 +3,7 @@
 import { useAccountXAccount } from "@/hooks/use-wallet-restore";
 import { ChainKeys, type SpokeChainKey } from "@sodax/sdk";
 import {
+  isWalletOnlySession,
   resolveAccount,
   type AccountSession,
   type ResolvedAccount,
@@ -50,13 +51,17 @@ export function useAccount(
  * Whether this browser's session is a wallet with no email sign-in behind
  * it, known for sure: every order is signed by that wallet, which pays its
  * own network fee (lib/gas-sponsor sponsors only the email's embedded
- * wallet). False while Privy is still answering, so an email session never
- * flashes the wallet's notice.
+ * wallet). The rule is lib/account isWalletOnlySession.
  */
 export function useWalletOnlySession(): boolean {
   const privy = usePrivyEmbeddedWallet();
   const session = useAccountSession();
-  if (session.emailSession) return false;
-  if (privy.enabled && (!privy.ready || (privy.authenticated && !privy.embedded))) return false;
-  return true;
+  return isWalletOnlySession({
+    enabled: privy.enabled,
+    ready: privy.ready,
+    walletsReady: privy.walletsReady,
+    authenticated: privy.authenticated,
+    hasEmbedded: Boolean(privy.embedded),
+    emailSession: session.emailSession,
+  });
 }
