@@ -13,6 +13,13 @@ import {
 export const FIRST_LOOK_QUERY_KEY = ["first-look"] as const;
 
 /**
+ * How long the first buy waits for the look before it offers the plain list
+ * (lib/first-look firstBuyProposals): a slow read never holds the step's one
+ * action behind skeletons.
+ */
+export const FIRST_LOOK_TIMEOUT_MS = 4_000;
+
+/**
  * The first look (lib/first-look): what may be said about each listing.
  * `also` adds one stock outside the first buy's examples (the first stock
  * card's); the examples alone share one cached answer.
@@ -26,7 +33,10 @@ export function useFirstLook(also?: string): {
   const query = useQuery({
     queryKey: extra ? [...FIRST_LOOK_QUERY_KEY, extra] : FIRST_LOOK_QUERY_KEY,
     queryFn: async (): Promise<FirstLookResponse> => {
-      const response = await fetch(extra ? `/api/first-look?also=${encodeURIComponent(extra)}` : "/api/first-look");
+      const response = await fetch(extra ? `/api/first-look?also=${encodeURIComponent(extra)}` : "/api/first-look", {
+        // A timeout is a failed look: no answer, so the plain list and no news line.
+        signal: AbortSignal.timeout(FIRST_LOOK_TIMEOUT_MS),
+      });
       if (!response.ok) throw new Error(`first look ${response.status}`);
       return (await response.json()) as FirstLookResponse;
     },
