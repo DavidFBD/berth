@@ -133,13 +133,6 @@ const GATE_PRICE_SAFETY_NUM = 3n;
 const GATE_PRICE_SAFETY_DEN = 2n;
 
 /**
- * Slack on the native token's own order, so Max (computed from one price
- * read) is not refused by the gate a moment later on the next read: the
- * amount plus 97% of the need must fit.
- */
-const NATIVE_SLACK_PCT = 97n;
-
-/**
  * What one Solana order costs the fee payer: a signature or two at 5,000
  * lamports and a priority fee, and the payer must stay rent exempt (890,880
  * lamports for a plain account) or the runtime refuses the transaction.
@@ -331,7 +324,7 @@ export function payTokenGas({
  * Whether an order of `amount` leaves too little native for its fee at the
  * chain's own price: the drawer's gate and the last check before the
  * wallet opens. For the native token the amount comes out of the same
- * balance, with a little slack (NATIVE_SLACK_PCT) so Max is never refused.
+ * balance.
  */
 export function orderGasShort({
   chainKey,
@@ -353,7 +346,11 @@ export function orderGasShort({
   if (nativeBalance === undefined) return false;
   if (need === undefined) return nativeBalance === 0n;
   if (!isNative) return nativeBalance < need;
-  return nativeBalance < amount + (need * NATIVE_SLACK_PCT) / 100n;
+  // No slack: the whole need, wallet reserve included, must fit beside the
+  // amount, since a wallet refuses anything less. Max (computed from one
+  // price read) stays clear because it holds back the reserve at three
+  // times the fee (hooks/use-native-gas-buffer), not because the gate bends.
+  return nativeBalance < amount + need;
 }
 
 /** Rounds up to two significant digits: 0.000337 becomes 0.00034. */

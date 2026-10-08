@@ -155,11 +155,18 @@ describe("payTokenGas", () => {
 describe("orderGasShort", () => {
   const need = 1_000n;
 
-  it("counts the amount against the balance when the native token pays, with a little slack", () => {
+  it("counts the amount against the balance when the native token pays, with no slack below the need", () => {
     expect(orderGasShort({ chainKey: ChainKeys.BASE_MAINNET, isNative: true, nativeBalance: 5_000n, amount: 4_000n, need })).toBe(false);
-    // 3% slack: a fee risen a little since Max is not a refusal.
-    expect(orderGasShort({ chainKey: ChainKeys.BASE_MAINNET, isNative: true, nativeBalance: 5_000n, amount: 4_030n, need })).toBe(false);
-    expect(orderGasShort({ chainKey: ChainKeys.BASE_MAINNET, isNative: true, nativeBalance: 5_000n, amount: 4_031n, need })).toBe(true);
+    expect(orderGasShort({ chainKey: ChainKeys.BASE_MAINNET, isNative: true, nativeBalance: 5_000n, amount: 4_001n, need })).toBe(true);
+  });
+
+  it("refuses a typed native buy on Base that leaves less than the wallet reserves", () => {
+    // The review's case: 0.000446 ETH left after the amount, the wallet needs 0.000458 at 229k gas.
+    const need = blockingNeed({ chainKey: ChainKeys.BASE_MAINNET, feePerGas: 6_000_000n, approval: false })!;
+    const amount = 10n ** 15n;
+    const balance = amount + 446_000_000_000_000n;
+    expect(orderGasShort({ chainKey: ChainKeys.BASE_MAINNET, isNative: true, nativeBalance: balance, amount, need })).toBe(true);
+    expect(orderGasShort({ chainKey: ChainKeys.BASE_MAINNET, isNative: true, nativeBalance: amount + need, amount, need })).toBe(false);
   });
 
   it("needs only the fee beside another token", () => {
