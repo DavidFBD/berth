@@ -136,6 +136,11 @@ describe("a sell from Robinhood Chain (D2)", () => {
     const unread = await order(id, { quantity: null, at: "2026-10-01T10:00:00Z" });
     const sell = await order(id, { direction: "sell", quantity: "1", at: "2026-10-02T10:00:00Z" });
     expect((await pay(sell, id)).verdict).toBe("wait");
+    // Judged under the lock: a wait, nothing paid, never a no (rh-final 2).
+    expect(await xpOf(sell)).toBe(0);
+    await order(id, { quantity: "0.5", at: "2026-10-01T09:00:00Z" });
+    expect((await pay(sell, id)).verdict).toBe("wait");
+    await sql.query(`delete from orders where quantity = 0.5`);
     await sql.query(`insert into no_xp_intents (intent_tx, reason) values ($1, 'delivery_refused')`, [unread]);
     const noXp = await order(id, { quantity: "5", at: "2026-10-01T11:00:00Z" });
     await sql.query(`insert into no_xp_intents (intent_tx, reason) values ($1, 'delivery_refused')`, [noXp]);

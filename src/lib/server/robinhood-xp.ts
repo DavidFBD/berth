@@ -115,20 +115,14 @@ export async function payRobinhoodSell(
 ): Promise<{ verdict: PourXpVerdict | "paid"; awarded: number; xp: number | null }> {
   const tx = intentTx.toLowerCase();
   const rows = (await getSql().query(
-    `select s.listing_address,
-            exists (select 1 from orders b
-                     where b.user_id = s.user_id and b.direction = 'buy' and b.holding_chain = 'robinhood'
-                       and lower(b.listing_address) = lower(s.listing_address) and b.quantity is null
-                       and ${NOT_NO_XP("b")}
-                       and coalesce(b.placed_at, b.created_at) <= coalesce(s.placed_at, s.created_at)) as unread
+    `select s.listing_address
        from orders s
       where s.intent_tx = $1 and s.user_id = $2 and s.direction = 'sell' and s.holding_chain = 'robinhood'
         and s.quantity is not null and s.quantity > 0`,
     [tx, userId],
-  )) as { listing_address: string; unread: boolean }[];
+  )) as { listing_address: string }[];
   const sell = rows[0];
   if (!sell) return { verdict: "never", awarded: 0, xp: null };
-  if (sell.unread) return { verdict: "wait", awarded: 0, xp: null };
   const [, award] = await inTransaction([
     { text: `select pg_advisory_xact_lock(hashtextextended($1 || '|' || lower($2), 0))`, params: [userId, sell.listing_address] },
     {
@@ -148,24 +142,33 @@ export async function payRobinhoodSell(
                        and exists (select 1 from xp_events e where e.kind = 'pour_out' and lower(e.ref) = lower(o.intent_tx)))
                  - (select quantity from s)
                ) >= 0 as ok
+             ), unread as (
+               -- Read under the lock (rh-final 2): a Berth buy there whose
+               -- quantity is not read yet makes the answer wait, never no.
+               select exists (select 1 from orders b, s
+                 where b.user_id = s.user_id and b.direction = 'buy' and b.holding_chain = 'robinhood'
+                   and lower(b.listing_address) = lower(s.listing_address) and b.quantity is null
+                   and ${NOT_NO_XP("b")}
+                   and coalesce(b.placed_at, b.created_at) <= s.at) as pending
              ), already as (
                select exists (select 1 from xp_events e where e.kind = 'pour_out' and lower(e.ref) = $1) as paid
              ), ins as (
                insert into xp_events (user_id, kind, amount, ref, announced)
                select $2, 'pour_out', $3, $1, $4
-                where (select ok from cover) and not (select paid from already)
+                where (select ok from cover) and not (select paid from already) and not (select pending from unread)
                on conflict do nothing
                returning amount
              )
              update users set xp = xp + coalesce((select amount from ins), 0), updated_at = now()
               where id = $2
              returning xp, coalesce((select amount from ins), 0) as awarded,
-                       (select ok from cover) as ok, (select paid from already) as paid`,
+                       (select ok from cover) as ok, (select paid from already) as paid, (select pending from unread) as unread`,
       params: [tx, userId, XP_ACTIONS.pour_out.amount, announced],
     },
   ]);
-  const result = (award as { xp: number; awarded: number; ok: boolean; paid: boolean }[])[0];
+  const result = (award as { xp: number; awarded: number; ok: boolean; paid: boolean; unread: boolean }[])[0];
   if (!result) return { verdict: "never", awarded: 0, xp: null };
   if (result.paid || result.awarded > 0) return { verdict: "paid", awarded: result.awarded, xp: result.xp };
+  if (result.unread) return { verdict: "wait", awarded: 0, xp: null };
   return { verdict: result.ok ? "paid" : "never", awarded: 0, xp: result.xp };
 }
