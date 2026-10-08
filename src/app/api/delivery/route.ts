@@ -9,9 +9,10 @@ export const maxDuration = 15;
 
 /**
  * Where the signed-in account's next buy is delivered (lib/delivery),
- * behind the ROBINHOOD_DELIVERY switch (lib/server/delivery: on for every
- * account by default, "off" for nobody, "listed" for
- * ROBINHOOD_DELIVERY_USERS only, and never for ROBINHOOD_DELIVERY_DENY).
+ * behind the ROBINHOOD_DELIVERY switch (lib/server/delivery: unset is
+ * "listed", ROBINHOOD_DELIVERY_USERS only, so it ships dark; "on" for
+ * every eligible account, turned on by setting ROBINHOOD_DELIVERY=on and
+ * redeploying; "off" for nobody; never for ROBINHOOD_DELIVERY_DENY).
  * One POST, no body, answered as
  *
  *   { chainKey: "robinhood", address, reason: "switched_on" }

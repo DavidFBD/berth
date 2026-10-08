@@ -43,8 +43,8 @@ const claimOf = async (intentTx: string) =>
   (await q(`select delivery_ok, delivery_signer, delivery_place_ok, settled_at is not null as settled, outcome from pour_claims where intent_tx = $1`, [intentTx]))[0];
 
 beforeEach(() => {
-  // As it ships: on for every account; SWITCHED is named for the cases that narrow it.
-  vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+  // Switched on for every account, nothing denied: the other checks are what these cases test.
+  vi.stubEnv("ROBINHOOD_DELIVERY", "on");
   vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
 });
 afterEach(() => vi.unstubAllEnvs());

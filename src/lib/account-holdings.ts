@@ -5,8 +5,8 @@ import type { Listing } from "@/lib/listings";
  * What an account holds on two chains (plan P1a): the hub on Sonic, as
  * every holding has always been read (hooks/use-hub-holdings), and, for any
  * account with an EVM wallet, the native Robinhood tokens in its own EVM
- * wallets on Robinhood Chain (chain 4663), where buys are delivered by
- * default.
+ * wallets on Robinhood Chain (chain 4663), where buys are delivered while
+ * the switch (ROBINHOOD_DELIVERY) lets them.
  *
  * One row per listing, summed, with where each part sits. This is for
  * showing and valuing only. Anything that spends (a sell, a limit sell,
@@ -79,8 +79,8 @@ export type RobinhoodReadPlan = {
 /**
  * Whether to read Robinhood Chain at all, and what. Null, so no client is
  * built and no call is made, unless the account has an EVM wallet and some
- * listing has a token there. Not tied to the delivery switch: delivery is
- * on by default, and a switch turned off later (the kill switch, the deny
+ * listing has a token there. Not tied to the delivery switch: a switch
+ * narrowed or turned off later (the allow list, the kill switch, the deny
  * list) must never hide what was delivered before it. Stocks
  * and funds only: cash (SGOV) is parked and unparked on the hub, and only a
  * stock buy is delivered to Robinhood Chain (lib/delivery-client).

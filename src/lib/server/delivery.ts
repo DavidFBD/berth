@@ -10,12 +10,16 @@ import { HUB_RPC_URLS, getPinnedRpcUrls } from "@/lib/sodax-config";
 /**
  * How the Robinhood Chain delivery switch stands, from `ROBINHOOD_DELIVERY`:
  *
- *   unset, empty or "on"  every eligible account (the default, David,
- *                          2026-10-08: Robinhood Chain is the network people
- *                          know, so as much as can goes there)
- *   "listed"              only the accounts in ROBINHOOD_DELIVERY_USERS, the
- *                          beta's allow list, for a staged way back
- *   "off"                 nobody: every buy delivers to the hub, as before
+ *   unset or empty  "listed": only the accounts in ROBINHOOD_DELIVERY_USERS,
+ *                   the beta's allow list (empty: nobody). The code's
+ *                   default is dark, so no deploy can switch delivery on by
+ *                   accident.
+ *   "on"            every eligible account. Turn it on by setting
+ *                   ROBINHOOD_DELIVERY=on and redeploying (David,
+ *                   2026-10-08: as much as can goes to Robinhood Chain,
+ *                   once a sell from there exists).
+ *   "listed"        as unset, said explicitly
+ *   "off"           nobody: every buy delivers to the hub, as before
  *
  * Any other value reads as "off": a typo in the kill switch must never
  * widen delivery, and the hub is the path every buy has always taken.
@@ -24,8 +28,8 @@ export type RobinhoodDeliveryMode = "on" | "listed" | "off";
 
 export function robinhoodDeliveryMode(raw: string | null | undefined = process.env.ROBINHOOD_DELIVERY): RobinhoodDeliveryMode {
   const mode = (raw ?? "").trim().toLowerCase();
-  if (mode === "" || mode === "on") return "on";
-  if (mode === "listed") return "listed";
+  if (mode === "" || mode === "listed") return "listed";
+  if (mode === "on") return "on";
   return "off";
 }
 

@@ -65,6 +65,14 @@ Each package is one round: built in its own worktree `~/Github/_scratch-berth/rh
 
 **The switch.** `ROBINHOOD_DELIVERY_USERS` is a server env var parsed by the existing `switchedOn()` in `src/lib/limit-orders.ts`, mirroring `limitOrdersOn` in `src/lib/server/limit-orders.ts`. The client learns it from a route, never from a `NEXT_PUBLIC_` var. Unset means nobody, which is how every package below ships dark.
 
+**Update, 8 Oct (David: default to Robinhood Chain, ship dark).** The switch is now `ROBINHOOD_DELIVERY` in `src/lib/server/delivery.ts`:
+- unset or empty: `listed`, only the accounts in `ROBINHOOD_DELIVERY_USERS` (empty means nobody). This is the code's default, so no deploy switches delivery on by accident.
+- `on`: every eligible account. **Turn on by setting `ROBINHOOD_DELIVERY=on` and redeploying**, once a sell from Robinhood Chain (P3a), the server reads (P1b) and the Terms addendum (P5) are in.
+- `off`, or any value it does not recognise: nobody.
+- `ROBINHOOD_DELIVERY_DENY` keeps the named user ids or wallets on the hub in every mode.
+- Every other check is unchanged: restricted and unknown countries, no new buys, signer not a linked EVM wallet, not a plain key, failed reads all answer the hub.
+- Robinhood Chain holdings are read for every account with an EVM wallet, whatever the switch says, so turning it off never hides what was delivered.
+
 **SDK facts this plan relies on**, checked in `~/Github/_scratch-berth/rh-p0a/node_modules/@sodax/sdk@2.2.0-rc.8`:
 - `ChainKeys.ROBINHOOD_MAINNET = "robinhood"` (`@sodax/types` `chains/chain-keys`). `robinhoodSupportedTokens` lists the 24 listings, with `address` the native token and `hubAsset` the hub asset. The `robinhoodChain` viem chain is exported from `@sodax/sdk`.
 - Berth buys with `sodax.leverageYield.deposit(…)`, then `sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false })`, then `relayTxAndWaitPacket`, then `sodax.leverageYield.notifySolver`.
@@ -283,5 +291,5 @@ P0b ships dark and fixes only what the route and the schema own. These are left 
 **Rollback rule**
 - d2c907b (switch and route) and its fixes can be reverted alone at any time.
 - 38cc07f (registry) can be reverted alone until P2a reads `rhHubAsset`.
-- **Once any row has `holding_chain = 'robinhood'`, never revert the holds guard (584e9f8, `ON_SONIC` in `src/lib/server/holds.ts`) alone**: the old check would judge that row on Sonic, read zero and forfeit it for good. To stop the feature, empty `ROBINHOOD_DELIVERY_USERS` instead.
+- **Once any row has `holding_chain = 'robinhood'`, never revert the holds guard (584e9f8, `ON_SONIC` in `src/lib/server/holds.ts`) alone**: the old check would judge that row on Sonic, read zero and forfeit it for good. To stop the feature, set `ROBINHOOD_DELIVERY=off` and redeploy (or empty `ROBINHOOD_DELIVERY_USERS` while it is unset or `listed`) instead.
 - Deploy order: apply the schema (`pnpm db:push`, then `select holding_chain from orders limit 0`) before the code reaches production; the holds SQL names the column.

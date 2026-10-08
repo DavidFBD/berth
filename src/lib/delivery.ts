@@ -4,8 +4,10 @@ import { getAddress, isAddress, type Address } from "viem";
  * Where a buy is delivered (docs/plans/2026-10-05-robinhood-chain-delivery).
  *
  * Every buy before Robinhood Chain delivery landed on the Sonic hub, in the
- * hub wallet SODAX derives for the person. By default (ROBINHOOD_DELIVERY,
- * lib/server/delivery) a new market stock buy is instead delivered as the
+ * hub wallet SODAX derives for the person. Where the switch is on
+ * (ROBINHOOD_DELIVERY, lib/server/delivery: for the allow list while it
+ * is unset, for every account once it is "on") a new market stock buy is
+ * instead delivered as the
  * native Robinhood token to the person's own EVM wallet on Robinhood Chain
  * (chain 4663, SDK key `robinhood`), wherever every check below allows it,
  * and the hub otherwise. Holdings already on the hub stay there and sell

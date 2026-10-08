@@ -6,9 +6,10 @@ import { hubDelivery } from "@/lib/delivery";
 import { toCaip10 } from "@/lib/identity/caip";
 
 /**
- * The delivery route: Robinhood Chain by default for every eligible
- * account, the hub when ROBINHOOD_DELIVERY turns it off, narrows it to
- * ROBINHOOD_DELIVERY_USERS, or ROBINHOOD_DELIVERY_DENY names the account,
+ * The delivery route: dark as it ships (ROBINHOOD_DELIVERY unset is
+ * "listed", ROBINHOOD_DELIVERY_USERS only), Robinhood Chain for every
+ * eligible account once ROBINHOOD_DELIVERY is on, the hub when it is off or
+ * ROBINHOOD_DELIVERY_DENY names the account,
  * and the hub wherever Berth takes no new buy, where Robinhood does not
  * offer its tokens, when nothing is known, and whenever a read fails. The caller is stubbed; the account's wallets are
  * read by the real lib/server/identities over a stubbed database, so a
@@ -74,8 +75,9 @@ beforeEach(() => {
   rpcDown = false;
   rpc.mockClear();
   vi.stubGlobal("fetch", rpc);
-  // As it ships: no switch variable set at all, whatever this shell has.
-  vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+  // Switched on for everyone, nothing listed or denied, whatever this shell
+  // has; the cases on the switch itself set their own.
+  vi.stubEnv("ROBINHOOD_DELIVERY", "on");
   vi.stubEnv("ROBINHOOD_DELIVERY_USERS", undefined);
   vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
 });
@@ -85,7 +87,18 @@ afterEach(() => {
 });
 
 describe("POST /api/delivery", () => {
-  it("delivers to Robinhood Chain by default, with no switch variable set and no allow list", async () => {
+  it("ships dark: with ROBINHOOD_DELIVERY unset or empty, the hub for everyone not on the allow list, without reading wallets", async () => {
+    for (const value of [undefined, ""]) {
+      vi.stubEnv("ROBINHOOD_DELIVERY", value);
+      expect(await ask("NL"), String(value)).toEqual(HUB("not_listed"));
+    }
+    expect(query).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+    expect(await ask("NL")).toEqual(RH(SIGNER));
+  });
+
+  it("delivers to Robinhood Chain for every eligible account once ROBINHOOD_DELIVERY is on, with no allow list", async () => {
     expect(await ask("NL")).toEqual(RH(SIGNER));
     vi.stubEnv("ROBINHOOD_DELIVERY", " On ");
     expect(await ask("NL")).toEqual(RH(SIGNER));
@@ -105,14 +118,14 @@ describe("POST /api/delivery", () => {
   it("keeps an account on the deny list on the hub, by user id, home wallet or signing wallet, in every mode", async () => {
     for (const deny of ["u1", HOME.toUpperCase().replace("0X", "0x"), SIGNER]) {
       vi.stubEnv("ROBINHOOD_DELIVERY_DENY", `someone-else, ${deny}`);
-      vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+      vi.stubEnv("ROBINHOOD_DELIVERY", "on");
       expect(await ask("NL"), deny).toEqual(HUB("not_listed"));
       vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
       vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
       expect(await ask("NL"), deny).toEqual(HUB("not_listed"));
     }
     vi.stubEnv("ROBINHOOD_DELIVERY_DENY", STRANGER);
-    vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+    vi.stubEnv("ROBINHOOD_DELIVERY", "on");
     expect(await ask("NL")).toEqual(RH(SIGNER));
     expect(query).toHaveBeenCalledTimes(1);
   });

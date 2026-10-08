@@ -39,8 +39,8 @@ const check = (over: Partial<Parameters<typeof recheckRobinhoodDestination>[0]> 
   recheckRobinhoodDestination({ userId: "u1", usersWallet: HOME, signer: SIGNER, availability: undefined, country: "NL", dstAddress: SIGNER, ...over });
 
 beforeEach(() => {
-  // As it ships: on for every account, nothing listed or denied.
-  vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
+  // Switched on for every account, nothing denied: the other checks are what these cases test.
+  vi.stubEnv("ROBINHOOD_DELIVERY", "on");
   vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
   query.mockReset();
   query.mockImplementation(async () => [linked(HOME, true), linked(SIGNER, false)]);

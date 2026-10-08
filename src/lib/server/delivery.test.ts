@@ -8,13 +8,13 @@ afterEach(() => vi.unstubAllEnvs());
 const ME = ["9f3b1c2e-0000-4000-8000-000000000001", "0xbe59d5bf40ac4a349bd748e0d7c19ef27ad3ca23"];
 
 describe("robinhoodDeliveryMode", () => {
-  it("is on when ROBINHOOD_DELIVERY is unset, empty or on, as it ships", () => {
-    for (const raw of [undefined, null, "", "  ", "on", " ON "]) expect(robinhoodDeliveryMode(raw), String(raw)).toBe("on");
+  it("is listed when ROBINHOOD_DELIVERY is unset, empty or listed, so it ships dark", () => {
+    for (const raw of [undefined, null, "", "  ", "listed", " Listed "]) expect(robinhoodDeliveryMode(raw), String(raw)).toBe("listed");
   });
 
-  it("is listed only when it says listed", () => {
-    expect(robinhoodDeliveryMode("listed")).toBe("listed");
-    expect(robinhoodDeliveryMode(" Listed ")).toBe("listed");
+  it("is on only when it says on", () => {
+    expect(robinhoodDeliveryMode("on")).toBe("on");
+    expect(robinhoodDeliveryMode(" ON ")).toBe("on");
   });
 
   it("is off when it says off, and when it says anything it does not know, so a typo never widens delivery", () => {
@@ -29,7 +29,15 @@ describe("robinhoodDeliveryOn", () => {
     vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
   });
 
-  it("switches every account on while nothing is set, as it ships", () => {
+  it("switches nobody on while nothing is set, as it ships, and nobody but the listed while only the allow list is set", () => {
+    expect(robinhoodDeliveryOn(ME)).toBe(false);
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", ME[0]);
+    expect(robinhoodDeliveryOn(ME)).toBe(true);
+    expect(robinhoodDeliveryOn(["someone", null])).toBe(false);
+  });
+
+  it("switches every account on once ROBINHOOD_DELIVERY is on", () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "on");
     expect(robinhoodDeliveryOn(ME)).toBe(true);
     expect(robinhoodDeliveryOn(["someone", null])).toBe(true);
   });
@@ -41,6 +49,7 @@ describe("robinhoodDeliveryOn", () => {
   });
 
   it("keeps an account on the deny list off, by its user id or any of its wallets, ignoring case, in every mode", () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "on");
     vi.stubEnv("ROBINHOOD_DELIVERY_DENY", "someone-else, 0xBE59D5BF40AC4A349BD748E0D7C19EF27AD3CA23");
     expect(robinhoodDeliveryOn([null, ME[1]])).toBe(false);
     expect(robinhoodDeliveryOn(["someone", "0x0000000000000000000000000000000000000001"])).toBe(true);
