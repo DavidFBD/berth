@@ -6,6 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useAccountHoldings } from "@/hooks/use-account-holdings";
+import type { AccountHolding } from "@/lib/account-holdings";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
@@ -74,6 +76,12 @@ export type HoldingRow = {
   /** A post Jev read as related to a big move, if any. */
   move?: { url: string; name: string };
   comparison?: HoldingComparison;
+  /**
+   * The part in the person's own wallet on Robinhood Chain (plan P1a), when
+   * any. `balance` is the whole; `balance - robinhood` sits in the Berth
+   * account, the only part a sell spends. Absent on every hub-only row.
+   */
+  robinhood?: bigint;
 };
 
 /**
@@ -90,7 +98,9 @@ export function HoldingsList({
   onSell: (listing: TokenListing) => void;
 }) {
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallets);
+  const hubHoldings = useHubHoldings(account.hubWallets);
+  // Both chains for showing and valuing; Sell still spends the hub alone.
+  const holdings = useAccountHoldings(account, hubHoldings);
   const prices = useListingPrices();
   const performance = useListingPerformance();
   const orders = useOrders(Boolean(account.spokeAddress));
@@ -101,10 +111,10 @@ export function HoldingsList({
   if (!account.spokeAddress) return null;
 
   const owned = holdings.held.filter(
-    (holding): holding is { listing: TokenListing; balance: bigint } =>
+    (holding): holding is AccountHolding & { listing: TokenListing } =>
       holding.listing.kind === "stock",
   );
-  const loading = !holdings.settled && (account.isLoading || holdings.isLoading);
+  const loading = !holdings.settled && (account.isLoading || hubHoldings.isLoading);
 
   // Since the first buy, beside the S&P 500 fund. Every figure is code
   // (lib/benchmark), and a holding it cannot answer honestly shows nothing.
@@ -114,7 +124,7 @@ export function HoldingsList({
       ? { dates: spyPerformance.seriesDates, values: spyPerformance.series }
       : undefined;
   const benchmarkNow = BENCHMARK ? prices.priceOf(BENCHMARK) : undefined;
-  const rows: HoldingRow[] = owned.map(({ listing, balance }) => {
+  const rows: HoldingRow[] = owned.map(({ listing, balance, robinhood }) => {
     const move = moves.get(listing.symbol);
     const comparison = compareHolding({
       orders: (orders.data ?? []).filter((order) => order.symbol === listing.symbol),
@@ -129,6 +139,7 @@ export function HoldingsList({
       worth: prices.usdValue(listing, balance),
       move: move ? { url: move.post.url, name: move.post.name } : undefined,
       comparison: comparison ?? undefined,
+      ...(robinhood > 0n && { robinhood }),
     };
   });
 
@@ -173,6 +184,7 @@ export function HoldingsList({
       includesCash={holdings.held.some((holding) => holding.listing.kind === "cash" && holding.balance > 0n)}
       onSell={onSell}
       inviteCode={profile.data?.referralCode ?? null}
+      robinhoodUnread={holdings.robinhoodState === "failed"}
     />
   );
 }
@@ -217,7 +229,10 @@ export function HoldingsView({
   updating = false,
   inviteCode = null,
   shareOpen = false,
+  robinhoodUnread = false,
 }: {
+  /** The Robinhood Chain wallet could not be read: the rows are the Berth account's alone, and a quiet line says so. */
+  robinhoodUnread?: boolean;
   /** The person's invite code: with it, and something held, the quiet "Share what you hold on X" link shows. */
   inviteCode?: string | null;
   /** Dev gallery only: that link's sheet open on arrival. */
@@ -242,7 +257,7 @@ export function HoldingsView({
     <section data-ph-mask>
       <SectionHeading
         title={copy.holdingsTitle}
-        hint={copy.holdingsHint}
+        hint={rows.some((row) => row.robinhood !== undefined && row.robinhood > 0n) ? copy.rhChain.holdingsHint : copy.holdingsHint}
         note={holdsAnything ? copy.holdingsSubline : undefined}
         // What the figure counts sits behind the same (i): the account's
         // total is right above, so the page need not say it twice.
@@ -275,12 +290,12 @@ export function HoldingsView({
         </div>
       ) : rows.length === 0 ? (
         <p className="border-t border-border px-[18px] lg:px-6 py-3 text-sm text-muted-foreground">
-          {copy.holdingsEmpty}
+          {robinhoodUnread ? copy.rhChain.walletUnread : copy.holdingsEmpty}
         </p>
       ) : (
         <>
           <ul id={listId} className="divide-y divide-border border-t border-border">
-            {shown.map(({ listing, balance, worth, move, comparison }) => (
+            {shown.map(({ listing, balance, worth, move, comparison, robinhood }) => (
               <li
                 key={listing.address}
                 data-last-known={updating ? "" : undefined}
@@ -292,6 +307,18 @@ export function HoldingsView({
                   <div className="money truncate text-xs text-muted-foreground">
                     {formatTokenAmount(balance, listing.decimals, 6)} {listing.symbol}
                   </div>
+                  {/* Where a holding sits, said only when part of it is in
+                      the person's own wallet on Robinhood Chain. */}
+                  {robinhood !== undefined && robinhood > 0n && (
+                    <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                      {robinhood >= balance
+                        ? copy.rhChain.holdingInWallet
+                        : copy.rhChain.holdingSplit(
+                            formatTokenAmount(balance - robinhood, listing.decimals, 6),
+                            formatTokenAmount(robinhood, listing.decimals, 6),
+                          )}
+                    </div>
+                  )}
                   {move && (
                     <a
                       href={move.url}
@@ -321,13 +348,20 @@ export function HoldingsView({
                     />
                   )}
                 </div>
-                {/* A sell spends the live balance: offered once it is read. */}
+                {/* A sell spends the live balance: offered once it is read,
+                    from the Berth account or the wallet on Robinhood Chain
+                    (plan P3a), one place at a time, which the sheet asks. */}
                 <Button variant="outline" size="xs" disabled={updating} onClick={() => onSell(listing)}>
                   {copy.sell}
                 </Button>
               </li>
             ))}
           </ul>
+          {robinhoodUnread && (
+            <p className="border-t border-border px-[18px] py-2.5 text-[11px] text-muted-foreground lg:px-6">
+              {copy.rhChain.walletUnread}
+            </p>
+          )}
           {rows.length > HOLDINGS_SHOWN && (
             <DisclosureRow
               open={open}

@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useAccountHoldings } from "@/hooks/use-account-holdings";
 import { useListingPerformance } from "@/hooks/use-listing-performance";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useMoves } from "@/hooks/use-moves";
@@ -69,6 +70,12 @@ export function ListingBoard({
   /** Which listing the news column is showing, if any. */
   newsFilterSymbol?: string;
   held?: ReadonlyMap<string, bigint>;
+  /**
+   * Dev gallery only, beside `held`: the part of each that sits on
+   * Robinhood Chain. Since a sell can come from there (plan P3a) the board
+   * offers Sell for the whole of `held`, so this changes nothing here.
+   */
+  robinhoodHeld?: ReadonlyMap<string, bigint>;
   /** Every listing at once, with no "All" disclosure: the board as its own sheet. */
   expandAll?: boolean;
   /** Stands in for app/api/most-bought, for the dev gallery. */
@@ -80,7 +87,9 @@ export function ListingBoard({
   const moves = useMoves();
   const money = useMoney();
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallets);
+  const hubHoldings = useHubHoldings(account.hubWallets);
+  // Both chains rank a row under Yours (plan P1a); Sell spends the hub only.
+  const holdings = useAccountHoldings(account, hubHoldings);
   const prices = useListingPrices();
   const performance = useListingPerformance();
   // How many people bought each listing this week (lib/social-proof): its
@@ -111,6 +120,14 @@ export function ListingBoard({
       (holding) => holding.listing.address === listing.address,
     )?.balance;
   };
+  // Whether a Sell from this row has anything to spend: the Berth account's
+  // part or the wallet's on Robinhood Chain (plan P3a). The sheet sells
+  // one of them at a time, each with its own Max.
+  const sellableOf = (listing: TokenListing): bigint | undefined => {
+    if (heldOverride) return heldOverride.get(listing.address) ?? 0n;
+    if (!holdings.settled) return undefined;
+    return holdings.holdings.find((holding) => holding.listing.address === listing.address)?.balance;
+  };
 
   // Yours first, then the three moving most today, by the size of the
   // day's move either way; the rest keep the registry's order behind All.
@@ -127,7 +144,8 @@ export function ListingBoard({
   const row = (listing: TokenListing) => {
     const price = prices.priceOf(listing);
     const held = heldOf(listing);
-    const hasPosition = held !== undefined && held > 0n;
+    const sellable = sellableOf(listing);
+    const hasPosition = held !== undefined && held > 0n && sellable !== undefined && sellable > 0n;
     const moved = performance.performanceOf(listing);
     const direction = changeDirection(moved?.changePct);
     const series = moved?.series;

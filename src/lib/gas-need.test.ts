@@ -428,3 +428,19 @@ describe("a sponsored order (Privy pays the fee)", () => {
     expect(orderGasShort({ chainKey: base, isNative: false, nativeBalance: 0n, amount: 0n, need: 1n })).toBe(true);
   });
 });
+
+describe("Robinhood Chain (4663), where a sell from the person's own wallet signs (plan P3a)", () => {
+  const RH = ChainKeys.ROBINHOOD_MAINNET;
+
+  it("is gated like any EVM chain: priced live, with the approval counted when one is needed", () => {
+    expect(gasModel(RH)).toEqual({ kind: "evm" });
+    expect(gasNeed({ chainKey: RH, feePerGas: 10n, approval: false })).toBe((10n * GATE_DEPOSIT_GAS * 3n) / 2n);
+    expect(gasNeed({ chainKey: RH, feePerGas: 10n, approval: true })).toBe((10n * (GATE_DEPOSIT_GAS + GATE_APPROVE_GAS) * 3n) / 2n);
+    expect(orderGasShort({ chainKey: RH, isNative: false, nativeBalance: 0n, amount: 0n, need: undefined })).toBe(true);
+  });
+
+  it("would cost nothing if sponsored, which it is not until SODAX answers (lib/gas-sponsor)", () => {
+    expect(gasModel(RH, true)).toEqual({ kind: "free" });
+    expect(orderGasShort({ chainKey: RH, isNative: false, nativeBalance: 0n, amount: 0n, need: 1n, sponsored: true })).toBe(false);
+  });
+});

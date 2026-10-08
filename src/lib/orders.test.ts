@@ -219,6 +219,25 @@ describe("the chain an order's stock token sits on", () => {
     expect(rh.deliveredTo).toBe(BUYER);
     expect(rh.quantity).toBe("0.01");
   });
+
+  it("records a sell from Robinhood Chain there, under the Sonic listing, paid by the wallet that held it", () => {
+    const sell = {
+      ...CASH_BUY,
+      inputToken: NVDA.rhHubAsset,
+      outputToken: CASH_BUY.inputToken,
+      srcChain: 21071n,
+      srcAddress: BUYER,
+      dstChain: 4n,
+      dstAddress: BUYER,
+      data: "0x",
+    };
+    const order = readOrder({ intentTx: "0x3", direction: "sell", intent: sell, listing: NVDA, pay: USDC_BSC });
+    expect(order.holdingChain).toBe("robinhood");
+    expect(order.listingAddress).toBe(NVDA.address.toLowerCase());
+    expect(order.walletAddress).toBe(BUYER);
+    expect(order.quantity).toBe("1.992");
+    expect(order.payChain).toBe(USDC_BSC.chainKey);
+  });
 });
 
 describe("listingOfIntent", () => {
@@ -235,9 +254,10 @@ describe("listingOfIntent", () => {
     expect(listingOfIntent(listings, { ...RH_BUY, outputToken: NVDA.address }, "buy")).toBeUndefined();
   });
 
-  it("reads a sell from its input on the hub, and no sell from Robinhood Chain until P3a", () => {
+  it("reads a sell from its input and source chain, on the hub and from Robinhood Chain", () => {
     const sell = { ...CASH_BUY, inputToken: NVDA.rhHubAsset, outputToken: CASH_BUY.inputToken, srcChain: 21071n, dstChain: 4n };
-    expect(listingOfIntent(listings, sell, "sell")).toBeUndefined();
+    expect(listingOfIntent(listings, sell, "sell")).toBe(NVDA);
+    // From Robinhood Chain the input is the hub asset there, never the Sonic token.
     expect(listingOfIntent(listings, { ...sell, inputToken: NVDA.address }, "sell")).toBeUndefined();
     expect(listingOfIntent(listings, { ...sell, inputToken: NVDA.address, srcChain: 146n }, "sell")).toBe(NVDA);
     expect(listingOfIntent(listings, { ...sell, srcChain: 146n }, "sell")).toBeUndefined();

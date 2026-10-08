@@ -30,6 +30,13 @@ export type Holding = {
    * was taken out after the row was written (repriceHolding).
    */
   source: "mark" | "oracle" | "prior_mark";
+  /**
+   * Of `quantity`, the part in the person's own wallets on Robinhood Chain
+   * (plan P1b), written by the evening snapshot. Absent means none, or a
+   * day written before it was kept. What tells the snapshot an account
+   * holds there even without a Berth order there (rh-server m4).
+   */
+  robinhood?: number;
 };
 
 export type ValuedDay = { value: number; holdings: Holding[] };

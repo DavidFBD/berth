@@ -7,6 +7,10 @@ import { runEvening } from "./evening";
 import { backfillAccountHistory, backfillCandidates, backfillHistories } from "./history-backfill";
 import { loadPortfolioDays, runPortfolioSnapshot, savePortfolioDay } from "./portfolio";
 
+/** Nothing on Robinhood Chain, read without a network call. */
+const nothingOnRobinhood = async (owners: readonly string[]) =>
+  new Map(owners.map((owner) => [owner.toLowerCase(), {} as Record<string, number>]));
+
 /**
  * History back to the first buy, against a real Postgres with the real
  * schema. September 2026: Mon 21 to Fri 25; the first snapshot is Friday
@@ -141,6 +145,7 @@ describe("history back to the first buy", () => {
     await closes("NVDA", [100, 102, 101, 104, 105]);
     await closes("AAPL", [200, 201, 202, 203, 204]);
     const taken = await runPortfolioSnapshot({
+      readRobinhood: nothingOnRobinhood,
       now: FRIDAY_EVENING,
       accounts: [{ id: user.id, wallet: wallet(3), wallets: [wallet(3), wallet(33)] }],
       deriveHubWallet: async (spoke) => `hub-${spoke}`,

@@ -1,23 +1,70 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAddress } from "viem";
 import { hubDelivery } from "@/lib/delivery";
-import { KNOWN_7702_DELEGATES, confirmPlainKey, isPlainKey, robinhoodDeliveryOn } from "./delivery";
+import { KNOWN_7702_DELEGATES, confirmPlainKey, isPlainKey, robinhoodDeliveryMode, robinhoodDeliveryOn } from "./delivery";
 
 afterEach(() => vi.unstubAllEnvs());
 
 const ME = ["9f3b1c2e-0000-4000-8000-000000000001", "0xbe59d5bf40ac4a349bd748e0d7c19ef27ad3ca23"];
 
+describe("robinhoodDeliveryMode", () => {
+  it("is listed when ROBINHOOD_DELIVERY is unset, empty or listed, so it ships dark", () => {
+    for (const raw of [undefined, null, "", "  ", "listed", " Listed "]) expect(robinhoodDeliveryMode(raw), String(raw)).toBe("listed");
+  });
+
+  it("is on only when it says on", () => {
+    expect(robinhoodDeliveryMode("on")).toBe("on");
+    expect(robinhoodDeliveryMode(" ON ")).toBe("on");
+  });
+
+  it("is off when it says off, and when it says anything it does not know, so a typo never widens delivery", () => {
+    for (const raw of ["off", "OFF", "false", "0", "no", "true", "1", "of", "list"]) expect(robinhoodDeliveryMode(raw), raw).toBe("off");
+  });
+});
+
 describe("robinhoodDeliveryOn", () => {
-  it("switches nobody on while ROBINHOOD_DELIVERY_USERS is unset or empty, as it ships", () => {
+  beforeEach(() => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", undefined);
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", undefined);
+    vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
+  });
+
+  it("switches nobody on while nothing is set, as it ships, and nobody but the listed while only the allow list is set", () => {
     expect(robinhoodDeliveryOn(ME)).toBe(false);
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
-    expect(robinhoodDeliveryOn(ME)).toBe(false);
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", " , ");
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", ME[0]);
+    expect(robinhoodDeliveryOn(ME)).toBe(true);
+    expect(robinhoodDeliveryOn(["someone", null])).toBe(false);
+  });
+
+  it("switches every account on once ROBINHOOD_DELIVERY is on", () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "on");
+    expect(robinhoodDeliveryOn(ME)).toBe(true);
+    expect(robinhoodDeliveryOn(["someone", null])).toBe(true);
+  });
+
+  it("switches everyone off with the kill switch, an allow list notwithstanding", () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "off");
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", ME.join(","));
     expect(robinhoodDeliveryOn(ME)).toBe(false);
   });
 
-  it("switches on an account by its user id or any of its wallets, ignoring case", () => {
+  it("keeps an account on the deny list off, by its user id or any of its wallets, ignoring case, in every mode", () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "on");
+    vi.stubEnv("ROBINHOOD_DELIVERY_DENY", "someone-else, 0xBE59D5BF40AC4A349BD748E0D7C19EF27AD3CA23");
+    expect(robinhoodDeliveryOn([null, ME[1]])).toBe(false);
+    expect(robinhoodDeliveryOn(["someone", "0x0000000000000000000000000000000000000001"])).toBe(true);
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", ME.join(","));
+    expect(robinhoodDeliveryOn(ME)).toBe(false);
+    vi.stubEnv("ROBINHOOD_DELIVERY_DENY", " , ");
+    expect(robinhoodDeliveryOn(ME)).toBe(true);
+  });
+
+  it("in listed mode switches on only an account on ROBINHOOD_DELIVERY_USERS, by its user id or any of its wallets, ignoring case", () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    expect(robinhoodDeliveryOn(ME)).toBe(false);
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", " , ");
+    expect(robinhoodDeliveryOn(ME)).toBe(false);
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "9F3B1C2E-0000-4000-8000-000000000001");
     expect(robinhoodDeliveryOn([ME[0], null])).toBe(true);
     vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "someone-else, 0xBE59D5BF40AC4A349BD748E0D7C19EF27AD3CA23");
@@ -26,8 +73,8 @@ describe("robinhoodDeliveryOn", () => {
   });
 
   it("is its own switch, not the limit orders one", () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
     vi.stubEnv("LIMIT_ORDERS_USERS", ME.join(","));
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
     expect(robinhoodDeliveryOn(ME)).toBe(false);
   });
 });

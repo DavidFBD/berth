@@ -113,7 +113,14 @@ export function HomeGallery({
   campaign,
   proof = null,
   share = null,
+  robinhood = null,
 }: {
+  /**
+   * `&rh=1` on a held scene: a switched account whose first holding sits
+   * wholly in its own wallet on Robinhood Chain (plan P1a); `&rh=split`
+   * the same holding half there, half in the Berth account.
+   */
+  robinhood?: string | null;
   /** `&share=1`: the "Share what you hold on X" link with a fixture invite code; `&share=open` with its sheet open. */
   share?: string | null;
   /** `&proof=1` (or 0): the social counts on the board drawer from fixtures (social-proof-fixtures.ts). */
@@ -132,11 +139,17 @@ export function HomeGallery({
   const [drawer, setDrawer] = useState<"board" | "news" | null>(initialDrawer);
   const walletEmail = scene === "walletEmail";
   const held = scene === "held" || walletEmail;
-  const [{ client, rows }] = useState(() => {
+  const [{ client, rows: seededRows }] = useState(() => {
     const seeded = seededPortfolioClient(held ? "three-months" : "empty", { xp: 900 });
     if (look) seeded.client.setQueryData(FIRST_LOOK_QUERY_KEY, firstLookFixture(look));
     return seeded;
   });
+  const rows = seededRows.map((row, index) =>
+    index === 0 && (robinhood === "1" || robinhood === "split")
+      ? { ...row, robinhood: robinhood === "split" ? row.balance / 2n : row.balance }
+      : row,
+  );
+  const robinhoodMap = new Map(rows.flatMap((row) => (row.robinhood ? [[row.listing.address, row.robinhood] as const] : [])));
   const [firstOpen, setFirstOpen] = useState(firstStock);
   const nvidia = STOCK_LISTINGS.find((listing) => listing.symbol === "NVDA");
   const mounted = useMounted();
@@ -248,6 +261,7 @@ export function HomeGallery({
           onBuy={noop}
           onSell={noop}
           held={heldMap}
+          robinhoodHeld={robinhoodMap}
           expandAll
           {...socialProofFor(proof)}
           onFilterNews={(listing) => {

@@ -6,18 +6,126 @@ import { ROBINHOOD_RESTRICTED_COUNTRIES, deliveryFor, hubDelivery, knownCountry,
 import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
 import { accountEvmAddresses } from "@/lib/server/identities";
 import { HUB_RPC_URLS, getPinnedRpcUrls } from "@/lib/sodax-config";
+import { PRIVY_SPONSORABLE_CHAIN_IDS } from "@/lib/gas-sponsor";
+import { getSql } from "@/lib/server/db";
+import { readPrivyEmbeddedWallet } from "@/lib/server/privy";
 
 /**
- * The Robinhood Chain delivery switch: `ROBINHOOD_DELIVERY_USERS`, a comma
- * separated list of Berth user ids or wallet addresses (lib/limit-orders
- * switchedOn, the same reading as LIMIT_ORDERS_USERS). Unset or empty
- * switches nobody on, which is how it ships: every buy then delivers to the
- * hub exactly as before. Read server side on every call and never through a
- * NEXT_PUBLIC_ variable; the browser learns its own answer from
- * app/api/delivery and nothing about anyone else.
+ * How the Robinhood Chain delivery switch stands, from `ROBINHOOD_DELIVERY`:
+ *
+ *   unset or empty  "listed": only the accounts in ROBINHOOD_DELIVERY_USERS,
+ *                   the beta's allow list (empty: nobody). The code's
+ *                   default is dark, so no deploy can switch delivery on by
+ *                   accident.
+ *   "on"            every eligible account. Turn it on by setting
+ *                   ROBINHOOD_DELIVERY=on and redeploying (David,
+ *                   2026-10-08: as much as can goes to Robinhood Chain,
+ *                   once a sell from there exists).
+ *   "listed"        as unset, said explicitly
+ *   "off"           nobody: every buy delivers to the hub, as before
+ *
+ * Any other value reads as "off": a typo in the kill switch must never
+ * widen delivery, and the hub is the path every buy has always taken.
+ */
+export type RobinhoodDeliveryMode = "on" | "listed" | "off";
+
+export function robinhoodDeliveryMode(raw: string | null | undefined = process.env.ROBINHOOD_DELIVERY): RobinhoodDeliveryMode {
+  const mode = (raw ?? "").trim().toLowerCase();
+  if (mode === "" || mode === "listed") return "listed";
+  if (mode === "on") return "on";
+  return "off";
+}
+
+/**
+ * Whether the switch lets an account's buys be delivered on Robinhood
+ * Chain, before any of the checks that keep the rest on the hub (where
+ * Berth takes buys, the country, the signing wallet, a plain key).
+ * `ROBINHOOD_DELIVERY_DENY` is a comma separated list of Berth user ids or
+ * wallet addresses that stay on the hub in every mode (lib/limit-orders
+ * switchedOn, the same reading as LIMIT_ORDERS_USERS). Read server side on
+ * every call and never through a NEXT_PUBLIC_ variable; the browser learns
+ * its own answer from app/api/delivery and nothing about anyone else.
  */
 export function robinhoodDeliveryOn(identifiers: readonly (string | null | undefined)[]): boolean {
-  return switchedOn(process.env.ROBINHOOD_DELIVERY_USERS, identifiers);
+  if (switchedOn(process.env.ROBINHOOD_DELIVERY_DENY, identifiers)) return false;
+  const mode = robinhoodDeliveryMode();
+  if (mode === "off") return false;
+  if (mode === "listed") return switchedOn(process.env.ROBINHOOD_DELIVERY_USERS, identifiers);
+  return true;
+}
+
+/**
+ * Whether a Privy email wallet (the embedded wallet) may take delivery on
+ * Robinhood Chain: only once Robinhood Chain (4663) is sponsorable
+ * (lib/gas-sponsor PRIVY_SPONSORABLE_CHAIN_IDS, held out until SODAX
+ * confirms its relayer picks up a sponsored 7702 send, the plan's decision
+ * 2). An email wallet holds no ETH there and has no way to get any, so
+ * until then it could take delivery but never sell (rh-ux-sec B1). The
+ * day 4663 joins that set, email wallets become eligible with no other
+ * change. External plain key wallets stay eligible either way.
+ */
+export function embeddedEligible(ids: ReadonlySet<number> = PRIVY_SPONSORABLE_CHAIN_IDS): boolean {
+  return ids.has(4663);
+}
+
+/**
+ * Whether the account's wallet `address` is its Privy email wallet: linked
+ * with Privy's own proof ('privy_wallet'), or, for an email account whose
+ * wallet row predates proofs ('legacy', or none yet), its home address, or
+ * the embedded wallet Privy itself names for the account's DID (as the
+ * wallets list asks it, rh-final 3). Throws when the tables cannot be read
+ * or Privy cannot be asked: any doubt answers the hub (decide) or unknown
+ * (recheckDestination), never Robinhood Chain.
+ */
+export async function isEmbeddedWallet(
+  userId: string,
+  address: string,
+  readPrivy: typeof readPrivyEmbeddedWallet = readPrivyEmbeddedWallet,
+): Promise<boolean> {
+  const value = address.toLowerCase();
+  const rows = (await getSql().query(
+    `select u.privy_did,
+            (i.proof = 'privy_wallet'
+             or (u.privy_did is not null and lower(u.wallet_address) = $2 and coalesce(i.proof, 'legacy') = 'legacy')) as embedded
+       from users u
+       left join user_identities i on i.user_id = u.id and i.kind = 'wallet' and i.value = $2 and i.unlinked_at is null
+      where u.id = $1`,
+    [userId, value],
+  )) as { privy_did: string | null; embedded: boolean | null }[];
+  if (rows.some((row) => row.embedded === true)) return true;
+  const did = rows.find((row) => row.privy_did)?.privy_did;
+  if (!did?.startsWith("did:privy:")) return false;
+  const privy = await readPrivy(did);
+  if (!privy.ok) throw new Error("Privy could not be asked");
+  return privy.address === value;
+}
+
+/**
+ * The sell switch (rh-ux-sec M1): whether this account may start a sell
+ * from its own wallet on Robinhood Chain, a new write path (an approve and
+ * a spoke intent on 4663) that ROBINHOOD_DELIVERY alone does not cover.
+ *
+ *   ROBINHOOD_SELL=off    nobody, whatever else holds (the kill switch)
+ *   ROBINHOOD_DELIVERY=on everyone (delivery is on for all, so selling is)
+ *   otherwise             only an account with a Berth buy delivered to
+ *                         Robinhood Chain on record (orders.holding_chain)
+ *
+ * So with no env change nobody without a Berth delivery there can start
+ * one. Reading and showing what sits there is not affected. Any value of
+ * ROBINHOOD_SELL but "off" changes nothing. A failed read is no.
+ */
+export async function robinhoodSellOn(userId: string): Promise<boolean> {
+  if ((process.env.ROBINHOOD_SELL ?? "").trim().toLowerCase() === "off") return false;
+  if (robinhoodDeliveryMode() === "on") return true;
+  try {
+    const rows = (await getSql().query(
+      `select exists (select 1 from orders where user_id = $1 and direction = 'buy' and holding_chain = 'robinhood') as found`,
+      [userId],
+    )) as { found: boolean }[];
+    return rows[0]?.found === true;
+  } catch {
+    return false;
+  }
 }
 
 /** The chains a destination is asked about: Robinhood Chain itself, and Sonic, the one chain every Berth SIWE names. */
@@ -136,6 +244,14 @@ async function decide(inputs: DeliveryInputs): Promise<Delivery> {
   }
   const delivery = deliveryFor({ switched: true, evmAddress, country });
   if (delivery.chainKey !== "robinhood") return delivery;
+  // An email wallet only once a sell from there costs it nothing (embeddedEligible).
+  if (!embeddedEligible()) {
+    try {
+      if (await isEmbeddedWallet(userId, delivery.address)) return hubDelivery("embedded_wallet");
+    } catch {
+      return hubDelivery("read_failed");
+    }
+  }
   // Only a plain key on Robinhood Chain and on Sonic: a smart account's
   // address there may be nobody's (isPlainKey).
   return (await readPlainKey(delivery.address, { fetcher })) === true ? delivery : hubDelivery("not_eoa");
@@ -225,6 +341,13 @@ export async function recheckDestination({
   }
   if (!all.includes(own)) return { verdict: "refused", reason: "no_evm_wallet" };
   if (own !== dstAddress.toLowerCase()) return { verdict: "refused", reason: "other_address" };
+  if (!embeddedEligible()) {
+    try {
+      if (await isEmbeddedWallet(userId, own)) return { verdict: "refused", reason: "embedded_wallet" };
+    } catch {
+      return { verdict: "unknown" };
+    }
+  }
   const plain = await readPlainKey(own, { fetcher });
   if (plain === "unknown") return { verdict: "unknown" };
   return plain ? { verdict: "allowed" } : { verdict: "refused", reason: "not_eoa" };

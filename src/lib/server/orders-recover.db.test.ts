@@ -117,9 +117,13 @@ describe("berthFilledIntents", () => {
     expect(kept.map((entry) => [entry.intentTx, entry.direction])).toEqual([[tx(8), "buy"]]);
   });
 
-  it("passes by a sell paid from Robinhood Chain, as on master (until P3a)", () => {
+  it("finds a sell from Robinhood Chain as a sell of its listing", () => {
     const sell = item({ txHash: tx(10), input: NVDA.rhHubAsset!, output: USDC_HUB });
-    expect(berthFilledIntents([{ ...sell, intent: { ...sell.intent, srcChain: 21071 } }], listings)).toEqual([]);
+    expect(
+      berthFilledIntents([{ ...sell, intent: { ...sell.intent, srcChain: 21071 } }], listings).map((entry) => [entry.intentTx, entry.direction]),
+    ).toEqual([[tx(10), "sell"]]);
+    // The Sonic token named from Robinhood Chain is no listing's.
+    expect(berthFilledIntents([{ ...sell, intent: { ...sell.intent, inputToken: NVDA.address, srcChain: 21071 } }], listings)).toEqual([]);
   });
 });
 
@@ -183,6 +187,17 @@ describe("recovering orders", () => {
     expect(used.verify).toHaveBeenCalledWith(expect.objectContaining({ txHash: tx(0x101), direction: "out", wallets: [{ family: "evm", address: EOA, linkedAt: null, unlinkedAt: null }] }));
     const rows = (await sql.query(`select count(*)::int as n from orders`)) as { n: number }[];
     expect(rows[0].n).toBe(1);
+  });
+
+  it("also reads the intents filed under the account's hub wallet on Robinhood Chain, where a sell from there is made (rh-money m3)", async () => {
+    const RH_HUB = "0x5555555555555555555555555555555555555555";
+    const used = depsFor(items, {
+      robinhoodHubOf: vi.fn(async (address: string) => (address === EOA ? RH_HUB : null)),
+    });
+    const report = await recoverAccountOrders({ id: userId, wallet_address: EOA }, { deps: used });
+    expect(report.addresses).toBe(3);
+    expect(used.fetchIntents).toHaveBeenCalledWith(RH_HUB);
+    expect(used.robinhoodHubOf).toHaveBeenCalledWith(EOA);
   });
 
   it("write: inserts the sell, keeps the recorded buy exactly, pays no XP, and a rerun adds nothing", async () => {

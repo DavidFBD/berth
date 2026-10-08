@@ -1,10 +1,13 @@
 "use client";
 
-import { Check } from "@phosphor-icons/react";
+import type { ReactNode } from "react";
+import { ArrowSquareOut, Check } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
 import { hubTxUrl } from "@/lib/chains";
+import type { ArrivalState } from "@/lib/robinhood-arrival";
+import { robinhoodTokenUrl, robinhoodTxUrl } from "@/lib/robinhood-chain";
 import { LoadingMark } from "@/components/loading-mark";
 import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { CANCELLED_MESSAGE } from "@/lib/error-copy";
@@ -149,7 +152,10 @@ export function IntentTracking({
   onDone,
   className,
   reportState = "idle",
+  children,
 }: {
+  /** Under the filled screen's words: a buy delivered to Robinhood Chain shows its arrival here (RobinhoodArrival). */
+  children?: ReactNode;
   phase: FillPhase;
   fillTxHash?: string;
   /** The intent's hub transaction, the reference an unsettled order shows. */
@@ -180,6 +186,7 @@ export function IntentTracking({
             </p>
           )}
         </div>
+        {children}
         <Button className="h-12 w-full text-base" onClick={onDone}>
           {copy.done}
         </Button>
@@ -385,6 +392,52 @@ export function ActionError({
               : null}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * A buy delivered to Robinhood Chain, after its fill (plan P2b): two quiet
+ * steps, bought, then in the person's own wallet on Robinhood Chain, each
+ * said only once it is true. While the token travels the step shows the
+ * thinking orb; a wait past the relay's own shows a calm line instead, and
+ * the explorer link (the delivery's transaction once known, else the
+ * token's own page) is there either way.
+ */
+export function RobinhoodArrival({ state, token }: { state: ArrivalState; token: string }) {
+  const copy = useCopy();
+  if (state.kind === "off") return null;
+  const arrived = state.kind === "arrived";
+  const href = arrived && state.deliveryTx ? robinhoodTxUrl(state.deliveryTx) : robinhoodTokenUrl(token);
+  return (
+    <div data-ph-mask className="flex w-full flex-col gap-2 rounded-xl bg-muted/50 px-3 py-2.5 text-left text-sm">
+      <ol className="flex flex-col gap-1.5">
+        <li className="flex items-center gap-2 text-foreground">
+          <Check weight="bold" aria-hidden className="size-4 shrink-0 text-foreground" />
+          {copy.rhChain.stepFilled}
+        </li>
+        <li className={cn("flex items-center gap-2", arrived ? "text-foreground" : "text-muted-foreground")}>
+          {arrived ? (
+            <Check weight="bold" aria-hidden className="size-4 shrink-0 text-foreground" />
+          ) : (
+            <span className="-m-0.5 grid size-5 shrink-0 place-items-center">
+              <ThinkingOrb state="working" size={20} tone="muted" decorative />
+            </span>
+          )}
+          {arrived ? copy.rhChain.stepArrived : copy.rhChain.stepArriving}
+        </li>
+      </ol>
+      {state.kind === "slow" && <p className="text-xs text-muted-foreground">{copy.rhChain.arrivalSlow}</p>}
+      <a
+        data-ph-block
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex w-fit items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        {arrived && state.deliveryTx ? copy.rhChain.seeDelivery : copy.rhChain.seeToken}
+        <ArrowSquareOut aria-hidden className="size-3.5" />
+      </a>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useAccountHoldings } from "@/hooks/use-account-holdings";
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useLimitOrders } from "@/hooks/use-limit-orders";
 import { TOKEN_LISTINGS } from "@/lib/listings";
@@ -32,6 +33,8 @@ export type AccountFigures = {
   waiting?: number;
   /** Whether the account owns any stock or fund, which is when the comparison is drawn. */
   holdsAnything: boolean;
+  /** The wallet on Robinhood Chain could not be read: the figure leaves it out, and says so (rh-ux-sec m5). */
+  robinhoodUnread?: boolean;
 };
 
 /**
@@ -43,7 +46,12 @@ export type AccountFigures = {
 export function useLiveFigures() {
   const funds = useEmbeddedHoldings();
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallets);
+  // Both chains (plan P1a): an account's Robinhood Chain tokens
+  // count in its figure. A failed read there leaves them out, and the
+  // reading is then not whole, so it is never kept as the last known.
+  const hubHoldings = useHubHoldings(account.hubWallets);
+  const holdings = useAccountHoldings(account, hubHoldings);
+  const robinhoodPending = holdings.robinhoodState === "loading" || holdings.robinhoodState === "failed";
   const prices = useListingPrices();
   const limits = useLimitOrders({ poll: false });
 
@@ -70,6 +78,7 @@ export function useLiveFigures() {
     funds: funds.isLoading ? undefined : (funds.totalUsd ?? 0),
     waiting,
     holdsAnything: holdings.settled && holdings.held.some((holding) => holding.listing.kind === "stock"),
+    robinhoodUnread: holdings.robinhoodState === "failed",
   };
   return {
     hasAccount: Boolean(account.spokeAddress),
@@ -80,7 +89,11 @@ export function useLiveFigures() {
     fundsUnpriced: !funds.isLoading && funds.holdings.length > 0 && funds.totalUsd === undefined,
     /** Every part read live and the orders known: the reading may be kept (lib/last-known). */
     complete:
-      figures.holdings !== undefined && figures.cash !== undefined && figures.funds !== undefined && !limits.isLoading,
+      figures.holdings !== undefined &&
+      figures.cash !== undefined &&
+      figures.funds !== undefined &&
+      !limits.isLoading &&
+      !robinhoodPending,
     /** Every network answered and every asset priced: the Funds part is the whole of it. */
     fundsWhole:
       !funds.isLoading &&
@@ -137,6 +150,7 @@ export function AccountTotal() {
         funds: funds.value,
         waiting: live.figures.waiting,
         holdsAnything: live.figures.holdsAnything || (live.figures.holdings === undefined && known?.stage === "owns"),
+        robinhoodUnread: live.figures.robinhoodUnread,
       }}
       updating={
         holdings.lastKnown || cash.lastKnown || funds.lastKnown
@@ -213,7 +227,14 @@ export function AccountTotalView({
           {figures.holdsAnything && <p className="mt-1.5 text-muted-foreground">{copy.holdingsBenchmarkNote}</p>}
           {figures.holdsAnything && money.converted && <p className="mt-1.5 text-muted-foreground">{copy.inUsDollarsNote}</p>}
           {updating && when && <p className="mt-1.5 text-muted-foreground">{copy.lastKnownAsOf(when)}</p>}
+          {figures.robinhoodUnread && <p className="mt-1.5 text-muted-foreground">{copy.rhChain.totalUnread}</p>}
         </InfoTip>
+        {/* A figure missing a part says so where it is read, not only in the list (rh-ux-sec m5). */}
+        {figures.robinhoodUnread && !updating && (
+          <span className="ml-auto text-xs text-muted-foreground" data-testid="rh-total-unread">
+            {copy.rhChain.totalUnreadShort}
+          </span>
+        )}
         {/* The last reading stands in while the live one arrives: said quietly, once. */}
         {updating && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">

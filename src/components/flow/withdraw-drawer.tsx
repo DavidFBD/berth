@@ -70,6 +70,8 @@ import {
 } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 import { useDrawerFunnel } from "@/components/analytics/use-drawer-funnel";
+import { ROBINHOOD_CHAIN_KEY, type SellSource } from "@/lib/robinhood-sell";
+import type { Address } from "viem";
 
 /** One vault share (18 decimals) — reads the price-per-share via previewRedeem. */
 const ONE_SHARE = 10n ** 18n;
@@ -85,6 +87,13 @@ const ONE_SHARE = 10n ** 18n;
  * the chain it was deposited from). A stock or cash listing is a sell: plain
  * name, oracle price, and `srcChainKey` is the home chain, since every
  * listing lives on THE account (lib/account).
+ *
+ * A stock in the person's own wallet on Robinhood Chain sells from there
+ * (`robinhoodSell`, plan P3a): `srcChainKey` is Robinhood Chain, the quote
+ * is from the token there, and the order machine approves the robinhood
+ * asset manager when the allowance is short, then signs one intent on
+ * Robinhood Chain (hooks/use-vault-action). Market only: no limit sell
+ * from there yet.
  */
 export function WithdrawDrawer({
   listing,
@@ -100,6 +109,7 @@ export function WithdrawDrawer({
   sourceIsHome = true,
   signerLinked,
   onAddWallet,
+  robinhoodSell,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -134,9 +144,11 @@ export function WithdrawDrawer({
    * `availableShares` is then the chosen one's holding.
    */
   sellFrom?: {
-    sources: { spoke: string; isHome: boolean; balance: bigint; canSign: boolean }[];
+    /** Each place that holds it (lib/robinhood-sell SellSource): hub wallets and wallets on Robinhood Chain. */
+    sources: SellSource[];
+    /** The chosen source's `key`. */
     chosen: string;
-    onChoose: (spoke: string) => void;
+    onChoose: (key: string) => void;
   };
   /** False when the one hub wallet selling is not the home's: no limit sell then (v1 is home only). */
   sourceIsHome?: boolean;
@@ -144,6 +156,13 @@ export function WithdrawDrawer({
   signerLinked?: boolean;
   /** Adds the connected wallet to the account (hooks/use-account-wallets). */
   onAddWallet?: () => void;
+  /**
+   * Selling from the person's own wallet on Robinhood Chain: the listing's
+   * token there. `srcChainKey` is then Robinhood Chain and
+   * `availableShares` that wallet's balance. `owner` is that wallet: the
+   * order machine refuses to sign with any other.
+   */
+  robinhoodSell?: { rhAddress: Address; owner: string };
 }) {
   const [dstChainKey, setDstChainKey] = useState<SpokeChainKey | null>(null);
   const [outputToken, setOutputToken] = useState<XToken | null>(null);
@@ -162,6 +181,8 @@ export function WithdrawDrawer({
   const [customRecipient, setCustomRecipient] = useState<string | null>(null);
 
   const isSell = !!listing && listing.kind !== "vault";
+  // Only a stock sold from the wallet on Robinhood Chain, signed there.
+  const fromRobinhood = isSell && !!robinhoodSell && srcChainKey === ROBINHOOD_CHAIN_KEY;
   const meta =
     listing?.kind === "vault" ? getVaultMeta(listing.vault.name) : null;
   const copy = useCopy();
@@ -316,8 +337,11 @@ export function WithdrawDrawer({
   const smallestOrderLabel = money.format(minPourUsd(money.rate));
   const quote = usePourQuote({
     enabled: open && !!listing && !!dstChainKey && !!outputToken && !tooSmall,
+    // From Robinhood Chain the solver is asked for the token there, as the intent will name it.
     src: listing
-      ? { address: listing.address, chainKey: ChainKeys.SONIC_MAINNET }
+      ? fromRobinhood && robinhoodSell
+        ? { address: robinhoodSell.rhAddress, chainKey: ROBINHOOD_CHAIN_KEY }
+        : { address: listing.address, chainKey: ChainKeys.SONIC_MAINNET }
       : null,
     dst:
       dstChainKey && outputToken
@@ -347,9 +371,12 @@ export function WithdrawDrawer({
     prefill: prefill?.limit,
     force: devLimit,
     // v1 limit sells come from the home hub wallet only: its record,
-    // sweep and cancel all know that one (lib/server/limit-orders).
+    // sweep and cancel all know that one (lib/server/limit-orders). Never
+    // from a wallet on Robinhood Chain.
     unavailable:
-      !sourceIsHome || (!!sellFrom && sellFrom.sources.find((source) => source.spoke === sellFrom.chosen)?.isHome !== true),
+      fromRobinhood ||
+      !sourceIsHome ||
+      (!!sellFrom && sellFrom.sources.find((source) => source.key === sellFrom.chosen)?.isHome !== true),
   });
   const limitTokenFits = limitTokenOk(outputToken, dstChainKey ? isEvmChainKeyType(dstChainKey) : false);
   const swapShares = swapInputFor(buildAmount);
@@ -460,10 +487,12 @@ export function WithdrawDrawer({
         limit.price && {
           limit: { deadline: limit.deadline, limitPrice: limitPriceText(limit.price) },
         }),
+      ...(fromRobinhood && robinhoodSell && { robinhood: robinhoodSell }),
       walletProvider,
       walletMode: mode,
-      gasCheck: () =>
-        gasPreflight({ chainKey: srcChainKey, address, amount: 0n, approval: false, order: "sell" }),
+      // A sell from Robinhood Chain may approve first; the order machine says whether.
+      gasCheck: (approval) =>
+        gasPreflight({ chainKey: srcChainKey, address, amount: 0n, approval, order: "sell" }),
       fillToasts: {
         successTitle: isSell ? copy.soldTitle : copy.withdrawnTitle,
         successDescription: copy.deliveredBody(getChainName(dstChainKey)),
@@ -479,7 +508,7 @@ export function WithdrawDrawer({
     busy?: boolean;
     onClick?: () => void;
   };
-  const chosenSource = sellFrom?.sources.find((source) => source.spoke === sellFrom.chosen);
+  const chosenSource = sellFrom?.sources.find((source) => source.key === sellFrom.chosen);
   // The account's email wallet signs only in an email sign in: say that,
   // not an address the person may never have seen.
   const accountWallets = useAccountWallets();
@@ -709,7 +738,8 @@ export function WithdrawDrawer({
             <div className="p-4">
               <ActionStepper
                 step={action.step}
-                approveNeeded={false}
+                approveNeeded={fromRobinhood ? (action.approveRequired ?? true) : false}
+                approveTwice={action.approveTwice}
                 headless={mode === "email" && signGas.sponsored(srcChainKey)}
               />
             </div>
@@ -800,16 +830,19 @@ export function WithdrawDrawer({
                       <span className="text-xs text-muted-foreground">{copy.sellFromLabel}</span>
                       <div className="flex flex-wrap gap-1.5">
                         {sellFrom.sources.map((source) => {
-                          const selected = source.spoke === sellFrom.chosen;
+                          const selected = source.key === sellFrom.chosen;
+                          const onChain = sellFrom.sources.some((other) => other.chain === "robinhood");
                           return (
                             <button
-                              key={source.spoke}
+                              key={source.key}
                               type="button"
                               role="radio"
                               aria-checked={selected}
                               onClick={() => {
-                                sellFrom.onChoose(source.spoke);
+                                // Each place has its own Max: nothing carries across.
+                                sellFrom.onChoose(source.key);
                                 setAmount("");
+                                setMaxed(null);
                                 setCapped(false);
                               }}
                               className={cn(
@@ -817,8 +850,15 @@ export function WithdrawDrawer({
                                 selected ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted",
                               )}
                             >
+                              {onChain && (
+                                <span className="text-[11px] text-muted-foreground">
+                                  {source.chain === "robinhood" ? copy.rhChain.sellFromWallet : copy.rhChain.sellFromAccount}
+                                </span>
+                              )}
                               <span className="money">{shortenAddress(source.spoke, 4)}</span>
-                              {source.isHome && <span className="text-[11px] text-muted-foreground">{copy.sellFromHomeTag}</span>}
+                              {source.chain === "hub" && source.isHome && (
+                                <span className="text-[11px] text-muted-foreground">{copy.sellFromHomeTag}</span>
+                              )}
                               <span>{formatTokenAmount(source.balance, SHARE_DECIMALS, 4)}</span>
                             </button>
                           );
@@ -828,7 +868,13 @@ export function WithdrawDrawer({
                   )}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
-                      {(isSell ? copy.youHold : copy.vaultHolds)(
+                      {(isSell
+                        ? sellFrom?.sources.some((source) => source.chain === "robinhood")
+                          ? fromRobinhood
+                            ? copy.rhChain.youHoldInWallet
+                            : copy.rhChain.youHoldInAccount
+                          : copy.youHold
+                        : copy.vaultHolds)(
                         sharePriceUsd !== undefined
                           ? `≈ ${money.format(sharesWorthUsd(availableShares) ?? 0)} (${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol})`
                           : `${formatTokenAmount(availableShares, SHARE_DECIMALS, 6)} ${listing.symbol}`,
@@ -850,9 +896,13 @@ export function WithdrawDrawer({
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    {isSell
-                      ? copy.sellSignOnce(getChainName(srcChainKey))
-                      : copy.vaultSignOnce(getChainName(srcChainKey))}
+                    {fromRobinhood
+                      ? signGas.sponsored(srcChainKey)
+                        ? copy.rhChain.sellSignWalletSponsored
+                        : copy.rhChain.sellSignWallet
+                      : isSell
+                        ? copy.sellSignOnce(getChainName(srcChainKey))
+                        : copy.vaultSignOnce(getChainName(srcChainKey))}
                   </p>
                   {signGasShort && signNative && (
                     <p className="text-xs text-warn">

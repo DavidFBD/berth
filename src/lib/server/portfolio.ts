@@ -11,6 +11,7 @@ import { loadListingPrices } from "@/lib/server/listing-prices";
 import { readMarks } from "@/lib/server/marks";
 import { loadOrderFacts } from "@/lib/server/order-marks";
 import { getSodax } from "@/lib/server/pour-verify";
+import { readRobinhoodHoldings, robinhoodParts, safeError, type RobinhoodHoldingsReader } from "@/lib/server/robinhood-balances";
 
 /**
  * The portfolio's server half: whose account is where, what it holds, what
@@ -21,6 +22,13 @@ import { getSodax } from "@/lib/server/pour-verify";
  * Only token listings (stocks, funds, cash) are counted. The old vault
  * positions are valued through previewRedeem and live at a different hub
  * wallet per source chain, so they are neither read nor drawn here.
+ *
+ * An account holds on two chains (plan P1b): the hub wallets on Sonic and,
+ * since Robinhood Chain delivery, the native tokens in its own EVM wallets
+ * on Robinhood Chain (lib/server/robinhood-balances). Every reader here
+ * adds the two, as the browser does (lib/account-holdings), so the history
+ * chart, the evening snapshot (and through it the weekly email and Most
+ * held) and the assistant count what was delivered there.
  */
 
 const LISTING_BY_ADDRESS = new Map(
@@ -59,25 +67,50 @@ export const readListingBalances: ListingBalanceReader = async (hubWallet) => {
 /** One hub wallet's part of an account: the address it is derived from, the hub wallet, its balances. */
 export type WalletBalances = { spoke: string; hubWallet: string; balances: Record<string, number> };
 
+/** How an account read treats a Robinhood Chain read that did not answer. */
+export type RobinhoodUnread = "throw" | "hub only";
+
 /**
  * An account's listing balances summed over every linked EVM address's hub
- * wallet (lib/server/identities accountEvmAddresses), with each hub
- * wallet's own part. One failed read throws: a total missing a wallet
- * would read low, and unknown is never zero.
+ * wallet (lib/server/identities accountEvmAddresses) and the same
+ * addresses' own wallets on Robinhood Chain, with each hub wallet's own
+ * part and the Robinhood Chain part (`robinhood`, by symbol). One failed
+ * hub read throws: a total missing a wallet would read low, and unknown is
+ * never zero. A failed Robinhood Chain read throws too, unless the caller
+ * says "hub only" (an account Berth never delivered there, see
+ * runPortfolioSnapshot); then `robinhood` is null and the total is the
+ * hub's.
  */
 export async function readAccountBalances(
   spokes: readonly string[],
   readBalances: ListingBalanceReader = readListingBalances,
   deriveHubWallet: (spokeAddress: string) => Promise<string> = hubWalletFor,
-): Promise<{ total: Record<string, number>; byWallet: WalletBalances[] }> {
+  readRobinhood: RobinhoodHoldingsReader = readRobinhoodHoldings,
+  onRobinhoodUnread: RobinhoodUnread = "throw",
+): Promise<{
+  total: Record<string, number>;
+  byWallet: WalletBalances[];
+  /** The Robinhood Chain part, by symbol; null when unread and the caller said "hub only". */
+  robinhood: Record<string, number> | null;
+  /** Each address's own Robinhood Chain part (lowercased address to holdings); empty when unread. */
+  robinhoodByOwner: Map<string, Record<string, number>>;
+}> {
   const unique = [...new Set(spokes.map((spoke) => spoke.toLowerCase()))];
-  const byWallet = await Promise.all(
-    unique.map(async (spoke) => {
-      const hubWallet = await deriveHubWallet(spoke);
-      return { spoke, hubWallet, balances: await readBalances(hubWallet) };
+  const [byWallet, robinhood] = await Promise.all([
+    Promise.all(
+      unique.map(async (spoke) => {
+        const hubWallet = await deriveHubWallet(spoke);
+        return { spoke, hubWallet, balances: await readBalances(hubWallet) };
+      }),
+    ),
+    robinhoodParts(unique, readRobinhood).catch((error: unknown) => {
+      if (onRobinhoodUnread === "throw") throw error;
+      console.warn("[portfolio] Robinhood Chain unread, hub only", safeError(error));
+      return null;
     }),
-  );
-  return { total: sumBalances(byWallet.map((wallet) => wallet.balances)), byWallet };
+  ]);
+  const total = sumBalances([...byWallet.map((wallet) => wallet.balances), robinhood?.total ?? {}]);
+  return { total, byWallet, robinhood: robinhood?.total ?? null, robinhoodByOwner: robinhood?.byOwner ?? new Map() };
 }
 
 /** Listing balances added up by symbol. */
@@ -87,6 +120,32 @@ export function sumBalances(parts: readonly Record<string, number>[]): Record<st
     for (const [symbol, quantity] of Object.entries(part)) total[symbol] = (total[symbol] ?? 0) + quantity;
   }
   return total;
+}
+
+/**
+ * Whether an account (`u`) is on Robinhood Chain: any of its orders was
+ * delivered to or sold from there (`orders.holding_chain`), or its latest
+ * stored day held something in its own wallets there (`holdings[].robinhood`,
+ * so tokens that arrived by transfer count too, rh-server m4). What decides
+ * whether a read that could not reach that chain may stand on the hub alone.
+ */
+const ON_ROBINHOOD_SQL = `(
+  exists (select 1 from orders r where r.user_id = u.id and r.holding_chain = 'robinhood')
+  or exists (
+    select 1 from portfolio_days p
+      cross join lateral jsonb_array_elements(case when jsonb_typeof(p.holdings) = 'array' then p.holdings else '[]'::jsonb end) h
+     where p.user_id = u.id
+       and p.day = (select max(q.day) from portfolio_days q where q.user_id = u.id)
+       and coalesce((h->>'robinhood')::numeric, 0) > 0
+  )
+)`;
+
+/** ON_ROBINHOOD_SQL for one account. */
+export async function hasRobinhoodOrders(userId: string): Promise<boolean> {
+  const rows = (await getSql().query(`select ${ON_ROBINHOOD_SQL} as found from users u where u.id = $1`, [userId])) as {
+    found: boolean;
+  }[];
+  return rows[0]?.found === true;
 }
 
 /** The solver's live prices, by listing symbol. Empty when the oracle is down. */
@@ -237,7 +296,16 @@ export function combineAccountDays(own: AccountDays, retired: readonly AccountDa
     for (const part of parts) {
       for (const holding of part.holdings) {
         const known = holdings.get(holding.symbol);
-        holdings.set(holding.symbol, known ? { ...known, quantity: known.quantity + holding.quantity } : { ...holding });
+        holdings.set(
+          holding.symbol,
+          known
+            ? {
+                ...known,
+                quantity: known.quantity + holding.quantity,
+                ...((known.robinhood ?? 0) + (holding.robinhood ?? 0) > 0 && { robinhood: (known.robinhood ?? 0) + (holding.robinhood ?? 0) }),
+              }
+            : { ...holding },
+        );
       }
     }
     // A snapshot only when every part is a snapshot taken that very day;
@@ -292,12 +360,14 @@ export async function savePortfolioDay(
  */
 export async function snapshotAccounts(): Promise<SnapshotAccount[]> {
   const rows = (await getSql().query(
-    `select u.id, u.wallet_address from users u
+    `select u.id, u.wallet_address,
+            ${ON_ROBINHOOD_SQL} as robinhood_orders
+       from users u
       where u.wallet_address ~ '^0x[0-9a-f]{40}$'
         and (exists (select 1 from orders o where o.user_id = u.id)
              or exists (select 1 from portfolio_days p where p.user_id = u.id))
       order by u.created_at`,
-  )) as { id: string; wallet_address: string }[];
+  )) as { id: string; wallet_address: string; robinhood_orders: boolean }[];
   // Every linked EVM address has its own hub wallet, and the day's value is
   // all of them together.
   return Promise.all(
@@ -305,12 +375,17 @@ export async function snapshotAccounts(): Promise<SnapshotAccount[]> {
       id: row.id,
       wallet: row.wallet_address,
       wallets: (await accountEvmAddresses(row.id, row.wallet_address)).all,
+      robinhoodOrders: row.robinhood_orders === true,
     })),
   );
 }
 
-/** An account the snapshot reads: its home address, and every linked EVM address (home included). */
-export type SnapshotAccount = { id: string; wallet: string; wallets?: string[] };
+/**
+ * An account the snapshot reads: its home address, every linked EVM
+ * address (home included), and whether any of its orders was delivered to
+ * Robinhood Chain (`orders.holding_chain`).
+ */
+export type SnapshotAccount = { id: string; wallet: string; wallets?: string[]; robinhoodOrders?: boolean };
 
 /**
  * Run `task` over `items`, at most `limit` at once, starting none after
@@ -382,16 +457,45 @@ export function snapshotPrice(
 }
 
 /**
+ * How long one account's Robinhood Chain read may take in the snapshot
+ * before it counts as unread: well under ACCOUNT_TIMEOUT_MS, so an account
+ * Berth never delivered there still writes its hub day in time, and one it
+ * did falls back as designed (rh-server M1).
+ */
+export const ROBINHOOD_ACCOUNT_BUDGET_MS = 4_000;
+
+/**
+ * The same for an account not on Robinhood Chain (no order there, nothing
+ * there on its latest day): it writes its hub day whatever the answer, so
+ * it waits only briefly, and a Robinhood Chain that is down never slows the
+ * run to the four second budget per account (rh-delta on 910f997).
+ */
+export const ROBINHOOD_HUB_ONLY_BUDGET_MS = 500;
+
+/**
  * Today's row for every account: balances read on chain, valued at today's
  * stored close, or the oracle's live price where the close is missing or
  * out of line with it (snapshotPrice). One account failing, or taking
  * longer than ACCOUNT_TIMEOUT_MS, costs that account its row and nothing
  * else.
+ *
+ * Robinhood Chain is asked once for every account's wallets as the run
+ * starts, many wallets to a request (lib/server/robinhood-balances), never
+ * waited on as a whole: each wallet's answer lands with its own request,
+ * and each account's own read waits for its wallets at most
+ * ROBINHOOD_ACCOUNT_BUDGET_MS, then counts as unread. An account on
+ * Robinhood Chain whose read is unread writes no row (a day missing what
+ * it holds there would read low and look like money moved); an account
+ * Berth never delivered there keeps its hub total, so a slow public RPC
+ * never costs everyone their day.
  */
 export async function runPortfolioSnapshot({
   now = new Date(),
   readBalances = readListingBalances,
   deriveHubWallet = hubWalletFor,
+  readRobinhood = readRobinhoodHoldings,
+  robinhoodBudgetMs = ROBINHOOD_ACCOUNT_BUDGET_MS,
+  robinhoodHubOnlyBudgetMs = ROBINHOOD_HUB_ONLY_BUDGET_MS,
   livePrices = liveListingPrices,
   accounts,
   accountTimeoutMs = ACCOUNT_TIMEOUT_MS,
@@ -403,6 +507,11 @@ export async function runPortfolioSnapshot({
   now?: Date;
   readBalances?: ListingBalanceReader;
   deriveHubWallet?: (spokeAddress: string) => Promise<string>;
+  readRobinhood?: RobinhoodHoldingsReader;
+  /** Each account's Robinhood Chain read, past which it is unread. */
+  robinhoodBudgetMs?: number;
+  /** The same for an account not on Robinhood Chain. */
+  robinhoodHubOnlyBudgetMs?: number;
   livePrices?: () => Promise<Record<string, number>>;
   accounts?: SnapshotAccount[];
 } = {}): Promise<SnapshotSummary> {
@@ -438,9 +547,24 @@ export async function runPortfolioSnapshot({
     ).map((row) => row.user_id),
   );
 
+  const walletsOf = (account: SnapshotAccount) =>
+    account.wallets && account.wallets.length > 0 ? account.wallets : [account.wallet];
+  // Every wallet asked at once, request by request, never awaited: the
+  // live reader remembers each wallet's answer as its request lands, and
+  // each account's read below takes it from there.
+  const allWallets = list.flatMap(walletsOf);
+  if (allWallets.length > 0) void readRobinhood(allWallets).catch(() => undefined);
+  const runRobinhood = (onRobinhood: boolean): RobinhoodHoldingsReader => (owners) =>
+    withinBudget(readRobinhood(owners), onRobinhood ? robinhoodBudgetMs : robinhoodHubOnlyBudgetMs);
+
   const snapshotOne = async (account: SnapshotAccount, expired: () => boolean) => {
-    const wallets = account.wallets && account.wallets.length > 0 ? account.wallets : [account.wallet];
-    const { total: balances } = await readAccountBalances(wallets, readBalances, deriveHubWallet);
+    const { total: balances, robinhood } = await readAccountBalances(
+      walletsOf(account),
+      readBalances,
+      deriveHubWallet,
+      runRobinhood(account.robinhoodOrders !== false),
+      account.robinhoodOrders === false ? "hub only" : "throw",
+    );
     const live = Object.keys(balances).length > 0 ? await oraclePrices() : {};
     const valued = valueHoldings(balances, (symbol) => {
       const marks = closes[symbol];
@@ -449,6 +573,13 @@ export async function runPortfolioSnapshot({
     });
     // Already counted as failed: a late answer counts and writes nothing.
     if (expired()) return;
+    // Keep the Robinhood Chain part beside each holding, so a later run
+    // knows this account holds there (rh-server m4).
+    if (valued.ok && robinhood) {
+      valued.day.holdings = valued.day.holdings.map((holding) =>
+        (robinhood[holding.symbol] ?? 0) > 0 ? { ...holding, robinhood: Math.min(robinhood[holding.symbol], holding.quantity) } : holding,
+      );
+    }
     if (!valued.ok) {
       console.warn("[portfolio] unpriced, no row", account.id, valued.unpriced.join(","));
       summary.failed += 1;
@@ -486,6 +617,23 @@ export async function runPortfolioSnapshot({
   return summary;
 }
 
+/** A Robinhood Chain read, or nothing read (every wallet unread) once it fails or outlasts `ms`. */
+async function withinBudget(
+  read: Promise<Map<string, Record<string, number>>>,
+  ms: number,
+): Promise<Map<string, Record<string, number>>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      read.catch(() => new Map<string, Record<string, number>>()),
+      new Promise<Map<string, Record<string, number>>>((resolve) => {
+        timer = setTimeout(() => resolve(new Map()), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export type RebuildSummary = {
   /** Merged accounts looked at this run. */
@@ -518,11 +666,13 @@ export async function rebuildMergedPortfolios({
   now = new Date(),
   readBalances = readListingBalances,
   deriveHubWallet = hubWalletFor,
+  readRobinhood = readRobinhoodHoldings,
   limit = REBUILD_PER_RUN,
 }: {
   now?: Date;
   readBalances?: ListingBalanceReader;
   deriveHubWallet?: (spokeAddress: string) => Promise<string>;
+  readRobinhood?: RobinhoodHoldingsReader;
   limit?: number;
 } = {}): Promise<RebuildSummary> {
   const sql = getSql();
@@ -549,7 +699,7 @@ export async function rebuildMergedPortfolios({
     }
     let balances: Record<string, number>;
     try {
-      balances = (await readAccountBalances(wallets, readBalances, deriveHubWallet)).total;
+      balances = (await readAccountBalances(wallets, readBalances, deriveHubWallet, readRobinhood)).total;
     } catch {
       summary.failed += 1;
       continue;

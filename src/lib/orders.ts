@@ -114,10 +114,12 @@ export type IntentListing = { address: string; rhHubAsset?: string };
  * The listing found is always the one with the Sonic address, which is
  * what orders.listing_address stores for both chains.
  *
- * Until P3a only buys reach Robinhood Chain: a sell paid from there
- * (srcChain 21071) is no listing, so the pour route answers "not a pour"
- * and recovery passes it by, exactly as before Robinhood Chain. Berth
- * never bought those tokens, so it pays and records nothing for them.
+ * A sell from the person's own wallet on Robinhood Chain (plan P3a, an
+ * intent from the robinhood spoke, srcChain 21071) names the hub asset as
+ * its input, as a buy delivered there names it as its output, so it is a
+ * sell of that listing and a Berth order like any other: recorded with
+ * holding_chain 'robinhood', proven by the generic spoke source rule
+ * (lib/server/pour-ownership) and found by recovery.
  */
 export function listingOfIntent<L extends IntentListing>(
   listings: readonly L[],
@@ -126,7 +128,6 @@ export function listingOfIntent<L extends IntentListing>(
 ): L | undefined {
   const ours = (direction === "buy" ? intent.outputToken : intent.inputToken).toLowerCase();
   const chain = holdingChainOf(direction, intent);
-  if (direction === "sell" && chain === "robinhood") return undefined;
   return listings.find((listing) =>
     chain === "robinhood"
       ? !!listing.rhHubAsset && listing.rhHubAsset.toLowerCase() === ours

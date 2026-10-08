@@ -7,7 +7,10 @@ import { runEvening } from "./evening";
 import { fillOrderMarks, loadOrderFacts, loadOrderLog, ordersMissingMarks } from "./order-marks";
 import { recordOrderMarks } from "./orders";
 import { robinhoodRpcFake } from "./robinhood-rpc-fake";
+import { makeRobinhoodHoldingsReader } from "./robinhood-balances";
+import { TOKEN_LISTINGS } from "@/lib/listings";
 import {
+  hasRobinhoodOrders,
   loadPortfolioDays,
   readAccountBalances,
   combineAccountDays,
@@ -17,6 +20,10 @@ import {
   snapshotAccounts,
   snapshotPrice,
 } from "./portfolio";
+
+/** Nothing on Robinhood Chain, read without a network call. */
+const nothingOnRobinhood = async (owners: readonly string[]) =>
+  new Map(owners.map((owner) => [owner.toLowerCase(), {} as Record<string, number>]));
 
 /**
  * The stored marks and portfolio days against a real Postgres with the
@@ -97,6 +104,7 @@ describe("portfolio days", () => {
     await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
 
     const summary = await runPortfolioSnapshot({
+      readRobinhood: nothingOnRobinhood,
       now: FRIDAY_EVENING,
       deriveHubWallet: async (spoke) => `hub-${spoke}`,
       readBalances: async (hub): Promise<Record<string, number>> => {
@@ -125,6 +133,7 @@ describe("portfolio days", () => {
     await writeMarks("NVDA", [{ day: "2026-09-25", close: 500 }], []);
     await writeMarks("AAPL", [{ day: "2026-09-25", close: 102 }], []);
     const summary = await runPortfolioSnapshot({
+      readRobinhood: nothingOnRobinhood,
       now: FRIDAY_EVENING,
       deriveHubWallet: async (spoke) => spoke,
       readBalances: async () => ({ NVDA: 1, AAPL: 1 }),
@@ -145,6 +154,7 @@ describe("portfolio days", () => {
     await placeOrder(user.id);
     await writeMarks("GOOGL", [{ day: "2026-09-25", close: 344 }], []);
     const summary = await runPortfolioSnapshot({
+      readRobinhood: nothingOnRobinhood,
       now: FRIDAY_EVENING,
       deriveHubWallet: async (spoke) => spoke,
       readBalances: async () => ({ GOOGL: 0.5, BABA: 2 }),
@@ -173,6 +183,7 @@ describe("portfolio days", () => {
     await placeOrder(slow.id);
     await placeOrder(quick.id);
     const summary = await runPortfolioSnapshot({
+      readRobinhood: nothingOnRobinhood,
       now: FRIDAY_EVENING,
       accountTimeoutMs: 50,
       deriveHubWallet: async (spoke) => spoke,
@@ -197,9 +208,10 @@ describe("portfolio days", () => {
       [user.id, `eip155:${wallet(91)}`],
     );
     const accounts = await snapshotAccounts();
-    expect(accounts).toEqual([{ id: user.id, wallet: wallet(1), wallets: [wallet(1), wallet(91)] }]);
+    expect(accounts).toEqual([{ id: user.id, wallet: wallet(1), wallets: [wallet(1), wallet(91)], robinhoodOrders: false }]);
     await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
     const summary = await runPortfolioSnapshot({
+      readRobinhood: nothingOnRobinhood,
       now: FRIDAY_EVENING,
       accounts,
       deriveHubWallet: async (spoke) => `hub-${spoke}`,
@@ -218,7 +230,7 @@ describe("portfolio days", () => {
       readAccountBalances([wallet(1), wallet(91)], async (hub) => {
         if (hub === wallet(91)) throw new Error("rpc down");
         return { NVDA: 1 };
-      }, async (spoke) => spoke),
+      }, async (spoke) => spoke, nothingOnRobinhood),
     ).rejects.toThrow("rpc down");
   });
 
@@ -266,6 +278,7 @@ describe("portfolio days", () => {
     const user = await account(1);
     await savePortfolioDay(user.id, "2026-09-24", { value: 10, holdings: [] }, "snapshot", "2026-09-24T22:30:00Z");
     const deps = {
+      readRobinhood: nothingOnRobinhood,
       deriveHubWallet: async (spoke: string) => spoke,
       readBalances: async () => ({}),
       livePrices: async () => ({}),
@@ -420,6 +433,7 @@ describe("the evening run", () => {
   it("starts no account after the snapshot's deadline, and says how many it left", async () => {
     for (let n = 1; n <= 3; n += 1) await placeOrder((await account(n)).id);
     const summary = await runPortfolioSnapshot({
+      readRobinhood: nothingOnRobinhood,
       now: FRIDAY_EVENING,
       deadline: Date.now() - 1,
       deriveHubWallet: async (spoke) => spoke,
@@ -458,6 +472,7 @@ describe("a merged account's history, redrawn", () => {
     await writeMarks("NVDA", [{ day: "2026-09-23", close: 100 }, { day: "2026-09-24", close: 110 }], []);
     await flag(user.id);
     const summary = await rebuildMergedPortfolios({
+      readRobinhood: nothingOnRobinhood,
       now: new Date("2026-09-24T23:00:00Z"),
       deriveHubWallet: async (spoke) => spoke,
       readBalances: async () => ({ NVDA: 1 }),
@@ -475,6 +490,7 @@ describe("a merged account's history, redrawn", () => {
     await placeOrder(user.id, "2026-09-23T15:00:00Z");
     await flag(user.id);
     const failed = await rebuildMergedPortfolios({
+      readRobinhood: nothingOnRobinhood,
       deriveHubWallet: async (spoke) => spoke,
       readBalances: async () => {
         throw new Error("rpc down");
@@ -483,6 +499,7 @@ describe("a merged account's history, redrawn", () => {
     expect(failed).toMatchObject({ accounts: 1, failed: 1 });
     expect(await flagOf(user.id)).not.toBeNull();
     const unexplained = await rebuildMergedPortfolios({
+      readRobinhood: nothingOnRobinhood,
       deriveHubWallet: async (spoke) => spoke,
       readBalances: async () => ({ NVDA: 5 }),
     });
@@ -594,12 +611,169 @@ describe("a merged account's history, read", () => {
     // the day after the last.
     await sql.query(`update portfolio_days set created_at = day + interval '22 hours 30 minutes'`);
     await sql.query(`update users set retired_at = '2026-09-24T12:00:00Z' where id = $1`, [absorbed.id]);
-    const summary = await rebuildMergedPortfolios({ deriveHubWallet: async (spoke) => spoke, readBalances: async () => ({ NVDA: 7 }) });
+    const summary = await rebuildMergedPortfolios({ readRobinhood: nothingOnRobinhood, deriveHubWallet: async (spoke) => spoke, readBalances: async () => ({ NVDA: 7 }) });
     expect(summary).toMatchObject({ unexplained: 1, written: 0 });
     expect(((await sql.query(`select count(*)::int as n from portfolio_days`)) as { n: number }[])[0].n).toBe(3);
     expect((await loadPortfolioDays(survivor.id)).map((day) => [day.day, day.value])).toEqual([
       ["2026-09-22", 150],
       ["2026-09-23", 160],
     ]);
+  });
+});
+
+describe("Robinhood Chain in the portfolio", () => {
+  const onRobinhood = (byOwner: Record<string, Record<string, number>>, asked: string[][] = []) =>
+    async (owners: readonly string[]) => {
+      asked.push([...owners]);
+      return new Map(
+        owners.flatMap((owner) => {
+          const holdings = byOwner[owner.toLowerCase()];
+          return holdings ? [[owner.toLowerCase(), holdings] as const] : [];
+        }),
+      );
+    };
+  const deliveredThere = (orderId: string) =>
+    sql.query(`update orders set holding_chain = 'robinhood' where id = $1`, [orderId]);
+
+  it("adds what the account's wallets hold on Robinhood Chain to the hub, every wallet asked in one request for the whole run", async () => {
+    const holder = await account(1);
+    const other = await account(2);
+    await deliveredThere(await placeOrder(holder.id));
+    await placeOrder(other.id);
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    // The live reader's shape: remembered per wallet, over a chain read that counts its requests.
+    const nvda = TOKEN_LISTINGS.find((listing) => listing.symbol === "NVDA")!;
+    const requests: number[] = [];
+    const readRobinhood = makeRobinhoodHoldingsReader(async (queries) => {
+      requests.push(queries.length);
+      return queries.map((query) =>
+        query.holder === wallet(1) && query.token.toLowerCase() === nvda.rhAddress!.toLowerCase() ? 15n * 10n ** 17n : 0n,
+      );
+    });
+    const summary = await runPortfolioSnapshot({
+      now: FRIDAY_EVENING,
+      readRobinhood,
+      deriveHubWallet: async (spoke) => `hub-${spoke}`,
+      readBalances: async (hub): Promise<Record<string, number>> => (hub === `hub-${wallet(1)}` ? { NVDA: 1 } : { NVDA: 2 }),
+      livePrices: async () => ({}),
+    });
+    expect(summary).toMatchObject({ written: 2, failed: 0 });
+    const [mine] = await loadPortfolioDays(holder.id);
+    expect(mine.holdings[0]).toMatchObject({ symbol: "NVDA", quantity: 2.5, price: 200, source: "mark" });
+    expect(mine.value).toBeCloseTo(500, 10);
+    // One request for both wallets; each account answered from it.
+    expect(requests).toHaveLength(1);
+  });
+
+  it("with a Robinhood Chain that does not answer in time, still writes every hub-only day and lets the Robinhood account fall back (rh-server M1)", async () => {
+    const delivered = await account(1);
+    const hubOnly = [await account(2), await account(3), await account(4)];
+    await deliveredThere(await placeOrder(delivered.id));
+    for (const user of hubOnly) await placeOrder(user.id);
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    // A chain read that takes far longer than any account may wait.
+    const slow = makeRobinhoodHoldingsReader(async (queries) => {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      return queries.map(() => 0n);
+    });
+    const started = Date.now();
+    const summary = await runPortfolioSnapshot({
+      now: FRIDAY_EVENING,
+      readRobinhood: slow,
+      robinhoodBudgetMs: 400,
+      robinhoodHubOnlyBudgetMs: 50,
+      accountTimeoutMs: 1_000,
+      deriveHubWallet: async (spoke) => spoke,
+      readBalances: async () => ({ NVDA: 1 }),
+      livePrices: async () => ({}),
+    });
+    // Three hub-only accounts wait 50 ms each, not the Robinhood account's 400.
+    expect(Date.now() - started).toBeLessThan(2_500);
+    expect(summary).toMatchObject({ accounts: 4, written: 3, failed: 1 });
+    expect(await loadPortfolioDays(delivered.id)).toEqual([]);
+    for (const user of hubOnly) expect((await loadPortfolioDays(user.id)).map((day) => day.value)).toEqual([200]);
+  });
+
+  it("writes no row for an account delivered there whose Robinhood Chain read failed, and the hub's for one never delivered there", async () => {
+    const delivered = await account(1);
+    const hubOnly = await account(2);
+    await deliveredThere(await placeOrder(delivered.id));
+    await placeOrder(hubOnly.id);
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    const summary = await runPortfolioSnapshot({
+      now: FRIDAY_EVENING,
+      readRobinhood: onRobinhood({}),
+      deriveHubWallet: async (spoke) => spoke,
+      readBalances: async () => ({ NVDA: 1 }),
+      livePrices: async () => ({}),
+    });
+    expect(summary).toMatchObject({ written: 1, failed: 1 });
+    expect(await loadPortfolioDays(delivered.id)).toEqual([]);
+    expect((await loadPortfolioDays(hubOnly.id)).map((day) => day.value)).toEqual([200]);
+  });
+
+  it("reads each wallet's own Robinhood Chain part beside the hub, and throws when it is unknown", async () => {
+    const read = await readAccountBalances(
+      [wallet(1), wallet(9)],
+      async () => ({ NVDA: 1 }),
+      async (spoke) => spoke,
+      onRobinhood({ [wallet(1)]: { NVDA: 0.5 }, [wallet(9)]: { TSLA: 2 } }),
+    );
+    expect(read.total).toEqual({ NVDA: 2.5, TSLA: 2 });
+    expect(read.robinhood).toEqual({ NVDA: 0.5, TSLA: 2 });
+    await expect(
+      readAccountBalances([wallet(1)], async () => ({}), async (spoke) => spoke, onRobinhood({})),
+    ).rejects.toThrow("unread");
+    const hubOnly = await readAccountBalances([wallet(1)], async () => ({ NVDA: 1 }), async (spoke) => spoke, onRobinhood({}), "hub only");
+    expect(hubOnly).toMatchObject({ total: { NVDA: 1 }, robinhood: null });
+  });
+
+  it("keeps the Robinhood Chain part on the day, and treats an account holding there by transfer as on Robinhood Chain (rh-server m4)", async () => {
+    const transferred = await account(1);
+    await placeOrder(transferred.id);
+    await writeMarks("NVDA", [{ day: "2026-09-24", close: 200 }], []);
+    // Thursday: read, with one NVDA in the wallet on Robinhood Chain, though no Berth order went there.
+    expect(
+      await runPortfolioSnapshot({
+        now: new Date("2026-09-24T23:05:00Z"),
+        readRobinhood: onRobinhood({ [wallet(1)]: { NVDA: 1 } }),
+        deriveHubWallet: async (spoke) => spoke,
+        readBalances: async () => ({ NVDA: 1 }),
+        livePrices: async () => ({}),
+      }),
+    ).toMatchObject({ written: 1 });
+    expect((await loadPortfolioDays(transferred.id))[0].holdings).toEqual([{ symbol: "NVDA", quantity: 2, price: 200, source: "mark", robinhood: 1 }]);
+    expect(await hasRobinhoodOrders(transferred.id)).toBe(true);
+    expect((await snapshotAccounts())[0].robinhoodOrders).toBe(true);
+    // Friday: Robinhood Chain does not answer. No low day that would look like a sale.
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    expect(
+      await runPortfolioSnapshot({
+        now: FRIDAY_EVENING,
+        readRobinhood: onRobinhood({}),
+        deriveHubWallet: async (spoke) => spoke,
+        readBalances: async () => ({ NVDA: 1 }),
+        livePrices: async () => ({}),
+      }),
+    ).toMatchObject({ written: 0, failed: 1 });
+    expect((await loadPortfolioDays(transferred.id)).map((day) => day.day)).toEqual(["2026-09-24"]);
+  });
+
+  it("knows whether one account has an order there", async () => {
+    const delivered = await account(1);
+    const hubOnly = await account(2);
+    await deliveredThere(await placeOrder(delivered.id));
+    await placeOrder(hubOnly.id);
+    expect(await hasRobinhoodOrders(delivered.id)).toBe(true);
+    expect(await hasRobinhoodOrders(hubOnly.id)).toBe(false);
+  });
+
+  it("knows which accounts were ever delivered there", async () => {
+    const delivered = await account(1);
+    const hubOnly = await account(2);
+    await deliveredThere(await placeOrder(delivered.id));
+    await placeOrder(hubOnly.id);
+    const flags = Object.fromEntries((await snapshotAccounts()).map((entry) => [entry.id, entry.robinhoodOrders]));
+    expect(flags).toEqual({ [delivered.id]: true, [hubOnly.id]: false });
   });
 });

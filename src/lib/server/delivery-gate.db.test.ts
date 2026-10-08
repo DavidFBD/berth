@@ -33,6 +33,7 @@ const q = <T = Record<string, unknown>>(text: string, params: unknown[] = []) =>
 const account = async (wallet: string) => (await q<{ id: string }>(`insert into users (wallet_address) values ($1) returning id`, [wallet]))[0].id;
 const BUYER = "0x1111111111111111111111111111111111111111";
 const rhBuy = { srcChain: 30n, dstChain: 21071n, dstAddress: BUYER } as unknown as Intent;
+const rhSell = { srcChain: 21071n, dstChain: 30n, dstAddress: BUYER } as unknown as Intent;
 const hubBuy = { srcChain: 30n, dstChain: 146n, dstAddress: "0x2222222222222222222222222222222222222222" } as unknown as Intent;
 const SWITCHED = "00000000-0000-4000-8000-000000000001";
 const inputs = { userId: SWITCHED, usersWallet: BUYER, signer: BUYER, availability: undefined, country: "NL" };
@@ -42,7 +43,11 @@ const answering = (check: DestinationCheck) => vi.fn<typeof recheckDestination>(
 const claimOf = async (intentTx: string) =>
   (await q(`select delivery_ok, delivery_signer, delivery_place_ok, settled_at is not null as settled, outcome from pour_claims where intent_tx = $1`, [intentTx]))[0];
 
-beforeEach(() => vi.stubEnv("ROBINHOOD_DELIVERY_USERS", SWITCHED));
+beforeEach(() => {
+  // Switched on for every account, nothing denied: the other checks are what these cases test.
+  vi.stubEnv("ROBINHOOD_DELIVERY", "on");
+  vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
+});
 afterEach(() => vi.unstubAllEnvs());
 
 describe("gateRobinhoodBuy (the pour route)", () => {
@@ -54,8 +59,8 @@ describe("gateRobinhoodBuy (the pour route)", () => {
     expect(await reason(tx(1))).toBeUndefined();
   });
 
-  it("refuses a Robinhood Chain buy from an account not switched on, from the place alone", async () => {
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
+  it("refuses a Robinhood Chain buy from an account the switch leaves off, from the place alone", async () => {
+    vi.stubEnv("ROBINHOOD_DELIVERY", "off");
     const recheck = answering({ verdict: "refused", reason: "not_listed" });
     expect(await gateRobinhoodBuy({ intentTx: tx(2), direction: "buy", intent: rhBuy, inputs, recheck })).toEqual({
       outcome: "refused",
@@ -99,7 +104,6 @@ describe("gateRobinhoodBuy (the pour route)", () => {
   it("keeps a claim's decision once written, and an open claim's first facts", async () => {
     const user = await account("0x3434343434343434343434343434343434343434");
     const mine = { ...inputs, userId: user };
-    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", user);
     await savePourClaim(user, tx(7), "buy", null, "NVDA", { delivery: { ok: true, signer: BUYER, placeOk: true } });
     const recheck = answering({ verdict: "refused", reason: "other_address" });
     expect((await gateRobinhoodBuy({ intentTx: tx(7), direction: "buy", intent: rhBuy, inputs: mine, recheck })).outcome).toBe("allowed");
@@ -146,6 +150,8 @@ describe("a Robinhood Chain claim in the evening pass", () => {
     prove: async () => ({ ok: true, payer: { family: "evm", address: BUYER } }),
     record,
     settleRobinhood: (claim, intent) => settleRobinhoodClaim(claim, intent, { recheck }),
+    // Arrival is its own question (lib/server/robinhood-xp, below): arrived here.
+    pourXp: async () => "pay",
   });
   const pass = (recheck?: typeof recheckDestination) => settlePourClaims({ verdictOf: async () => "filled", pay: (claim) => payClaim(claim, deps(recheck)) });
   const xpFor = async (intentTx: string) => (await q<{ n: number }>(`select count(*)::int as n from xp_events where ref = $1`, [intentTx]))[0].n;
@@ -241,6 +247,44 @@ describe("a Robinhood Chain claim in the evening pass", () => {
     expect(await q(`select quantity::text as quantity from orders where intent_tx = $1`, [tx(19)])).toEqual([{ quantity: "7" }]);
     expect(await claimOf(tx(19))).toMatchObject({ outcome: "paid" });
     expect(await xpFor(tx(19))).toBe(1);
+  });
+
+  it("waits, unpaid, while the delivery is not in the wallet, pays once it is, and never pays one still missing when the claim's life ends (D1)", async () => {
+    await settleAll();
+    const user = await account("0x4545454545454545454545454545454545454545");
+    await savePourClaim(user, tx(30), "buy", null, "NVDA", { delivery: { ok: true, signer: BUYER, placeOk: true } });
+    let arrived: "wait" | "pay" = "wait";
+    const gated = (): ClaimPayDeps => ({ ...deps(), pourXp: async () => arrived });
+    const run = () => settlePourClaims({ verdictOf: async () => "filled", pay: (claim) => payClaim(claim, gated()) });
+    expect(await run()).toMatchObject({ paid: 0, recorded: 0 });
+    expect(await claimOf(tx(30))).toMatchObject({ settled: false });
+    expect(await xpFor(tx(30))).toBe(0);
+    arrived = "pay";
+    expect(await run()).toMatchObject({ paid: 1 });
+    expect(await xpFor(tx(30))).toBe(1);
+
+    await savePourClaim(user, tx(31), "buy", null, "NVDA", { delivery: { ok: true, signer: BUYER, placeOk: true } });
+    arrived = "wait";
+    await age(tx(31), 31);
+    expect(await run()).toMatchObject({ paid: 0, recorded: 1 });
+    expect(await claimOf(tx(31))).toMatchObject({ outcome: "recorded_no_xp" });
+    expect(await xpFor(tx(31))).toBe(0);
+    // Never arrived: it counts for no later sell either.
+    expect(await reason(tx(31))).toBe("delivery_refused");
+  });
+
+  it("records a sell from Robinhood Chain that Berth's buys there do not cover, and pays it nothing (D2)", async () => {
+    await settleAll();
+    const user = await account("0x4646464646464646464646464646464646464646");
+    await savePourClaim(user, tx(32), "sell", null, "NVDA");
+    const run = () =>
+      settlePourClaims({
+        verdictOf: async () => "filled",
+        pay: (claim) => payClaim(claim, { ...deps(), readIntent: async () => rhSell, paySell: async () => "never" }),
+      });
+    expect(await run()).toMatchObject({ paid: 0, recorded: 1 });
+    expect(await claimOf(tx(32))).toMatchObject({ outcome: "recorded_no_xp" });
+    expect(await xpFor(tx(32))).toBe(0);
   });
 
   it("settleRobinhoodClaim leaves a paid one alone", async () => {

@@ -192,6 +192,62 @@ export type Copy = {
     dismiss: string;
   };
   /**
+   * Robinhood Chain delivery (plan P1a, P2b), for accounts on the switch
+   * only: where a holding sits, the buy's arrival line and its progress.
+   * Only a holding delivered there is "in your own wallet"; what sits in
+   * the Berth account keeps its own wording.
+   */
+  rhChain: {
+    /** Under a holding wholly on Robinhood Chain. */
+    holdingInWallet: string;
+    /** What you own's (i), once anything is held on Robinhood Chain: holdingsHint, saying a sell spends one place at a time. */
+    holdingsHint: string;
+    /** The first stock's line when it was delivered to Robinhood Chain: firstLook.firstStockLine without the Berth account. */
+    firstStockLine: (name: string) => string;
+    /** Under a holding in both places: the two quantities, account first. */
+    holdingSplit: (inAccount: string, inWallet: string) => string;
+    /** The Robinhood Chain wallet did not answer: the list is the account's alone. */
+    walletUnread: string;
+    /** The buy sheet's line under its title, for such a buy: buySub without "It lands in your account". */
+    buySub: string;
+    /** The buy sheet, under the quote: where the token goes. */
+    arrival: string;
+    /** The same, naming the wallet by its shortened address (rh-ux-sec M3). */
+    arrivalTo: (shortAddress: string) => string;
+    /** The fill toast's line for such a buy. */
+    filledToastBody: string;
+    /** The filled screen while the token travels from the fill to the wallet. */
+    onItsWayBody: (name: string) => string;
+    /** The filled screen once it has arrived. */
+    arrivedBody: (name: string) => string;
+    /** The two steps of the delivery, as the filled screen lists them. */
+    stepFilled: string;
+    stepArriving: string;
+    stepArrived: string;
+    /** No arrival seen in the wait: honest, calm, and true either way. */
+    arrivalSlow: string;
+    /** The link to the delivery, or to the token, on Blockscout. */
+    seeDelivery: string;
+    seeToken: string;
+    /** The order stopped because where it would arrive changed after it was shown. */
+    destinationChanged: string;
+    /** The sell sheet's source choice (plan P3a): the tag on a wallet on Robinhood Chain, and on the Berth account beside it. */
+    sellFromWallet: string;
+    sellFromAccount: string;
+    /** The sell sheet's signing line for a sell from the wallet on Robinhood Chain: sellSignOnce's sibling, with its fee in ETH there. */
+    sellSignWallet: string;
+    /** The same where Berth covers the fee there (sponsored). */
+    sellSignWalletSponsored: string;
+    /** The buy sheet, under the arrival line, for a wallet that pays its own fee there: a later sell costs ETH on Robinhood Chain. */
+    sellFeeLater: string;
+    /** The sell sheet's "You hold" when a holding is in both places: the chosen place named (rh-ux-sec m2). */
+    youHoldInAccount: (amount: string) => string;
+    youHoldInWallet: (amount: string) => string;
+    /** The account total when the wallet on Robinhood Chain could not be read: a short mark beside it, and the (i)'s line. */
+    totalUnreadShort: string;
+    totalUnread: string;
+  };
+  /**
    * The signed-in home's one next step per state (components/home-next-step):
    * add money, buy the first stock, or buy more; and the short list of what
    * sits behind a tap (components/home-more).
@@ -2811,6 +2867,40 @@ export const COPY: Copy = {
       `${name} is in your account as a token that tracks its share price. It is yours, in an account your wallet controls, and you can sell it any day under What you own.`,
     dismiss: "Got it",
   },
+  rhChain: {
+    holdingInWallet: "In your own wallet on Robinhood Chain",
+    holdingsHint:
+      "Held in your Berth account or in your own wallet on Robinhood Chain. A sell takes from one of them at a time: your Berth account with one signature, or your own wallet with a signature on Robinhood Chain, which costs a small network fee there in ETH. Until you sell, what is in your wallet stays there, yours to keep or move.",
+    firstStockLine: (name) =>
+      `${name} is in your own wallet on Robinhood Chain, as a Robinhood token that tracks its share price. It is yours, held by your own wallet's keys, and you can sell it any day under What you own.`,
+    holdingSplit: (inAccount, inWallet) => `${inAccount} in your Berth account, ${inWallet} in your own wallet on Robinhood Chain`,
+    walletUnread: "Your wallet on Robinhood Chain could not be read just now, so what is there is not shown. Berth will try again shortly.",
+    buySub: "Pay with what you hold, from more than 20 networks.",
+    arrival: "Arrives in your own wallet on Robinhood Chain.",
+    arrivalTo: (shortAddress) => `Arrives in your own wallet ${shortAddress} on Robinhood Chain.`,
+    filledToastBody: "It is on its way to your own wallet on Robinhood Chain.",
+    onItsWayBody: (name) => `${name} is on its way to your own wallet on Robinhood Chain.`,
+    arrivedBody: (name) => `${name} is in your own wallet on Robinhood Chain.`,
+    stepFilled: "Bought on Sonic",
+    stepArriving: "Arriving on Robinhood Chain",
+    stepArrived: "In your wallet on Robinhood Chain",
+    arrivalSlow: "This is taking longer than usual. You can close this, the delivery carries on without this page.",
+    seeDelivery: "See the delivery on Robinhood Chain",
+    seeToken: "See the token on Robinhood Chain",
+    destinationChanged: "Where this buy would arrive changed after it was shown. Nothing was sent. Check the order and buy again.",
+    sellFromWallet: "Robinhood Chain",
+    sellFromAccount: "Berth account",
+    sellSignWallet:
+      "You sign on Robinhood Chain, from the wallet that holds it, and pay a small network fee there in ETH. The first sell of a stock from there also asks you to approve it.",
+    sellSignWalletSponsored:
+      "You sign on Robinhood Chain, from the wallet that holds it. The first sell of a stock from there also asks you to approve it.",
+    sellFeeLater: "Selling it later from your wallet there costs a small network fee in ETH on Robinhood Chain.",
+    youHoldInAccount: (amount) => `In your Berth account: ${amount}`,
+    youHoldInWallet: (amount) => `In your own wallet on Robinhood Chain: ${amount}`,
+    totalUnreadShort: "Without Robinhood Chain",
+    totalUnread:
+      "Your wallet on Robinhood Chain could not be read just now, so this total leaves out what is there. Berth will try again shortly.",
+  },
   calmHome: {
     addTitle: "Add money to begin",
     addLine: "Pay by card, Apple Pay or Google Pay, or send crypto you already hold. Then choose a stock.",
@@ -3419,7 +3509,7 @@ export const COPY: Copy = {
   infoSub: "What an order does, what you own, and what it costs.",
   infoHowTitle: "One signature, any network",
   infoHowBody:
-    "You pay with what you hold, on the network where you hold it, and sign once. Independent solvers fill the order through SODAX and deliver the stock token to your account. Selling works the same way in reverse. Orders fill any day, weekends included. Berth never holds your funds.",
+    "You pay with what you hold, on the network where you hold it, and sign once. Independent solvers fill the order through SODAX and deliver the stock token to your Berth account or, depending on your country and your wallet, to your own wallet on Robinhood Chain. Selling works the same way in reverse. Orders fill any day, weekends included. Berth never holds your funds.",
   infoOwnTitle: "What you own",
   infoOwnBody:
     "A Robinhood Stock Token is a debt security issued by Robinhood Assets in Jersey that tracks the price of a share and its dividends. It is not the share itself: no voting rights, and the issuer's credit risk sits with you. Cash you park is a token tracking a fund of short US Treasury bills.",
@@ -4049,7 +4139,7 @@ export const COPY: Copy = {
           "Your account. The avatar you pick, your XP and rank, the rewards you earned and when, your invite code, who invited you, if anyone, and which version of the terms you accepted and when.",
           "Your orders. For each order: buy or sell, which listing, the quantity, what you paid with and on which network, the fee, the value in dollars, the transaction identifiers, the delivery address, and the time. We also keep the price of each comparison fund at the minute of the order, so your results can be drawn beside it.",
           "Recurring buys you set before Berth retired them on 4 October 2026. For each plan: the listing, the dollar amount, weekly or monthly and on which day, your browser's time zone, and, if you chose it, how far under the price to wait. For each time a plan came due: when it was due, whether you opened it, signed it or let it pass, the order that answered it, and whether its reminder went out. Berth no longer reads or adds to this record.",
-          "Your daily value. Once a day, after the New York close, we read your balances from the blockchain and keep that day's holdings and value, so your history can be drawn.",
+          "Your daily value. Once a day, after the New York close, we read your balances from the blockchain and keep that day's holdings and value, so your history can be drawn. To show your account and its history, our servers also read the public balances of the EVM wallets linked to your account on Robinhood Chain, through public RPC providers. They read them again when your AI asks about your holdings and when we check what you still hold for XP.",
           "Invite links. When someone opens an invite link, we count the visit against the invite code. We do not record who opened it.",
           "Campaigns. If you open your account through a campaign's link: which campaign, when your account was opened and set up (a verified email, a username and a wallet), whether you opened Berth signed in on the days the rules look at, and the transaction that paid you. To prevent abuse we compare each claim with other accounts and with the other claims in the same campaign: whether a wallet or an email address, or a variant of one, is shared, whether two claims share an email domain that is not a public mail provider, whether accounts signed up within minutes of each other, and whether a payout address is shared. A reviewer at Berth sees the claim with your email address and wallets, and records the decision and any note about it. We use all of this to pay each reward once, to the right person, and to refuse abuse.",
           "Your AI. If you connect Claude, ChatGPT, Grok or another AI, we keep which app you approved, what it may do, and when you approved, used and disconnected it. Its access tokens are stored only in hashed form. For each request it makes, we log which tool it used, whether it worked and how long it took. We never store what your AI asked or what Berth answered.",
@@ -4110,7 +4200,7 @@ export const COPY: Copy = {
         id: "onchain",
         heading: "The blockchain is public",
         body: [
-          "Orders settle on public blockchains. Your addresses, balances and transactions, including your Berth account's address on the Sonic network and what it holds, can be seen by anyone, permanently. No one controls that record, and no one, including us, can change or delete it.",
+          "Orders settle on public blockchains. Your addresses, balances and transactions, including your Berth account's address on the Sonic network and what it holds, and the address, holdings and history of your own wallet on Robinhood Chain, can be seen by anyone, permanently. No one controls that record, and no one, including us, can change or delete it.",
         ],
       },
       {
@@ -4182,7 +4272,7 @@ export const COPY: Copy = {
           "TypeSafe, which provides a news-relevance model that helps choose the one line shown at the top of the app, such as news about something you own. It receives headlines, and which listings your account holds and whether it has cash to spend, never your name, email or address.",
           "SODAX, the protocol whose service, solvers and relayers price, route and fill your orders. They receive the addresses, amounts and transactions needed to fill them.",
           "Stripe and MoonPay, if you add money by card. You pay them in their own window, under their own terms and privacy policies: they receive your payment details and anything they ask for to check who you are, and Privy passes them the address your money goes to. Berth never sees your card details.",
-          "Blockchain networks and the companies that run their nodes, such as PublicNode, dRPC and the networks' own public endpoints. Your browser reads balances and sends transactions through them, so they see your IP address and the addresses it asks about. A Bitcoin order links to mempool.space so you can follow it there.",
+          "Blockchain networks and the companies that run their nodes, such as PublicNode, dRPC and the networks' own public endpoints. Your browser reads balances and sends transactions through them, so they see your IP address and the addresses it asks about. Our servers also read the balances of your linked EVM wallets on Robinhood Chain through them, so they see those addresses together with our servers' IP address. A Bitcoin order links to mempool.space so you can follow it there.",
           "WalletConnect, if you connect a wallet through it. It relays the connection between Berth and your wallet.",
           "Price and news sources: DefiLlama, the Federal Reserve Bank of St. Louis, Frankfurter, Nasdaq and X. They supply prices, rates and the market feed and receive no personal data from us. Posts from X show their authors' pictures, which your browser loads from X.",
         ],
@@ -4294,8 +4384,9 @@ export const COPY: Copy = {
       {
         id: "what-changed",
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
-        body: [],
+        body: ["The first change below is new on 8 October 2026. The others came on 6 October 2026."],
         list: [
+          "Stock tokens can now be delivered to your own wallet on Robinhood Chain, where what it holds is public, and our servers read the public balances of your linked EVM wallets there through public RPC providers.",
           "The legal basis for each use of your data is now listed use by use.",
           "A new section on international transfers.",
           "The services that receive data now include the companies that run network nodes, and WalletConnect, and are grouped by whether they act for us or on their own.",
@@ -4369,7 +4460,8 @@ export const COPY: Copy = {
         list: [
           "If you sign in with a wallet you already have, its keys stay in that wallet. Berth never sees them.",
           "If you sign in with email, Privy, our wallet provider, creates wallets for you and secures their keys in its own systems so that you can use them when signed in. Berth cannot see or use those keys and has not been given any permission to sign for you. You can export the keys at any time under Settings, and we suggest you do, so that you keep access whatever happens to Privy or to Berth.",
-          "The stocks and funds you buy are held at your Berth account: an address on the Sonic network, a wallet contract of the SODAX protocol tied to your own wallet and designed to move funds only on instructions you sign. Reaching it depends on SODAX's contracts and relay working.",
+          "Depending on your country and your wallet, the stocks and funds you buy are held in one of two places. The first is your Berth account: an address on the Sonic network, the SODAX hub, a wallet contract of the SODAX protocol tied to your own wallet and designed to move funds only on instructions you sign. Reaching it depends on SODAX's contracts and relay working.",
+          "The second is your own EVM wallet on Robinhood Chain, where a buy is delivered as the issuer's own token and only your keys control it. Berth and SODAX cannot move or recover tokens there. Selling them from there is signed in that wallet and may cost a small network fee in ETH on Robinhood Chain.",
           "If you pay with Bitcoin, you sign the payment in your own Bitcoin wallet, and it goes to the SODAX protocol's Bitcoin service to be filled. Berth never receives it.",
           "Berth's servers hold no key that can sign for you or move your funds, and no one at Berth can change your balances.",
           "If you lose your keys, your sign in or access to your email, or someone else gets them, we cannot recover your wallet or your tokens, or reverse what was done with them.",
@@ -4385,6 +4477,7 @@ export const COPY: Copy = {
           "A token is not the share or the fund itself. Holding one does not make you a shareholder, and gives you no vote, no claim on the company and no right that the issuer's own terms do not grant.",
           "Any right you have, to a dividend, a redemption or anything else, is against the issuer, under its terms, only if and as those terms allow. Berth is not the issuer and makes no promise for it.",
           "On Sonic, the token at your Berth account can be a representation, made through the SODAX protocol, of the issuer's token on another network. Its value then depends on SODAX's contracts as well as on the issuer.",
+          "On Robinhood Chain, the token in your own wallet is the issuer's own token. The issuer's terms, including where it offers the token and the countries where it is restricted, apply to it directly.",
           "If the issuer fails, stops, freezes, redeems or changes a token, or a protocol it relies on fails, the token can lose some or all of its value, or stop being tradable.",
           "Whether you may buy or hold a token where you live, and whether its issuer offers it there, is for you to check. Issuers do not offer their tokens everywhere.",
           "Words on Berth such as stock, fund and what you own are short for these tokens. Company names and marks are their owners', shown only to say which share a token tracks. The companies do not endorse Berth.",
@@ -4510,7 +4603,7 @@ export const COPY: Copy = {
         id: "availability",
         heading: "Availability",
         body: [
-          "We work to keep Berth running, but it may at times be unavailable, slow or wrong, and we may change, pause or stop parts of it, or all of it. Your tokens stay in your Berth account, tied to your own wallet's keys, whatever happens to Berth. If you signed in with email, you can export those keys from Settings, and we suggest you keep a copy. If we stop Berth, we will say so in advance where we can.",
+          "We work to keep Berth running, but it may at times be unavailable, slow or wrong, and we may change, pause or stop parts of it, or all of it. Your tokens stay in your Berth account, tied to your own wallet's keys, whatever happens to Berth. Tokens delivered to your own wallet on Robinhood Chain stay in that wallet whatever happens to Berth, and you can sell or move them there without Berth. A sell through Berth from there needs SODAX and a little ETH on Robinhood Chain. If you signed in with email, you can export those keys from Settings, and we suggest you keep a copy. If we stop Berth, we will say so in advance where we can.",
         ],
       },
       {
@@ -4528,7 +4621,7 @@ export const COPY: Copy = {
         body: [],
         list: [
           "We are responsible for loss you suffer that is a foreseeable result of our breaking these terms or of our failing to take reasonable care. Loss is foreseeable if it was obvious it would happen, or if you and we both knew it might when you started using Berth.",
-          "We are not responsible for loss we did not cause, including loss from market prices moving, from your own decisions, from an order you signed, from a token or its issuer, from SODAX, a solver, a network, a bridge, a wallet or another service run by others, or from someone else using your keys or your sign in.",
+          "We are not responsible for loss we did not cause, including loss from market prices moving, from your own decisions, from an order you signed, from a token or its issuer, from SODAX, a solver, a network such as Robinhood Chain, a bridge, a relay, a wallet or another service run by others, including a delivery to your wallet on Robinhood Chain that stalls on the way, or from someone else using your keys or your sign in.",
           "To the extent the law allows, we are not responsible for loss of profit, business or opportunity, or for loss that is not foreseeable.",
           "To the extent the law allows, our total liability to you for all claims about Berth in any twelve months is limited to the fees you paid Berth in those twelve months, or 100 euros if that is more.",
           "Nothing in these terms limits or excludes liability for death or personal injury caused by negligence, for fraud, for harm caused on purpose or by gross negligence, or any other liability the law does not allow to be limited or excluded. Nothing in them affects your rights as a consumer under the law where you live.",
@@ -4581,8 +4674,9 @@ export const COPY: Copy = {
       {
         id: "what-changed",
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
-        body: [],
+        body: ["The first change below is new on 8 October 2026. The others came on 6 October 2026."],
         list: [
+          "Depending on your country and your wallet, a buy can now be delivered as the issuer's own token to your own wallet on Robinhood Chain, which only your keys control, instead of to your Berth account.",
           "Berth now says plainly that it is not a broker, an exchange, an investment firm or an adviser, and does not check whether an order suits you.",
           "New sections on who holds your keys and tokens, and on what the stock tokens are and are not.",
           "More risks are named: prices when the US market is closed, smart contracts, networks and relays, lost keys and tax.",

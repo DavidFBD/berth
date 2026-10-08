@@ -36,6 +36,7 @@ import { VaultPositions } from "@/components/vaults";
 import { DepositDrawer, WithdrawDrawer } from "@/components/flow";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useAccountHoldings } from "@/hooks/use-account-holdings";
 import { FirstStockCard } from "@/components/first-look";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { AddMoneyStep, BuyMoreButton, FirstBuyStep, NextStepSkeleton } from "@/components/home-next-step";
@@ -48,6 +49,10 @@ import { useAccountWallets, useCloseFirstStock, useFirstStock, useLastKnown, use
 import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-account-wallets";
 import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
+import { ROBINHOOD_CHAIN_KEY, defaultSellSource, hubSellSources, robinhoodSellSources, type SellSource } from "@/lib/robinhood-sell";
+import { useRobinhoodGasReady, useRobinhoodSellBalances } from "@/hooks/use-robinhood-sell";
+import { useDelivery } from "@/hooks/use-delivery";
+import { parseUnits } from "viem";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -184,6 +189,10 @@ function SignedInHome() {
   // something, its total and holdings lead and Buy follows.
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
+  // Both chains decide the step and the first stock (plan P1a): an
+  // account's first buy may sit in its own wallet on Robinhood Chain. A
+  // draft sell still reads `holdings`, the hub, which is all a sell spends.
+  const ownedHoldings = useAccountHoldings(account, holdings);
   const funds = useEmbeddedHoldings();
   // The answer is remembered per account, so a returning holder's page
   // opens in its settled order instead of reordering when holdings land.
@@ -212,8 +221,8 @@ function SignedInHome() {
   // stand between it and certainty) is shown when nothing is remembered,
   // and never remembered itself.
   const live = homeStage({
-    holdingsSettled: holdings.settled && !linkedWallets.isLoading,
-    ownsStock: holdings.held.some((holding) => holding.listing.kind === "stock"),
+    holdingsSettled: ownedHoldings.settled && !linkedWallets.isLoading,
+    ownsStock: ownedHoldings.held.some((holding) => holding.listing.kind === "stock"),
     funds: {
       connected: funds.connected,
       unaddressedChains: funds.unaddressedChains.length,
@@ -258,8 +267,14 @@ function SignedInHome() {
   const [firstStockClosed, rememberFirstStockClosed] = useStoredChoice(
     accountKey ? `berth.first-stock-closed.${accountKey.toLowerCase()}` : null,
   );
-  const stocksHeld = holdings.held.filter((holding) => holding.listing.kind === "stock");
-  const oneStock = proven === "owns" && holdings.settled && stocksHeld.length === 1;
+  const stocksHeld = ownedHoldings.held.filter((holding) => holding.listing.kind === "stock");
+  // The first stock's card says where it is: the Berth account, or, for a
+  // stock delivered to Robinhood Chain, the person's own wallet there. A
+  // first stock split between the two has no one true line, so no card.
+  const firstHeld = stocksHeld.length === 1 ? stocksHeld[0] : undefined;
+  const firstInWallet = firstHeld !== undefined && firstHeld.robinhood > 0n && firstHeld.robinhood >= firstHeld.balance;
+  const oneStock =
+    proven === "owns" && ownedHoldings.settled && firstHeld !== undefined && (firstHeld.robinhood === 0n || firstInWallet);
   const firstStockState = useFirstStock(oneStock);
   const closeFirstStock = useCloseFirstStock();
   const firstStock =
@@ -315,7 +330,7 @@ function SignedInHome() {
   const holdingsKnown = holdings.settled && !linkedWallets.isLoading;
   const livePath = useLiveFirstPath({
     funded: decided === undefined ? undefined : decided !== "empty",
-    ownsStock: holdingsKnown ? holdings.held.some((holding) => holding.listing.kind === "stock") : undefined,
+    ownsStock: holdingsKnown ? ownedHoldings.held.some((holding) => holding.listing.kind === "stock") : undefined,
     account: emailSession ? "email" : "wallet",
     canBuy: pageAvailability.available,
     accountKey: accountKey ?? null,
@@ -397,7 +412,11 @@ function SignedInHome() {
         limitPrice: draft.limitPrice,
         expires: draft.expires,
       },
-      { settled: holdings.settled, heldAddresses: holdings.held.map((holding) => holding.listing.address) },
+      // Either place a sell can come from (plan P3a): the Berth account or the wallet on Robinhood Chain.
+      {
+        settled: ownedHoldings.settled && ownedHoldings.robinhoodState !== "loading",
+        heldAddresses: ownedHoldings.held.map((holding) => holding.listing.address),
+      },
     );
     if (opening.kind === "buy" || opening.kind === "sell") {
       setChatOpen(false);
@@ -707,6 +726,7 @@ function SignedInHome() {
               {firstStock && (
                 <FirstStockCard
                   listing={firstStock}
+                  inWallet={firstInWallet}
                   onAsk={askAvailable ? openChat : undefined}
                   onReadNews={openNewsOn}
                   onDismiss={() => {
@@ -1015,8 +1035,12 @@ export function HomeHeader({ onOpenChat, children }: { onOpenChat?: () => void; 
 }
 
 /**
- * The sell drawer for a listing: everything the account owns lives in one
- * hub wallet, so the row is always (home chain, what the hub wallet holds).
+ * The sell drawer for a listing. A sell spends one place: a hub wallet in
+ * the Berth account (the home chain signs its message), or, for a stock
+ * delivered there, one of the account's own wallets on Robinhood Chain
+ * (plan P3a, lib/robinhood-sell: that wallet signs on Robinhood Chain).
+ * When more than one place holds it, the drawer lets the person pick,
+ * each with its own Max, never the two added into one order.
  * Snapshotted at open: the holdings refetch when the fill lands, and a live
  * zero would unmount the drawer mid-tracking.
  */
@@ -1035,33 +1059,49 @@ function SellHost({
 }) {
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
+  // The sell switch (lib/server/delivery robinhoodSellOn): no wallet on
+  // Robinhood Chain is offered as a source unless the route says yes.
+  const delivery = useDelivery();
+  const sellFromWallet = delivery.robinhoodSell;
+  const onRobinhoodChain = useRobinhoodSellBalances(listing, account, open && sellFromWallet);
+  // Whether the signer can pay a sell's fee there, for where the sheet opens (rh-ux-sec M2).
+  const holdsThere = onRobinhoodChain.held.some((held) => held.balance > 0n);
+  const gasThere = useRobinhoodGasReady(account.signerSpoke, open && sellFromWallet && holdsThere);
   const addWallet = useAddConnectedWallet();
   // Snapshotted on open, like the single balance was: balances refetch
   // during the flow, and deriving live would unmount the drawer mid-sell.
-  const [snapshot, setSnapshot] = useState<ReturnType<typeof sellSources> | null>(null);
+  const [snapshot, setSnapshot] = useState<SellSource[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
 
   const index = listing ? holdings.holdings.findIndex((holding) => holding.listing.address === listing.address) : -1;
-  const sources = () =>
-    sellSources(
-      account.wallets,
-      (hubWallet) =>
-        holdings.byWallet.find((wallet) => wallet.hubWallet.toLowerCase() === hubWallet.toLowerCase())?.balances[index] ?? 0n,
-      account.signerHubWallet,
-    );
+  const sources = (): SellSource[] => [
+    ...hubSellSources(
+      sellSources(
+        account.wallets,
+        (hubWallet) =>
+          holdings.byWallet.find((wallet) => wallet.hubWallet.toLowerCase() === hubWallet.toLowerCase())?.balances[index] ?? 0n,
+        account.signerHubWallet,
+      ),
+    ),
+    ...(sellFromWallet ? robinhoodSellSources(onRobinhoodChain.held, account.signerSpoke) : []),
+  ];
 
   if (!open && snapshot !== null) {
     setSnapshot(null);
     setChosen(null);
-  } else if (open && snapshot === null && holdings.settled && index >= 0) {
+  } else if (open && snapshot === null && holdings.settled && delivery.settled && onRobinhoodChain.settled && gasThere.settled && index >= 0) {
     const found = sources();
     setSnapshot(found);
-    // The one this session can sign for, else the home, else the first.
-    setChosen((found.find((source) => source.canSign) ?? found.find((source) => source.isHome) ?? found[0])?.spoke ?? null);
+    // One this session can sign for and pay the fee for (the wallet on
+    // Robinhood Chain first, and for a drafted quantity the one holding all
+    // of it), else the Berth account, else the home, else the first.
+    const wanted = prefill?.quantity ? safeUnits(prefill.quantity, listing?.decimals ?? 18) : undefined;
+    setChosen(defaultSellSource(found, wanted, (candidate) => candidate.chain === "hub" || gasThere.ready)?.key ?? null);
   }
 
   if (!listing || snapshot === null) return null;
-  const source = snapshot.find((candidate) => candidate.spoke === chosen);
+  const source = snapshot.find((candidate) => candidate.key === chosen);
+  const fromRobinhood = source?.chain === "robinhood" && !!listing.rhAddress;
 
   return (
     <WithdrawDrawer
@@ -1069,20 +1109,32 @@ function SellHost({
       open={open}
       onOpenChange={onOpenChange}
       availableShares={source?.balance ?? 0n}
-      srcChainKey={HOME_CHAIN}
+      srcChainKey={fromRobinhood ? ROBINHOOD_CHAIN_KEY : HOME_CHAIN}
+      robinhoodSell={fromRobinhood && source ? { rhAddress: listing.rhAddress!, owner: source.spoke } : undefined}
       onConnectWallet={onConnectWallet}
       prefill={prefill}
       sellFrom={
-        // One hub wallet, the session's own: the drawer reads as it always did.
-        snapshot.length > 1 || (source && !source.canSign)
+        // One hub wallet, the session's own: the drawer reads as it always
+        // did. A wallet on Robinhood Chain is always named, so the person
+        // sees where the sell comes from.
+        snapshot.length > 1 || snapshot.some((candidate) => candidate.chain === "robinhood") || (source && !source.canSign)
           ? { sources: snapshot, chosen: chosen ?? "", onChoose: setChosen }
           : undefined
       }
-      sourceIsHome={source?.isHome !== false}
+      sourceIsHome={!fromRobinhood && source?.isHome !== false}
       signerLinked={account.signerLinked}
       onAddWallet={addWallet.canSign ? () => void addWallet.add() : undefined}
     />
   );
+}
+
+/** A drafted quantity in raw units, or undefined when it does not parse. */
+function safeUnits(quantity: number, decimals: number): bigint | undefined {
+  try {
+    return parseUnits(String(quantity), decimals);
+  } catch {
+    return undefined;
+  }
 }
 
 /**

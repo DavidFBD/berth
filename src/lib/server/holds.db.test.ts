@@ -105,12 +105,15 @@ const deliveredOf = async (intentTx: string) =>
     }[]
   )[0].delivered_to;
 
-/** A chain that answers every read with the same balance, and records the ask. */
+/** No linked address derives a hub wallet here: the hub holding is each buy's own delivery wallet, as before. */
+const noHubs = async () => [] as string[];
+
+/** A chain that answers every hub read with the same balance (nothing on Robinhood Chain), and records the ask. */
 function chain(balance: bigint | null): BalanceReader & { calls: BalanceQuery[][] } {
   const calls: BalanceQuery[][] = [];
   const reader = (async (queries: readonly BalanceQuery[]) => {
     calls.push([...queries]);
-    return queries.map(() => balance);
+    return queries.map((query) => (query.chain === "robinhood" ? 0n : balance));
   }) as BalanceReader & { calls: BalanceQuery[][] };
   reader.calls = calls;
   return reader;
@@ -224,11 +227,17 @@ describe("runHoldCheck", () => {
     const intentTx = await order({ owner: owner.wallet_address!, quantity: "1.5" });
     const reader = chain(2n * ONE);
 
-    const summary = await runHoldCheck({ now: NOW, readBalances: reader });
+    const summary = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader });
 
     expect(summary).toEqual({ checked: 1, paid: 1, forfeited: 0, retried: 0 });
     // Read at the wallet the buy was delivered to, nowhere else.
-    expect(reader.calls).toEqual([[{ holder: await deliveredOf(intentTx), listing: NVDA.address }]]);
+    // At the wallet the buy was delivered to on the hub, and (ACCOUNT_WIDE) the account's wallet on Robinhood Chain.
+    expect(reader.calls).toEqual([
+      [
+        { holder: await deliveredOf(intentTx), listing: NVDA.address, chain: "sonic" },
+        { holder: owner.wallet_address, listing: NVDA.address, chain: "robinhood" },
+      ],
+    ]);
     expect(await orderRow(intentTx)).toMatchObject({ hold_outcome: "paid" });
     expect((await orderRow(intentTx)).hold_checked_at).not.toBeNull();
     expect(await xpOf(owner.id)).toBe(owner.xp + XP_ACTIONS.held_30_days.amount);
@@ -248,9 +257,9 @@ describe("runHoldCheck", () => {
   it("judges nothing past its deadline, and leaves the buy for the next run", async () => {
     const owner = await account(31);
     const intentTx = await order({ owner: owner.wallet_address! });
-    await runHoldCheck({ now: NOW, readBalances: chain(10n * ONE), deadline: Date.now() - 1 });
+    await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(10n * ONE), deadline: Date.now() - 1 });
     expect(await orderRow(intentTx)).toMatchObject({ hold_outcome: null });
-    await runHoldCheck({ now: NOW, readBalances: chain(10n * ONE) });
+    await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(10n * ONE) });
     expect(await orderRow(intentTx)).toMatchObject({ hold_outcome: "paid" });
   });
 
@@ -259,7 +268,7 @@ describe("runHoldCheck", () => {
     const walletOwner = await account(19);
     await order({ owner: walletOwner.wallet_address!, userId: placer.id });
 
-    await runHoldCheck({ now: NOW, readBalances: chain(10n * ONE) });
+    await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(10n * ONE) });
 
     expect(await xpOf(placer.id)).toBe(placer.xp + XP_ACTIONS.held_30_days.amount);
     expect(await xpOf(walletOwner.id)).toBe(walletOwner.xp);
@@ -269,14 +278,14 @@ describe("runHoldCheck", () => {
     const owner = await account(11);
     const intentTx = await order({ owner: owner.wallet_address!, quantity: "1.5" });
 
-    const first = await runHoldCheck({ now: NOW, readBalances: chain(ONE) });
+    const first = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(ONE) });
     expect(first).toEqual({ checked: 1, paid: 0, forfeited: 1, retried: 0 });
     expect(await orderRow(intentTx)).toMatchObject({ hold_outcome: "forfeit" });
     expect(await xpOf(owner.id)).toBe(owner.xp);
 
     // Bought back since: too late, the verdict is final.
     const reader = chain(10n * ONE);
-    const second = await runHoldCheck({ now: NOW, readBalances: reader });
+    const second = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader });
     expect(second).toEqual({ checked: 0, paid: 0, forfeited: 0, retried: 0 });
     expect(reader.calls).toEqual([]);
     expect(await xpOf(owner.id)).toBe(owner.xp);
@@ -292,7 +301,7 @@ describe("runHoldCheck", () => {
       [owner.id, XP_ACTIONS.held_30_days.amount, intentTx],
     );
 
-    const summary = await runHoldCheck({ now: NOW, readBalances: chain(0n) });
+    const summary = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(0n) });
 
     expect(summary).toEqual({ checked: 1, paid: 1, forfeited: 0, retried: 0 });
     expect(await orderRow(intentTx)).toMatchObject({ hold_outcome: "paid" });
@@ -305,13 +314,13 @@ describe("runHoldCheck", () => {
       throw new Error("rpc down");
     };
 
-    const summary = await runHoldCheck({ now: NOW, readBalances: broken });
+    const summary = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: broken });
 
     expect(summary).toEqual({ checked: 1, paid: 0, forfeited: 0, retried: 1 });
     expect(await orderRow(intentTx)).toEqual({ hold_checked_at: null, hold_outcome: null });
     expect(await xpOf(owner.id)).toBe(owner.xp);
 
-    const retry = await runHoldCheck({ now: NOW, readBalances: chain(10n * ONE) });
+    const retry = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(10n * ONE) });
     expect(retry).toEqual({ checked: 1, paid: 1, forfeited: 0, retried: 0 });
   });
 
@@ -326,7 +335,7 @@ describe("runHoldCheck", () => {
     const partial: BalanceReader = async (queries) =>
       queries.map((query) => (query.listing === SGOV.address ? null : 5n * ONE));
 
-    const summary = await runHoldCheck({ now: NOW, readBalances: partial });
+    const summary = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: partial });
 
     expect(summary).toEqual({ checked: 2, paid: 1, forfeited: 0, retried: 1 });
     expect(await orderRow(stock)).toMatchObject({ hold_outcome: "paid" });
@@ -343,13 +352,13 @@ describe("runHoldCheck", () => {
     const failing: BalanceReader = async (queries) =>
       queries.map((query) => (query.listing === SGOV.address ? null : 5n * ONE));
 
-    await runHoldCheck({ now: NOW, readBalances: failing, limit: 1 });
+    await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: failing, limit: 1 });
     const fresh = await order({ owner: owner.wallet_address!, filledAt: daysAgo(31) });
 
     expect((await holdCandidates(NOW, 1)).map((candidate) => candidate.intentTx)).toEqual([
       fresh,
     ]);
-    const second = await runHoldCheck({ now: NOW, readBalances: failing, limit: 1 });
+    const second = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: failing, limit: 1 });
     expect(second).toEqual({ checked: 1, paid: 1, forfeited: 0, retried: 0 });
     expect(await orderRow(fresh)).toMatchObject({ hold_outcome: "paid" });
     expect(await orderRow(stuck)).toEqual({ hold_checked_at: null, hold_outcome: null });
@@ -360,8 +369,8 @@ describe("runHoldCheck", () => {
     await order({ owner: owner.wallet_address! });
     const reader = chain(10n * ONE);
 
-    await runHoldCheck({ now: NOW, readBalances: reader });
-    const again = await runHoldCheck({ now: NOW, readBalances: reader });
+    await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader });
+    const again = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader });
 
     expect(again).toEqual({ checked: 0, paid: 0, forfeited: 0, retried: 0 });
     expect(reader.calls).toHaveLength(1);
@@ -374,10 +383,11 @@ describe("runHoldCheck", () => {
     const newer = await order({ owner: owner.wallet_address!, quantity: "1", filledAt: daysAgo(35) });
     const reader = chain(ONE);
 
-    const summary = await runHoldCheck({ now: NOW, readBalances: reader });
+    const summary = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader });
 
     expect(summary).toEqual({ checked: 2, paid: 1, forfeited: 1, retried: 0 });
-    expect(reader.calls[0]).toHaveLength(1); // one read for the shared listing and wallet
+    // One read for the shared listing and wallet on the hub, one for the account's wallet on Robinhood Chain.
+    expect(reader.calls[0].filter((query) => query.chain === "sonic")).toHaveLength(1);
     expect(await orderRow(older)).toMatchObject({ hold_outcome: "paid" });
     expect(await orderRow(newer)).toMatchObject({ hold_outcome: "forfeit" });
     expect(await xpOf(owner.id)).toBe(owner.xp + XP_ACTIONS.held_30_days.amount);
@@ -386,10 +396,10 @@ describe("runHoldCheck", () => {
   it("counts buys paid on an earlier run against a later one", async () => {
     const owner = await account(26);
     await order({ owner: owner.wallet_address!, quantity: "1", filledAt: daysAgo(40) });
-    await runHoldCheck({ now: NOW, readBalances: chain(ONE) });
+    await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(ONE) });
 
     const short = await order({ owner: owner.wallet_address!, quantity: "1", filledAt: daysAgo(31) });
-    expect(await runHoldCheck({ now: NOW, readBalances: chain(ONE) })).toEqual({
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(ONE) })).toEqual({
       checked: 1,
       paid: 0,
       forfeited: 1,
@@ -398,7 +408,7 @@ describe("runHoldCheck", () => {
     expect(await orderRow(short)).toMatchObject({ hold_outcome: "forfeit" });
 
     const covered = await order({ owner: owner.wallet_address!, quantity: "1", filledAt: daysAgo(30) });
-    expect(await runHoldCheck({ now: NOW, readBalances: chain(2n * ONE) })).toMatchObject({
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: chain(2n * ONE) })).toMatchObject({
       paid: 1,
     });
     expect(await orderRow(covered)).toMatchObject({ hold_outcome: "paid" });
@@ -413,7 +423,7 @@ describe("runHoldCheck", () => {
     });
     const reader = chain(0n);
 
-    const summary = await runHoldCheck({ now: NOW, readBalances: reader });
+    const summary = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader });
 
     expect(summary).toEqual({ checked: 0, paid: 0, forfeited: 0, retried: 0 });
     expect(reader.calls).toEqual([]);
@@ -483,69 +493,173 @@ describe("pendingHolds", () => {
 });
 
 /**
- * The Robinhood Chain guard (plan P0b): the check reads balances on Sonic
- * only, so a buy delivered to the person's own wallet on Robinhood Chain
- * would read zero there and be forfeited for good. Until the check reads
- * the delivery chain (P1b), such a buy is never judged, listed or counted.
+ * A buy delivered to the person's own wallet on Robinhood Chain (plan
+ * P1b): judged by the balance of the listing's token there, at the wallet
+ * it was delivered to, never by the hub's record of the fill, so a
+ * delivery that never arrived is never paid.
  */
 describe("a buy delivered to Robinhood Chain", () => {
-  it("is never judged, so a zero Sonic balance cannot forfeit it", async () => {
-    const owner = await account(40);
-    const robinhood = await order({ owner: owner.wallet_address!, holdingChain: "robinhood", filledAt: daysAgo(45) });
+  /** A chain answering per chain: what the wallet holds on Robinhood Chain, and on the hub. */
+  function twoChains(onRobinhood: bigint | null, onHub: bigint | null): BalanceReader & { calls: BalanceQuery[][] } {
+    const calls: BalanceQuery[][] = [];
+    const reader = (async (queries: readonly BalanceQuery[]) => {
+      calls.push([...queries]);
+      return queries.map((query) => (query.chain === "robinhood" ? onRobinhood : onHub));
+    }) as BalanceReader & { calls: BalanceQuery[][] };
+    reader.calls = calls;
+    return reader;
+  }
 
-    expect(await holdCandidates(NOW)).toEqual([]);
-    const reader = chain(0n);
-    expect(await runHoldCheck({ now: NOW, readBalances: reader })).toEqual({
-      checked: 0,
-      paid: 0,
-      forfeited: 0,
-      retried: 0,
-    });
-    expect(reader.calls).toEqual([]);
-    expect(await orderRow(robinhood)).toEqual({ hold_checked_at: null, hold_outcome: null });
+  it("is judged on Robinhood Chain at the wallet it was delivered to, and paid when it is still there", async () => {
+    const owner = await account(40);
+    const robinhood = await order({ owner: owner.wallet_address!, holdingChain: "robinhood", deliveredTo: owner.wallet_address!, filledAt: daysAgo(45) });
+
+    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.holdingChain])).toEqual([[robinhood, "robinhood"]]);
+    const reader = twoChains(2n * ONE, 0n);
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader })).toEqual({ checked: 1, paid: 1, forfeited: 0, retried: 0 });
+    expect(reader.calls).toEqual([[{ holder: owner.wallet_address, listing: NVDA.address, chain: "robinhood" }]]);
+    expect(await orderRow(robinhood)).toMatchObject({ hold_outcome: "paid" });
+    expect(await xpOf(owner.id)).toBe(owner.xp + XP_ACTIONS.held_30_days.amount);
+  });
+
+  it("is never paid when the delivery is not in the wallet, whatever the hub's fill says", async () => {
+    const owner = await account(41);
+    const robinhood = await order({ owner: owner.wallet_address!, quantity: "1", holdingChain: "robinhood", deliveredTo: owner.wallet_address!, filledAt: daysAgo(31) });
+    // The hub would cover it; Robinhood Chain, where it was delivered, holds nothing.
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: twoChains(0n, 10n * ONE) })).toMatchObject({ paid: 0, forfeited: 1 });
+    expect(await orderRow(robinhood)).toMatchObject({ hold_outcome: "forfeit" });
     expect(await xpOf(owner.id)).toBe(owner.xp);
   });
 
-  it("leaves the Sonic buys beside it judged exactly as before", async () => {
-    const owner = await account(41);
-    const legacy = await order({ owner: owner.wallet_address!, quantity: "1", filledAt: daysAgo(33) });
-    const sonic = await order({ owner: owner.wallet_address!, quantity: "1", holdingChain: "sonic", filledAt: daysAgo(32) });
-    const robinhood = await order({ owner: owner.wallet_address!, quantity: "1", holdingChain: "robinhood", filledAt: daysAgo(31) });
-
-    expect((await holdCandidates(NOW)).map((candidate) => candidate.intentTx)).toEqual([legacy, sonic]);
-    const reader = chain(0n);
-    expect(await runHoldCheck({ now: NOW, readBalances: reader })).toEqual({
-      checked: 2,
-      paid: 0,
-      forfeited: 2,
-      retried: 0,
-    });
-    expect(reader.calls.flat().length).toBeGreaterThan(0);
-    expect(await orderRow(legacy)).toMatchObject({ hold_outcome: "forfeit" });
-    expect(await orderRow(sonic)).toMatchObject({ hold_outcome: "forfeit" });
-    expect(await orderRow(robinhood)).toEqual({ hold_checked_at: null, hold_outcome: null });
-  });
-
-  it("is not listed as waiting, since no verdict is coming yet", async () => {
+  it("waits a day when Robinhood Chain does not answer, for every buy of that listing, hub ones too (ACCOUNT_WIDE), and judges a vault as before", async () => {
     const owner = await account(42);
-    await order({ owner: owner.wallet_address!, holdingChain: "robinhood", filledAt: daysAgo(3) });
-    const listed = await order({ owner: owner.wallet_address!, filledAt: daysAgo(2) });
-
-    expect((await pendingHolds(owner.id)).map((hold) => hold.ref)).toEqual([listed]);
+    const legacy = await order({ owner: owner.wallet_address!, quantity: "1", filledAt: daysAgo(33) });
+    const robinhood = await order({ owner: owner.wallet_address!, quantity: "1", holdingChain: "robinhood", deliveredTo: owner.wallet_address!, filledAt: daysAgo(31) });
+    const vault = await order({ owner: owner.wallet_address!, listing: VAULT, quantity: "1", filledAt: daysAgo(32) });
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: twoChains(null, ONE) })).toEqual({ checked: 3, paid: 1, forfeited: 0, retried: 2 });
+    expect(await orderRow(vault)).toMatchObject({ hold_outcome: "paid" });
+    expect(await orderRow(legacy)).toMatchObject({ hold_checked_at: null, hold_outcome: null });
+    expect(await orderRow(robinhood)).toMatchObject({ hold_checked_at: null, hold_outcome: null });
   });
 
-  it("never counts toward what a Sonic buy at the same wallet must cover", async () => {
-    const owner = await account(43);
-    const wallet = hub(43);
-    // A Robinhood Chain row stamped paid by hand (nothing in this build
-    // stamps one): its quantity sits on another chain, so it must not raise
-    // the Sonic buy's requirement.
-    const robinhood = await order({ owner: owner.wallet_address!, quantity: "5", holdingChain: "robinhood", deliveredTo: wallet, filledAt: daysAgo(60) });
-    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(1), robinhood]);
-    const sonic = await order({ owner: owner.wallet_address!, quantity: "1", deliveredTo: wallet, filledAt: daysAgo(31) });
+  it("keeps each chain's paid amount to itself at the same wallet", async () => {
+    const owner = await account(46);
+    const at = owner.wallet_address!;
+    const first = await order({ owner: at, quantity: "1", holdingChain: "robinhood", deliveredTo: at, filledAt: daysAgo(40) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(5), first]);
+    const second = await order({ owner: at, quantity: "1", holdingChain: "robinhood", deliveredTo: at, filledAt: daysAgo(31) });
+    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.paidBefore])).toEqual([[second, "1"]]);
+    // One token there covers the first buy only.
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: twoChains(ONE, 10n * ONE) })).toMatchObject({ paid: 0, forfeited: 1 });
+  });
 
-    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.paidBefore])).toEqual([[sonic, "0"]]);
-    expect(await runHoldCheck({ now: NOW, readBalances: chain(ONE) })).toMatchObject({ paid: 1, forfeited: 0 });
+  it("judges the account's whole holding there, so tokens moved between its own wallets pay one buy once, never two (rh-server m2)", async () => {
+    const owner = await account(49);
+    const a = owner.wallet_address!;
+    const b = wallet(4949);
+    // The first buy went to A and was paid on its day 30.
+    const first = await order({ owner: a, quantity: "1", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(40) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(10), first]);
+    // The second went to B; its tokens left, and A's one token was then moved to B.
+    const second = await order({ owner: a, quantity: "1", holdingChain: "robinhood", deliveredTo: b, filledAt: daysAgo(31) });
+    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.paidBefore])).toEqual([[second, "1"]]);
+    const asked: BalanceQuery[] = [];
+    const moved: BalanceReader = async (queries) => {
+      asked.push(...queries);
+      return queries.map((query) => (query.holder === b ? ONE : 0n));
+    };
+    const summary = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: moved, walletsOf: async () => [a, b] });
+    expect(summary).toMatchObject({ paid: 0, forfeited: 1 });
+    // Both of the account's wallets were read on Robinhood Chain.
+    expect(asked.map((query) => [query.holder, query.chain]).sort()).toEqual([[a, "robinhood"], [b, "robinhood"]].sort());
+    expect(await orderRow(second)).toMatchObject({ hold_outcome: "forfeit" });
+  });
+
+  it("pays a buy whose tokens moved to another of the account's wallets, and retries when the wallets cannot be read", async () => {
+    const owner = await account(50);
+    const a = owner.wallet_address!;
+    const b = wallet(5050);
+    const bought = await order({ owner: a, quantity: "1", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(31) });
+    const atB: BalanceReader = async (queries) => queries.map((query) => (query.holder === b ? ONE : 0n));
+    expect(
+      await runHoldCheck({
+        now: NOW,
+        readBalances: atB,
+        walletsOf: async () => {
+          throw new Error("identities down");
+        },
+      }),
+    ).toMatchObject({ retried: 1, paid: 0, forfeited: 0 });
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: atB, walletsOf: async () => [a, b] })).toMatchObject({ paid: 1 });
+    expect(await orderRow(bought)).toMatchObject({ hold_outcome: "paid" });
+  });
+
+  it("is listed as waiting beside the hub's buys", async () => {
+    const owner = await account(47);
+    const there = await order({ owner: owner.wallet_address!, holdingChain: "robinhood", deliveredTo: owner.wallet_address!, filledAt: daysAgo(3) });
+    const listed = await order({ owner: owner.wallet_address!, filledAt: daysAgo(2) });
+    expect((await pendingHolds(owner.id)).map((hold) => hold.ref)).toEqual([there, listed]);
+  });
+
+  it("is never judged or listed for a listing with no token on Robinhood Chain", async () => {
+    const owner = await account(48);
+    await order({ owner: owner.wallet_address!, listing: VAULT, holdingChain: "robinhood", deliveredTo: owner.wallet_address!, filledAt: daysAgo(40) });
+    expect(await holdCandidates(NOW)).toEqual([]);
+    expect(await pendingHolds(owner.id)).toEqual([]);
+  });
+
+  it("counts a lot paid on either chain toward a buy on the other, so one lot bridged back and forth pays once (rh-delta on 1e9a3d1)", async () => {
+    const owner = await account(43);
+    const a = owner.wallet_address!;
+    const paidThere = await order({ owner: a, quantity: "1", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(60) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(20), paidThere]);
+    const onHub = await order({ owner: a, quantity: "1", filledAt: daysAgo(31) });
+    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.paidBefore])).toEqual([[onHub, "1"]]);
+    // The one lot, bridged to the hub for this check: one held, two to cover.
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: twoChains(0n, ONE) })).toMatchObject({ paid: 0, forfeited: 1 });
+  });
+
+  it("never lets a monthly buy and sell of the same amount ride on a paid lot (rh-final 1)", async () => {
+    const owner = await account(46);
+    const a = owner.wallet_address!;
+    const lot = await order({ owner: a, quantity: "10", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(120) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(90), lot]);
+    // Month one: bought 10 and sold 10 at once; that buy was forfeited.
+    const first = await order({ owner: a, quantity: "10", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(70) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'forfeit' where intent_tx = $2", [daysAgo(40), first]);
+    await order({ owner: a, userId: owner.id, direction: "sell", quantity: "10", filledAt: new Date(daysAgo(70).getTime() + 3_600_000) });
+    // Month two: the same again; the paid lot of 10 is all that is held.
+    const second = await order({ owner: a, quantity: "10", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(35) });
+    await order({ owner: a, userId: owner.id, direction: "sell", quantity: "10", filledAt: new Date(daysAgo(35).getTime() + 3_600_000) });
+    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.paidBefore])).toEqual([[second, "10"]]);
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: twoChains(10n * ONE, 0n) })).toMatchObject({ paid: 0, forfeited: 1 });
+  });
+
+  it("nets sells out of what was paid, so an honest holder who sold a paid lot never forfeits a new buy (rh-delta)", async () => {
+    const owner = await account(44);
+    const a = owner.wallet_address!;
+    const paid = await order({ owner: a, quantity: "1", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(70) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(40), paid]);
+    await order({ owner: a, userId: owner.id, direction: "sell", quantity: "1", filledAt: daysAgo(35) });
+    const fresh = await order({ owner: a, quantity: "1", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(31) });
+    expect((await holdCandidates(NOW)).map((candidate) => [candidate.intentTx, candidate.paidBefore])).toEqual([[fresh, "0"]]);
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: twoChains(ONE, 0n) })).toMatchObject({ paid: 1 });
+  });
+
+  it("reads Robinhood Chain only at wallets linked now, never a delivery wallet since unlinked", async () => {
+    const owner = await account(45);
+    const gone = wallet(4545);
+    const bought = await order({ owner: owner.wallet_address!, quantity: "1", holdingChain: "robinhood", deliveredTo: gone, filledAt: daysAgo(31) });
+    const asked: BalanceQuery[] = [];
+    const atGone: BalanceReader = async (queries) => {
+      asked.push(...queries);
+      return queries.map((query) => (query.holder === gone ? ONE : 0n));
+    };
+    expect(await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: atGone, walletsOf: async () => [owner.wallet_address!] })).toMatchObject({
+      forfeited: 1,
+    });
+    expect(asked.some((query) => query.holder === gone)).toBe(false);
+    expect(await orderRow(bought)).toMatchObject({ hold_outcome: "forfeit" });
   });
 
   it("is refused by the schema under any chain name it does not know", async () => {

@@ -3,12 +3,15 @@ import { getAddress, isAddress, type Address } from "viem";
 /**
  * Where a buy is delivered (docs/plans/2026-10-05-robinhood-chain-delivery).
  *
- * Every buy so far lands on the Sonic hub, in the hub wallet SODAX derives
- * for the person. An account on the Robinhood Chain switch
- * (ROBINHOOD_DELIVERY_USERS, lib/server/delivery) instead has a new buy
- * delivered as the native Robinhood token to its own EVM wallet on
- * Robinhood Chain (chain 4663, SDK key `robinhood`). Holdings already on
- * the hub stay there and sell exactly as before.
+ * Every buy before Robinhood Chain delivery landed on the Sonic hub, in the
+ * hub wallet SODAX derives for the person. Where the switch is on
+ * (ROBINHOOD_DELIVERY, lib/server/delivery: for the allow list while it
+ * is unset, for every account once it is "on") a new market stock buy is
+ * instead delivered as the
+ * native Robinhood token to the person's own EVM wallet on Robinhood Chain
+ * (chain 4663, SDK key `robinhood`), wherever every check below allows it,
+ * and the hub otherwise. Holdings already on the hub stay there and sell
+ * exactly as before.
  *
  * Pure and client safe: the route (app/api/delivery) reads the switch, the
  * wallet and the country and asks this one question. Anything unknown or
@@ -17,7 +20,7 @@ import { getAddress, isAddress, type Address } from "viem";
  */
 
 /**
- * Where a switched account still gets hub delivery: the United Kingdom,
+ * Where an account still gets hub delivery: the United Kingdom,
  * Canada and Switzerland (decision 3 of the plan, David, 2026-10-05), and
  * the Crown Dependencies, Jersey, Guernsey and the Isle of Man, which the
  * edge reports under their own codes rather than GB. The source is the
@@ -38,7 +41,9 @@ export const PSEUDO_COUNTRY_CODES: ReadonlySet<string> = new Set(["XX", "ZZ", "T
 /**
  * Why the answer is what it is, a short machine code for the route's
  * caller (never shown as is): `switched_on` is the one Robinhood Chain
- * answer; every other code is the hub.
+ * answer; every other code is the hub. `not_listed` is the switch itself
+ * leaving the account off: the kill switch, the deny list, or listed mode
+ * without the account.
  */
 export type DeliveryReason =
   | "switched_on"
@@ -47,6 +52,8 @@ export type DeliveryReason =
   | "read_failed"
   | "no_evm_wallet"
   | "not_eoa"
+  /** A Privy email wallet, while Robinhood Chain is not sponsorable (lib/server/delivery embeddedEligible). */
+  | "embedded_wallet"
   | "restricted_country"
   | "unknown_country";
 

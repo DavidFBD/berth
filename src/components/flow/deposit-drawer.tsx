@@ -35,7 +35,7 @@ import {
 import { preferPayChoice, type PreferPay } from "@/lib/funding-handoff";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
-import { formatTokenAmount, formatUsd } from "@/lib/format";
+import { formatTokenAmount, formatUsd, shortenAddress } from "@/lib/format";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import {
   amountText,
@@ -58,6 +58,9 @@ import {
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useLimitDraft, type LimitPrefill } from "@/hooks/use-limit-draft";
 import { usePourQuote } from "@/hooks/use-pour-quote";
+import { useDelivery } from "@/hooks/use-delivery";
+import type { Delivery } from "@/lib/delivery";
+import { useRobinhoodArrival } from "@/hooks/use-robinhood-arrival";
 import { useVaultAction } from "@/hooks/use-vault-action";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
 import { useHubAccount } from "@/hooks/use-hub-account";
@@ -89,6 +92,7 @@ import {
   ActionStepper,
   EarlierOrderNote,
   IntentTracking,
+  RobinhoodArrival,
 } from "./action-stepper";
 import { TokenLogo, TokenPicker } from "./token-picker";
 import { LimitPlaced, LimitPriceFields, LimitSummary } from "./limit-price";
@@ -116,6 +120,7 @@ export function DepositDrawer({
   preferPay,
   devHoldings,
   devLimit,
+  devDelivery,
   confirmTerms,
 }: {
   listing: Listing | null;
@@ -158,6 +163,8 @@ export function DepositDrawer({
     Partial<Pick<EmbeddedHoldingsResult, "nativeBalances">>;
   /** Dev galleries only: show "Set a price" as if the switch were on. */
   devLimit?: boolean;
+  /** Dev galleries only: stands in for the delivery answer (hooks/use-delivery), so a Robinhood Chain buy sheet can be seen without a session. */
+  devDelivery?: Delivery;
 }) {
   const [srcChainKey, setSrcChainKey] = useState<SpokeChainKey>(
     DEPOSIT_SOURCE_CHAINS[0],
@@ -189,6 +196,22 @@ export function DepositDrawer({
   // The order machine owns everything past the first tap: pipeline, solver
   // fill, toasts, XP, failure reporting. The drawer renders its states.
   const action = useVaultAction({ onPoured });
+  // Where a stock buy is delivered (plan P2b): the hub, unless the route
+  // says this account's buys go to its own wallet on Robinhood Chain. The
+  // quote and the arrival line follow the answer; the machine asks again
+  // as the order starts.
+  const fetchedDelivery = useDelivery({ enabled: open && isBuy && !devDelivery });
+  const delivery = devDelivery
+    ? { delivery: devDelivery, settled: true, ask: async () => devDelivery }
+    : fetchedDelivery;
+  const robinhoodToken =
+    listing?.kind === "stock" && delivery.delivery.chainKey === "robinhood" ? listing.rhAddress : undefined;
+  // Once such a buy is filled on the hub: has it reached the wallet yet?
+  const arrival = useRobinhoodArrival({
+    enabled: action.fillPhase === "filled" && action.robinhood !== null,
+    run: action.robinhood,
+    fillTxHash: action.fillTxHash,
+  });
 
   // Privy embedded wallet on EVM chains when signed in via email; external
   // wallets otherwise. Email mode switches chains silently.
@@ -421,11 +444,15 @@ export function DepositDrawer({
   const tooSmall = belowMinimum(worthUsd, money.rate);
   const smallestOrderLabel = money.format(minPourUsd(money.rate));
   const quote = usePourQuote({
-    enabled: open && !!listing && !!token && !tooSmall,
+    // A buy waits for where it is delivered, so its quote is taken to the
+    // token it will actually receive.
+    enabled: open && !!listing && !!token && !tooSmall && (!isBuy || delivery.settled),
     src: token ? { address: token.address, chainKey: srcChainKey } : null,
-    dst: listing
-      ? { address: listing.address, chainKey: ChainKeys.SONIC_MAINNET }
-      : null,
+    dst: robinhoodToken
+      ? { address: robinhoodToken, chainKey: ChainKeys.ROBINHOOD_MAINNET }
+      : listing
+        ? { address: listing.address, chainKey: ChainKeys.SONIC_MAINNET }
+        : null,
     buildAmount,
     signingChainKey: srcChainKey,
   });
@@ -546,6 +573,11 @@ export function DepositDrawer({
       vault: listing.address,
       vaultName: listing.symbol,
       deliverTo,
+      // A market stock buy only: limit buys stay on the hub (plan P6).
+      ...(listing.kind === "stock" &&
+        !limit.active && {
+          delivery: { quoted: delivery.delivery, rhAddress: listing.rhAddress, ask: delivery.ask },
+        }),
       srcChainKey,
       srcAddress: address,
       token,
@@ -562,7 +594,7 @@ export function DepositDrawer({
         gasPreflight({ chainKey: srcChainKey, address, token, amount: buildAmount, approval }),
       fillToasts: {
         successTitle: copy.buyFilledTitle,
-        successDescription: copy.buyFilledBody,
+        successDescription: robinhoodToken && !limit.active ? copy.rhChain.filledToastBody : copy.buyFilledBody,
         failureDescription: copy.buyFailedBody,
       },
       ensureReady,
@@ -729,7 +761,7 @@ export function DepositDrawer({
                 ? copy.buyTitle(isBuy ? listing.name : (meta?.title ?? listing.name))
                 : copy.orderTitleFallback}
             </DrawerTitle>
-            <DrawerDescription>{copy.buySub}</DrawerDescription>
+            <DrawerDescription>{robinhoodToken && !limit.active ? copy.rhChain.buySub : copy.buySub}</DrawerDescription>
           </DrawerHeader>
 
           {/* The three acts (form → working → settling) hand off with a soft
@@ -789,14 +821,20 @@ export function DepositDrawer({
                 spokeTxHash={action.spokeTxHash}
                 spokeTxUrl={action.spokeTxUrl}
                 successTitle={copy.buyFilledTitle}
-                successBody={copy.settledBody(
-                  isBuy ? listing.name : (meta?.title ?? listing.name),
-                )}
+                successBody={
+                  action.robinhood
+                    ? arrival.kind === "arrived"
+                      ? copy.rhChain.arrivedBody(listing.name)
+                      : copy.rhChain.onItsWayBody(listing.name)
+                    : copy.settledBody(isBuy ? listing.name : (meta?.title ?? listing.name))
+                }
                 onDone={() => {
                   onOpenChange(false);
                   finish();
                 }}
-              />
+              >
+                {action.robinhood && <RobinhoodArrival state={arrival} token={action.robinhood.rhAddress} />}
+              </IntentTracking>
             </div>
           ) : listing && action.pending ? (
             <div className="p-4">
@@ -1045,6 +1083,20 @@ export function DepositDrawer({
                             {formatTokenAmount(quote.minOut, listing.decimals, 6)}
                           </span>
                         </div>
+                        {/* Where it goes, said once, only when it is not the Berth account. */}
+                        {robinhoodToken && (
+                          <p className="text-xs text-muted-foreground" data-testid="rh-arrival">
+                            {delivery.delivery.address
+                              ? copy.rhChain.arrivalTo(shortenAddress(delivery.delivery.address, 4))
+                              : copy.rhChain.arrival}
+                          </p>
+                        )}
+                        {/* Before signing: a later sell from there is this wallet's own fee to pay (rh-ux-sec B1). */}
+                        {robinhoodToken && !gas.sponsored(ChainKeys.ROBINHOOD_MAINNET) && (
+                          <p className="text-xs text-muted-foreground" data-testid="rh-sell-fee">
+                            {copy.rhChain.sellFeeLater}
+                          </p>
+                        )}
                       </>
                     ) : (
                       <div className="flex items-center gap-2 text-muted-foreground">

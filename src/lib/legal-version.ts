@@ -7,5 +7,5 @@
  * again: every account is then asked once more before its next buy
  * (lib/terms-gate). TERMS_VERSION is the date as ISO, the record's key.
  */
-export const LEGAL_EFFECTIVE_DATE = "6 October 2026";
-export const TERMS_VERSION = "2026-10-06";
+export const LEGAL_EFFECTIVE_DATE = "8 October 2026";
+export const TERMS_VERSION = "2026-10-08";

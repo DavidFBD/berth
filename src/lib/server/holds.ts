@@ -2,8 +2,12 @@ import { erc20Abi, parseUnits, type Address } from "viem";
 import { NOT_NO_XP } from "@/lib/server/no-xp";
 import { getSql } from "@/lib/server/db";
 import { awardXp } from "@/lib/server/accounts";
+import { accountEvmAddresses } from "@/lib/server/identities";
+import { hubWalletFor } from "@/lib/server/portfolio";
 import { getSodax } from "@/lib/server/pour-verify";
+import { readRobinhoodTokenBalances, type RobinhoodBalanceReader } from "@/lib/server/robinhood-balances";
 import { TOKEN_LISTINGS } from "@/lib/listings";
+import type { HoldingChain } from "@/lib/orders";
 import { XP_ACTIONS } from "@/lib/xp";
 import type { Hold } from "@/lib/profile-types";
 
@@ -13,12 +17,20 @@ import type { Hold } from "@/lib/profile-types";
  * THE PRODUCT RULE. A buy is "still on the books" when, thirty days after it
  * filled, the balance of that listing at the wallet the buy was delivered
  * to (`orders.delivered_to`, the intent's dstAddress, exactly where the
- * fill's Transfer landed) covers everything this account has already been
- * paid for holding there, plus this buy:
+ * fill's Transfer landed), on the chain it was delivered to
+ * (`orders.holding_chain`), covers everything this account has already
+ * been paid for holding there, plus this buy:
  *
- *   balanceOf(listing, delivered_to) >= sum(quantity of this account's buys
- *     of the same listing delivered to the same wallet already stamped
- *     'paid') + this buy's quantity
+ *   balanceOf(listing, delivered_to) on holding_chain >= sum(quantity of
+ *     this account's buys of the same listing delivered to the same wallet
+ *     on the same chain already stamped 'paid') + this buy's quantity
+ *
+ * On the hub (Sonic, `holding_chain` null or 'sonic') the token is the
+ * listing's own address. On Robinhood Chain it is the listing's native
+ * token there (`rhAddress`), read on 4663 (lib/server/robinhood-balances),
+ * never the hub's record of the fill: a buy filled on Sonic whose delivery
+ * never arrived in the wallet holds nothing there and is never paid
+ * (plan P1b, "filled on the hub is not arrived on 4663").
  *
  * all in raw units (decimals 18). The accounting is cumulative: two 1 unit
  * buys with a balance of 1 pay once. Buys of one listing at one wallet that
@@ -30,9 +42,9 @@ import type { Hold } from "@/lib/profile-types";
  *
  * A buy with no recorded delivery wallet, or of an address that is no
  * listing this build knows (neither a token listing nor a vault in the SDK
- * registry), is unverifiable and never judged or listed. So is a buy
- * held on any chain but Sonic (`orders.holding_chain`, null meaning
- * sonic), since the balance read below is on Sonic only (see ON_SONIC).
+ * registry), is unverifiable and never judged or listed. So is a buy held
+ * on a chain this check cannot read (KNOWN_CHAIN), or held on Robinhood
+ * Chain of a listing with no token there.
  * Held: `held_30_days` is awarded once, deduped by the buy's intent tx,
  * parked unannounced so the toast fires the next time the person looks,
  * and the order is stamped 'paid'. Not held: the order is stamped 'forfeit'
@@ -63,31 +75,34 @@ const LISTING_DECIMALS = 18;
 const EFFECTIVE_AT = "coalesce(o.filled_at, o.placed_at, o.created_at)";
 
 /**
- * Delivered on the hub, where readDeliveredBalances looks: `holding_chain`
- * null (every row before Robinhood Chain delivery) or 'sonic'. A buy
- * delivered to Robinhood Chain sits in the person's own wallet there, so a
- * Sonic balanceOf would read zero and forfeit it for good. Until the check
- * can read the holding chain (plan P1b, before 4 November, the first day
- * such a buy could fall due), it is neither judged, nor listed as waiting,
- * nor counted as paid toward another buy.
+ * Where a row's token sits, as the check reads it: `holding_chain`, null
+ * meaning sonic (every row before Robinhood Chain delivery).
  */
-const ON_SONIC = (alias: string) => `coalesce(${alias}.holding_chain, 'sonic') = 'sonic'`;
+const CHAIN_OF = (alias: string) => `coalesce(${alias}.holding_chain, 'sonic')`;
 
 /**
- * A filled buy with a known delivery wallet, on Sonic. Quantity on a buy is what the
+ * Held on a chain readDeliveredBalances reads: the hub, or Robinhood Chain
+ * (plan P1b lifted the P0b guard that kept Robinhood rows out until the
+ * check could read 4663). Any other value is never judged.
+ */
+const KNOWN_CHAIN = (alias: string) => `${CHAIN_OF(alias)} in ('sonic', 'robinhood')`;
+
+/**
+ * A filled buy with a known delivery wallet, on a chain the check reads. Quantity on a buy is what the
  * fill delivered (lib/orders readOrder); a buy whose fill was never read has
  * no quantity, is not judged, and waits for saveOrder to complete it. A no
  * XP buy (lib/server/no-xp, reported from where Berth is not available) is
  * never judged: it earns no hold, whatever path recorded it.
  */
-const FILLED_UNCHECKED_BUY = `o.direction = 'buy'
+const FILLED_UNCHECKED_BUY = (robinhoodParam: number) => `o.direction = 'buy'
   and o.hold_checked_at is null
   and ${NOT_NO_XP("o")}
   and o.quantity is not null
   and o.quantity > 0
   and o.delivered_to is not null
   and o.delivered_to ~ '^0x[0-9a-f]{40}$'
-  and ${ON_SONIC("o")}`;
+  and ${KNOWN_CHAIN("o")}
+  and (${CHAIN_OF("o")} = 'sonic' or lower(o.listing_address) = any($${robinhoodParam}::text[]))`;
 
 /**
  * Who owns an order: the account that placed it, or, only for a row that
@@ -110,7 +125,12 @@ export type HoldCandidate = {
   orderId: string;
   intentTx: string;
   userId: string;
+  /** The owning account's users.wallet_address, for its linked wallets (Robinhood Chain rows). */
+  userWallet?: string | null;
+  /** The listing's Sonic address, whichever chain it is held on (orders.listing_address). */
   listingAddress: string;
+  /** Where the buy was delivered, so where its balance is read. */
+  holdingChain: HoldingChain;
   /** The wallet the buy was delivered to, where its balance is read. */
   deliveredTo: string;
   /** Decimal units of the listing, as Postgres prints the numeric. */
@@ -123,8 +143,12 @@ export type HoldCandidate = {
   effectiveAt: Date;
 };
 
-/** One balance to read: `listing`'s balanceOf at `holder`. */
-export type BalanceQuery = { holder: string; listing: string };
+/**
+ * One balance to read: `listing`'s balanceOf at `holder`, on `chain`
+ * (absent meaning the hub). `listing` is always the Sonic listing address;
+ * on Robinhood Chain the reader reads that listing's token there.
+ */
+export type BalanceQuery = { holder: string; listing: string; chain?: HoldingChain };
 
 /**
  * Reads raw balances, one per query, same order. null for a single read
@@ -166,19 +190,31 @@ type CandidateRow = {
   id: string;
   intent_tx: string;
   user_id: string;
+  user_wallet: string | null;
   listing_address: string;
+  holding_chain: HoldingChain;
   delivered_to: string;
   quantity: string;
   paid_before: string;
   effective_at: string | Date;
 };
 
-/** What decides whether a buy can be judged: the listing addresses this build knows, lowercased. */
-export type HoldScope = { listingAddresses: readonly string[] };
+/**
+ * What decides whether a buy can be judged: the listing addresses this
+ * build knows, lowercased, and of those the ones with a token on Robinhood
+ * Chain (a buy held there of any other listing cannot be read).
+ */
+export type HoldScope = { listingAddresses: readonly string[]; robinhoodListingAddresses?: readonly string[] };
+
+/** The Sonic addresses, lowercased, of the listings with a token on Robinhood Chain. */
+const ROBINHOOD_LISTING_ADDRESSES = TOKEN_LISTINGS.filter((listing) => listing.rhAddress).map((listing) =>
+  listing.address.toLowerCase(),
+);
 
 /** The scope this build knows: pinned token listings and registry vaults. */
 export function holdScope(): HoldScope {
   return {
+    robinhoodListingAddresses: ROBINHOOD_LISTING_ADDRESSES,
     listingAddresses: [
       ...TOKEN_LISTINGS.map((listing) => listing.address.toLowerCase()),
       ...getSodax()
@@ -197,22 +233,50 @@ export function holdScope(): HoldScope {
  * the least recently attempted, each oldest first, so a row whose read
  * always fails cannot starve the ones behind it.
  */
-export const CANDIDATES_SQL = `select o.id, o.intent_tx, u.id as user_id,
-       o.listing_address, o.delivered_to, o.quantity::text as quantity,
-       (select coalesce(sum(p.quantity), 0)::text
-          from orders p
-         where p.direction = 'buy'
-           and p.hold_outcome = 'paid'
-           and lower(p.listing_address) = lower(o.listing_address)
-           and p.delivered_to = o.delivered_to
-           and ${ON_SONIC("p")}
-           and (p.user_id = u.id
-                or (p.user_id is null and p.wallet_address = u.wallet_address))
-       ) as paid_before,
+export const CANDIDATES_SQL = `select o.id, o.intent_tx, u.id as user_id, u.wallet_address as user_wallet,
+       o.listing_address, ${CHAIN_OF("o")} as holding_chain, o.delivered_to, o.quantity::text as quantity,
+       case when lower(o.listing_address) = any($5::text[]) then
+         -- A listing with a token on Robinhood Chain (ACCOUNT_WIDE): every
+         -- paid buy of it by the account, on either chain, less what sells
+         -- placed BEFORE this buy took out of those paid lots. A sell first
+         -- spends the unpaid buys before it (forfeited or still waiting), so
+         -- buying and selling the same amount again each month never eats
+         -- into a paid lot (rh-final 1); a paid lot that was really sold
+         -- before this buy no longer counts against it.
+         greatest(0,
+           (select coalesce(sum(p.quantity), 0) from orders p
+             where p.direction = 'buy' and p.hold_outcome = 'paid'
+               and lower(p.listing_address) = lower(o.listing_address)
+               and (p.user_id = u.id or (p.user_id is null and p.wallet_address = u.wallet_address)))
+           - greatest(0,
+               (select coalesce(sum(s.quantity), 0) from orders s
+                 where s.direction = 'sell' and s.quantity is not null
+                   and lower(s.listing_address) = lower(o.listing_address)
+                   and (s.user_id = u.id or (s.user_id is null and s.wallet_address = u.wallet_address))
+                   and coalesce(s.placed_at, s.filled_at, s.created_at) < ${EFFECTIVE_AT})
+               - (select coalesce(sum(b.quantity), 0) from orders b
+                   where b.direction = 'buy' and b.id <> o.id and b.quantity is not null
+                     and b.hold_outcome is distinct from 'paid'
+                     and lower(b.listing_address) = lower(o.listing_address)
+                     and (b.user_id = u.id or (b.user_id is null and b.wallet_address = u.wallet_address))
+                     and coalesce(b.filled_at, b.placed_at, b.created_at) < ${EFFECTIVE_AT}))
+         )::text
+       else
+         -- Any other listing: per delivery wallet on the hub, as always.
+         (select coalesce(sum(p.quantity), 0)::text
+            from orders p
+           where p.direction = 'buy'
+             and p.hold_outcome = 'paid'
+             and lower(p.listing_address) = lower(o.listing_address)
+             and ${CHAIN_OF("p")} = ${CHAIN_OF("o")}
+             and p.delivered_to = o.delivered_to
+             and (p.user_id = u.id
+                  or (p.user_id is null and p.wallet_address = u.wallet_address)))
+       end as paid_before,
        ${EFFECTIVE_AT} as effective_at
   from orders o
   ${OWNER_JOIN}
- where ${FILLED_UNCHECKED_BUY}
+ where ${FILLED_UNCHECKED_BUY(5)}
    and ${KNOWN_LISTING(3)}
    and ${EFFECTIVE_AT} <= $1::timestamptz - make_interval(hours => $4::int)
  order by o.hold_attempted_at asc nulls first, ${EFFECTIVE_AT} asc, o.id asc
@@ -228,12 +292,15 @@ export async function holdCandidates(
     limit,
     scope.listingAddresses,
     HOLD_HOURS,
+    scope.robinhoodListingAddresses ?? [],
   ])) as CandidateRow[];
   return rows.map((row) => ({
     orderId: row.id,
     intentTx: row.intent_tx,
     userId: row.user_id,
+    userWallet: row.user_wallet,
     listingAddress: row.listing_address,
+    holdingChain: row.holding_chain === "robinhood" ? "robinhood" : "sonic",
     deliveredTo: row.delivered_to,
     quantity: String(row.quantity),
     paidBefore: String(row.paid_before),
@@ -242,12 +309,12 @@ export async function holdCandidates(
 }
 
 /**
- * The IO edge: every balanceOf(listing, holder) in ONE multicall on the hub
+ * The hub half: every balanceOf(listing, holder) in ONE multicall on the hub
  * client (Sonic, where a buy is delivered). A vault is its own share token,
  * so its balanceOf is the share balance. A single read that fails comes back
  * null for its row; a failed multicall comes back null for every row.
  */
-export const readDeliveredBalances: BalanceReader = async (queries) => {
+const readHubBalances: BalanceReader = async (queries) => {
   if (queries.length === 0) return [];
   let results: readonly { status: string; result?: unknown }[];
   try {
@@ -273,6 +340,79 @@ export const readDeliveredBalances: BalanceReader = async (queries) => {
   });
 };
 
+const RH_ADDRESS_BY_LISTING: ReadonlyMap<string, string> = new Map(
+  TOKEN_LISTINGS.flatMap((listing) => (listing.rhAddress ? [[listing.address.toLowerCase(), listing.rhAddress] as const] : [])),
+);
+
+/**
+ * The IO edge: each query read on its own chain. Hub rows go to the hub
+ * multicall (readHubBalances); Robinhood Chain rows read the listing's
+ * token there (`rhAddress`) at the holder, through the server's Robinhood
+ * Chain reader (lib/server/robinhood-balances), which never throws and
+ * answers null for what it could not read. A Robinhood row of a listing
+ * with no token there is null: unknown, never zero.
+ */
+export function deliveredBalancesReader(
+  readRobinhood: RobinhoodBalanceReader = readRobinhoodTokenBalances,
+  readHub: BalanceReader = readHubBalances,
+): BalanceReader {
+  return async (queries) => {
+    if (queries.length === 0) return [];
+    const out: (bigint | null)[] = queries.map(() => null);
+    const hub = queries.flatMap((query, index) => ((query.chain ?? "sonic") === "sonic" ? [{ query, index }] : []));
+    const robinhood = queries.flatMap((query, index) => {
+      const token = query.chain === "robinhood" ? RH_ADDRESS_BY_LISTING.get(query.listing.toLowerCase()) : undefined;
+      return token ? [{ holder: query.holder, token, index }] : [];
+    });
+    const [hubRead, robinhoodRead] = await Promise.all([
+      hub.length > 0 ? readHub(hub.map(({ query }) => query)) : Promise.resolve([]),
+      robinhood.length > 0
+        ? readRobinhood(robinhood.map(({ holder, token }) => ({ holder, token }))).catch(() => robinhood.map(() => null))
+        : Promise.resolve([]),
+    ]);
+    hub.forEach(({ index }, position) => {
+      out[index] = hubRead[position] ?? null;
+    });
+    robinhood.forEach(({ index }, position) => {
+      // A reverted balanceOf is unknown here: a hold is never judged on it.
+      const value = robinhoodRead[position];
+      out[index] = typeof value === "bigint" ? value : null;
+    });
+    return out;
+  };
+}
+
+/** Every delivered balance, each on its own chain. */
+export const readDeliveredBalances: BalanceReader = deliveredBalancesReader();
+
+/**
+ * ACCOUNT_WIDE (rh-server m2, rh-delta on 1e9a3d1). A listing with a token
+ * on Robinhood Chain can sit in a hub wallet or in any of the person's own
+ * wallets there, and one transfer, or a bridge between the two chains,
+ * moves it. So a buy of such a listing, on either chain, is judged against
+ * the account's whole holding of it: its hub wallets (each buy's delivery
+ * wallet and the hub wallet of every EVM address linked now) plus every
+ * EVM wallet linked to the account now on Robinhood Chain (a wallet since
+ * unlinked counts for nobody here), against every paid buy of it on
+ * either chain, less what sells placed before the buy took out of paid
+ * lots (a sell spends unpaid buys first), so an honest holder who sold a
+ * paid lot never forfeits a new buy, and buying and selling again never
+ * eats into a paid lot. Moving tokens between the account's
+ * places changes nothing; moving them out of the account forfeits, as
+ * selling does. Chosen over reading Transfer logs since each fill: no log
+ * scan over a month of blocks on the public RPC, and no window to game.
+ * Every other listing (the vaults) is judged per delivery wallet on the
+ * hub, as before.
+ */
+export type AccountWallets = (userId: string, usersWallet: string | null) => Promise<string[]>;
+/** The hub wallets the given EVM addresses derive on the home chain (lib/server/portfolio hubWalletFor). */
+export type HubWalletsOf = (addresses: readonly string[]) => Promise<string[]>;
+
+const hubWalletsOfLinked: HubWalletsOf = async (addresses) => Promise.all(addresses.map((address) => hubWalletFor(address)));
+
+const accountWallets: AccountWallets = async (userId, usersWallet) =>
+  (await accountEvmAddresses(userId, usersWallet, { failClosed: true })).all;
+
 export type HoldRunSummary = {
   /** Candidates looked at this run. */
   checked: number;
@@ -282,8 +422,8 @@ export type HoldRunSummary = {
   retried: number;
 };
 
-const balanceKey = (listing: string, holder: string) =>
-  `${listing.toLowerCase()}|${holder.toLowerCase()}`;
+const balanceKey = (listing: string, holder: string, chain: HoldingChain = "sonic") =>
+  `${chain}|${listing.toLowerCase()}|${holder.toLowerCase()}`;
 
 /**
  * Stamp a verdict, once. A buy whose reward is already in the ledger is
@@ -308,12 +448,18 @@ const STAMP_SQL = `update orders o
 export async function runHoldCheck({
   now = new Date(),
   readBalances = readDeliveredBalances,
+  walletsOf = accountWallets,
+  hubWalletsOf = hubWalletsOfLinked,
   limit = HOLD_BATCH_LIMIT,
   scope = holdScope(),
   deadline = Number.POSITIVE_INFINITY,
 }: {
   now?: Date;
   readBalances?: BalanceReader;
+  /** The account's EVM wallets linked now, where its holding is summed (ACCOUNT_WIDE). */
+  walletsOf?: AccountWallets;
+  /** Their hub wallets (ACCOUNT_WIDE). */
+  hubWalletsOf?: HubWalletsOf;
   limit?: number;
   scope?: HoldScope;
   /**
@@ -349,20 +495,66 @@ export async function runHoldCheck({
     }
   };
 
-  // One read per (listing, wallet), however many buys share it.
+  // Where each candidate's holding is read (ACCOUNT_WIDE): for a listing
+  // with a token on Robinhood Chain, every place the account holds it now;
+  // for any other, its delivery wallet on the hub.
+  const accountWide = new Set(scope.robinhoodListingAddresses ?? []);
+  const wide = (candidate: HoldCandidate) => accountWide.has(candidate.listingAddress.toLowerCase());
+  type Place = { holder: string; chain: HoldingChain };
+  const placesOfAccount = new Map<string, { evm: string[]; hubs: string[] } | null>();
+  for (const candidate of candidates) {
+    if (!wide(candidate) || placesOfAccount.has(candidate.userId)) continue;
+    try {
+      const evm = (await walletsOf(candidate.userId, candidate.userWallet ?? null)).map((wallet) => wallet.toLowerCase());
+      const hubs = (await hubWalletsOf(evm)).map((wallet) => wallet.toLowerCase());
+      placesOfAccount.set(candidate.userId, { evm, hubs });
+    } catch (error) {
+      console.warn("[holds] account wallets unread, its buys retried", error instanceof Error ? error.message : error);
+      placesOfAccount.set(candidate.userId, null);
+    }
+  }
+  /** The group a buy is judged in: per account and listing (ACCOUNT_WIDE), else per delivery wallet on the hub. */
+  const groupKey = (candidate: HoldCandidate) =>
+    wide(candidate)
+      ? `${candidate.userId}|${candidate.listingAddress.toLowerCase()}`
+      : `${candidate.userId}|${balanceKey(candidate.listingAddress, candidate.deliveredTo, candidate.holdingChain)}`;
+  const groupsDraft = new Map<string, HoldCandidate[]>();
+  for (const candidate of candidates) {
+    const key = groupKey(candidate);
+    groupsDraft.set(key, [...(groupsDraft.get(key) ?? []), candidate]);
+  }
+  /** Every place a group's holding is read, or null when the account's wallets could not be read. */
+  const placesOf = (group: readonly HoldCandidate[]): Place[] | null => {
+    const first = group[0];
+    if (!wide(first)) return [{ holder: first.deliveredTo.toLowerCase(), chain: first.holdingChain }];
+    const account = placesOfAccount.get(first.userId);
+    if (!account) return null;
+    const hubs = new Set([
+      ...account.hubs,
+      ...group.filter((candidate) => candidate.holdingChain === "sonic").map((candidate) => candidate.deliveredTo.toLowerCase()),
+    ]);
+    return [
+      ...[...hubs].map((holder) => ({ holder, chain: "sonic" as const })),
+      ...account.evm.map((holder) => ({ holder, chain: "robinhood" as const })),
+    ];
+  };
+
+  // One read per (listing, wallet, chain), however many buys share it.
   const queries = [
     ...new Map(
-      candidates.map((candidate) => [
-        balanceKey(candidate.listingAddress, candidate.deliveredTo),
-        { holder: candidate.deliveredTo, listing: candidate.listingAddress },
-      ]),
+      [...groupsDraft.values()].flatMap((group) =>
+        (placesOf(group) ?? []).map((place) => [
+          balanceKey(group[0].listingAddress, place.holder, place.chain),
+          { holder: place.holder, listing: group[0].listingAddress, chain: place.chain },
+        ] as const),
+      ),
     ).values(),
   ];
   const balances = new Map<string, bigint | null>();
   try {
     const read = await readBalances(queries);
     queries.forEach((query, index) =>
-      balances.set(balanceKey(query.listing, query.holder), read[index] ?? null),
+      balances.set(balanceKey(query.listing, query.holder, query.chain), read[index] ?? null),
     );
   } catch (error) {
     console.warn(
@@ -374,16 +566,23 @@ export async function runHoldCheck({
     await markAttempted();
     return summary;
   }
+  /** A group's holding summed over its places; null when any part is unknown. */
+  const holdingOf = (group: readonly HoldCandidate[]): bigint | null => {
+    const places = placesOf(group);
+    if (!places) return null;
+    let sum = 0n;
+    for (const place of places) {
+      const balance = balances.get(balanceKey(group[0].listingAddress, place.holder, place.chain));
+      if (balance === null || balance === undefined) return null;
+      sum += balance;
+    }
+    return sum;
+  };
 
-  // Cumulative accounting: one account's buys of one listing at one wallet
-  // are judged together, oldest first, each paid one raising the bar.
-  const groups = new Map<string, HoldCandidate[]>();
-  for (const candidate of candidates) {
-    const key = `${candidate.userId}|${balanceKey(candidate.listingAddress, candidate.deliveredTo)}`;
-    const group = groups.get(key);
-    if (group) group.push(candidate);
-    else groups.set(key, [candidate]);
-  }
+  // Cumulative accounting: one account's buys of one listing (per wallet
+  // for a vault) are judged together, oldest first, each paid one raising
+  // the bar.
+  const groups = groupsDraft;
 
   for (const group of groups.values()) {
     if (Date.now() >= deadline) break;
@@ -392,8 +591,7 @@ export async function runHoldCheck({
         a.effectiveAt.getTime() - b.effectiveAt.getTime() ||
         (a.orderId < b.orderId ? -1 : a.orderId > b.orderId ? 1 : 0),
     );
-    const balance =
-      balances.get(balanceKey(group[0].listingAddress, group[0].deliveredTo)) ?? null;
+    const balance = holdingOf(group);
     let alreadyPaid = toRaw(group[0].paidBefore);
 
     for (const candidate of group) {
@@ -472,10 +670,10 @@ export async function pendingHolds(
        from orders o
        ${OWNER_JOIN}
       where u.id = $1
-        and ${FILLED_UNCHECKED_BUY}
+        and ${FILLED_UNCHECKED_BUY(3)}
         and ${KNOWN_LISTING(2)}
       order by ${EFFECTIVE_AT} asc, o.id asc`,
-    [userId, scope.listingAddresses],
+    [userId, scope.listingAddresses, scope.robinhoodListingAddresses ?? []],
   )) as PendingRow[];
   const amount = XP_ACTIONS.held_30_days.amount;
   return rows.map((row) => {

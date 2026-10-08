@@ -270,6 +270,21 @@ const embeddedCache = new Map<string, { address: string | null; at: number }>();
  * The wallets list uses it to say which linked address only an email sign
  * in can sign for (after a merge, a wallet session cannot).
  */
+/**
+ * The user's Privy embedded EVM wallet, telling "none" (`address` null)
+ * apart from "Privy could not be asked" (`ok` false), for a decision where
+ * doubt must answer the safe way (lib/server/delivery isEmbeddedWallet).
+ */
+export async function readPrivyEmbeddedWallet(did: string): Promise<{ ok: true; address: string | null } | { ok: false }> {
+  const accounts = await fetchPrivyUser(did);
+  if (accounts === null) return { ok: false };
+  const address =
+    accounts
+      .find((account) => account.type === "wallet" && account.chain_type === "ethereum" && account.address && isEmbeddedWallet(account))
+      ?.address?.toLowerCase() ?? null;
+  return { ok: true, address };
+}
+
 export async function fetchPrivyEmbeddedWallet(did: string): Promise<string | null> {
   const cached = embeddedCache.get(did);
   if (cached && Date.now() - cached.at < WALLET_CACHE_MS && cached.address) return cached.address;
