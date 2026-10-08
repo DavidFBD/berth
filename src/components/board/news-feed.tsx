@@ -27,7 +27,7 @@ import { useSeenPosts } from "@/hooks/use-seen-posts";
 import { TOKEN_LISTINGS, type TokenListing } from "@/lib/listings";
 import { EASE_LIFT } from "@/lib/motion";
 import { formatTimeAgo } from "@/lib/news";
-import { heldEvents, ownedState, type EventCard, type StoryCard } from "@/lib/news-stories";
+import { heldEvents, ownedState, pinnedRiver, type EventCard, type StoryCard } from "@/lib/news-stories";
 import { formatCount, type Verdict } from "@/lib/x-feed";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 
@@ -160,14 +160,18 @@ export function NewsFeed({
   const events = owner ? heldEvents(news.data.events, held!, new Date(now).toISOString().slice(0, 10)) : [];
   const ownedIds = new Set(shownOwned.map((card) => card.storyId));
   const pinned = filter && focus && focus.symbol === filter.symbol && !news.isLoading ? focus : undefined;
-  const riverAll = pinFirst(
-    news.data.stories.filter((card) => !ownedIds.has(card.storyId)),
-    pinned && (news.data.stories.concat(news.data.reserve).find((card) => card.storyId === pinned.storyId) ?? pinned),
-  );
-  const reserveAll = news.data.reserve.filter((card) => !ownedIds.has(card.storyId) && card.storyId !== pinned?.storyId);
-  const shownRiver = limit ? riverAll.slice(0, limit) : riverAll;
-  const reserve = limit ? [...riverAll.slice(limit), ...reserveAll] : reserveAll;
-  const { visible: rotated, ref: riverRef, handlers: riverHandlers, node: riverNode } = useRotatingFeed(shownRiver, reserve, true);
+  const { pin, river: riverRest, reserve: reserveAll } = pinnedRiver({
+    stories: news.data.stories.filter((card) => !ownedIds.has(card.storyId)),
+    reserve: news.data.reserve.filter((card) => !ownedIds.has(card.storyId)),
+    focus: pinned,
+  });
+  const riverAll = pin ? [pin, ...riverRest] : riverRest;
+  // The pinned card stays first: only the cards after it rotate.
+  const room = limit && pin ? Math.max(limit - 1, 0) : limit;
+  const shownRiver = room ? riverRest.slice(0, room) : riverRest;
+  const reserve = room ? [...riverRest.slice(room), ...reserveAll] : reserveAll;
+  const { visible: turning, ref: riverRef, handlers: riverHandlers, node: riverNode } = useRotatingFeed(shownRiver, reserve, true);
+  const rotated = pin ? [pin, ...turning] : turning;
   const seen = useSeenPosts(riverAll.concat(reserveAll), rotated, true, riverNode);
 
   const updatedAt = news.data.updatedAt;
@@ -401,12 +405,6 @@ export function NewsFeed({
       )}
     </Panel>
   );
-}
-
-/** `first` at the head of the river, once: the headline the reader came for. */
-function pinFirst(cards: StoryCard[], first: StoryCard | undefined): StoryCard[] {
-  if (!first) return cards;
-  return [first, ...cards.filter((card) => card.storyId !== first.storyId)];
 }
 
 type CardProps = {

@@ -350,3 +350,27 @@ export type NewsColumnResponse = {
   /** Present only when the store could not be read. Never the database's own words. */
   reason?: string;
 };
+
+/**
+ * The column pointed at one listing with a headline the reader tapped
+ * (components/first-look): that card, taken out of the river and the
+ * reserve, to sit first while only the cards after it rotate. The column's
+ * own card for the story when it has one, else the focus as given.
+ */
+export function pinnedRiver({
+  stories,
+  reserve,
+  focus,
+}: {
+  stories: readonly StoryCard[];
+  reserve: readonly StoryCard[];
+  focus: StoryCard | undefined;
+}): { pin?: StoryCard; river: StoryCard[]; reserve: StoryCard[] } {
+  if (!focus) return { river: [...stories], reserve: [...reserve] };
+  const pin = stories.concat(reserve).find((card) => card.storyId === focus.storyId) ?? focus;
+  return {
+    pin,
+    river: stories.filter((card) => card.storyId !== focus.storyId),
+    reserve: reserve.filter((card) => card.storyId !== focus.storyId),
+  };
+}
