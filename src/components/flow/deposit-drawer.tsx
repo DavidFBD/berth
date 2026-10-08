@@ -80,8 +80,10 @@ import {
 import { useUsdPrices } from "@/hooks/use-usd-prices";
 import { useNativeGasBuffer } from "@/hooks/use-native-gas-buffer";
 import { isGasToken, useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
-import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
-import { byGasStatus, floorWarns, orderGasShort } from "@/lib/gas-need";
+import { gasShortMessage, shortfallProp } from "@/lib/gas-message";
+import { useWalletOnlySession } from "@/hooks/use-account";
+import { useOutcomeHold, useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
+import { amountLeavesNoFee, byGasStatus, floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import {
   ActionError,
   ActionStepper,
@@ -323,6 +325,12 @@ export function DepositDrawer({
   const gas = useGasGate([srcChainKey], open && !!token);
   const gasNeed = gas.needFor(srcChainKey, false);
   const gasPreflight = useGasPreflight();
+  // A session with no email signs every order with its own wallet and pays
+  // every fee itself: said calmly near the fee line, every time.
+  const walletSession = useWalletOnlySession();
+  // Only where an email sign-in would in fact pay nothing (lib/gas-sponsor,
+  // minus any chain Privy refused this session) is the note true.
+  const emailCoversFee = useSponsoredChainNames().includes(getChainName(srcChainKey));
   // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
   const outcomeHold = useOutcomeHold();
 
@@ -381,29 +389,28 @@ export function DepositDrawer({
   const worthUsd =
     token && buildAmount ? prices.usdValue(token, buildAmount) : undefined;
   // The chosen token's chain cannot pay: with no amount yet, whether any
-  // order could; with one, whether this one leaves enough for the fee.
-  const selectedGasShort =
-    !!token &&
-    orderGasShort({
-      chainKey: srcChainKey,
-      isNative: payingNative,
-      nativeBalance,
-      amount: payingNative ? (buildAmount ?? 1n) : 0n,
-      need: gasNeed,
-      sponsored: gas.sponsored(srcChainKey),
-    });
-  // Enough at the chain's price, not at what some wallets attach: say so
-  // calmly and let the person sign.
+  // order could; with one, whether this one leaves enough for the fee. The
+  // need is the larger of the chain's price and what wallets attach on top
+  // (lib/gas-need blockingNeed), so a wallet paying its own fee is stopped
+  // here, before the flow starts, and told roughly how much to add.
+  const selectedGasFacts = {
+    chainKey: srcChainKey,
+    isNative: payingNative,
+    nativeBalance,
+    amount: payingNative ? (buildAmount ?? 1n) : 0n,
+    need: gasNeed,
+    sponsored: gas.sponsored(srcChainKey),
+  };
+  const selectedGasShort = !!token && orderGasShort(selectedGasFacts);
+  const selectedGasToAdd = selectedGasShort ? gasToAdd(selectedGasFacts) : undefined;
+  // Clears the gate, but a wallet attaching 2 gwei would ask for more: say
+  // so calmly and let the person sign (lib/gas-need warnReserve).
   const gasFloorWarn =
     !!token &&
     floorWarns({
-      chainKey: srcChainKey,
-      isNative: payingNative,
-      nativeBalance,
+      ...selectedGasFacts,
       amount: payingNative ? (buildAmount ?? 0n) : 0n,
-      need: gasNeed,
-      approval: false,
-      sponsored: gas.sponsored(srcChainKey),
+      warnNeed: gas.warnNeedFor(srcChainKey, false),
     });
   const balanceWorthUsd =
     token && balance !== undefined && balance > 0n
@@ -454,6 +461,12 @@ export function DepositDrawer({
     usd: worthUsd,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
+    // Only once the person is making this order (an amount typed), never
+    // for a token preselected on opening.
+    gasBlocked:
+      selectedGasShort && nativeToken && !!buildAmount
+        ? { chainKey: srcChainKey, shortfall: shortfallProp(selectedGasToAdd, nativeToken.decimals) }
+        : null,
   });
 
   const finish = () => {
@@ -894,9 +907,14 @@ export function DepositDrawer({
                         <GasPump className="mt-0.5 size-5 shrink-0 text-warn" />
                         <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
                           <p className="text-foreground">
-                            {gasShortChains.includes(srcChainKey)
-                              ? copy.gasShortWarning(getChainName(srcChainKey), symbol)
-                              : copy.gasNeededToPay(symbol, getChainName(srcChainKey))}
+                            {/* An amount whenever one can be told, an empty wallet included. */}
+                            {native && selectedGasToAdd !== undefined
+                              ? gasShortMessage(copy, native, srcChainKey, selectedGasToAdd, "order", amountLeavesNoFee(selectedGasFacts))
+                              : gasShortChains.includes(srcChainKey)
+                                ? copy.gasShortWarning(getChainName(srcChainKey), symbol)
+                                : native
+                                  ? gasShortMessage(copy, native, srcChainKey, undefined)
+                                  : copy.gasNeededToPay(symbol, getChainName(srcChainKey))}
                           </p>
                           {onTopUp && (
                             <button
@@ -1058,6 +1076,13 @@ export function DepositDrawer({
                 {gasFloorWarn && nativeToken && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground">
                     {copy.gasFloorWarning(nativeToken.symbol)}
+                  </p>
+                )}
+                {/* One gas message at a time: the note only while no block or warning speaks. */}
+                {token && walletSession && emailCoversFee && address && !gas.sponsored(srcChainKey) && nativeToken &&
+                  !selectedGasShort && !gasShortChains.includes(srcChainKey) && !gasFloorWarn && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
+                    {copy.selfPaidFeeNote(nativeToken.symbol, getChainName(srcChainKey))}
                   </p>
                 )}
                 {token && gas.sponsored(srcChainKey) && (

@@ -168,6 +168,10 @@ export type RpcTransaction = {
   data?: string;
   input?: string;
   value?: string;
+  /** Hex, when the caller filled them in: what the node will check against the balance. */
+  gas?: string;
+  maxFeePerGas?: string;
+  gasPrice?: string;
 };
 
 /** What Privy's sponsored send takes: Privy re-estimates gas and fees itself, so only the call goes over. */
@@ -698,9 +702,10 @@ type Eip1193 = {
  * reaches the paymaster. Everything else passes straight through.
  *
  * When Privy refuses before broadcast (classifySponsorError), the same transaction goes out
- * the ordinary way, paid by the person; if they hold no gas, that send fails
- * with the node's insufficient-funds line, which lib/error-copy already
- * turns into the calm "add about 0.0002 ETH" sentence.
+ * the ordinary way, paid by the person. `beforePaidSend` checks their gas
+ * first, and stops with an insufficient-funds line, which lib/error-copy
+ * turns into the calm "add about 0.0002 ETH" sentence, rather than letting
+ * the node refuse the send.
  */
 export function withGasSponsor(
   provider: Eip1193,
@@ -711,6 +716,7 @@ export function withGasSponsor(
     sendSponsored,
     readReceipt,
     onFallback,
+    beforePaidSend,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     sendDeadlineMs = SPONSORED_SEND_DEADLINE_MS,
   }: {
@@ -731,6 +737,12 @@ export function withGasSponsor(
      * (two 429s in a row) should not.
      */
     onFallback?: (error: unknown, kind: "refused" | "rate-limited") => void;
+    /**
+     * The gas check before the paid send that follows a fallback: throws
+     * (an insufficient-funds error, so lib/error-copy says "add about X")
+     * when the wallet cannot pay, and nothing is sent. Resolves to go on.
+     */
+    beforePaidSend?: (tx: RpcTransaction) => Promise<void>;
     /** Test seam for the 429 wait. */
     sleep?: (ms: number) => Promise<void>;
     /** Test seam for SPONSORED_SEND_DEADLINE_MS, per send. */
@@ -776,6 +788,8 @@ export function withGasSponsor(
           throw new SponsoredOutcomeUnknown(error);
         }
         onFallback?.(error, kind);
+        // The person pays now: check they can before the node refuses it.
+        await beforePaidSend?.(tx);
         return provider.request(args);
       }
       // Privy answered without a hash: the operation was accepted and may

@@ -26,9 +26,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { EASE_LIFT } from "@/lib/motion";
 import { getChainName, getNativeGasToken, isTypedEvmAddress, toBalanceReadToken } from "@/lib/chains";
-import { floorWarns, orderGasShort } from "@/lib/gas-need";
+import { floorWarns, gasToAdd, orderGasShort } from "@/lib/gas-need";
 import { useGasGate, useGasPreflight } from "@/hooks/use-gas-gate";
-import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
+import { gasShortMessage, shortfallProp } from "@/lib/gas-message";
+import { useWalletOnlySession } from "@/hooks/use-account";
+import { useOutcomeHold, useSponsoredChainNames } from "@/hooks/use-sponsor-refusals";
 import { getVaultMeta } from "@/lib/vaults-meta";
 import type { Listing } from "@/lib/listings";
 import { formatTokenAmount, formatUsd, parseAmount, shortenAddress } from "@/lib/format";
@@ -189,25 +191,30 @@ export function WithdrawDrawer({
     signNative && signNativeQuery.data
       ? (signNativeQuery.data[toBalanceReadToken(signNative).address] ?? 0n)
       : undefined;
+  // A wallet that pays its own fee is stopped here, before the flow
+  // starts, below the larger of the chain's price and what wallets attach
+  // on top (lib/gas-need blockingNeed); a sponsored sell is never stopped.
   const signGas = useGasGate([srcChainKey], open);
-  const signGasShort = orderGasShort({
+  const signGasFacts = {
     chainKey: srcChainKey,
     isNative: false,
     nativeBalance: signNativeBalance,
     amount: 0n,
-    need: signGas.needFor(srcChainKey, false),
+    need: signGas.needFor(srcChainKey, false, "sell"),
     sponsored: signGas.sponsored(srcChainKey),
-  });
-  const signGasFloorWarn = floorWarns({
-    chainKey: srcChainKey,
-    isNative: false,
-    nativeBalance: signNativeBalance,
-    amount: 0n,
-    need: signGas.needFor(srcChainKey, false),
-    approval: false,
-    sponsored: signGas.sponsored(srcChainKey),
-  });
+  };
+  const signGasShort = orderGasShort(signGasFacts);
+  const signGasToAdd = signGasShort ? gasToAdd(signGasFacts) : undefined;
+  // Clears the gate, but a wallet attaching 2 gwei would ask for more: say
+  // so calmly and let the person sign (lib/gas-need warnReserve).
+  const signGasFloorWarn = floorWarns({ ...signGasFacts, warnNeed: signGas.warnNeedFor(srcChainKey, false, "sell") });
   const gasPreflight = useGasPreflight();
+  // A session with no email signs every order with its own wallet and pays
+  // every fee itself: said calmly near the fee line, every time.
+  const walletSession = useWalletOnlySession();
+  // Only where an email sign-in would in fact pay nothing (lib/gas-sponsor,
+  // minus any chain Privy refused this session) is the note true.
+  const emailCoversFee = useSponsoredChainNames().includes(getChainName(srcChainKey));
   // A sponsored send may still land: no second tap for a minute (lib/gas-sponsor).
   const outcomeHold = useOutcomeHold();
   // Funds are delivered to the user's wallet ON the destination chain (the
@@ -369,6 +376,12 @@ export function WithdrawDrawer({
     usd: buildAmount ? sharesWorthUsd(buildAmount) : undefined,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
+    // Only once the person is making this order (an amount typed), never
+    // for a token preselected on opening.
+    gasBlocked:
+      signGasShort && signNative && !!buildAmount
+        ? { chainKey: srcChainKey, shortfall: shortfallProp(signGasToAdd, signNative.decimals) }
+        : null,
   });
 
   const finish = () => {
@@ -450,7 +463,7 @@ export function WithdrawDrawer({
       walletProvider,
       walletMode: mode,
       gasCheck: () =>
-        gasPreflight({ chainKey: srcChainKey, address, amount: 0n, approval: false }),
+        gasPreflight({ chainKey: srcChainKey, address, amount: 0n, approval: false, order: "sell" }),
       fillToasts: {
         successTitle: isSell ? copy.soldTitle : copy.withdrawnTitle,
         successDescription: copy.deliveredBody(getChainName(dstChainKey)),
@@ -843,7 +856,7 @@ export function WithdrawDrawer({
                   </p>
                   {signGasShort && signNative && (
                     <p className="text-xs text-warn">
-                      {copy.gasNeededToPay(signNative.symbol, getChainName(srcChainKey))}
+                      {gasShortMessage(copy, signNative, srcChainKey, signGasToAdd)}
                     </p>
                   )}
                   {totalShares !== undefined &&
@@ -1030,6 +1043,13 @@ export function WithdrawDrawer({
                 {signGasFloorWarn && signNative && (
                   <p className="text-center text-xs leading-relaxed text-muted-foreground">
                     {copy.gasFloorWarning(signNative.symbol)}
+                  </p>
+                )}
+                {/* One gas message at a time: the note only while no block or warning speaks. */}
+                {walletSession && emailCoversFee && address && !signGas.sponsored(srcChainKey) && signNative &&
+                  !signGasShort && !signGasFloorWarn && (
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground" data-testid="self-paid-fee">
+                    {copy.selfPaidFeeNote(signNative.symbol, getChainName(srcChainKey))}
                   </p>
                 )}
                 {signGas.sponsored(srcChainKey) && (

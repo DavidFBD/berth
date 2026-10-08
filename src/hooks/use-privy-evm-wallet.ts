@@ -18,12 +18,14 @@ import {
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { pinnedEvmTransport } from "@/lib/sodax-config";
 import { gasSponsored, markSponsorRefused, sponsoredSendOptions, withGasSponsor } from "@/lib/gas-sponsor";
+import { InsufficientFundsForPaidSend, paidSendNeed, withinOrUnknown } from "@/lib/gas-need";
+import { readEvmFeePerGas } from "@/hooks/use-native-gas-buffer";
 
 /** The user's Privy embedded EVM wallet, if signed in via email. */
 export function usePrivyEmbeddedWallet() {
   const { ready, authenticated, user, login, logout, getAccessToken } =
     usePrivy();
-  const { wallets } = useWallets();
+  const { wallets, ready: walletsReady } = useWallets();
   // Newer embedded wallets report "privy-v2"; both are Privy's, and the
   // server's pickAccountWallet reads them the same way.
   const embedded = wallets.find(
@@ -32,6 +34,8 @@ export function usePrivyEmbeddedWallet() {
   return {
     enabled: PRIVY_ENABLED,
     ready,
+    /** Privy has listed this session's wallets, so a missing embedded wallet is really missing. */
+    walletsReady,
     authenticated,
     /** See `isWalletAccountUser`: a session the app has no screen for. */
     walletAccountSession: authenticated && isWalletAccountUser(user),
@@ -238,6 +242,26 @@ export function usePrivyEvmWalletProvider(
                 }),
             sendSponsored: (tx) =>
               sendRef.current(tx, sponsoredSendOptions(embeddedAddress)),
+            beforePaidSend: async (tx) => {
+              const hex = (value: string | undefined) => (value ? BigInt(value) : undefined);
+              const [balance, feePerGas] = await Promise.all([
+                withinOrUnknown(publicClient.getBalance({ address: embeddedAddress as `0x${string}` })),
+                hex(tx.maxFeePerGas ?? tx.gasPrice) === undefined
+                  ? withinOrUnknown(readEvmFeePerGas(evmChainKey))
+                  : Promise.resolve(undefined),
+              ]);
+              const want = paidSendNeed({
+                chainKey: evmChainKey,
+                gas: hex(tx.gas),
+                maxFeePerGas: hex(tx.maxFeePerGas ?? tx.gasPrice),
+                feePerGas,
+                value: hex(tx.value),
+              });
+              // Unknown never stops a send: the node has the last word.
+              if (balance !== undefined && balance < want) {
+                throw new InsufficientFundsForPaidSend(balance, want);
+              }
+            },
             onFallback: (error, kind) => {
               // Two 429s in a row pay this once but keep the chain sponsored.
               if (kind === "refused") markSponsorRefused(chain.id);

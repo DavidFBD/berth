@@ -3,6 +3,7 @@
 import { useAccountXAccount } from "@/hooks/use-wallet-restore";
 import { ChainKeys, type SpokeChainKey } from "@sodax/sdk";
 import {
+  isWalletOnlySession,
   resolveAccount,
   type AccountSession,
   type ResolvedAccount,
@@ -44,4 +45,23 @@ export function useAccount(
     session,
     chainKey ? store.address : undefined,
   );
+}
+
+/**
+ * Whether this browser's session is a wallet with no email sign-in behind
+ * it, known for sure: every order is signed by that wallet, which pays its
+ * own network fee (lib/gas-sponsor sponsors only the email's embedded
+ * wallet). The rule is lib/account isWalletOnlySession.
+ */
+export function useWalletOnlySession(): boolean {
+  const privy = usePrivyEmbeddedWallet();
+  const session = useAccountSession();
+  return isWalletOnlySession({
+    enabled: privy.enabled,
+    ready: privy.ready,
+    walletsReady: privy.walletsReady,
+    authenticated: privy.authenticated,
+    hasEmbedded: Boolean(privy.embedded),
+    emailSession: session.emailSession,
+  });
 }

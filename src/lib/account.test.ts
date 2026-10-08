@@ -3,6 +3,7 @@ import { ChainKeys } from "@sodax/sdk";
 import {
   HOME_CHAIN,
   homeSpokeAddress,
+  isWalletOnlySession,
   resolveAccount,
   type AccountSession,
 } from "./account";
@@ -98,5 +99,27 @@ describe("the home account", () => {
   it("does not exist for a browser with neither", () => {
     expect(homeSpokeAddress(externalSession)).toBeUndefined();
     expect(homeSpokeAddress(warmingSession)).toBeUndefined();
+  });
+});
+
+describe("isWalletOnlySession", () => {
+  const wallet = { enabled: true, ready: true, walletsReady: true, authenticated: false, hasEmbedded: false, emailSession: false };
+
+  it("is a wallet that pays its own fees once Privy has answered", () => {
+    expect(isWalletOnlySession(wallet)).toBe(true);
+  });
+
+  it("is never an email session, nor anyone while Privy is still answering", () => {
+    expect(isWalletOnlySession({ ...wallet, authenticated: true, hasEmbedded: true, emailSession: true })).toBe(false);
+    expect(isWalletOnlySession({ ...wallet, ready: false })).toBe(false);
+    expect(isWalletOnlySession({ ...wallet, authenticated: true, walletsReady: false })).toBe(false);
+  });
+
+  it("pays its own fees when signed in to Privy with no embedded wallet once the wallets are listed", () => {
+    expect(isWalletOnlySession({ ...wallet, authenticated: true, hasEmbedded: false })).toBe(true);
+  });
+
+  it("speaks of no email sign-in where Privy is off", () => {
+    expect(isWalletOnlySession({ ...wallet, enabled: false })).toBe(false);
   });
 });

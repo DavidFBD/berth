@@ -72,3 +72,26 @@ export function homeSpokeAddress(
 ): string | undefined {
   return resolveAccount(HOME_CHAIN, session, connectedEvmAddress).address;
 }
+
+/**
+ * Whether this browser's session is a wallet that pays its own network
+ * fees, known for sure (hooks/use-account useWalletOnlySession):
+ * - Privy off: no email sign-in exists to compare with, so false and the
+ *   email wording never shows.
+ * - an email session, or Privy still answering: false, so an email session
+ *   never flashes the wallet's notice.
+ * - signed in to Privy with no embedded wallet once the wallets are listed
+ *   (its creation failed, or a wallet signed in to Privy): true, it pays.
+ */
+export function isWalletOnlySession(s: {
+  enabled: boolean;
+  ready: boolean;
+  walletsReady: boolean;
+  authenticated: boolean;
+  hasEmbedded: boolean;
+  emailSession: boolean;
+}): boolean {
+  if (!s.enabled || s.emailSession || !s.ready) return false;
+  if (s.authenticated && !s.hasEmbedded) return s.walletsReady;
+  return true;
+}

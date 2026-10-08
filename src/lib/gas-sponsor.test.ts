@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { InsufficientFundsForPaidSend } from "./gas-need";
+import { insufficientGasError } from "./error-copy";
 import { ChainKeys } from "@sodax/sdk";
 import { createWalletClient, custom, keccak256, toHex } from "viem";
 import { base } from "viem/chains";
@@ -291,6 +293,33 @@ describe("withGasSponsor", () => {
     expect(onFallback).toHaveBeenCalledOnce();
     expect(onFallback.mock.calls[0][1]).toBe("refused");
     expect(inner.request).toHaveBeenCalledWith(sendArgs);
+  });
+
+  it("checks the wallet's gas before the paid fallback, and sends nothing when it cannot pay", async () => {
+    const inner = { request: vi.fn(async () => "0xordinary") };
+    const refused = async () => {
+      throw Object.assign(new Error("Insufficient balance for gas sponsorship"), { name: "PrivyApiError", status: 402 });
+    };
+    const beforePaidSend = vi.fn(async () => {
+      throw new InsufficientFundsForPaidSend(100n, 400n);
+    });
+    const provider = withGasSponsor(inner, { chainId: 8453, address: "0xa", active: () => true, sendSponsored: refused, beforePaidSend });
+    const error = await provider.request(sendArgs).catch((caught: unknown) => caught);
+    expect(beforePaidSend).toHaveBeenCalledWith(sendArgs.params[0]);
+    expect(inner.request).not.toHaveBeenCalled();
+    // Reads like the node's own refusal, so the person is told how much to add.
+    expect(insufficientGasError(error)).toEqual({ shortfall: 300n });
+  });
+
+  it("sends the paid fallback when the gas check passes", async () => {
+    const inner = { request: vi.fn(async () => "0xordinary") };
+    const refused = async () => {
+      throw Object.assign(new Error("Insufficient balance for gas sponsorship"), { name: "PrivyApiError", status: 402 });
+    };
+    const beforePaidSend = vi.fn(async () => {});
+    const provider = withGasSponsor(inner, { chainId: 8453, address: "0xa", active: () => true, sendSponsored: refused, beforePaidSend });
+    await expect(provider.request(sendArgs)).resolves.toBe("0xordinary");
+    expect(beforePaidSend).toHaveBeenCalledOnce();
   });
 
   it("asks once more after one 429, and sponsors if Privy then agrees", async () => {
