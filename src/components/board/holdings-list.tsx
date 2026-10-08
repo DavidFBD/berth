@@ -257,7 +257,7 @@ export function HoldingsView({
     <section data-ph-mask>
       <SectionHeading
         title={copy.holdingsTitle}
-        hint={copy.holdingsHint}
+        hint={rows.some((row) => row.robinhood !== undefined && row.robinhood > 0n) ? copy.rhChain.holdingsHint : copy.holdingsHint}
         note={holdsAnything ? copy.holdingsSubline : undefined}
         // What the figure counts sits behind the same (i): the account's
         // total is right above, so the page need not say it twice.

@@ -263,10 +263,13 @@ function SignedInHome() {
     accountKey ? `berth.first-stock-closed.${accountKey.toLowerCase()}` : null,
   );
   const stocksHeld = ownedHoldings.held.filter((holding) => holding.listing.kind === "stock");
-  // The first stock's card speaks of the Berth account ("an account your
-  // wallet controls"), so it is not shown for a stock delivered to Robinhood
-  // Chain until its own words exist (plan P4d).
-  const oneStock = proven === "owns" && ownedHoldings.settled && stocksHeld.length === 1 && stocksHeld[0].robinhood === 0n;
+  // The first stock's card says where it is: the Berth account, or, for a
+  // stock delivered to Robinhood Chain, the person's own wallet there. A
+  // first stock split between the two has no one true line, so no card.
+  const firstHeld = stocksHeld.length === 1 ? stocksHeld[0] : undefined;
+  const firstInWallet = firstHeld !== undefined && firstHeld.robinhood > 0n && firstHeld.robinhood >= firstHeld.balance;
+  const oneStock =
+    proven === "owns" && ownedHoldings.settled && firstHeld !== undefined && (firstHeld.robinhood === 0n || firstInWallet);
   const firstStockState = useFirstStock(oneStock);
   const closeFirstStock = useCloseFirstStock();
   const firstStock =
@@ -711,6 +714,7 @@ function SignedInHome() {
               {firstStock && (
                 <FirstStockCard
                   listing={firstStock}
+                  inWallet={firstInWallet}
                   onAsk={askAvailable ? openChat : undefined}
                   onReadNews={openNewsOn}
                   onDismiss={() => {

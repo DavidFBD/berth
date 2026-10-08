@@ -196,6 +196,10 @@ export type Copy = {
   rhChain: {
     /** Under a holding wholly on Robinhood Chain. */
     holdingInWallet: string;
+    /** What you own's (i), once anything is held on Robinhood Chain: holdingsHint, saying a sell spends the Berth account alone. */
+    holdingsHint: string;
+    /** The first stock's line when it was delivered to Robinhood Chain: firstLook.firstStockLine without the Berth account or a sell it cannot do yet. */
+    firstStockLine: (name: string) => string;
     /** Under a holding in both places: the two quantities, account first. */
     holdingSplit: (inAccount: string, inWallet: string) => string;
     /** The Robinhood Chain wallet did not answer: the list is the account's alone. */
@@ -2816,6 +2820,10 @@ export const COPY: Copy = {
   },
   rhChain: {
     holdingInWallet: "In your own wallet on Robinhood Chain",
+    holdingsHint:
+      "Held in your Berth account or in your own wallet on Robinhood Chain. Sell what is in your Berth account with one signature. What is in your own wallet stays there, yours to keep or move.",
+    firstStockLine: (name) =>
+      `${name} is in your own wallet on Robinhood Chain, as a Robinhood token that tracks its share price. It is yours, held by your own wallet's keys, and you can see it any day under What you own.`,
     holdingSplit: (inAccount, inWallet) => `${inAccount} in your Berth account, ${inWallet} in your own wallet on Robinhood Chain`,
     walletUnread: "Your wallet on Robinhood Chain could not be read just now, so what is there is not shown. Berth will try again shortly.",
     buySub: "Pay with what you hold, from more than 20 networks.",

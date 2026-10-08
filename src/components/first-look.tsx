@@ -102,16 +102,20 @@ export function FirstLookReadingView({
  */
 export function FirstStockCard({
   listing,
+  inWallet = false,
   onAsk,
   onReadNews,
   onDismiss,
 }: {
   listing: TokenListing;
+  /** It was delivered to the person's own wallet on Robinhood Chain, not to the Berth account. */
+  inWallet?: boolean;
   onAsk?: (prompt: string) => void;
   onReadNews?: (listing: TokenListing) => void;
   onDismiss: () => void;
 }) {
-  const copy = useCopy().firstLook;
+  const allCopy = useCopy();
+  const copy = allCopy.firstLook;
   const { lookOf } = useFirstLook(listing.symbol);
   const look = lookOf(listing.symbol);
   const name = rowName(listing);
@@ -122,7 +126,7 @@ export function FirstStockCard({
           <TickerTile symbol={listing.symbol} />
           <h2 className="font-display text-[22px] leading-[1.15] tracking-[-0.022em] text-foreground">{copy.firstStockTitle}</h2>
         </div>
-        <p className="mt-2.5 text-[14.5px] leading-[1.55] text-muted-foreground">{copy.firstStockLine(name)}</p>
+        <p className="mt-2.5 text-[14.5px] leading-[1.55] text-muted-foreground">{inWallet ? allCopy.rhChain.firstStockLine(name) : copy.firstStockLine(name)}</p>
         {look.kind !== "hidden" && (
           <div className="mt-4">
             <FirstLookReadingView
