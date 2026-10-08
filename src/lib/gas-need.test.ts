@@ -346,20 +346,21 @@ describe("paidSendNeed: the embedded wallet's paid fallback", () => {
     );
   });
 
-  it("fills what it lacks the way the gate does: the deposit's limit, twice the fee and the chain's tip", () => {
+  it("fills what it lacks at the chain's own price: the deposit's limit and twice the fee, no wallet tip", () => {
     const fee = 7_000_000n;
     const BASE = ChainKeys.BASE_MAINNET;
-    expect(paidSendNeed({ chainKey: BASE, gas: undefined, maxFeePerGas: undefined, feePerGas: fee })).toBe(
-      GATE_DEPOSIT_GAS * (2n * fee + 2n * GWEI),
-    );
-    expect(paidSendNeed({ chainKey: BASE, gas: 80_000n, maxFeePerGas: undefined, feePerGas: fee })).toBe(80_000n * (2n * fee + 2n * GWEI));
-    expect(paidSendNeed({ chainKey: BASE, gas: undefined, maxFeePerGas: 10_000_000n, feePerGas: undefined })).toBe(
-      GATE_DEPOSIT_GAS * 10_000_000n,
-    );
-    // No read: the chain's assumed fee.
+    expect(paidSendNeed({ chainKey: BASE, gas: undefined, maxFeePerGas: undefined, feePerGas: fee })).toBe(GATE_DEPOSIT_GAS * 2n * fee);
+    expect(paidSendNeed({ chainKey: BASE, gas: 80_000n, maxFeePerGas: undefined, feePerGas: fee })).toBe(80_000n * 2n * fee);
+    expect(paidSendNeed({ chainKey: BASE, gas: undefined, maxFeePerGas: 10_000_000n, feePerGas: undefined })).toBe(GATE_DEPOSIT_GAS * 10_000_000n);
     expect(paidSendNeed({ chainKey: BASE, gas: undefined, maxFeePerGas: undefined, feePerGas: undefined })).toBe(
-      GATE_DEPOSIT_GAS * (2n * (GWEI / 50n) + 2n * GWEI),
+      GATE_DEPOSIT_GAS * 2n * (GWEI / 50n),
     );
+  });
+
+  it("lets a Base email user with 0.0001 ETH at 0.007 gwei through", () => {
+    const balance = 10n ** 14n;
+    const want = paidSendNeed({ chainKey: ChainKeys.BASE_MAINNET, gas: undefined, maxFeePerGas: undefined, feePerGas: 7_000_000n });
+    expect(balance >= want).toBe(true);
   });
 });
 
