@@ -230,8 +230,10 @@ export type Copy = {
     /** The sell sheet's source choice (plan P3a): the tag on a wallet on Robinhood Chain, and on the Berth account beside it. */
     sellFromWallet: string;
     sellFromAccount: string;
-    /** The sell sheet's signing line for a sell from the wallet on Robinhood Chain: sellSignOnce's sibling. */
+    /** The sell sheet's signing line for a sell from the wallet on Robinhood Chain: sellSignOnce's sibling, with its fee in ETH there. */
     sellSignWallet: string;
+    /** The same where Berth covers the fee there (sponsored). */
+    sellSignWalletSponsored: string;
     /** The buy sheet, under the arrival line, for a wallet that pays its own fee there: a later sell costs ETH on Robinhood Chain. */
     sellFeeLater: string;
     /** The sell sheet's "You hold" when a holding is in both places: the chosen place named (rh-ux-sec m2). */
@@ -2833,7 +2835,7 @@ export const COPY: Copy = {
   rhChain: {
     holdingInWallet: "In your own wallet on Robinhood Chain",
     holdingsHint:
-      "Held in your Berth account or in your own wallet on Robinhood Chain. A sell takes from one of them at a time: your Berth account with one signature, or your own wallet with a signature on Robinhood Chain. Until you sell, what is in your wallet stays there, yours to keep or move.",
+      "Held in your Berth account or in your own wallet on Robinhood Chain. A sell takes from one of them at a time: your Berth account with one signature, or your own wallet with a signature on Robinhood Chain, which costs a small network fee there in ETH. Until you sell, what is in your wallet stays there, yours to keep or move.",
     firstStockLine: (name) =>
       `${name} is in your own wallet on Robinhood Chain, as a Robinhood token that tracks its share price. It is yours, held by your own wallet's keys, and you can sell it any day under What you own.`,
     holdingSplit: (inAccount, inWallet) => `${inAccount} in your Berth account, ${inWallet} in your own wallet on Robinhood Chain`,
@@ -2854,6 +2856,8 @@ export const COPY: Copy = {
     sellFromWallet: "Robinhood Chain",
     sellFromAccount: "Berth account",
     sellSignWallet:
+      "You sign on Robinhood Chain, from the wallet that holds it, and pay a small network fee there in ETH. The first sell of a stock from there also asks you to approve it.",
+    sellSignWalletSponsored:
       "You sign on Robinhood Chain, from the wallet that holds it. The first sell of a stock from there also asks you to approve it.",
     sellFeeLater: "Selling it later from your wallet there costs a small network fee in ETH on Robinhood Chain.",
     youHoldInAccount: (amount) => `In your Berth account: ${amount}`,

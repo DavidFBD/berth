@@ -884,7 +884,9 @@ export function WithdrawDrawer({
                   )}
                   <p className="text-xs text-muted-foreground">
                     {fromRobinhood
-                      ? copy.rhChain.sellSignWallet
+                      ? signGas.sponsored(srcChainKey)
+                        ? copy.rhChain.sellSignWalletSponsored
+                        : copy.rhChain.sellSignWallet
                       : isSell
                         ? copy.sellSignOnce(getChainName(srcChainKey))
                         : copy.vaultSignOnce(getChainName(srcChainKey))}
