@@ -80,7 +80,7 @@ export function DraftLinkOpener({
 
     const opening = draftOpening(draft, {
       settled: holdings.settled,
-      heldAddresses: holdings.held.map((holding) => holding.listing.address),
+      heldAddresses: holdings.held.filter((holding) => holding.sellable > 0n).map((holding) => holding.listing.address),
     });
     if (!showDraftOpening(opening, copy, { onBuy, onSell })) return;
     toast(copy.draftOpenedTitle, { description: copy.draftOpenedBody });

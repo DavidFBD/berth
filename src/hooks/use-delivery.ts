@@ -9,13 +9,14 @@ import { askDelivery, onTheSwitch, type DeliveryAnswer } from "@/lib/delivery-cl
 /** The query key root of the delivery answer; the order machine refreshes it when a buy finds the answer changed. */
 export const DELIVERY_QUERY_KEY = ["delivery"] as const;
 
-const UNANSWERED: DeliveryAnswer = { delivery: hubDelivery("read_failed"), answered: false, sell: false };
+const UNANSWERED: DeliveryAnswer = { delivery: hubDelivery("read_failed"), answered: false, sell: false, robinhood: true };
 
 /**
  * Where this session's next buy is delivered (app/api/delivery, plan P1a
  * and P2b), asked once per account and kept: an account the switch leaves
  * off is not asked again in the visit. What the account holds on Robinhood
- * Chain is read whatever the answer (hooks/use-account-holdings). Never asks a wallet for a
+ * Chain is read only when the answer's `robinhood` says so, or when no
+ * answer came (hooks/use-account-holdings). Never asks a wallet for a
  * signature (`prompt: false`): a wallet browser without a pocketed
  * session simply reads as unanswered, the hub. The answer is the hub
  * until the route says otherwise, and on any failure.
@@ -42,6 +43,8 @@ export function useDelivery({ enabled = true }: { enabled?: boolean } = {}) {
     delivery: answer.delivery,
     /** Whether a sell from the wallet on Robinhood Chain may start (the sell switch, lib/server/delivery robinhoodSellOn). */
     robinhoodSell: answer.sell,
+    /** Whether to read the account's Robinhood Chain side (lib/server/portfolio robinhoodReads); yes until answered otherwise. */
+    robinhoodReads: answer.robinhood,
     /** The route answered, or gave up: the drawer may quote now. */
     settled: !enabled || key === null || query.isFetched,
     ask,

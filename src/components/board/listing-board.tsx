@@ -126,7 +126,8 @@ export function ListingBoard({
   const sellableOf = (listing: TokenListing): bigint | undefined => {
     if (heldOverride) return heldOverride.get(listing.address) ?? 0n;
     if (!holdings.settled) return undefined;
-    return holdings.holdings.find((holding) => holding.listing.address === listing.address)?.balance;
+    // Never what came back to Sonic from a sell there (lib/robinhood-returned): no sell spends it.
+    return holdings.holdings.find((holding) => holding.listing.address === listing.address)?.sellable;
   };
 
   // Yours first, then the three moving most today, by the size of the

@@ -33,7 +33,8 @@
     "avatars:build": "node scripts/avatars/build.mjs",
     "home:timing": "node scripts/home-timing.mjs",
     "x:preview": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/x-autopost-preview.mjs",
-    "home:reads": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/time-home-reads.mjs"
+    "home:reads": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/time-home-reads.mjs",
+    "rh:hubwallet": "node --no-warnings --experimental-strip-types --import ./scripts/lib/alias.mjs scripts/rh-hubwallet.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.78",

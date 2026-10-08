@@ -1057,6 +1057,12 @@ export function DepositDrawer({
                     fillsNow={fillsNow("buy", limit.price, marketPrice)}
                   />
                 )}
+                {/* A limit cannot go to Robinhood Chain: it waits, and lands, in the Berth account (plan P6). */}
+                {limit.active && robinhoodToken && (
+                  <p className="text-xs text-muted-foreground" data-testid="rh-limit-buy">
+                    {copy.rhChain.limitBuyStaysInAccount}
+                  </p>
+                )}
 
                 {/* Live quote */}
                 {token && buildAmount && !limit.active ? (

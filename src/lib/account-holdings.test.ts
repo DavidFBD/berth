@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getAddress } from "viem";
 import { TOKEN_LISTINGS, type Listing } from "./listings";
-import { heldOnly, mergeChainHoldings, placeRobinhoodTotals, robinhoodOwners, robinhoodReadPlan } from "./account-holdings";
+import { heldOnly, mergeChainHoldings, placeReturnedTotals, placeRobinhoodTotals, robinhoodOwners, robinhoodReadPlan } from "./account-holdings";
 
 const NVDA = TOKEN_LISTINGS.find((listing) => listing.symbol === "NVDA")!;
 const AAPL = TOKEN_LISTINGS.find((listing) => listing.symbol === "AAPL")!;
@@ -43,6 +43,37 @@ describe("mergeChainHoldings", () => {
     const held = heldOnly(mergeChainHoldings(hub, [0n, 4n, 0n]));
     expect(held.map((row) => row.listing.symbol)).toEqual(["NVDA", "AAPL", SGOV.symbol]);
     expect(heldOnly(mergeChainHoldings(hub, [0n, 0n, 0n])).map((row) => row.listing.symbol)).toEqual(["NVDA", SGOV.symbol]);
+  });
+});
+
+describe("what came back to Sonic from a sell from Robinhood Chain (review M1, sell)", () => {
+  const hub = [
+    { listing: NVDA, balance: 2n },
+    { listing: AAPL, balance: 0n },
+    { listing: SGOV, balance: 5n },
+  ];
+
+  it("counts in the balance and is shown, but never in what a sell may spend", () => {
+    const merged = mergeChainHoldings(hub, [3n, 0n, 0n], [4n, 6n, 0n]);
+    expect(merged.map((row) => [row.balance, row.hub, row.robinhood, row.returned, row.sellable])).toEqual([
+      [9n, 2n, 3n, 4n, 5n],
+      [6n, 0n, 0n, 6n, 0n],
+      [5n, 5n, 0n, 0n, 5n],
+    ]);
+    // Held only as returned: listed, with nothing a sell can spend.
+    expect(heldOnly(merged).map((row) => row.listing.symbol)).toContain("AAPL");
+  });
+
+  it("is zero when not read", () => {
+    expect(mergeChainHoldings(hub, undefined).every((row) => row.returned === 0n && row.sellable === row.hub)).toBe(true);
+  });
+
+  it("is placed at the stock listings by symbol, never at cash", () => {
+    const total = new Map([
+      ["AAPL", 7n],
+      [SGOV.symbol, 9n],
+    ]);
+    expect(placeReturnedTotals(LISTINGS, total)).toEqual([0n, 7n, 0n]);
   });
 });
 
@@ -107,9 +138,11 @@ describe("what spends is one place, never the sum", () => {
 
   it("a draft sell opens for a holding in either place, and the sheet sizes it per place", () => {
     const home = readFileSync("src/components/home.tsx", "utf8");
-    expect(home).toContain("heldAddresses: ownedHoldings.held.map");
+    // Only what a sell can spend: never what came back to Sonic from a sell there.
+    expect(home).toContain("heldAddresses: ownedHoldings.held.filter((holding) => holding.sellable > 0n)");
     const opener = readFileSync("src/components/assistant/draft-link-opener.tsx", "utf8");
     expect(opener).toContain("useAccountHoldings(account, hub)");
+    expect(opener).toContain("holdings.held.filter((holding) => holding.sellable > 0n)");
     // Only whether to open; the amount is capped by the chosen place in the sheet.
     expect(opener).not.toContain("availableShares");
   });

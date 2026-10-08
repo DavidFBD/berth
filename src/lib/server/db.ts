@@ -17,18 +17,29 @@ export type SqlClient = {
    * statement holds until the last commits, and each later statement reads
    * a fresh snapshot after it.
    */
-  transaction?: (statements: readonly SqlStatement[]) => Promise<unknown[][]>;
+  transaction?: (statements: readonly SqlStatement[], options?: TransactionOptions) => Promise<unknown[][]>;
 };
 
 export type SqlStatement = { text: string; params?: unknown[] };
 
 /**
+ * A transaction's isolation, pinned where a lock pattern depends on it.
+ * Only ReadCommitted is offered: under it each statement after a
+ * `pg_advisory_xact_lock` reads a fresh snapshot, so it sees what the
+ * transaction that held the lock before it committed. Under RepeatableRead
+ * or Serializable the snapshot would be taken before the wait, and two
+ * judges could pay against the same room (review: pin it, never rely on
+ * the server's default).
+ */
+export type TransactionOptions = { isolationLevel: "ReadCommitted" };
+
+/**
  * Run statements in one transaction. A client without one (a test double)
  * runs them in order, which is exactly right for a single connection.
  */
-export async function inTransaction(statements: readonly SqlStatement[]): Promise<unknown[][]> {
+export async function inTransaction(statements: readonly SqlStatement[], options?: TransactionOptions): Promise<unknown[][]> {
   const sql = getSql();
-  if (sql.transaction) return sql.transaction(statements);
+  if (sql.transaction) return sql.transaction(statements, options);
   const out: unknown[][] = [];
   for (const statement of statements) out.push((await sql.query(statement.text, statement.params)) as unknown[]);
   return out;
@@ -60,7 +71,10 @@ function neonClient(url: string): SqlClient {
   const sql = neon(url);
   return {
     query: (text, params) => sql.query(text, params ?? []),
-    transaction: async (statements) =>
-      (await sql.transaction(statements.map((statement) => sql.query(statement.text, statement.params ?? [])))) as unknown[][],
+    transaction: async (statements, options) =>
+      (await sql.transaction(
+        statements.map((statement) => sql.query(statement.text, statement.params ?? [])),
+        options ? { isolationLevel: options.isolationLevel } : undefined,
+      )) as unknown[][],
   };
 }

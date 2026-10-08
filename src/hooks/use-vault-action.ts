@@ -93,7 +93,7 @@ import { chainFamily, failureReason, track, type OrderType } from "@/lib/analyti
 import type { Delivery } from "@/lib/delivery";
 import { asksAgain, buyDestination, robinhoodParams } from "@/lib/delivery-client";
 import { readRobinhoodBalances, robinhoodClient } from "@/lib/robinhood-chain";
-import { ROBINHOOD_CHAIN_KEY, robinhoodSellPayload } from "@/lib/robinhood-sell";
+import { ROBINHOOD_CHAIN_KEY, robinhoodSellDeadline, robinhoodSellPayload } from "@/lib/robinhood-sell";
 import { DELIVERY_QUERY_KEY } from "@/hooks/use-delivery";
 
 // Re-exported so existing consumers keep one import site for error copy and
@@ -1759,7 +1759,26 @@ export function useVaultAction(options?: {
       };
       try {
         advance("building");
-        const withdrawArgs = {
+        // A sell from Robinhood Chain carries its own deadline (review B1):
+        // the relay from there can outlast the SDK's five minute default,
+        // and an intent that arrives expired strands the tokens in the hub
+        // wallet derived for (robinhood, the wallet). Read from hub time.
+        const robinhoodDeadline = async (): Promise<bigint | null> => {
+          try {
+            const block = await sodax.hubProvider.publicClient.getBlock({ blockTag: "latest" });
+            return robinhoodSellDeadline(block.timestamp);
+          } catch (e) {
+            fail(COPY.errCouldNotPrepare, e);
+            return null;
+          }
+        };
+        let sellDeadline: bigint | undefined = args.limit?.deadline;
+        if (args.robinhood && !args.limit) {
+          const fresh = await robinhoodDeadline();
+          if (fresh === null) return false;
+          sellDeadline = fresh;
+        }
+        const withdrawArgsFor = (deadline: bigint | undefined) => ({
           vault: args.vault,
           srcChainKey: args.srcChainKey,
           srcAddress: sdkAddress(args.srcChainKey, args.srcAddress),
@@ -1768,9 +1787,9 @@ export function useVaultAction(options?: {
           inputAmount: args.inputAmount,
           minOutputAmount: args.minOutputAmount,
           recipient: sdkAddress(args.dstChainKey, args.recipient),
-          ...(args.limit && { deadline: args.limit.deadline }),
-        };
-        const built = await buildWithdraw.mutateAsyncSafe(withdrawArgs);
+          ...(deadline !== undefined && { deadline }),
+        });
+        const built = await buildWithdraw.mutateAsyncSafe(withdrawArgsFor(sellDeadline));
         if (!built.ok) {
           fail(
             friendlyError(
@@ -1796,15 +1815,19 @@ export function useVaultAction(options?: {
             srcAddress: args.srcAddress,
             owner: args.robinhood.owner,
           };
-          const toPayload = (value: LeverageYieldSwapPayload): LeverageYieldSwapPayload | null => {
+          const toPayload = (value: LeverageYieldSwapPayload, deadline: bigint | undefined): LeverageYieldSwapPayload | null => {
+            if (deadline === undefined) {
+              fail(COPY.errCouldNotPrepare);
+              return null;
+            }
             try {
-              return robinhoodSellPayload(value, sell);
+              return robinhoodSellPayload(value, { ...sell, deadline });
             } catch (e) {
               fail(COPY.errCouldNotPrepare, e);
               return null;
             }
           };
-          let payload = toPayload(built.value);
+          let payload = toPayload(built.value, sellDeadline);
           if (!payload) return false;
 
           // The allowance the robinhood asset manager holds for the token,
@@ -1873,12 +1896,14 @@ export function useVaultAction(options?: {
               return false;
             }
             // A fresh hub deadline after the approval's wait, as a buy rebuilds.
-            const rebuilt = await buildWithdraw.mutateAsyncSafe(withdrawArgs);
+            const freshDeadline = await robinhoodDeadline();
+            if (freshDeadline === null) return false;
+            const rebuilt = await buildWithdraw.mutateAsyncSafe(withdrawArgsFor(freshDeadline));
             if (!rebuilt.ok) {
               fail(friendlyError(rebuilt.error, COPY.errCouldNotPrepare, gasContextFor(args.srcChainKey)), rebuilt.error);
               return false;
             }
-            payload = toPayload(rebuilt.value);
+            payload = toPayload(rebuilt.value, freshDeadline);
             if (!payload) return false;
           }
 

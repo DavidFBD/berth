@@ -15,9 +15,12 @@ import {
   liveListingPrices,
   loadListingOrders,
   loadPortfolioDays,
+  noRobinhoodRead,
   readAccountBalances,
+  readReturnedHoldings,
   type StoredPortfolioDay,
 } from "@/lib/server/portfolio";
+import { robinhoodDeliveryOn } from "@/lib/server/delivery";
 import { readRobinhoodHoldings } from "@/lib/server/robinhood-balances";
 import type { Marks, OrderFacts } from "@/lib/benchmark";
 
@@ -161,8 +164,19 @@ export async function loadPortfolioHistory({
       // never delivered there keeps its live point on the hub alone; one it
       // did ends on its latest stored day rather than a low point.
       const onRobinhood = await hasRobinhoodOrders(userId).catch(() => true);
+      // An account whose Robinhood Chain side is not read at all (robinhoodReads):
+      // that chain is never asked, and the point is the hub's, as before.
+      const readsSide = onRobinhood || robinhoodDeliveryOn([userId, ...spokes]);
       const [balances, prices] = await Promise.all([
-        readAccountBalances(spokes, undefined, undefined, readRobinhoodHoldings, onRobinhood ? "throw" : "hub only").then(
+        readAccountBalances(
+          spokes,
+          undefined,
+          undefined,
+          readsSide ? readRobinhoodHoldings : noRobinhoodRead,
+          onRobinhood ? "throw" : "hub only",
+          // What a sell from there that did not fill left on Sonic (lib/robinhood-returned).
+          onRobinhood ? readReturnedHoldings : undefined,
+        ).then(
           (read) => read.total,
         ),
         liveListingPrices().catch(() => ({}) as Record<string, number>),

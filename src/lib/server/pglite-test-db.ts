@@ -19,8 +19,9 @@ export async function makeTestDb(): Promise<{
   return {
     sql: {
       query: async (text, params) => (await db.query(text, params)).rows,
-      transaction: (statements) =>
+      transaction: (statements, options) =>
         db.transaction(async (tx) => {
+          if (options?.isolationLevel === "ReadCommitted") await tx.query("set transaction isolation level read committed");
           const out: unknown[][] = [];
           for (const statement of statements) out.push((await tx.query(statement.text, statement.params)).rows);
           return out;

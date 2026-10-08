@@ -118,6 +118,18 @@ const OWNER_JOIN = `join users u
     on (o.user_id is not null and u.id = o.user_id)
     or (o.user_id is null and u.wallet_address = o.wallet_address)`;
 
+/**
+ * Whether the owning account (`u`) has any order on Robinhood Chain
+ * (`orders.holding_chain`): only such an account is judged ACCOUNT_WIDE
+ * (review: the hold check must be as before with the switches off). Every
+ * other account keeps the per delivery wallet rule on the hub, for every
+ * listing, so a paid lot from a wallet it no longer links can never make
+ * an honest holder forfeit.
+ */
+const ACCOUNT_ON_ROBINHOOD = `exists (select 1 from orders r
+    where r.holding_chain = 'robinhood'
+      and (r.user_id = u.id or (r.user_id is null and r.wallet_address = u.wallet_address)))`;
+
 /** A listing this build knows. $N is the lowercased address list. */
 const KNOWN_LISTING = (n: number) => `lower(o.listing_address) = any($${n}::text[])`;
 
@@ -131,6 +143,12 @@ export type HoldCandidate = {
   listingAddress: string;
   /** Where the buy was delivered, so where its balance is read. */
   holdingChain: HoldingChain;
+  /**
+   * The owning account has an order on Robinhood Chain (ACCOUNT_ON_ROBINHOOD):
+   * only then is a listing with a token there judged ACCOUNT_WIDE. Absent
+   * reads as false, the per delivery wallet rule.
+   */
+  onRobinhood?: boolean;
   /** The wallet the buy was delivered to, where its balance is read. */
   deliveredTo: string;
   /** Decimal units of the listing, as Postgres prints the numeric. */
@@ -195,6 +213,7 @@ type CandidateRow = {
   holding_chain: HoldingChain;
   delivered_to: string;
   quantity: string;
+  on_robinhood: boolean | null;
   paid_before: string;
   effective_at: string | Date;
 };
@@ -235,7 +254,8 @@ export function holdScope(): HoldScope {
  */
 export const CANDIDATES_SQL = `select o.id, o.intent_tx, u.id as user_id, u.wallet_address as user_wallet,
        o.listing_address, ${CHAIN_OF("o")} as holding_chain, o.delivered_to, o.quantity::text as quantity,
-       case when lower(o.listing_address) = any($5::text[]) then
+       ${ACCOUNT_ON_ROBINHOOD} as on_robinhood,
+       case when lower(o.listing_address) = any($5::text[]) and ${ACCOUNT_ON_ROBINHOOD} then
          -- A listing with a token on Robinhood Chain (ACCOUNT_WIDE): every
          -- paid buy of it by the account, on either chain, less what sells
          -- placed BEFORE this buy took out of those paid lots. A sell first
@@ -301,6 +321,7 @@ export async function holdCandidates(
     userWallet: row.user_wallet,
     listingAddress: row.listing_address,
     holdingChain: row.holding_chain === "robinhood" ? "robinhood" : "sonic",
+    onRobinhood: row.on_robinhood === true,
     deliveredTo: row.delivered_to,
     quantity: String(row.quantity),
     paidBefore: String(row.paid_before),
@@ -402,7 +423,9 @@ export const readDeliveredBalances: BalanceReader = deliveredBalancesReader();
  * selling does. Chosen over reading Transfer logs since each fill: no log
  * scan over a month of blocks on the public RPC, and no window to game.
  * Every other listing (the vaults) is judged per delivery wallet on the
- * hub, as before.
+ * hub, as before, and so is every listing for an account with no order on
+ * Robinhood Chain (ACCOUNT_ON_ROBINHOOD): with the switches off the check
+ * is exactly the one before Robinhood Chain delivery.
  */
 export type AccountWallets = (userId: string, usersWallet: string | null) => Promise<string[]>;
 /** The hub wallets the given EVM addresses derive on the home chain (lib/server/portfolio hubWalletFor). */
@@ -498,8 +521,11 @@ export async function runHoldCheck({
   // Where each candidate's holding is read (ACCOUNT_WIDE): for a listing
   // with a token on Robinhood Chain, every place the account holds it now;
   // for any other, its delivery wallet on the hub.
+  // Only for an account with an order on Robinhood Chain (ACCOUNT_ON_ROBINHOOD);
+  // every other account is judged per delivery wallet, as before.
   const accountWide = new Set(scope.robinhoodListingAddresses ?? []);
-  const wide = (candidate: HoldCandidate) => accountWide.has(candidate.listingAddress.toLowerCase());
+  const wide = (candidate: HoldCandidate) =>
+    candidate.onRobinhood === true && accountWide.has(candidate.listingAddress.toLowerCase());
   type Place = { holder: string; chain: HoldingChain };
   const placesOfAccount = new Map<string, { evm: string[]; hubs: string[] } | null>();
   for (const candidate of candidates) {

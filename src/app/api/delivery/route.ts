@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Delivery } from "@/lib/delivery";
 import { requestCountry } from "@/lib/server/availability";
 import { decideDelivery, robinhoodSellOn } from "@/lib/server/delivery";
+import { robinhoodReads } from "@/lib/server/portfolio";
 import { readRewardsCaller, resolveRewardsUser } from "@/lib/server/rewards-route";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,16 @@ export const maxDuration = 15;
  * its wallet on Robinhood Chain (lib/server/delivery robinhoodSellOn, the
  * sell switch, ROBINHOOD_SELL=off its kill switch).
  */
-export type DeliveryResponse = Delivery & { sell: boolean };
+export type DeliveryResponse = Delivery & {
+  sell: boolean;
+  /**
+   * Whether the browser reads this account's Robinhood Chain side: its
+   * own wallets on Robinhood Chain and what sells from there left on
+   * Sonic (lib/server/portfolio robinhoodReads). Only an answered `false`
+   * turns the reads off (lib/delivery-client).
+   */
+  robinhood: boolean;
+};
 
 export async function POST(request: NextRequest) {
   const read = await readRewardsCaller(request);
@@ -45,12 +55,12 @@ export async function POST(request: NextRequest) {
   const { user } = resolved;
   // The decision itself lives in lib/server/delivery, where the order
   // record makes it again for a buy that was delivered on Robinhood Chain.
-  const [delivery, sell] = await Promise.all([decideDelivery({
+  const [delivery, sell, robinhood] = await Promise.all([decideDelivery({
     userId: user.id,
     usersWallet: user.wallet_address,
     signer: read.caller.wallet,
     availability: read.caller.availability,
     country: requestCountry(request.headers, { url: request.url }),
-  }), robinhoodSellOn(user.id)]);
-  return NextResponse.json({ ...delivery, sell } satisfies DeliveryResponse);
+  }), robinhoodSellOn(user.id), robinhoodReads(user.id, [user.wallet_address, read.caller.wallet])]);
+  return NextResponse.json({ ...delivery, sell, robinhood } satisfies DeliveryResponse);
 }

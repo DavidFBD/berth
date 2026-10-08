@@ -19,10 +19,10 @@ export function localPostgres(connectionString: string): SqlClient {
     ));
   return {
     query: async (text, params) => (await (await getPool()).query(text, params)).rows,
-    transaction: async (statements) => {
+    transaction: async (statements, options) => {
       const client = await (await getPool()).connect();
       try {
-        await client.query("begin");
+        await client.query(options?.isolationLevel === "ReadCommitted" ? "begin isolation level read committed" : "begin");
         const out: unknown[][] = [];
         for (const statement of statements) out.push((await client.query(statement.text, statement.params)).rows);
         await client.query("commit");

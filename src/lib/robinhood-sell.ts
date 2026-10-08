@@ -19,6 +19,24 @@ import { sdkAddress } from "@/lib/chains";
 export const ROBINHOOD_CHAIN_KEY = ChainKeys.ROBINHOOD_MAINNET as SpokeChainKey;
 
 /**
+ * How long a sell from Robinhood Chain stays fillable after hub time: 45
+ * minutes (review B1). The SDK's default is five (`resolveDeadline`, hub
+ * time + INTENT_DEADLINE_BUFFER_SECONDS), sized for a relay from a fast
+ * chain. A deposit on Robinhood Chain reaches Sonic through the relay, and
+ * an intent that arrives after its deadline cannot be filled: its tokens
+ * would then wait as the hub asset in the hub wallet derived for
+ * (robinhood, the wallet), which only a recovery can move. The minimum
+ * output is still the quote's, so a late fill never pays less than shown.
+ */
+export const ROBINHOOD_SELL_DEADLINE_SECONDS = 45 * 60;
+
+/** The deadline of a sell from Robinhood Chain, from the hub's latest block time. */
+export function robinhoodSellDeadline(hubTime: bigint): bigint {
+  if (!(hubTime > 0n)) throw new Error("no hub time to set the sell's deadline from");
+  return hubTime + BigInt(ROBINHOOD_SELL_DEADLINE_SECONDS);
+}
+
+/**
  * The intent payload of a sell from Robinhood Chain, from the SDK's own
  * withdraw build (`sodax.leverageYield.withdraw`, which sets the deadline
  * from hub time, the solver, `allowPartialFill: false`, `data` and the
@@ -32,6 +50,8 @@ export const ROBINHOOD_CHAIN_KEY = ChainKeys.ROBINHOOD_MAINNET as SpokeChainKey;
  * - `srcAddress`: the wallet that holds the tokens, checksummed.
  * - `inputToken`: the listing's native token there (`rhAddress`), which the
  *   SDK maps to its hub asset for the intent.
+ * - `deadline`: `sell.deadline` (robinhoodSellDeadline), never the SDK's
+ *   five minute default, which a relay from Robinhood Chain can outlast.
  *
  * Throws on a build that is not the withdraw of this listing, that would
  * accept nothing (the minimum stays the quote's, never zero), or whose
@@ -40,7 +60,7 @@ export const ROBINHOOD_CHAIN_KEY = ChainKeys.ROBINHOOD_MAINNET as SpokeChainKey;
  */
 export function robinhoodSellPayload(
   built: LeverageYieldSwapPayload,
-  sell: { vault: string; rhAddress: Address; srcAddress: string; owner: string },
+  sell: { vault: string; rhAddress: Address; srcAddress: string; owner: string; deadline: bigint },
 ): LeverageYieldSwapPayload {
   const { params } = built;
   if (sell.owner.toLowerCase() !== sell.srcAddress.toLowerCase()) {
@@ -51,6 +71,10 @@ export function robinhoodSellPayload(
   }
   if (!(params.inputAmount > 0n) || !(params.minOutputAmount > 0n)) {
     throw new Error("a sell must spend something and accept a minimum above zero");
+  }
+  // A market sell always ends: 0n would mean "until cancelled", a limit's.
+  if (!(sell.deadline > 0n) || params.deadline !== sell.deadline) {
+    throw new Error("a sell from Robinhood Chain must carry its own deadline");
   }
   return {
     params: {
@@ -123,12 +147,22 @@ export function robinhoodSellSources(
  * it. When the wallet there cannot pay its fee, the Berth account it can
  * sell from comes first. Then the home, then the first. The person can
  * still pick any place; this is only where the sheet starts.
+ *
+ * A drafted limit (`limit`, review M2 sell) waits on the hub and is
+ * placed from the home hub wallet only (lib/server/limit-orders), so it
+ * opens there when this session can sign for it: never on a wallet on
+ * Robinhood Chain, where it would silently become a market sell.
  */
 export function defaultSellSource(
   sources: readonly SellSource[],
   wanted?: bigint,
   payable: (source: SellSource) => boolean = () => true,
+  { limit = false }: { limit?: boolean } = {},
 ): SellSource | undefined {
+  if (limit) {
+    const home = sources.find((source) => source.chain === "hub" && source.isHome && source.canSign);
+    if (home) return home;
+  }
   const signable = [
     ...sources.filter((source) => source.canSign && source.chain === "robinhood"),
     ...sources.filter((source) => source.canSign && source.chain === "hub"),
@@ -140,4 +174,15 @@ export function defaultSellSource(
     if (covers) return covers;
   }
   return order[0] ?? sources.find((source) => source.chain === "hub" && source.isHome) ?? sources[0];
+}
+
+/**
+ * Whether the sell sheet should say selling from Robinhood Chain is
+ * paused (review: the kill switch left a dead Sell): no wallet there may
+ * be offered (`sellFromWallet` false, ROBINHOOD_SELL=off or no Berth
+ * delivery there on record), and nothing the sheet can sell from holds
+ * any, so whatever the person holds is in their wallet there.
+ */
+export function robinhoodSellPaused(sources: readonly SellSource[], sellFromWallet: boolean): boolean {
+  return !sellFromWallet && sources.every((source) => source.balance === 0n);
 }

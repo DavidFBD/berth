@@ -14,7 +14,8 @@ import { readRobinhoodTokenBalances, type RobinhoodBalanceReader } from "@/lib/s
  * the quantity the fill delivered. The hub's fill proves the solver filled
  * on Sonic, not that the asset manager delivered on 4663. Until then the
  * buy waits (its claim stays open and the evening pass asks again); a
- * delivery that never arrives is never paid. A wallet that already held
+ * delivery that never arrives is never paid. A sell of it from that wallet
+ * recorded since also proves it arrived (buyArrived). A wallet that already held
  * the listing can read as arrived early: the rule is the owner's, kept
  * plain.
  *
@@ -81,7 +82,19 @@ export async function robinhoodPourXp(
   return row.direction === "buy" ? buyArrived(row, readBalances) : "pay";
 }
 
-/** D1: the delivered quantity is in the wallet it was delivered to. */
+/**
+ * D1: the delivered quantity is in the wallet it was delivered to, or,
+ * when the person sold before the balance was read (review XP: a quick
+ * sell), the wallet's Berth sells since prove it arrived. A recorded sell
+ * from Robinhood Chain spent the token from that wallet, which it could
+ * only do once the token was there.
+ *
+ * Fail closed, so a sell is never counted twice: the sells counted are
+ * those of the same account, listing and wallet placed after this buy,
+ * and every later Berth buy delivered to that wallet is taken as already
+ * arrived and subtracted (it may be what the sells spent). A later buy
+ * whose quantity is not read yet makes the answer wait.
+ */
 async function buyArrived(row: OrderRow, readBalances: RobinhoodBalanceReader): Promise<PourXpVerdict> {
   const token = RH_ADDRESS_BY_LISTING.get(row.listing_address.toLowerCase());
   if (!token || !row.delivered_to) return "never";
@@ -90,7 +103,41 @@ async function buyArrived(row: OrderRow, readBalances: RobinhoodBalanceReader): 
   if (needed === null || needed <= 0n) return "wait";
   const [balance] = await readBalances([{ holder: row.delivered_to, token }]).catch(() => [null]);
   if (typeof balance !== "bigint") return "wait";
-  return balance >= needed ? "pay" : "wait";
+  if (balance >= needed) return "pay";
+  if (!row.user_id) return "wait";
+  const since = await soldSince(row);
+  if (since === null) return "wait";
+  return balance + since >= needed ? "pay" : "wait";
+}
+
+/**
+ * The listing quantity the account's recorded Berth sells from the buy's
+ * wallet on Robinhood Chain spent after the buy, less every later Berth buy
+ * of it delivered there. Null when a later buy's quantity is unread or the
+ * read fails: nothing is proven then.
+ */
+async function soldSince(row: OrderRow): Promise<bigint | null> {
+  try {
+    const rows = (await getSql().query(
+      `select direction, quantity::text as quantity
+         from orders
+        where user_id = $1 and holding_chain = 'robinhood'
+          and lower(listing_address) = lower($2)
+          and coalesce(placed_at, created_at) > $3
+          and ((direction = 'sell' and lower(wallet_address) = lower($4) and quantity is not null and quantity > 0)
+            or (direction = 'buy' and lower(delivered_to) = lower($4)))`,
+      [row.user_id, row.listing_address, row.at, row.delivered_to],
+    )) as { direction: "buy" | "sell"; quantity: string | null }[];
+    let total = 0n;
+    for (const order of rows) {
+      const quantity = raw(order.quantity);
+      if (quantity === null) return null;
+      total += order.direction === "sell" ? quantity : -quantity;
+    }
+    return total;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -103,7 +150,9 @@ async function buyArrived(row: OrderRow, readBalances: RobinhoodBalanceReader): 
  * leave room for an earlier one). The check and the award run in one
  * transaction behind `pg_advisory_xact_lock` on (account, listing), so
  * sells reported at once are judged one after another, never all against
- * the same room. While any such buy's quantity is still unread the answer
+ * the same room. The transaction is pinned to ReadCommitted (lib/server/db
+ * TransactionOptions), so the statement after the lock reads what the
+ * holder before it committed. While any such buy's quantity is still unread the answer
  * is `wait`: a sell judged then could be refused for good.
  *
  * `paid` also covers a replay of a sell already paid. Throws on a failed
@@ -165,7 +214,8 @@ export async function payRobinhoodSell(
                        (select ok from cover) as ok, (select paid from already) as paid, (select pending from unread) as unread`,
       params: [tx, userId, XP_ACTIONS.pour_out.amount, announced],
     },
-  ]);
+    // Pinned (review): the room is read after the lock, from a fresh snapshot.
+  ], { isolationLevel: "ReadCommitted" });
   const result = (award as { xp: number; awarded: number; ok: boolean; paid: boolean; unread: boolean }[])[0];
   if (!result) return { verdict: "never", awarded: 0, xp: null };
   if (result.paid || result.awarded > 0) return { verdict: "paid", awarded: result.awarded, xp: result.xp };

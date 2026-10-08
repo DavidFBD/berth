@@ -67,6 +67,7 @@ const answer = async (country?: string) =>
 const ask = async (country?: string) => {
   const body = await answer(country);
   delete body.sell;
+  delete body.robinhood;
   return body;
 };
 const askSell = async () => (await answer("NL")).sell;
@@ -263,5 +264,46 @@ describe("POST /api/delivery", () => {
     });
     vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
     expect(await askSell()).toBe(false);
+  });
+
+  it("keeps a sell from Robinhood Chain open for an account on the deny list: it is their own way out (decided 2026-10-08)", async () => {
+    query.mockImplementation(async (text?: string) =>
+      String(text).includes("holding_chain") ? [{ found: true }] : [linked(HOME, true), linked(SIGNER, false)],
+    );
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    vi.stubEnv("ROBINHOOD_DELIVERY_DENY", "u1");
+    expect(await ask("NL")).toEqual(HUB("not_listed"));
+    expect(await askSell()).toBe(true);
+    // The kill switch still closes it.
+    vi.stubEnv("ROBINHOOD_SELL", "off");
+    expect(await askSell()).toBe(false);
+  });
+
+  it("tells the browser to read the account's Robinhood Chain side only for an account on Robinhood Chain or let buy there, and on any doubt", async () => {
+    const onRobinhood = (found: boolean) =>
+      query.mockImplementation(async (text?: string) =>
+        String(text).includes("holding_chain") ? [{ found }] : [linked(HOME, true), linked(SIGNER, false)],
+      );
+    // Nobody listed: only an account on Robinhood Chain is read.
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    onRobinhood(false);
+    expect((await answer("NL")).robinhood).toBe(false);
+    onRobinhood(true);
+    expect((await answer("NL")).robinhood).toBe(true);
+    // Listed, or on for everyone: read, order or not.
+    onRobinhood(false);
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+    expect((await answer("NL")).robinhood).toBe(true);
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "");
+    vi.stubEnv("ROBINHOOD_DELIVERY", "on");
+    expect((await answer("NL")).robinhood).toBe(true);
+    // Switched off: only an account on Robinhood Chain.
+    vi.stubEnv("ROBINHOOD_DELIVERY", "off");
+    expect((await answer("NL")).robinhood).toBe(false);
+    query.mockImplementation(async (text?: string) => {
+      if (String(text).includes("holding_chain")) throw new Error("db down");
+      return [linked(HOME, true), linked(SIGNER, false)];
+    });
+    expect((await answer("NL")).robinhood).toBe(true);
   });
 });

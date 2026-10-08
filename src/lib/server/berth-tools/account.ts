@@ -4,7 +4,14 @@ import type { Range } from "@/lib/portfolio-history";
 import { getSql } from "@/lib/server/db";
 import { fetchPrivyWallet } from "@/lib/server/privy";
 import { accountEvmAddresses } from "@/lib/server/identities";
-import { liveListingPrices, readAccountBalances } from "@/lib/server/portfolio";
+import {
+  hasRobinhoodOrders,
+  liveListingPrices,
+  noRobinhoodRead,
+  readAccountBalances,
+  readReturnedHoldings,
+} from "@/lib/server/portfolio";
+import { robinhoodDeliveryOn } from "@/lib/server/delivery";
 import { readRobinhoodHoldingsFresh } from "@/lib/server/robinhood-balances";
 
 /**
@@ -77,6 +84,12 @@ export type HoldingLine = {
   robinhood: number;
   /** The most any one wallet holds on Robinhood Chain: a sell from there spends one wallet. */
   robinhoodLargest: number;
+  /**
+   * Back on Sonic from a sell from Robinhood Chain that did not fill, in the
+   * hub wallet derived for (robinhood, the wallet) (lib/robinhood-returned):
+   * counted in `quantity`, never in `hub`, and no sell spends it.
+   */
+  returned: number;
   price?: number;
   value?: number;
 };
@@ -89,7 +102,17 @@ export type HoldingLine = {
  * first; `robinhoodWallets` the addresses holding anything on Robinhood
  * Chain. One failed read fails the whole.
  */
-export async function readHoldings(spokes: string | readonly string[]): Promise<{
+export async function readHoldings(
+  spokes: string | readonly string[],
+  /**
+   * `userId`: the account read. One with Robinhood Chain orders also has
+   * what its sells there left on Sonic read (lib/robinhood-returned); a
+   * failed check reads it too, since reading more can only show more. Its
+   * own wallets on Robinhood Chain are read only when its side is read at
+   * all (lib/server/portfolio robinhoodReads); without a `userId`, always.
+   */
+  { userId }: { userId?: string } = {},
+): Promise<{
   hubWallet: string;
   hubWallets: string[];
   robinhoodWallets: string[];
@@ -100,16 +123,30 @@ export async function readHoldings(spokes: string | readonly string[]): Promise<
   unpriced: number;
 }> {
   const list = typeof spokes === "string" ? [spokes] : spokes;
+  const onRobinhood = userId ? await hasRobinhoodOrders(userId).catch(() => true) : false;
+  const readsSide = !userId || onRobinhood || robinhoodDeliveryOn([userId, ...list]);
   const [read, prices] = await Promise.all([
     // Robinhood Chain unread leaves the hub's lines, said as such: a sell cap
     // from them can only be lower than the truth, never higher.
     // Read fresh, never from the two minute memo: the sell cap must not see
     // a balance a sell has just spent (rh-server m5).
-    withTimeout(readAccountBalances(list, undefined, undefined, readRobinhoodHoldingsFresh, "hub only"), CHAIN_READ_MS, "balance read"),
+    withTimeout(
+      readAccountBalances(
+        list,
+        undefined,
+        undefined,
+        readsSide ? readRobinhoodHoldingsFresh : noRobinhoodRead,
+        "hub only",
+        onRobinhood ? readReturnedHoldings : undefined,
+      ),
+      CHAIN_READ_MS,
+      "balance read",
+    ),
     liveListingPrices().catch(() => ({}) as Record<string, number>),
   ]);
   const balances = read.total;
-  const onRobinhood = read.robinhood ?? {};
+  const onChain = read.robinhood ?? {};
+  const returnedBy = read.returned ?? {};
   const owners = [...read.robinhoodByOwner.entries()];
   const lines: HoldingLine[] = [];
   let total = 0;
@@ -117,13 +154,14 @@ export async function readHoldings(spokes: string | readonly string[]): Promise<
   for (const listing of TOKEN_LISTINGS) {
     const quantity = balances[listing.symbol];
     if (!quantity) continue;
-    const robinhood = onRobinhood[listing.symbol] ?? 0;
+    const robinhood = onChain[listing.symbol] ?? 0;
+    const returned = returnedBy[listing.symbol] ?? 0;
     const robinhoodLargest = owners.reduce((most, [, holdings]) => Math.max(most, holdings[listing.symbol] ?? 0), 0);
     const price = prices[listing.symbol];
     const value = price !== undefined ? quantity * price : undefined;
     if (value !== undefined) total += value;
     else unpriced += 1;
-    lines.push({ listing, quantity, hub: Math.max(0, quantity - robinhood), robinhood, robinhoodLargest, price, value });
+    lines.push({ listing, quantity, hub: Math.max(0, quantity - robinhood - returned), robinhood, robinhoodLargest, returned, price, value });
   }
   lines.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const hubWallets = read.byWallet.map((wallet) => wallet.hubWallet);

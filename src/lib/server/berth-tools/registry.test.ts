@@ -22,7 +22,11 @@ vi.mock("@/lib/server/portfolio", () => ({
     })),
     robinhood: {},
     robinhoodByOwner: new Map(spokes.map((spoke) => [spoke, {}])),
+    returned: null,
   })),
+  hasRobinhoodOrders: vi.fn(async () => false),
+  readReturnedHoldings: vi.fn(async () => ({})),
+  noRobinhoodRead: vi.fn(async () => new Map()),
 }));
 vi.mock("@/lib/server/listing-performance", () => ({ loadPerformance: vi.fn(async () => ({ performance: {} })) }));
 vi.mock("@/lib/server/moves", () => ({ loadMoves: vi.fn(async () => ({ moves: [] })) }));
@@ -412,6 +416,7 @@ describe("an account with more than one linked EVM address", () => {
         [HOME, { TSLA: 0.75 }],
         [SECOND, { TSLA: 0.25 }],
       ]),
+      returned: null,
     });
     const account = await tools.get_account.run({} as never, ctx);
     expect(account.text).toContain(`Stock tokens in the person's own wallets on Robinhood Chain: ${HOME}, ${SECOND}.`);
@@ -431,9 +436,60 @@ describe("an account with more than one linked EVM address", () => {
       byWallet: [{ spoke: HOME, hubWallet: "0x00000000000000000000000000000000000000bb", balances: { TSLA: 0.5 } }],
       robinhood: null,
       robinhoodByOwner: new Map(),
+      returned: null,
     });
     const holdings = await tools.get_holdings.run({} as never, ctx);
     expect(holdings.text).toContain("could not be read just now, so any stock tokens there are not included");
+    expect((await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 0.75 } as never, ctx)).isError).toBe(true);
+    vi.mocked(readAccountBalances).mockReset();
+  });
+});
+
+describe("what a sell from Robinhood Chain that did not fill left on Sonic (review M1, sell)", () => {
+  const ctx = chatToolContext("u1", "https://www.berthmarkets.com");
+  const tools = Object.fromEntries(BERTH_TOOLS.map((tool) => [tool.name, tool]));
+  const HOME = "0x00000000000000000000000000000000000000aa";
+
+  it("is read only for an account with Robinhood Chain orders", async () => {
+    const { readAccountBalances, hasRobinhoodOrders, readReturnedHoldings } = await import("@/lib/server/portfolio");
+    vi.mocked(readAccountBalances).mockClear();
+    await tools.get_holdings.run({} as never, ctx);
+    expect(vi.mocked(readAccountBalances).mock.calls.at(-1)?.[5]).toBeUndefined();
+    vi.mocked(hasRobinhoodOrders).mockResolvedValueOnce(true);
+    await tools.get_holdings.run({} as never, ctx);
+    expect(vi.mocked(readAccountBalances).mock.calls.at(-1)?.[5]).toBe(readReturnedHoldings);
+  });
+
+  it("asks Robinhood Chain nothing for an account with no side there, and reads it for one on Robinhood Chain or on the allow list (review: no-op with the switches off)", async () => {
+    const { readAccountBalances, hasRobinhoodOrders, noRobinhoodRead } = await import("@/lib/server/portfolio");
+    const { readRobinhoodHoldingsFresh } = await import("@/lib/server/robinhood-balances");
+    vi.mocked(readAccountBalances).mockClear();
+    await tools.get_holdings.run({} as never, ctx);
+    expect(vi.mocked(readAccountBalances).mock.calls.at(-1)?.[3]).toBe(noRobinhoodRead);
+    vi.mocked(hasRobinhoodOrders).mockResolvedValueOnce(true);
+    await tools.get_holdings.run({} as never, ctx);
+    expect(vi.mocked(readAccountBalances).mock.calls.at(-1)?.[3]).toBe(readRobinhoodHoldingsFresh);
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", "u1");
+    await tools.get_holdings.run({} as never, ctx);
+    expect(vi.mocked(readAccountBalances).mock.calls.at(-1)?.[3]).toBe(readRobinhoodHoldingsFresh);
+    vi.unstubAllEnvs();
+  });
+
+  it("counts it in the total, says where it is, and never lets a sell spend it", async () => {
+    const { readAccountBalances } = await import("@/lib/server/portfolio");
+    // 0.5 TSLA in the Berth account, 0.75 back on Sonic from a sell that did not fill.
+    vi.mocked(readAccountBalances).mockResolvedValue({
+      total: { TSLA: 1.25 },
+      byWallet: [{ spoke: HOME, hubWallet: "0x00000000000000000000000000000000000000bb", balances: { TSLA: 0.5 } }],
+      robinhood: {},
+      robinhoodByOwner: new Map([[HOME, {}]]),
+      returned: { TSLA: 0.75 },
+    });
+    const holdings = await tools.get_holdings.run({} as never, ctx);
+    expect(holdings.text).toContain("Holdings, $500.00 in total at current prices:");
+    expect(holdings.text).toContain("0.75 of it came back to Sonic from a sell from Robinhood Chain that did not fill");
+    expect((await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 0.5 } as never, ctx)).isError).toBeUndefined();
     expect((await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 0.75 } as never, ctx)).isError).toBe(true);
     vi.mocked(readAccountBalances).mockReset();
   });

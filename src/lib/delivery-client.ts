@@ -48,6 +48,12 @@ export type DeliveryAnswer = {
    * saying `true` is a yes; anything else, a failure included, is no.
    */
   sell: boolean;
+  /**
+   * Whether to read this account's Robinhood Chain side (the route's
+   * `robinhood`, lib/server/portfolio robinhoodReads). Only an answered 200
+   * saying `false` is no; a failure reads, as every account read before.
+   */
+  robinhood: boolean;
 };
 
 /**
@@ -76,7 +82,7 @@ export async function askDelivery({
   fetcher?: typeof fetch;
   timeoutMs?: number;
 }): Promise<DeliveryAnswer> {
-  const unanswered: DeliveryAnswer = { delivery: hubDelivery("read_failed"), answered: false, sell: false };
+  const unanswered: DeliveryAnswer = { delivery: hubDelivery("read_failed"), answered: false, sell: false, robinhood: true };
   try {
     const auth = await headers();
     if (!auth) return unanswered;
@@ -94,7 +100,12 @@ export async function askDelivery({
       const delivery = readDeliveryAnswer(response.status, body);
       // A 200 whose body could not be read is no answer either.
       const parsed = typeof body === "object" && body !== null && ((body as { chainKey?: unknown }).chainKey === "sonic" || delivery.chainKey === "robinhood");
-      return { delivery, answered: parsed, sell: parsed && (body as { sell?: unknown }).sell === true };
+      return {
+        delivery,
+        answered: parsed,
+        sell: parsed && (body as { sell?: unknown }).sell === true,
+        robinhood: !(parsed && (body as { robinhood?: unknown }).robinhood === false),
+      };
     } finally {
       clearTimeout(timer);
     }

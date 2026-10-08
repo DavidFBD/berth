@@ -113,6 +113,12 @@ export async function isEmbeddedWallet(
  * So with no env change nobody without a Berth delivery there can start
  * one. Reading and showing what sits there is not affected. Any value of
  * ROBINHOOD_SELL but "off" changes nothing. A failed read is no.
+ *
+ * ROBINHOOD_DELIVERY_DENY is deliberately NOT read here (review, decided
+ * 2026-10-08): it keeps an account's new buys on the hub, but a sell from
+ * Robinhood Chain spends the person's own tokens in their own wallet, their
+ * way out of what was delivered before the deny. Closing it would strand
+ * them; ROBINHOOD_SELL=off stays the one switch that stops every sell.
  */
 export async function robinhoodSellOn(userId: string): Promise<boolean> {
   if ((process.env.ROBINHOOD_SELL ?? "").trim().toLowerCase() === "off") return false;

@@ -82,6 +82,12 @@ export type HoldingRow = {
    * account, the only part a sell spends. Absent on every hub-only row.
    */
   robinhood?: bigint;
+  /**
+   * The part that came back to Sonic from a sell from Robinhood Chain that
+   * did not fill (lib/robinhood-returned): in `balance`, never sold from
+   * here. Absent when none.
+   */
+  returned?: bigint;
 };
 
 /**
@@ -124,7 +130,7 @@ export function HoldingsList({
       ? { dates: spyPerformance.seriesDates, values: spyPerformance.series }
       : undefined;
   const benchmarkNow = BENCHMARK ? prices.priceOf(BENCHMARK) : undefined;
-  const rows: HoldingRow[] = owned.map(({ listing, balance, robinhood }) => {
+  const rows: HoldingRow[] = owned.map(({ listing, balance, robinhood, returned }) => {
     const move = moves.get(listing.symbol);
     const comparison = compareHolding({
       orders: (orders.data ?? []).filter((order) => order.symbol === listing.symbol),
@@ -140,6 +146,7 @@ export function HoldingsList({
       move: move ? { url: move.post.url, name: move.post.name } : undefined,
       comparison: comparison ?? undefined,
       ...(robinhood > 0n && { robinhood }),
+      ...(returned > 0n && { returned }),
     };
   });
 
@@ -295,7 +302,7 @@ export function HoldingsView({
       ) : (
         <>
           <ul id={listId} className="divide-y divide-border border-t border-border">
-            {shown.map(({ listing, balance, worth, move, comparison, robinhood }) => (
+            {shown.map(({ listing, balance, worth, move, comparison, robinhood, returned }) => (
               <li
                 key={listing.address}
                 data-last-known={updating ? "" : undefined}
@@ -311,12 +318,19 @@ export function HoldingsView({
                       the person's own wallet on Robinhood Chain. */}
                   {robinhood !== undefined && robinhood > 0n && (
                     <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                      {robinhood >= balance
+                      {robinhood >= balance - (returned ?? 0n)
                         ? copy.rhChain.holdingInWallet
                         : copy.rhChain.holdingSplit(
-                            formatTokenAmount(balance - robinhood, listing.decimals, 6),
+                            formatTokenAmount(balance - robinhood - (returned ?? 0n), listing.decimals, 6),
                             formatTokenAmount(robinhood, listing.decimals, 6),
                           )}
+                    </div>
+                  )}
+                  {/* Back on Sonic from a sell from Robinhood Chain that did
+                      not fill: counted above, said here, never sold from. */}
+                  {returned !== undefined && returned > 0n && (
+                    <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                      {copy.rhChain.holdingReturned(formatTokenAmount(returned, listing.decimals, 6))}
                     </div>
                   )}
                   {move && (
@@ -351,9 +365,12 @@ export function HoldingsView({
                 {/* A sell spends the live balance: offered once it is read,
                     from the Berth account or the wallet on Robinhood Chain
                     (plan P3a), one place at a time, which the sheet asks. */}
-                <Button variant="outline" size="xs" disabled={updating} onClick={() => onSell(listing)}>
-                  {copy.sell}
-                </Button>
+                {/* Held only as returned from a sell: nothing a sell here can spend. */}
+                {balance > (returned ?? 0n) && (
+                  <Button variant="outline" size="xs" disabled={updating} onClick={() => onSell(listing)}>
+                    {copy.sell}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>

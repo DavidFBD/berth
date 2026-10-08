@@ -312,7 +312,7 @@ const getAccount = defineTool({
         : `Derived from ${spokes.home} on Base, its home address, where buys land. ${others.length} more linked address${others.length === 1 ? "" : "es"}: ${others.join(", ")}. Each has its own account on Sonic, and the totals add them all.`,
     );
     try {
-      const holdings = await readHoldings(spokes.all);
+      const holdings = await readHoldings(spokes.all, { userId: row.id });
       out.push(
         holdings.hubWallets.length === 1
           ? `Account on Sonic: ${holdings.hubWallet}.`
@@ -349,8 +349,8 @@ const getHoldings = defineTool({
   run: async (_args, ctx) => {
     const row = await loadAccountRow(userOf(ctx));
     const spokes = row ? (await spokesOf(row)).all : [];
-    if (spokes.length === 0) return ok("This account holds nothing on Berth yet.");
-    const holdings = await readHoldings(spokes);
+    if (!row || spokes.length === 0) return ok("This account holds nothing on Berth yet.");
+    const holdings = await readHoldings(spokes, { userId: row.id });
     if (holdings.lines.length === 0) {
       return ok(holdings.robinhoodUnread ? `The Berth account holds no listings right now. ${ROBINHOOD_UNREAD}` : "The account holds no listings right now.");
     }
@@ -364,8 +364,12 @@ const getHoldings = defineTool({
             ? ` (${units(line.hub)} in the Berth account on Sonic, ${units(line.robinhood)} in the person's own wallet on Robinhood Chain)`
             : " (in the person's own wallet on Robinhood Chain)"
           : "";
+      const returned =
+        line.returned > 0
+          ? ` ${units(line.returned)} of it came back to Sonic from a sell from Robinhood Chain that did not fill. It sits in an account the person's wallet controls, but no sell in Berth can spend it yet; Berth support can help move it back.`
+          : "";
       out.push(
-        `${named(line.listing)}: ${units(line.quantity)} at ${usd(line.price)}, worth ${line.value !== undefined ? usd(line.value) : "unknown (no live price)"}${share}${where}`,
+        `${named(line.listing)}: ${units(line.quantity)} at ${usd(line.price)}, worth ${line.value !== undefined ? usd(line.value) : "unknown (no live price)"}${share}${where}${returned}`,
       );
     }
     return ok(out.join("\n"));
@@ -603,7 +607,7 @@ const draftOrderTool = defineTool({
       else {
         try {
           // One sell spends one place (lib/server/berth-tools/account sellableOf).
-          const holdings = await readHoldings(spokes);
+          const holdings = await readHoldings(spokes, { userId });
           held = sellableOf(
             holdings.lines.find((line) => line.listing.symbol === listing.symbol),
             order_type === "limit" ? "limit" : "market",

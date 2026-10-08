@@ -653,6 +653,7 @@ describe("Robinhood Chain in the portfolio", () => {
     const summary = await runPortfolioSnapshot({
       now: FRIDAY_EVENING,
       readRobinhood,
+      readReturnedPart: async () => ({}),
       deriveHubWallet: async (spoke) => `hub-${spoke}`,
       readBalances: async (hub): Promise<Record<string, number>> => (hub === `hub-${wallet(1)}` ? { NVDA: 1 } : { NVDA: 2 }),
       livePrices: async () => ({}),
@@ -680,6 +681,7 @@ describe("Robinhood Chain in the portfolio", () => {
     const summary = await runPortfolioSnapshot({
       now: FRIDAY_EVENING,
       readRobinhood: slow,
+      readReturnedPart: async () => ({}),
       robinhoodBudgetMs: 400,
       robinhoodHubOnlyBudgetMs: 50,
       accountTimeoutMs: 1_000,
@@ -703,6 +705,7 @@ describe("Robinhood Chain in the portfolio", () => {
     const summary = await runPortfolioSnapshot({
       now: FRIDAY_EVENING,
       readRobinhood: onRobinhood({}),
+      readReturnedPart: async () => ({}),
       deriveHubWallet: async (spoke) => spoke,
       readBalances: async () => ({ NVDA: 1 }),
       livePrices: async () => ({}),
@@ -732,11 +735,15 @@ describe("Robinhood Chain in the portfolio", () => {
     const transferred = await account(1);
     await placeOrder(transferred.id);
     await writeMarks("NVDA", [{ day: "2026-09-24", close: 200 }], []);
+    // On the allow list, so its side is read (robinhoodReads), though no Berth order went there yet.
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", transferred.id);
     // Thursday: read, with one NVDA in the wallet on Robinhood Chain, though no Berth order went there.
     expect(
       await runPortfolioSnapshot({
         now: new Date("2026-09-24T23:05:00Z"),
         readRobinhood: onRobinhood({ [wallet(1)]: { NVDA: 1 } }),
+        readReturnedPart: async () => ({}),
         deriveHubWallet: async (spoke) => spoke,
         readBalances: async () => ({ NVDA: 1 }),
         livePrices: async () => ({}),
@@ -745,18 +752,107 @@ describe("Robinhood Chain in the portfolio", () => {
     expect((await loadPortfolioDays(transferred.id))[0].holdings).toEqual([{ symbol: "NVDA", quantity: 2, price: 200, source: "mark", robinhood: 1 }]);
     expect(await hasRobinhoodOrders(transferred.id)).toBe(true);
     expect((await snapshotAccounts())[0].robinhoodOrders).toBe(true);
+    // Off the list again: what it held there keeps it read.
+    vi.unstubAllEnvs();
     // Friday: Robinhood Chain does not answer. No low day that would look like a sale.
     await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
     expect(
       await runPortfolioSnapshot({
         now: FRIDAY_EVENING,
         readRobinhood: onRobinhood({}),
+        readReturnedPart: async () => ({}),
         deriveHubWallet: async (spoke) => spoke,
         readBalances: async () => ({ NVDA: 1 }),
         livePrices: async () => ({}),
       }),
     ).toMatchObject({ written: 0, failed: 1 });
     expect((await loadPortfolioDays(transferred.id)).map((day) => day.day)).toEqual(["2026-09-24"]);
+  });
+
+  it("counts what a sell from there that did not fill left on Sonic, and only when asked (review M1, sell)", async () => {
+    const returned = vi.fn(async () => ({ NVDA: 0.25 }));
+    const read = await readAccountBalances([wallet(1)], async () => ({ NVDA: 1 }), async (spoke) => spoke, onRobinhood({ [wallet(1)]: {} }), "throw", returned);
+    expect(read.total).toEqual({ NVDA: 1.25 });
+    expect(read.returned).toEqual({ NVDA: 0.25 });
+    expect(returned).toHaveBeenCalledWith([wallet(1)]);
+    const without = await readAccountBalances([wallet(1)], async () => ({ NVDA: 1 }), async (spoke) => spoke, onRobinhood({ [wallet(1)]: {} }));
+    expect(without).toMatchObject({ total: { NVDA: 1 }, returned: null });
+    // Unread: unknown, never zero. It throws, or is left out when the caller said "hub only".
+    const failing = async () => {
+      throw new Error("Sonic did not answer");
+    };
+    await expect(
+      readAccountBalances([wallet(1)], async () => ({ NVDA: 1 }), async (spoke) => spoke, onRobinhood({ [wallet(1)]: {} }), "throw", failing),
+    ).rejects.toThrow("Sonic did not answer");
+    const hubOnly = await readAccountBalances([wallet(1)], async () => ({ NVDA: 1 }), async (spoke) => spoke, onRobinhood({ [wallet(1)]: {} }), "hub only", failing);
+    expect(hubOnly).toMatchObject({ total: { NVDA: 1 }, returned: null });
+  });
+
+  it("puts it in the evening's day for an account on Robinhood Chain, and asks it of nobody else", async () => {
+    const delivered = await account(1);
+    const hubOnly = await account(2);
+    await deliveredThere(await placeOrder(delivered.id));
+    await placeOrder(hubOnly.id);
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    const returned = vi.fn(async () => ({ NVDA: 0.5 }));
+    expect(
+      await runPortfolioSnapshot({
+        now: FRIDAY_EVENING,
+        readRobinhood: onRobinhood({ [wallet(1)]: {}, [wallet(2)]: {} }),
+        readReturnedPart: returned,
+        deriveHubWallet: async (spoke) => spoke,
+        readBalances: async () => ({ NVDA: 1 }),
+        livePrices: async () => ({}),
+      }),
+    ).toMatchObject({ written: 2 });
+    expect((await loadPortfolioDays(delivered.id)).map((day) => day.value)).toEqual([300]);
+    expect((await loadPortfolioDays(hubOnly.id)).map((day) => day.value)).toEqual([200]);
+    expect(returned).toHaveBeenCalledTimes(1);
+    expect(returned).toHaveBeenCalledWith([wallet(1)]);
+  });
+
+  it("writes no day for an account on Robinhood Chain whose returned part could not be read", async () => {
+    const delivered = await account(1);
+    await deliveredThere(await placeOrder(delivered.id));
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    expect(
+      await runPortfolioSnapshot({
+        now: FRIDAY_EVENING,
+        readRobinhood: onRobinhood({ [wallet(1)]: {} }),
+        readReturnedPart: async () => {
+          throw new Error("Sonic did not answer");
+        },
+        deriveHubWallet: async (spoke) => spoke,
+        readBalances: async () => ({ NVDA: 1 }),
+        livePrices: async () => ({}),
+      }),
+    ).toMatchObject({ written: 0, failed: 1 });
+  });
+
+  it("asks Robinhood Chain nothing for an account with no side there, and asks it for one on the allow list (review: no-op with the switches off)", async () => {
+    const hubOnly = await account(2);
+    await placeOrder(hubOnly.id);
+    await writeMarks("NVDA", [{ day: "2026-09-25", close: 200 }], []);
+    const asked: string[][] = [];
+    const run = () =>
+      runPortfolioSnapshot({
+        now: FRIDAY_EVENING,
+        readRobinhood: onRobinhood({}, asked),
+        readReturnedPart: async () => {
+          throw new Error("never asked");
+        },
+        deriveHubWallet: async (spoke) => spoke,
+        readBalances: async () => ({ NVDA: 1 }),
+        livePrices: async () => ({}),
+      });
+    expect(await run()).toMatchObject({ written: 1, failed: 0 });
+    expect(asked).toEqual([]);
+    expect((await loadPortfolioDays(hubOnly.id)).map((day) => day.value)).toEqual([200]);
+    vi.stubEnv("ROBINHOOD_DELIVERY", "listed");
+    vi.stubEnv("ROBINHOOD_DELIVERY_USERS", hubOnly.id);
+    await run();
+    vi.unstubAllEnvs();
+    expect(asked.flat()).toContain(wallet(2));
   });
 
   it("knows whether one account has an order there", async () => {

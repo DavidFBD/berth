@@ -43,7 +43,8 @@ export function useLimitDraft({
   force?: boolean;
 }) {
   const switchOn = useLimitOrders({ poll: false }).enabled;
-  const allowed = (force ?? switchOn) && listing?.kind === "stock" && !unavailable;
+  const limitable = (force ?? switchOn) && listing?.kind === "stock";
+  const allowed = limitable && !unavailable;
   const [mode, setModeState] = useState<OrderMode>("now");
   const [priceText, setPriceText] = useState("");
   const [expiry, setExpiry] = useState<LimitExpiry>({ kind: "never" });
@@ -81,6 +82,12 @@ export function useLimitDraft({
   return {
     allowed,
     active,
+    /**
+     * A limit was typed, or drafted and waiting to be applied, but cannot
+     * apply to this order here (`unavailable`): the order would go at the
+     * market price, so the sheet says so (review M2, sell).
+     */
+    blocked: limitable && !allowed && (mode === "price" || (open && !!prefill && !prefilled && priceFromNumber(prefill.price) !== null)),
     mode,
     setMode,
     priceText,

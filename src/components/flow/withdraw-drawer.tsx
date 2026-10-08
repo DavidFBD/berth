@@ -110,6 +110,7 @@ export function WithdrawDrawer({
   signerLinked,
   onAddWallet,
   robinhoodSell,
+  robinhoodPaused = false,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -163,6 +164,11 @@ export function WithdrawDrawer({
    * order machine refuses to sign with any other.
    */
   robinhoodSell?: { rhAddress: Address; owner: string };
+  /**
+   * What is held sits in a wallet on Robinhood Chain this sheet may not sell
+   * from (lib/robinhood-sell robinhoodSellPaused): a calm line says so.
+   */
+  robinhoodPaused?: boolean;
 }) {
   const [dstChainKey, setDstChainKey] = useState<SpokeChainKey | null>(null);
   const [outputToken, setOutputToken] = useState<XToken | null>(null);
@@ -888,6 +894,11 @@ export function WithdrawDrawer({
                       </Button>
                     )}
                   </div>
+                  {robinhoodPaused && isSell && (
+                    <p className="text-xs text-muted-foreground" data-testid="rh-sell-paused">
+                      {copy.rhChain.sellPaused}
+                    </p>
+                  )}
                   {capped && isSell && (
                     <p className="text-xs text-muted-foreground">
                       {copy.sellUpToFromWallet(
@@ -944,6 +955,12 @@ export function WithdrawDrawer({
                     noPriceHint={limit.problem === "noPrice"}
                     fillsNow={fillsNow("sell", limit.price, sharePriceUsd)}
                   />
+                )}
+                {/* A limit typed or drafted, but this sell is from Robinhood Chain: said, never silently a market sell (review M2, sell). */}
+                {fromRobinhood && limit.blocked && (
+                  <p className="text-xs text-muted-foreground" data-testid="rh-limit-sell">
+                    {copy.rhChain.limitSellNotHere}
+                  </p>
                 )}
 
                 {/* Destination chain + token */}

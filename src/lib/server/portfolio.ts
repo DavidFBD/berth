@@ -12,6 +12,8 @@ import { readMarks } from "@/lib/server/marks";
 import { loadOrderFacts } from "@/lib/server/order-marks";
 import { getSodax } from "@/lib/server/pour-verify";
 import { readRobinhoodHoldings, robinhoodParts, safeError, type RobinhoodHoldingsReader } from "@/lib/server/robinhood-balances";
+import { readReturned, returnedUnits } from "@/lib/robinhood-returned";
+import { robinhoodDeliveryOn } from "@/lib/server/delivery";
 
 /**
  * The portfolio's server half: whose account is where, what it holds, what
@@ -71,6 +73,19 @@ export type WalletBalances = { spoke: string; hubWallet: string; balances: Recor
 export type RobinhoodUnread = "throw" | "hub only";
 
 /**
+ * What sells from Robinhood Chain that did not fill left on Sonic, in the
+ * hub wallets derived for (robinhood, each address) (lib/robinhood-returned),
+ * in listing units by symbol. Throws when unknown.
+ */
+export type ReturnedHoldingsReader = (spokes: readonly string[]) => Promise<Record<string, number>>;
+
+/** The live ReturnedHoldingsReader, on the server's Sonic client. */
+export const readReturnedHoldings: ReturnedHoldingsReader = async (spokes) => {
+  const hub = getSodax().hubProvider;
+  return returnedUnits((await readReturned(hub as never, hub.publicClient, spokes)).total);
+};
+
+/**
  * An account's listing balances summed over every linked EVM address's hub
  * wallet (lib/server/identities accountEvmAddresses) and the same
  * addresses' own wallets on Robinhood Chain, with each hub wallet's own
@@ -87,6 +102,12 @@ export async function readAccountBalances(
   deriveHubWallet: (spokeAddress: string) => Promise<string> = hubWalletFor,
   readRobinhood: RobinhoodHoldingsReader = readRobinhoodHoldings,
   onRobinhoodUnread: RobinhoodUnread = "throw",
+  /**
+   * For an account with Robinhood Chain orders: also what sells from there
+   * that did not fill left on Sonic (review M1, sell), counted in the
+   * total. Unread follows `onRobinhoodUnread`. Absent: not read at all.
+   */
+  readReturnedPart?: ReturnedHoldingsReader,
 ): Promise<{
   total: Record<string, number>;
   byWallet: WalletBalances[];
@@ -94,9 +115,11 @@ export async function readAccountBalances(
   robinhood: Record<string, number> | null;
   /** Each address's own Robinhood Chain part (lowercased address to holdings); empty when unread. */
   robinhoodByOwner: Map<string, Record<string, number>>;
+  /** Back on Sonic from a sell from Robinhood Chain that did not fill, by symbol; null when not read or unread. */
+  returned: Record<string, number> | null;
 }> {
   const unique = [...new Set(spokes.map((spoke) => spoke.toLowerCase()))];
-  const [byWallet, robinhood] = await Promise.all([
+  const [byWallet, robinhood, returned] = await Promise.all([
     Promise.all(
       unique.map(async (spoke) => {
         const hubWallet = await deriveHubWallet(spoke);
@@ -108,9 +131,22 @@ export async function readAccountBalances(
       console.warn("[portfolio] Robinhood Chain unread, hub only", safeError(error));
       return null;
     }),
+    readReturnedPart
+      ? readReturnedPart(unique).catch((error: unknown) => {
+          if (onRobinhoodUnread === "throw") throw error;
+          console.warn("[portfolio] returned sells unread, left out", safeError(error));
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
-  const total = sumBalances([...byWallet.map((wallet) => wallet.balances), robinhood?.total ?? {}]);
-  return { total, byWallet, robinhood: robinhood?.total ?? null, robinhoodByOwner: robinhood?.byOwner ?? new Map() };
+  const total = sumBalances([...byWallet.map((wallet) => wallet.balances), robinhood?.total ?? {}, returned ?? {}]);
+  return {
+    total,
+    byWallet,
+    robinhood: robinhood?.total ?? null,
+    robinhoodByOwner: robinhood?.byOwner ?? new Map(),
+    returned,
+  };
 }
 
 /** Listing balances added up by symbol. */
@@ -147,6 +183,27 @@ export async function hasRobinhoodOrders(userId: string): Promise<boolean> {
   }[];
   return rows[0]?.found === true;
 }
+
+/**
+ * Whether an account's Robinhood Chain side is read at all (review: the
+ * readers must be a no-op with the switches off): its own wallets on
+ * Robinhood Chain (4663) and what sells from there left on Sonic
+ * (lib/robinhood-returned). Yes for an account on Robinhood Chain
+ * (ON_ROBINHOOD_SQL) and for one the delivery switch lets buy there
+ * (lib/server/delivery robinhoodDeliveryOn: the allow list, or everyone
+ * once ROBINHOOD_DELIVERY=on). Everyone else never had a Berth order
+ * there and holds nothing there on its latest day, so nothing is asked of
+ * that chain for them and nothing is said about it. A failed check is yes:
+ * reading more can only show more.
+ */
+export async function robinhoodReads(userId: string, identifiers: readonly (string | null | undefined)[] = []): Promise<boolean> {
+  if (robinhoodDeliveryOn([userId, ...identifiers])) return true;
+  return hasRobinhoodOrders(userId).catch(() => true);
+}
+
+/** The Robinhood Chain read for an account whose side is not read (robinhoodReads): each wallet holds nothing there, asked of no chain. */
+export const noRobinhoodRead: RobinhoodHoldingsReader = async (owners) =>
+  new Map(owners.map((owner) => [owner.toLowerCase(), {} as Record<string, number>]));
 
 /** The solver's live prices, by listing symbol. Empty when the oracle is down. */
 export async function liveListingPrices(): Promise<Record<string, number>> {
@@ -494,6 +551,7 @@ export async function runPortfolioSnapshot({
   readBalances = readListingBalances,
   deriveHubWallet = hubWalletFor,
   readRobinhood = readRobinhoodHoldings,
+  readReturnedPart = readReturnedHoldings,
   robinhoodBudgetMs = ROBINHOOD_ACCOUNT_BUDGET_MS,
   robinhoodHubOnlyBudgetMs = ROBINHOOD_HUB_ONLY_BUDGET_MS,
   livePrices = liveListingPrices,
@@ -508,6 +566,8 @@ export async function runPortfolioSnapshot({
   readBalances?: ListingBalanceReader;
   deriveHubWallet?: (spokeAddress: string) => Promise<string>;
   readRobinhood?: RobinhoodHoldingsReader;
+  /** What sells from Robinhood Chain left on Sonic; read only for an account on Robinhood Chain. */
+  readReturnedPart?: ReturnedHoldingsReader;
   /** Each account's Robinhood Chain read, past which it is unread. */
   robinhoodBudgetMs?: number;
   /** The same for an account not on Robinhood Chain. */
@@ -552,7 +612,13 @@ export async function runPortfolioSnapshot({
   // Every wallet asked at once, request by request, never awaited: the
   // live reader remembers each wallet's answer as its request lands, and
   // each account's read below takes it from there.
-  const allWallets = list.flatMap(walletsOf);
+  // Only accounts whose Robinhood Chain side is read at all (robinhoodReads):
+  // on Robinhood Chain, or let buy there by the delivery switch. Everyone
+  // else is never asked of that chain, so the switches off leave the
+  // evening run as it was.
+  const readsSide = (account: SnapshotAccount) =>
+    account.robinhoodOrders !== false || robinhoodDeliveryOn([account.id, account.wallet, ...walletsOf(account)]);
+  const allWallets = list.filter(readsSide).flatMap(walletsOf);
   if (allWallets.length > 0) void readRobinhood(allWallets).catch(() => undefined);
   const runRobinhood = (onRobinhood: boolean): RobinhoodHoldingsReader => (owners) =>
     withinBudget(readRobinhood(owners), onRobinhood ? robinhoodBudgetMs : robinhoodHubOnlyBudgetMs);
@@ -562,8 +628,11 @@ export async function runPortfolioSnapshot({
       walletsOf(account),
       readBalances,
       deriveHubWallet,
-      runRobinhood(account.robinhoodOrders !== false),
+      readsSide(account) ? runRobinhood(account.robinhoodOrders !== false) : noRobinhoodRead,
       account.robinhoodOrders === false ? "hub only" : "throw",
+      // A sell from there that did not fill came back to Sonic: counted
+      // for an account known to be on Robinhood Chain, unread is no row.
+      account.robinhoodOrders === true ? readReturnedPart : undefined,
     );
     const live = Object.keys(balances).length > 0 ? await oraclePrices() : {};
     const valued = valueHoldings(balances, (symbol) => {

@@ -155,3 +155,52 @@ describe("what any page says about who can move holdings", () => {
     expect(strings.filter((text) => /only your wallet can move|only your wallet's signature can move|which only your wallet/i.test(text))).toEqual([]);
   });
 });
+
+describe("Robinhood Chain delivery, said as it is (review: copy honesty)", () => {
+  const docs = [COPY.termsOfUse, COPY.privacyPolicy as typeof COPY.termsOfUse];
+
+  it("never says it depends on the country and the wallet alone, or that every buy can now go there", () => {
+    for (const text of [...docs.map(all), COPY.infoHowBody]) {
+      expect(text).not.toMatch(/depending on your country and your wallet/i);
+      expect(text).not.toMatch(/can now be delivered/i);
+    }
+  });
+
+  it("calls it a beta for some accounts, for market buys, in the terms, the privacy note and the info sheet", () => {
+    const terms = all(COPY.termsOfUse);
+    expect(terms).toMatch(/During a beta, for some accounts that sign in with a wallet of their own, a market buy of a stock/);
+    expect(terms).toMatch(/Limit orders, the Treasury bill fund and accounts that sign in with email stay with the Berth account/);
+    expect(all(COPY.privacyPolicy as typeof COPY.termsOfUse)).toMatch(/During a beta, some accounts can have a buy delivered/);
+    expect(COPY.infoHowBody).toMatch(/During a beta, some accounts that sign in with a wallet of their own can have a market buy/);
+    for (const text of [COPY.infoHowBody, COPY.rhChain.limitBuyStaysInAccount]) expect(text).not.toMatch(/ [-–—] |—|–/);
+  });
+
+  it("says the same in llms.txt", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync("src/app/llms.txt/route.ts", "utf8");
+    expect(source).not.toMatch(/Depending on their country and wallet/);
+    expect(source).toMatch(/During a beta, some accounts that sign in with a wallet of their own can have a market buy of a stock delivered/);
+  });
+});
+
+describe("a limit on a sell from Robinhood Chain (review M2, sell)", () => {
+  it("is said, calmly and without dashes, never silently turned into a market sell", async () => {
+    expect(COPY.rhChain.limitSellNotHere).toMatch(/goes at the market price/);
+    expect(COPY.rhChain.limitSellNotHere).not.toMatch(/ [-–—] |—|–/);
+    const { readFileSync } = await import("node:fs");
+    const sheet = readFileSync("src/components/flow/withdraw-drawer.tsx", "utf8");
+    expect(sheet).toContain("fromRobinhood && limit.blocked");
+    const home = readFileSync("src/components/home.tsx", "utf8");
+    expect(home).toContain("{ limit: !!prefill?.limit }");
+  });
+});
+
+describe("selling from Robinhood Chain switched off (review: the kill switch)", () => {
+  it("is said calmly in place of a dead Sell", async () => {
+    expect(COPY.rhChain.sellPaused).toMatch(/^Selling from Robinhood Chain is paused/);
+    expect(COPY.rhChain.sellPaused).not.toMatch(/ [-–—] |—|–/);
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/components/home.tsx", "utf8")).toContain("robinhoodPaused={robinhoodSellPaused(snapshot, sellFromWallet)}");
+    expect(readFileSync("src/components/flow/withdraw-drawer.tsx", "utf8")).toContain("copy.rhChain.sellPaused");
+  });
+});

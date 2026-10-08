@@ -211,6 +211,18 @@ export type Copy = {
     firstStockLine: (name: string) => string;
     /** Under a holding in both places: the two quantities, account first. */
     holdingSplit: (inAccount: string, inWallet: string) => string;
+    /**
+     * Under a holding part of which came back to Sonic from a sell from
+     * Robinhood Chain that did not fill (lib/robinhood-returned): counted,
+     * not sellable in Berth, and recovered with support's help.
+     */
+    holdingReturned: (amount: string) => string;
+    /** The buy sheet, with a limit set for an account whose market buys go to Robinhood Chain: where a limit buy waits and lands instead. */
+    limitBuyStaysInAccount: string;
+    /** The sell sheet, selling from Robinhood Chain with a limit typed or drafted: a limit cannot apply there (review M2, sell). */
+    limitSellNotHere: string;
+    /** The sell sheet when selling from Robinhood Chain is switched off (ROBINHOOD_SELL=off) and nothing else holds the stock. */
+    sellPaused: string;
     /** The Robinhood Chain wallet did not answer: the list is the account's alone. */
     walletUnread: string;
     /** The buy sheet's line under its title, for such a buy: buySub without "It lands in your account". */
@@ -2882,6 +2894,14 @@ export const COPY: Copy = {
     firstStockLine: (name) =>
       `${name} is in your own wallet on Robinhood Chain, as a Robinhood token that tracks its share price. It is yours, held by your own wallet's keys, and you can sell it any day under What you own.`,
     holdingSplit: (inAccount, inWallet) => `${inAccount} in your Berth account, ${inWallet} in your own wallet on Robinhood Chain`,
+    limitBuyStaysInAccount:
+      "A limit buy waits in your Berth account and stays there once it fills. Only a buy at the market price goes to your own wallet on Robinhood Chain.",
+    limitSellNotHere:
+      "A limit sell can only wait in your Berth account, so a sell from Robinhood Chain goes at the market price. To set a price, sell from your Berth account.",
+    sellPaused:
+      "Selling from Robinhood Chain is paused for now. What is in your own wallet there stays yours, and your wallet can still move it.",
+    holdingReturned: (amount) =>
+      `${amount} came back from a sell that did not complete. It is on Sonic, in an account your wallet controls, and Berth can help you move it back.`,
     walletUnread: "Your wallet on Robinhood Chain could not be read just now, so what is there is not shown. Berth will try again shortly.",
     buySub: "Pay with what you hold, from more than 20 networks.",
     arrival: "Arrives in your own wallet on Robinhood Chain.",
@@ -3519,7 +3539,7 @@ export const COPY: Copy = {
   infoSub: "What an order does, what you own, and what it costs.",
   infoHowTitle: "One signature, any network",
   infoHowBody:
-    "You pay with what you hold, on the network where you hold it, and sign once. Independent solvers fill the order through SODAX and deliver the stock token to your Berth account or, depending on your country and your wallet, to your own wallet on Robinhood Chain. Selling works the same way in reverse. Orders fill any day, weekends included. Berth never holds your funds.",
+    "You pay with what you hold, on the network where you hold it, and sign once. Independent solvers fill the order through SODAX and deliver the stock token to your Berth account. During a beta, some accounts that sign in with a wallet of their own can have a market buy of a stock delivered to that wallet on Robinhood Chain instead, where Robinhood offers its tokens. Selling works the same way in reverse. Orders fill any day, weekends included. Berth never holds your funds.",
   infoOwnTitle: "What you own",
   infoOwnBody:
     "A Robinhood Stock Token is a debt security issued by Robinhood Assets in Jersey that tracks the price of a share and its dividends. It is not the share itself: no voting rights, and the issuer's credit risk sits with you. Cash you park is a token tracking a fund of short US Treasury bills.",
@@ -4396,7 +4416,7 @@ export const COPY: Copy = {
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
         body: ["The first change below is new on 8 October 2026. The others came on 6 October 2026."],
         list: [
-          "Stock tokens can now be delivered to your own wallet on Robinhood Chain, where what it holds is public, and our servers read the public balances of your linked EVM wallets there through public RPC providers.",
+          "During a beta, some accounts can have a buy delivered to their own wallet on Robinhood Chain, where what it holds is public, and our servers read the public balances of your linked EVM wallets there through public RPC providers.",
           "The legal basis for each use of your data is now listed use by use.",
           "A new section on international transfers.",
           "The services that receive data now include the companies that run network nodes, and WalletConnect, and are grouped by whether they act for us or on their own.",
@@ -4470,8 +4490,8 @@ export const COPY: Copy = {
         list: [
           "If you sign in with a wallet you already have, its keys stay in that wallet. Berth never sees them.",
           "If you sign in with email, Privy, our wallet provider, creates wallets for you and secures their keys in its own systems so that you can use them when signed in. Berth cannot see or use those keys and has not been given any permission to sign for you. You can export the keys at any time under Settings, and we suggest you do, so that you keep access whatever happens to Privy or to Berth.",
-          "Depending on your country and your wallet, the stocks and funds you buy are held in one of two places. The first is your Berth account: an address on the Sonic network, the SODAX hub, a wallet contract of the SODAX protocol tied to your own wallet and designed to move funds only on instructions you sign. Reaching it depends on SODAX's contracts and relay working.",
-          "The second is your own EVM wallet on Robinhood Chain, where a buy is delivered as the issuer's own token and only your keys control it. Berth and SODAX cannot move or recover tokens there. Selling them from there is signed in that wallet and may cost a small network fee in ETH on Robinhood Chain.",
+          "The stocks and funds you buy are held in one of two places. The first is your Berth account: an address on the Sonic network, the SODAX hub, a wallet contract of the SODAX protocol tied to your own wallet and designed to move funds only on instructions you sign. Reaching it depends on SODAX's contracts and relay working.",
+          "The second, during a beta and only for some accounts that sign in with a wallet of their own, is that EVM wallet on Robinhood Chain. A market buy of a stock can be delivered there, where Robinhood offers its tokens, as the issuer's own token, and only your keys control it. Limit orders, the Treasury bill fund and accounts that sign in with email stay with the Berth account. Berth and SODAX cannot move or recover tokens there. Selling them from there is signed in that wallet and may cost a small network fee in ETH on Robinhood Chain.",
           "If you pay with Bitcoin, you sign the payment in your own Bitcoin wallet, and it goes to the SODAX protocol's Bitcoin service to be filled. Berth never receives it.",
           "Berth's servers hold no key that can sign for you or move your funds, and no one at Berth can change your balances.",
           "If you lose your keys, your sign in or access to your email, or someone else gets them, we cannot recover your wallet or your tokens, or reverse what was done with them.",
@@ -4686,7 +4706,7 @@ export const COPY: Copy = {
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
         body: ["The first change below is new on 8 October 2026. The others came on 6 October 2026."],
         list: [
-          "Depending on your country and your wallet, a buy can now be delivered as the issuer's own token to your own wallet on Robinhood Chain, which only your keys control, instead of to your Berth account.",
+          "During a beta, for some accounts that sign in with a wallet of their own, a market buy of a stock can be delivered as the issuer's own token to that wallet on Robinhood Chain, which only your keys control, instead of to your Berth account.",
           "Berth now says plainly that it is not a broker, an exchange, an investment firm or an adviser, and does not check whether an order suits you.",
           "New sections on who holds your keys and tokens, and on what the stock tokens are and are not.",
           "More risks are named: prices when the US market is closed, smart contracts, networks and relays, lost keys and tax.",

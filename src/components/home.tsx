@@ -49,7 +49,14 @@ import { useAccountWallets, useCloseFirstStock, useFirstStock, useLastKnown, use
 import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-account-wallets";
 import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
-import { ROBINHOOD_CHAIN_KEY, defaultSellSource, hubSellSources, robinhoodSellSources, type SellSource } from "@/lib/robinhood-sell";
+import {
+  ROBINHOOD_CHAIN_KEY,
+  defaultSellSource,
+  hubSellSources,
+  robinhoodSellPaused,
+  robinhoodSellSources,
+  type SellSource,
+} from "@/lib/robinhood-sell";
 import { useRobinhoodGasReady, useRobinhoodSellBalances } from "@/hooks/use-robinhood-sell";
 import { useDelivery } from "@/hooks/use-delivery";
 import { parseUnits } from "viem";
@@ -273,8 +280,13 @@ function SignedInHome() {
   // first stock split between the two has no one true line, so no card.
   const firstHeld = stocksHeld.length === 1 ? stocksHeld[0] : undefined;
   const firstInWallet = firstHeld !== undefined && firstHeld.robinhood > 0n && firstHeld.robinhood >= firstHeld.balance;
+  // A first stock part of which came back from a sell there has no one true line either.
   const oneStock =
-    proven === "owns" && ownedHoldings.settled && firstHeld !== undefined && (firstHeld.robinhood === 0n || firstInWallet);
+    proven === "owns" &&
+    ownedHoldings.settled &&
+    firstHeld !== undefined &&
+    firstHeld.returned === 0n &&
+    (firstHeld.robinhood === 0n || firstInWallet);
   const firstStockState = useFirstStock(oneStock);
   const closeFirstStock = useCloseFirstStock();
   const firstStock =
@@ -415,7 +427,8 @@ function SignedInHome() {
       // Either place a sell can come from (plan P3a): the Berth account or the wallet on Robinhood Chain.
       {
         settled: ownedHoldings.settled && ownedHoldings.robinhoodState !== "loading",
-        heldAddresses: ownedHoldings.held.map((holding) => holding.listing.address),
+        // Only what a sell can spend: never what came back from a sell there (lib/robinhood-returned).
+        heldAddresses: ownedHoldings.held.filter((holding) => holding.sellable > 0n).map((holding) => holding.listing.address),
       },
     );
     if (opening.kind === "buy" || opening.kind === "sell") {
@@ -1096,7 +1109,11 @@ function SellHost({
     // Robinhood Chain first, and for a drafted quantity the one holding all
     // of it), else the Berth account, else the home, else the first.
     const wanted = prefill?.quantity ? safeUnits(prefill.quantity, listing?.decimals ?? 18) : undefined;
-    setChosen(defaultSellSource(found, wanted, (candidate) => candidate.chain === "hub" || gasThere.ready)?.key ?? null);
+    // A drafted limit opens on the home hub wallet, where a limit can wait (review M2, sell).
+    setChosen(
+      defaultSellSource(found, wanted, (candidate) => candidate.chain === "hub" || gasThere.ready, { limit: !!prefill?.limit })?.key ??
+        null,
+    );
   }
 
   if (!listing || snapshot === null) return null;
@@ -1122,6 +1139,8 @@ function SellHost({
           : undefined
       }
       sourceIsHome={!fromRobinhood && source?.isHome !== false}
+      // Nothing to sell from but a wallet on Robinhood Chain that may not be offered: said, never a dead Sell.
+      robinhoodPaused={robinhoodSellPaused(snapshot, sellFromWallet)}
       signerLinked={account.signerLinked}
       onAddWallet={addWallet.canSign ? () => void addWallet.add() : undefined}
     />

@@ -36,7 +36,7 @@ describe("readDeliveryAnswer", () => {
 describe("askDelivery", () => {
   it("posts to the route with the session's headers and reads the answer", async () => {
     const fetcher = respond(200, ROBINHOOD);
-    expect(await askDelivery({ headers: auth, fetcher })).toEqual({ delivery: ROBINHOOD, answered: true, sell: false });
+    expect(await askDelivery({ headers: auth, fetcher })).toEqual({ delivery: ROBINHOOD, answered: true, sell: false, robinhood: true });
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/delivery");
     expect(init.method).toBe("POST");
@@ -50,8 +50,16 @@ describe("askDelivery", () => {
     expect((await askDelivery({ headers: auth, fetcher: respond(200, { sell: true }) })).sell).toBe(false);
   });
 
+  it("turns the account's Robinhood Chain reads off only on an answered 200 that says false", async () => {
+    expect((await askDelivery({ headers: auth, fetcher: respond(200, { ...ROBINHOOD, robinhood: false }) })).robinhood).toBe(false);
+    expect((await askDelivery({ headers: auth, fetcher: respond(200, { ...ROBINHOOD, robinhood: true }) })).robinhood).toBe(true);
+    expect((await askDelivery({ headers: auth, fetcher: respond(200, { ...ROBINHOOD, robinhood: "no" }) })).robinhood).toBe(true);
+    expect((await askDelivery({ headers: auth, fetcher: respond(500, { ...ROBINHOOD, robinhood: false }) })).robinhood).toBe(true);
+    expect((await askDelivery({ headers: auth, fetcher: respond(200, { robinhood: false }) })).robinhood).toBe(true);
+  });
+
   it("is the hub, unanswered, on a non-200, a thrown request, no session or a timeout", async () => {
-    const hub = { delivery: hubDelivery("read_failed"), answered: false, sell: false };
+    const hub = { delivery: hubDelivery("read_failed"), answered: false, sell: false, robinhood: true };
     expect(await askDelivery({ headers: auth, fetcher: respond(500, ROBINHOOD) })).toEqual(hub);
     expect(await askDelivery({ headers: auth, fetcher: respond(401, ROBINHOOD) })).toEqual(hub);
     expect(

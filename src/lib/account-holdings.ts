@@ -21,12 +21,20 @@ export type RobinhoodReadState = "off" | "loading" | "read" | "failed";
 
 export type AccountHolding = {
   listing: Listing;
-  /** Everything held of the listing that was read: `hub` plus `robinhood`. */
+  /** Everything held of the listing that was read: `hub` plus `robinhood` plus `returned`. */
   balance: bigint;
   /** On the hub, in the Berth account: what a sell from the account spends. */
   hub: bigint;
   /** In the person's own wallet on Robinhood Chain; 0 when unread or off. */
   robinhood: bigint;
+  /**
+   * Back on Sonic from a sell from Robinhood Chain that did not fill, in the
+   * hub wallet derived for (robinhood, the wallet) (lib/robinhood-returned).
+   * Counted and shown; no sell in Berth spends it. 0 when unread or none.
+   */
+  returned: bigint;
+  /** What a sell can spend, one place at a time: `hub` plus `robinhood`, never `returned`. */
+  sellable: bigint;
 };
 
 /**
@@ -39,11 +47,29 @@ export type AccountHolding = {
 export function mergeChainHoldings(
   hub: readonly { listing: Listing; balance: bigint }[],
   robinhood: readonly bigint[] | undefined,
+  returned?: readonly bigint[],
 ): AccountHolding[] {
   return hub.map((holding, index) => {
     const onRobinhood = robinhood?.[index] ?? 0n;
-    return { listing: holding.listing, balance: holding.balance + onRobinhood, hub: holding.balance, robinhood: onRobinhood };
+    const back = returned?.[index] ?? 0n;
+    return {
+      listing: holding.listing,
+      balance: holding.balance + onRobinhood + back,
+      hub: holding.balance,
+      robinhood: onRobinhood,
+      returned: back,
+      sellable: holding.balance + onRobinhood,
+    };
   });
+}
+
+/**
+ * What came back to Sonic from sells from Robinhood Chain (raw amounts by
+ * symbol, lib/robinhood-returned), placed at each stock listing in the
+ * hub's order, zero elsewhere.
+ */
+export function placeReturnedTotals(listings: readonly Listing[], total: ReadonlyMap<string, bigint>): bigint[] {
+  return listings.map((listing) => (listing.kind === "stock" ? (total.get(listing.symbol) ?? 0n) : 0n));
 }
 
 /** Only what is held somewhere. */
@@ -81,9 +107,11 @@ export type RobinhoodReadPlan = {
 /**
  * Whether to read Robinhood Chain at all, and what. Null, so no client is
  * built and no call is made, unless the account has an EVM wallet and some
- * listing has a token there. Not tied to the delivery switch: a switch
- * narrowed or turned off later (the allow list, the kill switch, the deny
- * list) must never hide what was delivered before it. Stocks
+ * listing has a token there. The route then says whether this account's
+ * side is read at all (lib/server/portfolio robinhoodReads, in
+ * hooks/use-account-holdings): yes for any account with an order or a
+ * holding there, so a switch narrowed or turned off later (the allow list,
+ * the kill switch, the deny list) never hides what was delivered before it. Stocks
  * and funds only: cash (SGOV) is parked and unparked on the hub, and only a
  * stock buy is delivered to Robinhood Chain (lib/delivery-client).
  */

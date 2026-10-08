@@ -46,13 +46,14 @@ async function order(
     quantity = "1",
     at = "2026-10-01T10:00:00Z",
     listing = NVDA.address.toLowerCase(),
-  }: { direction?: "buy" | "sell"; chain?: "robinhood" | "sonic"; quantity?: string | null; at?: string; listing?: string } = {},
+    wallet = WALLET,
+  }: { direction?: "buy" | "sell"; chain?: "robinhood" | "sonic"; quantity?: string | null; at?: string; listing?: string; wallet?: string } = {},
 ): Promise<string> {
   const intentTx = tx();
   await sql.query(
-    `insert into orders (user_id, intent_tx, direction, listing_symbol, listing_address, quantity, placed_at, delivered_to, holding_chain)
-     values ($1, $2, $3, 'NVDA', $4, $5, $6::timestamptz, $7, $8)`,
-    [userId, intentTx, direction, listing, quantity, at, WALLET, chain],
+    `insert into orders (user_id, wallet_address, intent_tx, direction, listing_symbol, listing_address, quantity, placed_at, delivered_to, holding_chain)
+     values ($1, $9, $2, $3, 'NVDA', $4, $5, $6::timestamptz, $7, $8)`,
+    [userId, intentTx, direction, listing, quantity, at, wallet, chain, wallet],
   );
   return intentTx;
 }
@@ -82,6 +83,55 @@ describe("a buy delivered on Robinhood Chain (D1)", () => {
     // Not recorded yet: waits on Robinhood Chain, pays on the hub as before.
     expect(await robinhoodPourXp(tx(), { onRobinhood: true, readBalances: holding(10n * ONE) })).toBe("wait");
     expect(await robinhoodPourXp(tx(), { onRobinhood: false, readBalances: holding(0n) })).toBe("pay");
+  });
+
+  it("earns when the person sold it from that wallet before its balance was read (review XP: a quick sell)", async () => {
+    const id = await user();
+    const buy = await order(id, { quantity: "1", at: "2026-10-01T10:00:00Z" });
+    // Sold back the same hour: the wallet holds nothing, the sell's spend proves the arrival.
+    await order(id, { direction: "sell", quantity: "1", at: "2026-10-01T11:00:00Z" });
+    expect(await robinhoodPourXp(buy, { onRobinhood: true, readBalances: holding(0n) })).toBe("pay");
+  });
+
+  it("adds a partial sell to what is left in the wallet", async () => {
+    const id = await user();
+    const buy = await order(id, { quantity: "1", at: "2026-10-01T10:00:00Z" });
+    await order(id, { direction: "sell", quantity: "0.4", at: "2026-10-01T11:00:00Z" });
+    expect(await robinhoodPourXp(buy, { onRobinhood: true, readBalances: holding((6n * ONE) / 10n) })).toBe("pay");
+    expect(await robinhoodPourXp(buy, { onRobinhood: true, readBalances: holding((5n * ONE) / 10n) })).toBe("wait");
+  });
+
+  it("never counts a sell placed before the buy, from another wallet, of another listing or of another account", async () => {
+    const id = await user();
+    const other = (await getOrCreateUser({ did: null, wallet: "0x00000000000000000000000000000000000000cc" }))!.user.id;
+    await order(id, { direction: "sell", quantity: "1", at: "2026-10-01T09:00:00Z" });
+    const buy = await order(id, { quantity: "1", at: "2026-10-01T10:00:00Z" });
+    await order(id, { direction: "sell", quantity: "1", at: "2026-10-01T11:00:00Z", wallet: "0x00000000000000000000000000000000000000bb" });
+    await order(id, { direction: "sell", quantity: "1", at: "2026-10-01T11:00:00Z", listing: "0x00000000000000000000000000000000000000dd" });
+    await order(other, { direction: "sell", quantity: "1", at: "2026-10-01T11:00:00Z" });
+    await order(id, { direction: "sell", chain: "sonic", quantity: "1", at: "2026-10-01T11:00:00Z" });
+    expect(await robinhoodPourXp(buy, { onRobinhood: true, readBalances: holding(0n) })).toBe("wait");
+  });
+
+  it("never lets one sell prove two buys: a later buy there is taken as what the sell spent", async () => {
+    const id = await user();
+    const first = await order(id, { quantity: "1", at: "2026-10-01T10:00:00Z" });
+    const second = await order(id, { quantity: "1", at: "2026-10-01T10:30:00Z" });
+    await order(id, { direction: "sell", quantity: "1", at: "2026-10-01T11:00:00Z" });
+    // One sold, nothing left: the later buy's sale proves only the later buy.
+    expect(await robinhoodPourXp(second, { onRobinhood: true, readBalances: holding(0n) })).toBe("pay");
+    expect(await robinhoodPourXp(first, { onRobinhood: true, readBalances: holding(0n) })).toBe("wait");
+    // Both sold: both proven.
+    await order(id, { direction: "sell", quantity: "1", at: "2026-10-01T12:00:00Z" });
+    expect(await robinhoodPourXp(first, { onRobinhood: true, readBalances: holding(0n) })).toBe("pay");
+  });
+
+  it("waits while a later buy there has no quantity yet", async () => {
+    const id = await user();
+    const buy = await order(id, { quantity: "1", at: "2026-10-01T10:00:00Z" });
+    await order(id, { quantity: null, at: "2026-10-01T10:30:00Z" });
+    await order(id, { direction: "sell", quantity: "5", at: "2026-10-01T11:00:00Z" });
+    expect(await robinhoodPourXp(buy, { onRobinhood: true, readBalances: holding(0n) })).toBe("wait");
   });
 
   it("leaves a hub order alone, whatever Robinhood Chain says", async () => {

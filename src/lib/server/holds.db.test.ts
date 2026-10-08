@@ -230,14 +230,9 @@ describe("runHoldCheck", () => {
     const summary = await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader });
 
     expect(summary).toEqual({ checked: 1, paid: 1, forfeited: 0, retried: 0 });
-    // Read at the wallet the buy was delivered to, nowhere else.
-    // At the wallet the buy was delivered to on the hub, and (ACCOUNT_WIDE) the account's wallet on Robinhood Chain.
-    expect(reader.calls).toEqual([
-      [
-        { holder: await deliveredOf(intentTx), listing: NVDA.address, chain: "sonic" },
-        { holder: owner.wallet_address, listing: NVDA.address, chain: "robinhood" },
-      ],
-    ]);
+    // Read at the wallet the buy was delivered to, nowhere else: an account
+    // with no order on Robinhood Chain is judged as before it existed.
+    expect(reader.calls).toEqual([[{ holder: await deliveredOf(intentTx), listing: NVDA.address, chain: "sonic" }]]);
     expect(await orderRow(intentTx)).toMatchObject({ hold_outcome: "paid" });
     expect((await orderRow(intentTx)).hold_checked_at).not.toBeNull();
     expect(await xpOf(owner.id)).toBe(owner.xp + XP_ACTIONS.held_30_days.amount);
@@ -660,6 +655,39 @@ describe("a buy delivered to Robinhood Chain", () => {
     });
     expect(asked.some((query) => query.holder === gone)).toBe(false);
     expect(await orderRow(bought)).toMatchObject({ hold_outcome: "forfeit" });
+  });
+
+  it("is judged per delivery wallet for an account with no order on Robinhood Chain, so a paid lot from a wallet no longer linked never makes an honest holder forfeit (review: holds with the switches off)", async () => {
+    const owner = await account(51);
+    // A lot bought from a wallet since unlinked, delivered to its own hub wallet and paid.
+    const old = await order({ owner: owner.wallet_address!, userId: owner.id, quantity: "5", deliveredTo: hub(5151), filledAt: daysAgo(90) });
+    await sql.query("update orders set hold_checked_at = $1, hold_outcome = 'paid' where intent_tx = $2", [daysAgo(60), old]);
+    // A new buy to the home's hub wallet, still held there in full.
+    const fresh = await order({ owner: owner.wallet_address!, userId: owner.id, quantity: "1", deliveredTo: hub(51), filledAt: daysAgo(31) });
+    const [candidate] = await holdCandidates(NOW);
+    expect(candidate).toMatchObject({ intentTx: fresh, onRobinhood: false, paidBefore: "0" });
+    const asked: BalanceQuery[] = [];
+    const reader: BalanceReader = async (queries) => {
+      asked.push(...queries);
+      return queries.map((query) => (query.holder === hub(51) ? ONE : 0n));
+    };
+    expect(
+      await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader, walletsOf: async () => [owner.wallet_address!] }),
+    ).toMatchObject({ paid: 1, forfeited: 0 });
+    // Only the delivery wallet on the hub: never Robinhood Chain, never the unlinked wallet.
+    expect(asked).toEqual([{ holder: hub(51), listing: NVDA.address, chain: "sonic" }]);
+  });
+
+  it("is judged across the whole account once it has any order on Robinhood Chain", async () => {
+    const owner = await account(52);
+    const a = owner.wallet_address!;
+    await order({ owner: a, userId: owner.id, quantity: "1", holdingChain: "robinhood", deliveredTo: a, filledAt: daysAgo(2) });
+    await order({ owner: a, userId: owner.id, quantity: "1", deliveredTo: hub(52), filledAt: daysAgo(31) });
+    const [candidate] = await holdCandidates(NOW);
+    expect(candidate).toMatchObject({ onRobinhood: true });
+    const reader = twoChains(0n, ONE);
+    await runHoldCheck({ now: NOW, hubWalletsOf: noHubs, readBalances: reader, walletsOf: async () => [a] });
+    expect(reader.calls[0].map((query) => query.chain).sort()).toEqual(["robinhood", "sonic"]);
   });
 
   it("is refused by the schema under any chain name it does not know", async () => {
