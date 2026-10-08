@@ -92,6 +92,7 @@ import { chainFamily, failureReason, track, type OrderType } from "@/lib/analyti
 import type { Delivery } from "@/lib/delivery";
 import { asksAgain, buyDestination, robinhoodParams } from "@/lib/delivery-client";
 import { readRobinhoodBalances, robinhoodClient } from "@/lib/robinhood-chain";
+import { ROBINHOOD_CHAIN_KEY, robinhoodSellPayload } from "@/lib/robinhood-sell";
 import { DELIVERY_QUERY_KEY } from "@/hooks/use-delivery";
 
 // Re-exported so existing consumers keep one import site for error copy and
@@ -234,6 +235,18 @@ export interface RunWithdrawArgs {
   ensureReady?: () => Promise<PourReadiness>;
   /** Set for a limit sell; see LimitRun. */
   limit?: LimitRun;
+  /**
+   * A sell from the person's own wallet on Robinhood Chain (plan P3a,
+   * lib/robinhood-sell): the listing's native token there. `srcChainKey`
+   * is then Robinhood Chain and `srcAddress` the wallet that holds the
+   * tokens and signs. Not a hub wallet spend: the SDK's withdraw build is
+   * turned into a source chain intent (robinhoodSellPayload), the wallet
+   * approves the robinhood asset manager for exactly `inputAmount` when its
+   * allowance is short, then createVaultIntent without hubWalletSwap,
+   * relay and notify, as a buy from Base goes. Market sells only. Unset:
+   * the sell spends the hub wallet exactly as before.
+   */
+  robinhood?: { rhAddress: Address };
   /**
    * The last gas check before the wallet opens (hooks/use-gas-gate
    * useGasPreflight): resolves to the message to stop with when the signing
@@ -1654,6 +1667,8 @@ export function useVaultAction(options?: {
       setError(null);
       resetReport();
       setSent(null);
+      setApproveRequired(null);
+      setApproveTwice(false);
       setRobinhood(null);
       firedRef.current = null;
       unsettledSentRef.current = null;
@@ -1689,7 +1704,7 @@ export function useVaultAction(options?: {
       };
       try {
         advance("building");
-        const built = await buildWithdraw.mutateAsyncSafe({
+        const withdrawArgs = {
           vault: args.vault,
           srcChainKey: args.srcChainKey,
           srcAddress: sdkAddress(args.srcChainKey, args.srcAddress),
@@ -1699,7 +1714,8 @@ export function useVaultAction(options?: {
           minOutputAmount: args.minOutputAmount,
           recipient: sdkAddress(args.dstChainKey, args.recipient),
           ...(args.limit && { deadline: args.limit.deadline }),
-        });
+        };
+        const built = await buildWithdraw.mutateAsyncSafe(withdrawArgs);
         if (!built.ok) {
           fail(
             friendlyError(
@@ -1710,6 +1726,109 @@ export function useVaultAction(options?: {
             built.error,
           );
           return false;
+        }
+
+        if (args.robinhood) {
+          // A sell from the wallet on Robinhood Chain (lib/robinhood-sell):
+          // market only, signed on Robinhood Chain by the wallet holding it.
+          if (args.limit || args.srcChainKey !== ROBINHOOD_CHAIN_KEY) {
+            fail(COPY.errCouldNotPrepare);
+            return false;
+          }
+          const sell = { vault: args.vault, rhAddress: args.robinhood.rhAddress, srcAddress: args.srcAddress };
+          const toPayload = (value: LeverageYieldSwapPayload): LeverageYieldSwapPayload | null => {
+            try {
+              return robinhoodSellPayload(value, sell);
+            } catch (e) {
+              fail(COPY.errCouldNotPrepare, e);
+              return null;
+            }
+          };
+          let payload = toPayload(built.value);
+          if (!payload) return false;
+
+          // The allowance the robinhood asset manager holds for the token,
+          // read against the same params the approve and the deposit use.
+          // Retried as the buy's is: a public RPC blinks.
+          let allowance = await sodax.swaps.isAllowanceValid<SpokeChainKey>({
+            params: payload.params,
+            walletProvider: args.walletProvider,
+          });
+          for (let attempt = 1; !allowance.ok && attempt <= 2; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, 1_500 * attempt));
+            allowance = await sodax.swaps.isAllowanceValid<SpokeChainKey>({
+              params: payload.params,
+              walletProvider: args.walletProvider,
+            });
+          }
+          if (!allowance.ok) {
+            fail(COPY.errCouldNotCheckAllowance, allowance.error);
+            return false;
+          }
+          setApproveRequired(!allowance.value);
+
+          if (args.gasCheck) {
+            const run = runRef.current;
+            const stop = await args.gasCheck(!allowance.value);
+            if (runRef.current !== run) return false;
+            if (stop) {
+              fail(stop, undefined, { report: false });
+              return false;
+            }
+          }
+
+          if (!allowance.value) {
+            // The SDK approves the asset manager for exactly params.inputAmount.
+            const approveParams = payload.params;
+            setApproveTwice(
+              await probeApprovalTakesTwo(() =>
+                sodax.swaps.buildApproveTxs<SpokeChainKey>({ params: approveParams, raw: true }),
+              ),
+            );
+            advance("approving");
+            if (!(await onRightChain())) return false;
+            const stall = sponsoredStall();
+            let approving;
+            try {
+              approving = await unlessStalled(
+                approve.mutateAsyncSafe({ params: approveParams, walletProvider: args.walletProvider }),
+                stall.promise,
+              );
+            } finally {
+              stall.cancel();
+            }
+            if (approving.stalled) {
+              failStalled();
+              return false;
+            }
+            if (!approving.value.ok) {
+              fail(
+                friendlyError(approving.value.error, COPY.errApprovalFailed, gasContextFor(args.srcChainKey)),
+                approving.value.error,
+              );
+              return false;
+            }
+            if (!(await waitForAllowance(approveParams, args.walletProvider))) {
+              fail(COPY.errAllowanceStillPending);
+              return false;
+            }
+            // A fresh hub deadline after the approval's wait, as a buy rebuilds.
+            const rebuilt = await buildWithdraw.mutateAsyncSafe(withdrawArgs);
+            if (!rebuilt.ok) {
+              fail(friendlyError(rebuilt.error, COPY.errCouldNotPrepare, gasContextFor(args.srcChainKey)), rebuilt.error);
+              return false;
+            }
+            payload = toPayload(rebuilt.value);
+            if (!payload) return false;
+          }
+
+          advance("signing");
+          if (!(await onRightChain())) return false;
+          return await sendMarket({
+            payload,
+            walletProvider: args.walletProvider,
+            srcChainKey: args.srcChainKey,
+          });
         }
 
         // No allowance/approve step: the payload carries hubWalletSwap and the
@@ -1757,7 +1876,7 @@ export function useVaultAction(options?: {
         runningRef.current = false;
       }
     },
-    [advance, buildWithdraw, fail, resetReport, sendLimit, sendMarket, sendSlow],
+    [advance, approve, buildWithdraw, fail, failStalled, resetReport, sendLimit, sendMarket, sendSlow, sodax, waitForAllowance],
   );
 
   const reset = useCallback(() => {

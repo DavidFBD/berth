@@ -59,7 +59,6 @@ export function ListingBoard({
   onFilterNews,
   newsFilterSymbol,
   held: heldOverride,
-  robinhoodHeld: robinhoodOverride,
   expandAll = false,
   mostBought: mostBoughtOverride,
   mostHeld: mostHeldOverride,
@@ -71,7 +70,11 @@ export function ListingBoard({
   /** Which listing the news column is showing, if any. */
   newsFilterSymbol?: string;
   held?: ReadonlyMap<string, bigint>;
-  /** Dev gallery only, beside `held`: the part of each that sits on Robinhood Chain. */
+  /**
+   * Dev gallery only, beside `held`: the part of each that sits on
+   * Robinhood Chain. Since a sell can come from there (plan P3a) the board
+   * offers Sell for the whole of `held`, so this changes nothing here.
+   */
   robinhoodHeld?: ReadonlyMap<string, bigint>;
   /** Every listing at once, with no "All" disclosure: the board as its own sheet. */
   expandAll?: boolean;
@@ -117,11 +120,13 @@ export function ListingBoard({
       (holding) => holding.listing.address === listing.address,
     )?.balance;
   };
-  // What a Sell from this row can spend: the Berth account's part alone.
+  // Whether a Sell from this row has anything to spend: the Berth account's
+  // part or the wallet's on Robinhood Chain (plan P3a). The sheet sells
+  // one of them at a time, each with its own Max.
   const sellableOf = (listing: TokenListing): bigint | undefined => {
-    if (heldOverride) return (heldOverride.get(listing.address) ?? 0n) - (robinhoodOverride?.get(listing.address) ?? 0n);
+    if (heldOverride) return heldOverride.get(listing.address) ?? 0n;
     if (!holdings.settled) return undefined;
-    return holdings.holdings.find((holding) => holding.listing.address === listing.address)?.hub;
+    return holdings.holdings.find((holding) => holding.listing.address === listing.address)?.balance;
   };
 
   // Yours first, then the three moving most today, by the size of the

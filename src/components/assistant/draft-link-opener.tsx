@@ -5,6 +5,7 @@ import { toast } from "@/lib/toast";
 import { useCopy } from "@/components/settings-provider";
 import { useHubAccount } from "@/hooks/use-hub-account";
 import { useHubHoldings } from "@/hooks/use-hub-holdings";
+import { useAccountHoldings } from "@/hooks/use-account-holdings";
 import { readDraftParams, type DraftParams } from "@/lib/draft-order";
 import { draftOpening, type BuyPrefill, type DraftOpening, type SellPrefill } from "@/lib/draft-open";
 import type { Copy } from "@/lib/copy";
@@ -38,7 +39,16 @@ export function DraftLinkOpener({
 }) {
   const copy = useCopy();
   const account = useHubAccount();
-  const holdings = useHubHoldings(account.hubWallets);
+  const hub = useHubHoldings(account.hubWallets);
+  // Both places a sell can come from: the Berth account and the person's
+  // own wallets on Robinhood Chain (plan P3a). A sell waits for both reads;
+  // a Robinhood Chain read that fails leaves the Berth account's alone.
+  const owned = useAccountHoldings(account, hub);
+  const holdings = {
+    error: hub.error,
+    settled: owned.settled && owned.robinhoodState !== "loading",
+    held: owned.held,
+  };
   // Read once, at mount, on the client: this component never renders on the server.
   const pending = useRef<DraftParams | null | undefined>(undefined);
   if (pending.current === undefined) {

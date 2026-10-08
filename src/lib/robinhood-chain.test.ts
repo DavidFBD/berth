@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Address } from "viem";
-import { ROBINHOOD_EXPLORER_URL, readRobinhoodBalances, robinhoodTokenUrl, robinhoodTxUrl } from "./robinhood-chain";
+import { ROBINHOOD_EXPLORER_URL, readRobinhoodBalances, readRobinhoodBalancesByOwner, robinhoodTokenUrl, robinhoodTxUrl } from "./robinhood-chain";
 
 const A = "0x0000000000000000000000000000000000000001" as Address;
 const B = "0x0000000000000000000000000000000000000002" as Address;
@@ -35,6 +35,23 @@ describe("readRobinhoodBalances", () => {
       throw new Error("rpc down");
     });
     await expect(readRobinhoodBalances({ multicall } as never, [T1], [A])).rejects.toThrow("rpc down");
+  });
+});
+
+describe("readRobinhoodBalancesByOwner", () => {
+  it("keeps each owner's own balances, owner by owner, never summed", async () => {
+    const multicall = vi.fn(async () => [1n, 2n, 10n, 20n]);
+    expect(await readRobinhoodBalancesByOwner({ multicall } as never, [T1, T2], [A, B])).toEqual([
+      [1n, 2n],
+      [10n, 20n],
+    ]);
+  });
+
+  it("makes no call with no owner or no token", async () => {
+    const multicall = vi.fn();
+    expect(await readRobinhoodBalancesByOwner({ multicall } as never, [T1], [])).toEqual([]);
+    expect(await readRobinhoodBalancesByOwner({ multicall } as never, [], [A])).toEqual([[]]);
+    expect(multicall).not.toHaveBeenCalled();
   });
 });
 

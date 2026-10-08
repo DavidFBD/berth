@@ -348,16 +348,12 @@ export function HoldingsView({
                     />
                   )}
                 </div>
-                {/* A sell spends the live balance: offered once it is read.
-                    It spends the Berth account only, so a holding wholly
-                    on Robinhood Chain offers none yet. */}
-                {robinhood !== undefined && robinhood >= balance ? (
-                  <span aria-hidden className="w-[3.25rem] shrink-0" />
-                ) : (
-                  <Button variant="outline" size="xs" disabled={updating} onClick={() => onSell(listing)}>
-                    {copy.sell}
-                  </Button>
-                )}
+                {/* A sell spends the live balance: offered once it is read,
+                    from the Berth account or the wallet on Robinhood Chain
+                    (plan P3a), one place at a time, which the sheet asks. */}
+                <Button variant="outline" size="xs" disabled={updating} onClick={() => onSell(listing)}>
+                  {copy.sell}
+                </Button>
               </li>
             ))}
           </ul>

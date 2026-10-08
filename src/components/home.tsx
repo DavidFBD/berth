@@ -48,6 +48,9 @@ import { useAccountWallets, useCloseFirstStock, useFirstStock, useLastKnown, use
 import { useAddConnectedWallet, useUnlinkedWalletShowing } from "@/hooks/use-account-wallets";
 import { UnlinkedWalletPrompt } from "@/components/account-wallets";
 import { sellSources } from "@/lib/account-wallets";
+import { ROBINHOOD_CHAIN_KEY, defaultSellSource, hubSellSources, robinhoodSellSources, type SellSource } from "@/lib/robinhood-sell";
+import { useRobinhoodSellBalances } from "@/hooks/use-robinhood-sell";
+import { parseUnits } from "viem";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
 import { useUserVaultPosition } from "@/hooks/use-user-vault-position";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -404,7 +407,11 @@ function SignedInHome() {
         limitPrice: draft.limitPrice,
         expires: draft.expires,
       },
-      { settled: holdings.settled, heldAddresses: holdings.held.map((holding) => holding.listing.address) },
+      // Either place a sell can come from (plan P3a): the Berth account or the wallet on Robinhood Chain.
+      {
+        settled: ownedHoldings.settled && ownedHoldings.robinhoodState !== "loading",
+        heldAddresses: ownedHoldings.held.map((holding) => holding.listing.address),
+      },
     );
     if (opening.kind === "buy" || opening.kind === "sell") {
       setChatOpen(false);
@@ -1015,8 +1022,12 @@ export function HomeHeader({ onOpenChat, children }: { onOpenChat?: () => void; 
 }
 
 /**
- * The sell drawer for a listing: everything the account owns lives in one
- * hub wallet, so the row is always (home chain, what the hub wallet holds).
+ * The sell drawer for a listing. A sell spends one place: a hub wallet in
+ * the Berth account (the home chain signs its message), or, for a stock
+ * delivered there, one of the account's own wallets on Robinhood Chain
+ * (plan P3a, lib/robinhood-sell: that wallet signs on Robinhood Chain).
+ * When more than one place holds it, the drawer lets the person pick,
+ * each with its own Max, never the two added into one order.
  * Snapshotted at open: the holdings refetch when the fill lands, and a live
  * zero would unmount the drawer mid-tracking.
  */
@@ -1035,33 +1046,42 @@ function SellHost({
 }) {
   const account = useHubAccount();
   const holdings = useHubHoldings(account.hubWallets);
+  const onRobinhoodChain = useRobinhoodSellBalances(listing, account, open);
   const addWallet = useAddConnectedWallet();
   // Snapshotted on open, like the single balance was: balances refetch
   // during the flow, and deriving live would unmount the drawer mid-sell.
-  const [snapshot, setSnapshot] = useState<ReturnType<typeof sellSources> | null>(null);
+  const [snapshot, setSnapshot] = useState<SellSource[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
 
   const index = listing ? holdings.holdings.findIndex((holding) => holding.listing.address === listing.address) : -1;
-  const sources = () =>
-    sellSources(
-      account.wallets,
-      (hubWallet) =>
-        holdings.byWallet.find((wallet) => wallet.hubWallet.toLowerCase() === hubWallet.toLowerCase())?.balances[index] ?? 0n,
-      account.signerHubWallet,
-    );
+  const sources = (): SellSource[] => [
+    ...hubSellSources(
+      sellSources(
+        account.wallets,
+        (hubWallet) =>
+          holdings.byWallet.find((wallet) => wallet.hubWallet.toLowerCase() === hubWallet.toLowerCase())?.balances[index] ?? 0n,
+        account.signerHubWallet,
+      ),
+    ),
+    ...robinhoodSellSources(onRobinhoodChain.held, account.signerSpoke),
+  ];
 
   if (!open && snapshot !== null) {
     setSnapshot(null);
     setChosen(null);
-  } else if (open && snapshot === null && holdings.settled && index >= 0) {
+  } else if (open && snapshot === null && holdings.settled && onRobinhoodChain.settled && index >= 0) {
     const found = sources();
     setSnapshot(found);
-    // The one this session can sign for, else the home, else the first.
-    setChosen((found.find((source) => source.canSign) ?? found.find((source) => source.isHome) ?? found[0])?.spoke ?? null);
+    // One this session can sign for (the wallet on Robinhood Chain first,
+    // and for a drafted quantity the one holding all of it), else the
+    // home, else the first.
+    const wanted = prefill?.quantity ? safeUnits(prefill.quantity, listing?.decimals ?? 18) : undefined;
+    setChosen(defaultSellSource(found, wanted)?.key ?? null);
   }
 
   if (!listing || snapshot === null) return null;
-  const source = snapshot.find((candidate) => candidate.spoke === chosen);
+  const source = snapshot.find((candidate) => candidate.key === chosen);
+  const fromRobinhood = source?.chain === "robinhood" && !!listing.rhAddress;
 
   return (
     <WithdrawDrawer
@@ -1069,20 +1089,32 @@ function SellHost({
       open={open}
       onOpenChange={onOpenChange}
       availableShares={source?.balance ?? 0n}
-      srcChainKey={HOME_CHAIN}
+      srcChainKey={fromRobinhood ? ROBINHOOD_CHAIN_KEY : HOME_CHAIN}
+      robinhoodSell={fromRobinhood ? { rhAddress: listing.rhAddress! } : undefined}
       onConnectWallet={onConnectWallet}
       prefill={prefill}
       sellFrom={
-        // One hub wallet, the session's own: the drawer reads as it always did.
-        snapshot.length > 1 || (source && !source.canSign)
+        // One hub wallet, the session's own: the drawer reads as it always
+        // did. A wallet on Robinhood Chain is always named, so the person
+        // sees where the sell comes from.
+        snapshot.length > 1 || snapshot.some((candidate) => candidate.chain === "robinhood") || (source && !source.canSign)
           ? { sources: snapshot, chosen: chosen ?? "", onChoose: setChosen }
           : undefined
       }
-      sourceIsHome={source?.isHome !== false}
+      sourceIsHome={!fromRobinhood && source?.isHome !== false}
       signerLinked={account.signerLinked}
       onAddWallet={addWallet.canSign ? () => void addWallet.add() : undefined}
     />
   );
+}
+
+/** A drafted quantity in raw units, or undefined when it does not parse. */
+function safeUnits(quantity: number, decimals: number): bigint | undefined {
+  try {
+    return parseUnits(String(quantity), decimals);
+  } catch {
+    return undefined;
+  }
 }
 
 /**

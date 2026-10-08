@@ -61,7 +61,23 @@ export async function readRobinhoodBalances(
   tokens: readonly RobinhoodToken[],
   owners: readonly Address[],
 ): Promise<bigint[]> {
-  if (tokens.length === 0 || owners.length === 0) return tokens.map(() => 0n);
+  const byOwner = await readRobinhoodBalancesByOwner(read, tokens, owners);
+  return tokens.map((_, index) => byOwner.reduce((sum, balances) => sum + (balances[index] ?? 0n), 0n));
+}
+
+/**
+ * The same read, kept per owner: for each owner, in the order given, its
+ * balance of each token, in the order given. A sell from Robinhood Chain
+ * spends one wallet's tokens, so it needs each wallet's own figure, never
+ * the sum. Throws when the chain does not answer.
+ */
+export async function readRobinhoodBalancesByOwner(
+  read: Pick<PublicClient, "multicall">,
+  tokens: readonly RobinhoodToken[],
+  owners: readonly Address[],
+): Promise<bigint[][]> {
+  if (owners.length === 0) return [];
+  if (tokens.length === 0) return owners.map(() => []);
   const results = await read.multicall({
     allowFailure: false,
     contracts: owners.flatMap((owner) =>
@@ -74,7 +90,5 @@ export async function readRobinhoodBalances(
     ),
   });
   const flat = results.map((value) => BigInt(value as bigint));
-  return tokens.map((_, index) =>
-    owners.reduce((sum, _owner, ownerIndex) => sum + (flat[ownerIndex * tokens.length + index] ?? 0n), 0n),
-  );
+  return owners.map((_, ownerIndex) => tokens.map((_, index) => flat[ownerIndex * tokens.length + index] ?? 0n));
 }

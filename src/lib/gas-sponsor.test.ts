@@ -840,3 +840,17 @@ describe("the call inside a sponsored transaction", () => {
     }
   });
 });
+
+describe("Robinhood Chain (4663)", () => {
+  it("is sponsorable once listed, for an email session only, and drops out once Privy refuses it", () => {
+    const RH = ChainKeys.ROBINHOOD_MAINNET;
+    const ids = sponsorChainsFromEnv("8453,4663");
+    expect(PRIVY_SPONSORABLE_CHAIN_IDS.has(4663)).toBe(true);
+    expect(isSponsoredChain(RH, ids)).toBe(true);
+    expect(isSponsoredChain(RH, sponsorChainsFromEnv("8453"))).toBe(false);
+    expect(gasSponsored(RH, true, ids, new Set())).toBe(true);
+    expect(gasSponsored(RH, false, ids, new Set())).toBe(false);
+    // A refusal (the dashboard not ticking it, credits out) falls back to the ordinary, paid send.
+    expect(gasSponsored(RH, true, ids, new Set([4663]))).toBe(false);
+  });
+});

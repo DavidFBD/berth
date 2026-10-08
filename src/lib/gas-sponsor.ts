@@ -34,8 +34,12 @@ export function parseSponsorChains(raw: string | undefined): ReadonlySet<number>
  * read 2026-10-04) that Berth uses: Optimism, BNB Chain, Polygon, Base,
  * Arbitrum and Robinhood Chain. Any other id in the env list is ignored,
  * so a typo or a hopeful 146 can never drop the gas gate or claim "no
- * network fee" on a chain nobody pays for. Robinhood Chain (4663) is not
- * an SDK spoke yet, so it does nothing until one exists.
+ * network fee" on a chain nobody pays for. Robinhood Chain (4663) is an
+ * SDK spoke since @sodax/sdk 2.2.0-rc.8; listed, it sponsors an email
+ * account's sell from its wallet there (plan P3a). Whether SODAX's relayer
+ * picks up an intent sent from inside a sponsored EIP-7702 bundle is an
+ * open question to SODAX (plan, decision 2); a refused sponsorship falls
+ * back to the ordinary send (withGasSponsor), as on every chain.
  *
  * Ethereum (1) is left out on purpose although Privy sponsors it: Privy's
  * client gives up after 20 seconds while it waits for inclusion, and with
