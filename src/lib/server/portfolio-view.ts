@@ -11,12 +11,14 @@ import {
 import { withStory, type StoryHolding, type StoryResult } from "@/lib/portfolio-story";
 import { readMarks } from "@/lib/server/marks";
 import {
+  hasRobinhoodOrders,
   liveListingPrices,
   loadListingOrders,
   loadPortfolioDays,
   readAccountBalances,
   type StoredPortfolioDay,
 } from "@/lib/server/portfolio";
+import { readRobinhoodHoldings } from "@/lib/server/robinhood-balances";
 import type { Marks, OrderFacts } from "@/lib/benchmark";
 
 /**
@@ -154,8 +156,15 @@ export async function loadPortfolioHistory({
   const liveRead = Promise.race([
     (async () => {
       if (!isTradingDay(today) || spokes.length === 0) return undefined;
+      // What sits in the account's own wallets on Robinhood Chain counts
+      // too (plan P1b). When that chain does not answer, an account Berth
+      // never delivered there keeps its live point on the hub alone; one it
+      // did ends on its latest stored day rather than a low point.
+      const onRobinhood = await hasRobinhoodOrders(userId).catch(() => true);
       const [balances, prices] = await Promise.all([
-        readAccountBalances(spokes).then((read) => read.total),
+        readAccountBalances(spokes, undefined, undefined, readRobinhoodHoldings, onRobinhood ? "throw" : "hub only").then(
+          (read) => read.total,
+        ),
         liveListingPrices().catch(() => ({}) as Record<string, number>),
       ]);
       return { balances, prices };

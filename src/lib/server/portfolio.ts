@@ -122,6 +122,19 @@ export function sumBalances(parts: readonly Record<string, number>[]): Record<st
   return total;
 }
 
+/**
+ * Whether any of the account's orders was delivered to, or sold from,
+ * Robinhood Chain (`orders.holding_chain`): what decides whether a read
+ * that could not reach that chain may stand on the hub alone.
+ */
+export async function hasRobinhoodOrders(userId: string): Promise<boolean> {
+  const rows = (await getSql().query(
+    `select exists (select 1 from orders where user_id = $1 and holding_chain = 'robinhood') as found`,
+    [userId],
+  )) as { found: boolean }[];
+  return rows[0]?.found === true;
+}
+
 /** The solver's live prices, by listing symbol. Empty when the oracle is down. */
 export async function liveListingPrices(): Promise<Record<string, number>> {
   const { prices } = await loadListingPrices();

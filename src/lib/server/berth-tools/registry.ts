@@ -322,6 +322,7 @@ const getAccount = defineTool({
               `Stock tokens in the person's own wallet${holdings.robinhoodWallets.length === 1 ? "" : "s"} on Robinhood Chain: ${holdings.robinhoodWallets.join(", ")}. They are counted in the totals; a sell spends either the Berth account or one of these wallets, never both at once.`,
             ]
           : []),
+        ...(holdings.robinhoodUnread ? [ROBINHOOD_UNREAD] : []),
         holdings.lines.length === 0
           ? "It holds no listings right now."
           : `It holds ${holdings.lines.length} listing${holdings.lines.length === 1 ? "" : "s"} worth ${usd(holdings.total)} in total${holdings.unpriced ? `, plus ${holdings.unpriced} without a live price` : ""}. get_holdings has the detail.`,
@@ -332,6 +333,10 @@ const getAccount = defineTool({
     return ok(out.join("\n"));
   },
 });
+
+/** Said whenever the person's own wallets on Robinhood Chain could not be read: the figures are the Berth account's alone. */
+const ROBINHOOD_UNREAD =
+  "The person's own wallet on Robinhood Chain could not be read just now, so any stock tokens there are not included.";
 
 const getHoldings = defineTool({
   name: "get_holdings",
@@ -346,8 +351,11 @@ const getHoldings = defineTool({
     const spokes = row ? (await spokesOf(row)).all : [];
     if (spokes.length === 0) return ok("This account holds nothing on Berth yet.");
     const holdings = await readHoldings(spokes);
-    if (holdings.lines.length === 0) return ok("The account holds no listings right now.");
+    if (holdings.lines.length === 0) {
+      return ok(holdings.robinhoodUnread ? `The Berth account holds no listings right now. ${ROBINHOOD_UNREAD}` : "The account holds no listings right now.");
+    }
     const out = [`Holdings, ${usd(holdings.total)} in total at current prices:`];
+    if (holdings.robinhoodUnread) out.push(ROBINHOOD_UNREAD);
     for (const line of holdings.lines) {
       const share = line.value !== undefined && holdings.total > 0 ? `, ${((line.value / holdings.total) * 100).toFixed(1)}% of the total` : "";
       const where =

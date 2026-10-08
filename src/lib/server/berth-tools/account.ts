@@ -92,13 +92,17 @@ export async function readHoldings(spokes: string | readonly string[]): Promise<
   hubWallet: string;
   hubWallets: string[];
   robinhoodWallets: string[];
+  /** Robinhood Chain did not answer: the lines are the Berth account's alone, and the tools say so. */
+  robinhoodUnread: boolean;
   lines: HoldingLine[];
   total: number;
   unpriced: number;
 }> {
   const list = typeof spokes === "string" ? [spokes] : spokes;
   const [read, prices] = await Promise.all([
-    withTimeout(readAccountBalances(list), CHAIN_READ_MS, "balance read"),
+    // Robinhood Chain unread leaves the hub's lines, said as such: a sell cap
+    // from them can only be lower than the truth, never higher.
+    withTimeout(readAccountBalances(list, undefined, undefined, undefined, "hub only"), CHAIN_READ_MS, "balance read"),
     liveListingPrices().catch(() => ({}) as Record<string, number>),
   ]);
   const balances = read.total;
@@ -121,7 +125,7 @@ export async function readHoldings(spokes: string | readonly string[]): Promise<
   lines.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const hubWallets = read.byWallet.map((wallet) => wallet.hubWallet);
   const robinhoodWallets = owners.filter(([, holdings]) => Object.keys(holdings).length > 0).map(([owner]) => owner);
-  return { hubWallet: hubWallets[0], hubWallets, robinhoodWallets, lines, total, unpriced };
+  return { hubWallet: hubWallets[0], hubWallets, robinhoodWallets, robinhoodUnread: read.robinhood === null, lines, total, unpriced };
 }
 
 /**

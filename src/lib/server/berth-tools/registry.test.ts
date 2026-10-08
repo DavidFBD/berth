@@ -423,6 +423,20 @@ describe("an account with more than one linked EVM address", () => {
     vi.mocked(readAccountBalances).mockReset();
     vi.mocked(spokesOf).mockReset();
   });
+
+  it("says so when the wallet on Robinhood Chain could not be read, and caps a sell at the Berth account", async () => {
+    const { readAccountBalances } = await import("@/lib/server/portfolio");
+    vi.mocked(readAccountBalances).mockResolvedValue({
+      total: { TSLA: 0.5 },
+      byWallet: [{ spoke: HOME, hubWallet: "0x00000000000000000000000000000000000000bb", balances: { TSLA: 0.5 } }],
+      robinhood: null,
+      robinhoodByOwner: new Map(),
+    });
+    const holdings = await tools.get_holdings.run({} as never, ctx);
+    expect(holdings.text).toContain("could not be read just now, so any stock tokens there are not included");
+    expect((await tools.draft_order.run({ listing: "TSLA", side: "sell", quantity: 0.75 } as never, ctx)).isError).toBe(true);
+    vi.mocked(readAccountBalances).mockReset();
+  });
 });
 
 describe("retired tools", () => {

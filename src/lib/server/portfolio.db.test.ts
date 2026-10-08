@@ -8,6 +8,7 @@ import { fillOrderMarks, loadOrderFacts, loadOrderLog, ordersMissingMarks } from
 import { recordOrderMarks } from "./orders";
 import { robinhoodRpcFake } from "./robinhood-rpc-fake";
 import {
+  hasRobinhoodOrders,
   loadPortfolioDays,
   readAccountBalances,
   combineAccountDays,
@@ -686,6 +687,15 @@ describe("Robinhood Chain in the portfolio", () => {
     ).rejects.toThrow("unread");
     const hubOnly = await readAccountBalances([wallet(1)], async () => ({ NVDA: 1 }), async (spoke) => spoke, onRobinhood({}), "hub only");
     expect(hubOnly).toMatchObject({ total: { NVDA: 1 }, robinhood: null });
+  });
+
+  it("knows whether one account has an order there", async () => {
+    const delivered = await account(1);
+    const hubOnly = await account(2);
+    await deliveredThere(await placeOrder(delivered.id));
+    await placeOrder(hubOnly.id);
+    expect(await hasRobinhoodOrders(delivered.id)).toBe(true);
+    expect(await hasRobinhoodOrders(hubOnly.id)).toBe(false);
   });
 
   it("knows which accounts were ever delivered there", async () => {
