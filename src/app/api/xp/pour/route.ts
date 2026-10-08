@@ -8,6 +8,8 @@ import { gateRobinhoodBuy, isRobinhoodBuy, requestDelivery } from "@/lib/server/
 import { orderListingSymbol, recordOrder } from "@/lib/server/orders";
 import { accountOwnedWallets } from "@/lib/server/pour-ownership";
 import { verifyPourTx } from "@/lib/server/pour-verify";
+import { robinhoodPourXp } from "@/lib/server/robinhood-xp";
+import { holdingChainOf } from "@/lib/orders";
 import {
   readRewardsCaller,
   resolveRewardsUser,
@@ -201,14 +203,28 @@ export async function POST(request: NextRequest) {
       intent: verified.intent,
       claimedFillTx: claimedFill,
     });
-    // The referral payoff lives here, not at signup: a filled pour is the
-    // moment an invited account proves it's a person with real funds, not a
-    // farm. Every award is index-deduped, so replays and later pours no-op.
-    const paid = await awardFilledPour(user, kind, txHash);
-    // An earlier call may have left a claim for this intent: it is paid now.
-    if (complete(recorded)) await closePourClaim(txHash, new Date(), "paid", user.id);
-    rewards.push(...paid.rewards);
-    xp = paid.xp;
+    // On Robinhood Chain (lib/server/robinhood-xp, owner decisions D1, D2):
+    // a buy earns once its delivery is in the wallet, and until then its
+    // claim stays open and the client asks again; a sell earns only up to
+    // the Berth buys delivered there. Every other order earns as before.
+    const onRobinhood = holdingChainOf(direction, verified.intent) === "robinhood";
+    const xpGate = onRobinhood ? await robinhoodPourXp(txHash, { onRobinhood }) : "pay";
+    if (xpGate === "wait") {
+      return NextResponse.json({ error: "not yet arrived", retry: true }, { status: 503, headers: { "retry-after": "10" } });
+    }
+    if (xpGate === "never") {
+      if (direction === "buy") await forgoHold(txHash);
+      if (complete(recorded)) await closePourClaim(txHash, new Date(), "recorded_no_xp", user.id);
+    } else {
+      // The referral payoff lives here, not at signup: a filled pour is the
+      // moment an invited account proves it's a person with real funds, not a
+      // farm. Every award is index-deduped, so replays and later pours no-op.
+      const paid = await awardFilledPour(user, kind, txHash);
+      // An earlier call may have left a claim for this intent: it is paid now.
+      if (complete(recorded)) await closePourClaim(txHash, new Date(), "paid", user.id);
+      rewards.push(...paid.rewards);
+      xp = paid.xp;
+    }
   }
 
   // Anything parked for this account (a hold paid by the cron) rides along

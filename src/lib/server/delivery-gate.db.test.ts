@@ -149,6 +149,8 @@ describe("a Robinhood Chain claim in the evening pass", () => {
     prove: async () => ({ ok: true, payer: { family: "evm", address: BUYER } }),
     record,
     settleRobinhood: (claim, intent) => settleRobinhoodClaim(claim, intent, { recheck }),
+    // Arrival is its own question (lib/server/robinhood-xp, below): arrived here.
+    pourXp: async () => "pay",
   });
   const pass = (recheck?: typeof recheckDestination) => settlePourClaims({ verdictOf: async () => "filled", pay: (claim) => payClaim(claim, deps(recheck)) });
   const xpFor = async (intentTx: string) => (await q<{ n: number }>(`select count(*)::int as n from xp_events where ref = $1`, [intentTx]))[0].n;
@@ -244,6 +246,28 @@ describe("a Robinhood Chain claim in the evening pass", () => {
     expect(await q(`select quantity::text as quantity from orders where intent_tx = $1`, [tx(19)])).toEqual([{ quantity: "7" }]);
     expect(await claimOf(tx(19))).toMatchObject({ outcome: "paid" });
     expect(await xpFor(tx(19))).toBe(1);
+  });
+
+  it("waits, unpaid, while the delivery is not in the wallet, pays once it is, and never pays one still missing when the claim's life ends (D1)", async () => {
+    await settleAll();
+    const user = await account("0x4545454545454545454545454545454545454545");
+    await savePourClaim(user, tx(30), "buy", null, "NVDA", { delivery: { ok: true, signer: BUYER, placeOk: true } });
+    let arrived: "wait" | "pay" = "wait";
+    const gated = (): ClaimPayDeps => ({ ...deps(), pourXp: async () => arrived });
+    const run = () => settlePourClaims({ verdictOf: async () => "filled", pay: (claim) => payClaim(claim, gated()) });
+    expect(await run()).toMatchObject({ paid: 0, recorded: 0 });
+    expect(await claimOf(tx(30))).toMatchObject({ settled: false });
+    expect(await xpFor(tx(30))).toBe(0);
+    arrived = "pay";
+    expect(await run()).toMatchObject({ paid: 1 });
+    expect(await xpFor(tx(30))).toBe(1);
+
+    await savePourClaim(user, tx(31), "buy", null, "NVDA", { delivery: { ok: true, signer: BUYER, placeOk: true } });
+    arrived = "wait";
+    await age(tx(31), 31);
+    expect(await run()).toMatchObject({ paid: 0, recorded: 1 });
+    expect(await claimOf(tx(31))).toMatchObject({ outcome: "recorded_no_xp" });
+    expect(await xpFor(tx(31))).toBe(0);
   });
 
   it("settleRobinhoodClaim leaves a paid one alone", async () => {

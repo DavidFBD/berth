@@ -10,6 +10,8 @@ import { UNKNOWN, accountOwnedWallets, withTimeout, type OwnershipVerdict } from
 import { getSodax, ownsIntent } from "@/lib/server/pour-verify";
 import { limitStateFrom, type IntentRecord } from "@/lib/limit-orders";
 import type { RewardList } from "@/lib/profile-types";
+import { holdingChainOf } from "@/lib/orders";
+import { robinhoodPourXp, type PourXpVerdict } from "@/lib/server/robinhood-xp";
 
 /**
  * XP for an order, only once it has filled. A verified intent is not yet
@@ -301,6 +303,8 @@ export type ClaimPayDeps = {
   record: (claim: SettledClaim, intent: Intent) => Promise<void>;
   /** A claim on a buy delivered on Robinhood Chain: paid only once its delivery is allowed (lib/server/delivery-gate). */
   settleRobinhood?: (claim: SettledClaim, intent: Intent) => Promise<"allowed" | "refused" | "settled" | "wait">;
+  /** Whether an order on Robinhood Chain earns now (lib/server/robinhood-xp, D1 and D2). */
+  pourXp?: (claim: SettledClaim, intent: Intent) => Promise<PourXpVerdict>;
 };
 
 export function defaultClaimPayDeps(): ClaimPayDeps {
@@ -369,6 +373,19 @@ export async function payClaim(
   // empty): the claim stays open and the row is built again the next night,
   // filling only what is missing, for as long as a claim lives (30 days).
   if (delivery !== null && row.quantity === null && !outlived(claim, now)) return false;
+  // On Robinhood Chain (lib/server/robinhood-xp): a buy earns once its
+  // delivery is in the wallet, waiting night after night for as long as a
+  // claim lives and then never; a sell earns only up to the Berth buys
+  // delivered there. A no XP buy is settled by payRecordedClaim as before.
+  const onRobinhood = holdingChainOf(claim.direction, intent) === "robinhood";
+  if (onRobinhood && !claim.no_xp && !(claim.direction === "buy" && (await isNoXp(claim.intent_tx)))) {
+    const gate = await (deps.pourXp ?? ((c: SettledClaim) => robinhoodPourXp(c.intent_tx, { onRobinhood: true })))(claim, intent);
+    if (gate === "wait" && !outlived(claim, now)) return false;
+    if (gate !== "pay") {
+      if (claim.direction === "buy") await forgoHold(claim.intent_tx);
+      return "recorded_no_xp";
+    }
+  }
   return payRecordedClaim(claim);
 }
 
