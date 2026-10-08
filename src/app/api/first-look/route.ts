@@ -21,8 +21,9 @@ export async function GET(request?: Request): Promise<Response> {
     also = url.searchParams.get("also");
   }
   return Response.json(await loadFirstLook({ also }), {
-    // Short at the edge, so a reading is never much older than its words say, and a
-    // story hidden after it was read leaves the first buy within about three minutes.
+    // Short at the edge, so a reading is never much older than its words say. A story
+    // hidden after it was read leaves the first buy within about four minutes at worst:
+    // 120 s fresh plus 60 s stale here, then the browser's 60 s (hooks/use-first-look).
     headers: { "cache-control": "public, s-maxage=120, stale-while-revalidate=60" },
   });
 }
