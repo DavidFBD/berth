@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forListing, heldEvents, ownedState, ownedStories, riverOf, toCard, type EventCard, type StoryCard, type StoryRecord } from "@/lib/news-stories";
+import { forListing, heldEvents, ownedState, ownedStories, pinnedRiver, riverOf, toCard, type EventCard, type StoryCard, type StoryRecord } from "@/lib/news-stories";
 import { visibleSources } from "@/lib/news-schedule";
 
 const HOUR = 60 * 60 * 1000;
@@ -202,5 +202,26 @@ describe("forListing", () => {
     expect(apple.verdict).toBeUndefined();
     expect(apple.about).toBeUndefined();
     expect(forListing(card, "TSLA")).toBeUndefined();
+  });
+});
+
+describe("pinnedRiver", () => {
+  const river = [card(1, "NVDA", "fact", 1), card(2, "NVDA", "fact", 2)];
+  const reserve = [card(3, "NVDA", "material", 30), card(4, "NVDA", "fact", 40)];
+
+  it("takes the tapped story out of the river and the reserve, so only the cards after it rotate", () => {
+    const out = pinnedRiver({ stories: river, reserve, focus: { ...card(3, "NVDA", "fact", 30), title: "the look's copy" } });
+    // The column's own card for it, never the look's copy.
+    expect(out.pin).toBe(reserve[0]);
+    expect(out.river.map((one) => one.storyId)).toEqual([1, 2]);
+    expect(out.reserve.map((one) => one.storyId)).toEqual([4]);
+  });
+
+  it("leaves the column as it is without a focus", () => {
+    expect(pinnedRiver({ stories: river, reserve, focus: undefined })).toEqual({ river, reserve });
+  });
+
+  it("never brings back a story the column no longer returns, hidden since the look was cached", () => {
+    expect(pinnedRiver({ stories: river, reserve, focus: card(9, "NVDA", "fact", 5) })).toEqual({ river, reserve });
   });
 });

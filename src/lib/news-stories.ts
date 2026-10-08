@@ -1,6 +1,7 @@
 import { chooseLead } from "@/lib/news-fold";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { mergeBySymbol } from "@/lib/news";
+import { decodeEntities } from "@/lib/html-entities";
 
 const LISTING_NAMES: ReadonlyMap<string, string> = new Map(TOKEN_LISTINGS.map((listing) => [listing.symbol, listing.name]));
 import type { Verdict } from "@/lib/x-feed";
@@ -157,7 +158,11 @@ export function toCard(
     id: lead.source === "x" ? lead.sourceId : `s${story.id}`,
     storyId: story.id,
     kind: lead.source === "x" ? "post" : "article",
-    title: lead.title,
+    // Decoded once here, for every reader of a card: the column, the first look, the tools.
+    // Since 2026-10-08 the nudge and the moves fingerprint this decoded title for Jev's
+    // cache (lib/server/nudge, lib/server/moves), so a title that carried an entity
+    // misses that cache once after the deploy: a few extra Jev calls, one time, accepted.
+    title: decodeEntities(lead.title),
     url: lead.url,
     publisher: lead.publisher,
     publishedAt: lead.publishedAt,
@@ -348,3 +353,29 @@ export type NewsColumnResponse = {
   /** Present only when the store could not be read. Never the database's own words. */
   reason?: string;
 };
+
+/**
+ * The column pointed at one listing with a headline the reader tapped
+ * (components/first-look): that card, taken out of the river and the
+ * reserve, to sit first while only the cards after it rotate. Only the
+ * column's own card for the story is pinned: one the column no longer
+ * returns (hidden, or read differently since the look was cached) is not
+ * brought back from the look's copy, and the column shows as it is.
+ */
+export function pinnedRiver({
+  stories,
+  reserve,
+  focus,
+}: {
+  stories: readonly StoryCard[];
+  reserve: readonly StoryCard[];
+  focus: StoryCard | undefined;
+}): { pin?: StoryCard; river: StoryCard[]; reserve: StoryCard[] } {
+  const pin = focus && stories.concat(reserve).find((card) => card.storyId === focus.storyId);
+  if (!pin) return { river: [...stories], reserve: [...reserve] };
+  return {
+    pin,
+    river: stories.filter((card) => card.storyId !== pin.storyId),
+    reserve: reserve.filter((card) => card.storyId !== pin.storyId),
+  };
+}
