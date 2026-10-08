@@ -18,6 +18,8 @@ import {
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { pinnedEvmTransport } from "@/lib/sodax-config";
 import { gasSponsored, markSponsorRefused, sponsoredSendOptions, withGasSponsor } from "@/lib/gas-sponsor";
+import { InsufficientFundsForPaidSend, paidSendNeed, withinOrUnknown } from "@/lib/gas-need";
+import { readEvmFeePerGas } from "@/hooks/use-native-gas-buffer";
 
 /** The user's Privy embedded EVM wallet, if signed in via email. */
 export function usePrivyEmbeddedWallet() {
@@ -238,6 +240,26 @@ export function usePrivyEvmWalletProvider(
                 }),
             sendSponsored: (tx) =>
               sendRef.current(tx, sponsoredSendOptions(embeddedAddress)),
+            beforePaidSend: async (tx) => {
+              const hex = (value: string | undefined) => (value ? BigInt(value) : undefined);
+              const [balance, feePerGas] = await Promise.all([
+                withinOrUnknown(publicClient.getBalance({ address: embeddedAddress as `0x${string}` })),
+                hex(tx.maxFeePerGas ?? tx.gasPrice) === undefined
+                  ? withinOrUnknown(readEvmFeePerGas(evmChainKey))
+                  : Promise.resolve(undefined),
+              ]);
+              const want = paidSendNeed({
+                chainKey: evmChainKey,
+                gas: hex(tx.gas),
+                maxFeePerGas: hex(tx.maxFeePerGas ?? tx.gasPrice),
+                feePerGas,
+                value: hex(tx.value),
+              });
+              // Unknown never stops a send: the node has the last word.
+              if (balance !== undefined && want !== undefined && balance < want) {
+                throw new InsufficientFundsForPaidSend(balance, want);
+              }
+            },
             onFallback: (error, kind) => {
               // Two 429s in a row pay this once but keep the chain sponsored.
               if (kind === "refused") markSponsorRefused(chain.id);

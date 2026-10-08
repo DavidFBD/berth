@@ -445,6 +445,44 @@ export function floorWarns({
   return nativeBalance < (isNative ? amount : 0n) + warnNeed;
 }
 
+/**
+ * What a paid send needs in hand: its own gas limit times its own max fee
+ * plus the value, exactly what the node checks, when the transaction
+ * carries them; otherwise the chain-priced need (gasNeed) plus the value.
+ * This is the embedded wallet's paid fallback after Privy declines to
+ * sponsor, and that wallet signs at the chain's own price, so no wallet
+ * tip is added. `undefined` when it cannot be priced.
+ */
+export function paidSendNeed({
+  chainKey,
+  gas,
+  maxFeePerGas,
+  feePerGas,
+  value = 0n,
+}: {
+  chainKey: SpokeChainKey;
+  gas: bigint | undefined;
+  maxFeePerGas: bigint | undefined;
+  feePerGas: bigint | undefined;
+  value?: bigint;
+}): bigint | undefined {
+  if (gas !== undefined && maxFeePerGas !== undefined) return gas * maxFeePerGas + value;
+  const need = gasNeed({ chainKey, feePerGas, approval: false });
+  return need === undefined ? undefined : need + value;
+}
+
+/**
+ * The node's own insufficient-funds line, with its numbers, so the paid
+ * fallback stopped before sending reads exactly like one the node refused
+ * (lib/error-copy insufficientGasError: "add about X").
+ */
+export class InsufficientFundsForPaidSend extends Error {
+  constructor(have: bigint, want: bigint) {
+    super(`insufficient funds for gas * price + value: have ${have} want ${want}`);
+    this.name = "InsufficientFundsForPaidSend";
+  }
+}
+
 /** Sort key: what can pay first, what cannot last, order kept otherwise. */
 export function byGasStatus<T>(rows: readonly T[], statusOf: (row: T) => GasStatus): T[] {
   return rows

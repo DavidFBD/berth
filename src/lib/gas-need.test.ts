@@ -19,6 +19,7 @@ import {
   walletReserve,
   warnReserve,
   floorWarns,
+  paidSendNeed,
 } from "./gas-need";
 import { evmFeeFloorBuffer } from "@/hooks/use-native-gas-buffer";
 
@@ -319,6 +320,22 @@ describe("floorWarns: the band between the gate and a wallet attaching 2 gwei", 
     const max = balance - evmFeeFloorBuffer(ARB, fee);
     expect(floorWarns({ chainKey: ARB, isNative: true, nativeBalance: balance, amount: max, need: buyNeed, warnNeed: buyWarn })).toBe(false);
     expect(evmFeeFloorBuffer(ARB, fee)).toBeGreaterThanOrEqual(300_000_000_000_000n);
+  });
+});
+
+describe("paidSendNeed: the embedded wallet's paid fallback", () => {
+  it("uses the transaction's own gas, fee and value when it carries them", () => {
+    expect(paidSendNeed({ chainKey: ChainKeys.BASE_MAINNET, gas: 100_000n, maxFeePerGas: 10_000_000n, feePerGas: undefined, value: 5n })).toBe(
+      1_000_000_000_005n,
+    );
+  });
+
+  it("falls back to the chain's own price, with no wallet tip, and is unknown without one", () => {
+    const fee = 7_000_000n;
+    expect(paidSendNeed({ chainKey: ChainKeys.BASE_MAINNET, gas: undefined, maxFeePerGas: undefined, feePerGas: fee })).toBe(
+      gasNeed({ chainKey: ChainKeys.BASE_MAINNET, feePerGas: fee, approval: false }),
+    );
+    expect(paidSendNeed({ chainKey: ChainKeys.BASE_MAINNET, gas: undefined, maxFeePerGas: undefined, feePerGas: undefined })).toBeUndefined();
   });
 });
 
