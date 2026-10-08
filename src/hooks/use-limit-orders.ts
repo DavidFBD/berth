@@ -27,6 +27,7 @@ import { addPending, readPending, removePending, type PendingLimit } from "@/lib
 import { useAccountHeaders, useAwardPour } from "@/hooks/use-profile";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
+import { useGasPreflight } from "@/hooks/use-gas-gate";
 
 /**
  * Limit orders on the page (lib/server/limit-orders, /api/limit-orders):
@@ -191,6 +192,7 @@ export function useCancelWaitingOrder() {
   const cancelSpoke = useCancelLimitOrder();
   const { headers } = useAccountHeaders();
   const queryClient = useQueryClient();
+  const gasPreflight = useGasPreflight();
   return useMutation({
     mutationFn: async ({
       order,
@@ -207,6 +209,12 @@ export function useCancelWaitingOrder() {
       const intent = read.value;
       const route = cancelRoute(intent);
       if (!route) return { ok: false, message: COPY.limitCancelFailed };
+      // A cancel is one message the person signs and pays for on the
+      // route's chain, sized like a sell: the same gas check as every other
+      // signature (hooks/use-gas-gate), before the wallet opens. Sponsored
+      // and unknown go on.
+      const stop = await gasPreflight({ chainKey: route.chainKey, address, amount: 0n, approval: false, order: "sell" });
+      if (stop) return { ok: false, message: stop };
       let cancelTx = "";
 
       if (route.kind === "spoke") {
