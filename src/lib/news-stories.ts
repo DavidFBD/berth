@@ -159,6 +159,9 @@ export function toCard(
     storyId: story.id,
     kind: lead.source === "x" ? "post" : "article",
     // Decoded once here, for every reader of a card: the column, the first look, the tools.
+    // Since 2026-10-08 the nudge and the moves fingerprint this decoded title for Jev's
+    // cache (lib/server/nudge, lib/server/moves), so a title that carried an entity
+    // misses that cache once after the deploy: a few extra Jev calls, one time, accepted.
     title: decodeEntities(lead.title),
     url: lead.url,
     publisher: lead.publisher,
