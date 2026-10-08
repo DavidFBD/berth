@@ -102,6 +102,7 @@ const PAD = "px-[18px] lg:px-6";
  */
 export function NewsFeed({
   filter,
+  focus,
   onClearFilter,
   limit: limitProp,
   fill = false,
@@ -110,6 +111,12 @@ export function NewsFeed({
   mostHeld: mostHeldOverride,
 }: {
   filter?: TokenListing | null;
+  /**
+   * A headline to show first while the column is pointed at its listing: the
+   * one the first look showed and the reader tapped (components/first-look).
+   * The column's own card for it when it has one, else the look's.
+   */
+  focus?: StoryCard | null;
   onClearFilter?: () => void;
   /** Fewer cards at once in the river; the rest join the rotation. */
   limit?: number;
@@ -152,8 +159,12 @@ export function NewsFeed({
   const shownOwned = owned?.kind === "stories" ? owned.stories : [];
   const events = owner ? heldEvents(news.data.events, held!, new Date(now).toISOString().slice(0, 10)) : [];
   const ownedIds = new Set(shownOwned.map((card) => card.storyId));
-  const riverAll = news.data.stories.filter((card) => !ownedIds.has(card.storyId));
-  const reserveAll = news.data.reserve.filter((card) => !ownedIds.has(card.storyId));
+  const pinned = filter && focus && focus.symbol === filter.symbol && !news.isLoading ? focus : undefined;
+  const riverAll = pinFirst(
+    news.data.stories.filter((card) => !ownedIds.has(card.storyId)),
+    pinned && (news.data.stories.concat(news.data.reserve).find((card) => card.storyId === pinned.storyId) ?? pinned),
+  );
+  const reserveAll = news.data.reserve.filter((card) => !ownedIds.has(card.storyId) && card.storyId !== pinned?.storyId);
   const shownRiver = limit ? riverAll.slice(0, limit) : riverAll;
   const reserve = limit ? [...riverAll.slice(limit), ...reserveAll] : reserveAll;
   const { visible: rotated, ref: riverRef, handlers: riverHandlers, node: riverNode } = useRotatingFeed(shownRiver, reserve, true);
@@ -368,6 +379,8 @@ export function NewsFeed({
                       <motion.li
                         key={story.id}
                         data-post-id={story.id}
+                        data-focused={pinned && story.storyId === pinned.storyId ? "" : undefined}
+                        className={pinned && story.storyId === pinned.storyId ? "bg-muted/50" : undefined}
                         variants={CARD}
                         exit="leave"
                         layout="position"
@@ -388,6 +401,12 @@ export function NewsFeed({
       )}
     </Panel>
   );
+}
+
+/** `first` at the head of the river, once: the headline the reader came for. */
+function pinFirst(cards: StoryCard[], first: StoryCard | undefined): StoryCard[] {
+  if (!first) return cards;
+  return [first, ...cards.filter((card) => card.storyId !== first.storyId)];
 }
 
 type CardProps = {

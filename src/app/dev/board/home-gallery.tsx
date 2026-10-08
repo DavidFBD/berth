@@ -29,6 +29,7 @@ import { FirstStockCard } from "@/components/first-look";
 import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
 import { FIXTURE_STORIES } from "./first-look-fixture";
+import type { StoryCard } from "@/lib/news-stories";
 import { STOCK_LISTINGS } from "@/lib/listings";
 import { CampaignLineView } from "@/components/board/campaign-line";
 import { campaignLine, type CampaignProgress } from "@/lib/campaigns";
@@ -147,8 +148,10 @@ export function HomeGallery({
         : { kind: "firstBuy" },
   );
   const [newsFilter, setNewsFilter] = useState<TokenListing | null>(null);
-  const openNewsOn = (listing: TokenListing) => {
+  const [newsFocus, setNewsFocus] = useState<StoryCard | null>(null);
+  const openNewsOn = (listing: TokenListing, focus?: StoryCard) => {
     setNewsFilter(listing);
+    setNewsFocus(focus ?? null);
     setDrawer("news");
   };
   const cashScene = scene === "cash";
@@ -255,7 +258,7 @@ export function HomeGallery({
         />
       </SectionDrawer>
       <SectionDrawer open={drawer === "news"} onOpenChange={(open) => setDrawer(open ? "news" : null)} title={copy.newsTitle} description={copy.calmHome.moreNewsSub}>
-        <NewsFeed filter={newsFilter} onClearFilter={() => setNewsFilter(null)} />
+        <NewsFeed filter={newsFilter} focus={newsFocus} onClearFilter={() => setNewsFilter(null)} />
       </SectionDrawer>
       {dock && <AskDock onOpen={noop} hidden={drawer !== null} busy={streaming} />}
     </QueryClientProvider>

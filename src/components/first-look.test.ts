@@ -50,20 +50,37 @@ function view(props: Parameters<typeof FirstLookReadingView>[0]) {
 }
 
 describe("FirstLookReadingView", () => {
-  it("says only that it is in today's news, with a quiet way to the news drawer", () => {
-    const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: true, inNews: true } }, onReadNews: noop });
+  it("shows today's line with its one headline inline, and a way to more news in the drawer", () => {
+    const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: true, inNews: true, story: storyAbout("NVDA") } }, onReadNews: noop });
     expect(html).toContain("NVIDIA is in today&#x27;s news.");
-    expect(html).toContain("Read the news");
+    expect(html).toContain("Nvidia agrees to supply chips for OpenAI&#x27;s new data centres");
+    expect(html).toContain("Reuters, 2 hours ago");
+    expect(html).toContain("More news about NVIDIA");
     expect(html).toContain("News to read, not advice.");
+    // The headline and "more" open a panel in Berth: buttons that say so, never a link out.
     expect(html).not.toContain("<a ");
+    expect(html).not.toContain("example.com");
     expect(html).not.toContain("x.com");
+    expect(html.match(/aria-haspopup="dialog"/g)).toHaveLength(2);
+    expect(html).toContain("Opens the news panel in Berth");
   });
 
   it("says the week's news, never today, when what passed is older than today", () => {
-    const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: false, inNews: false, inNewsWeek: true } }, onReadNews: noop });
+    const html = view({
+      listing: nvidia,
+      look: { kind: "shown", look: { looked: false, inNews: false, inNewsWeek: true, story: storyAbout("NVDA") } },
+      onReadNews: noop,
+    });
     expect(html).toContain("NVIDIA was in the news this past week.");
     expect(html).not.toContain("today");
-    expect(html).toContain("Read the news");
+    expect(html).toContain("More news about NVIDIA");
+  });
+
+  it("claims no news it has no headline for", () => {
+    const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: true, inNews: true, inNewsWeek: true, movePct: 4 } }, onReadNews: noop });
+    expect(html).not.toContain("news");
+    expect(html).not.toContain("not advice");
+    expect(html).toContain("NVIDIA rose 4.0%");
   });
 
   it("never says nothing in the news, with no credit and no advice note", () => {
@@ -72,7 +89,7 @@ describe("FirstLookReadingView", () => {
     expect(html).not.toContain("news about");
     expect(html).not.toContain("Jev");
     expect(html).not.toContain("TypeSafe");
-    expect(html).not.toContain("Read the news");
+    expect(html).not.toContain("More news");
     expect(html).not.toContain("not advice");
   });
 

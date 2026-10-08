@@ -16,6 +16,7 @@ import { useFirstLook } from "@/hooks/use-first-look";
 import { FIRST_LOOK_SYMBOLS } from "@/lib/first-look";
 import { FirstLookReadingView } from "@/components/first-look";
 import { STOCK_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
+import type { StoryCard } from "@/lib/news-stories";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 import { cn } from "@/lib/utils";
 
@@ -228,8 +229,8 @@ export function FirstBuyStep({
   note?: ReactNode;
   /** Opens Ask with a factual question about the chosen name; absent while Ask is locked or off. */
   onAsk?: (prompt: string) => void;
-  /** Opens the news drawer on a listing, from the first look's quiet link. */
-  onReadNews?: (listing: TokenListing) => void;
+  /** Opens the news drawer on a listing, from the first look; `focus` is the headline tapped, shown first. */
+  onReadNews?: (listing: TokenListing, focus?: StoryCard) => void;
   /** Spendable money the oracle prices; undefined when only unpriced crypto proved there is some. */
   readyUsd: number | undefined;
   /** While the funds are read: the line's place is held. */
@@ -329,14 +330,14 @@ export function FirstBuyStep({
           );
         })}
       </div>
-      {/* Once a name is chosen: today's reading about it, before the buy (lib/first-look). */}
+      {/* Once a name is chosen: its reading and the one headline behind it, before the buy (lib/first-look). */}
       {chosen && lookOf(chosen.symbol).kind !== "hidden" && (
         <div className="px-[18px] pt-4 lg:px-6">
           <FirstLookReadingView
             listing={chosen}
             look={lookOf(chosen.symbol)}
             onAsk={onAsk}
-            onReadNews={onReadNews ? () => onReadNews(chosen) : undefined}
+            onReadNews={onReadNews ? (focus) => onReadNews(chosen, focus) : undefined}
           />
         </div>
       )}

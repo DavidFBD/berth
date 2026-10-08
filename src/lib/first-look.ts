@@ -10,10 +10,14 @@ export { adviceShaped };
  * A first look at a stock, for someone about to make their first buy, and
  * on the first stock's card (2026-10-01).
  *
- * No one else's words sit beside Buy. Not a headline, not a post, not a
- * quote: a blocklist cannot tell advice from news reliably enough for that
- * spot (the delta red team, 2026-10-01, got 44 of 60 new advice headlines
- * past one). So the look says only Berth's own fixed lines:
+ * Until 2026-10-08 no one else's words sat beside Buy (the delta red team,
+ * 2026-10-01, got 44 of 60 advice headlines past one blocklist). Since then
+ * the look shows the one headline its news line stands on, inline, because
+ * a proposal with its news hidden behind a tap read as a claim: title,
+ * publisher and time only, and only a headline that passed every bar below
+ * (Jev read it as about the company and reporting something, and it is not
+ * shaped like advice). It opens the news drawer, never the article. Berth's
+ * own fixed lines stay:
  *
  *   "NVIDIA is in today's news."   a headline from today (in New York) about
  *                                  it passed: Jev read it as about the
