@@ -70,8 +70,17 @@ export const ROBINHOOD_LISTINGS: readonly (TokenListing & { rhAddress: Address }
 /** One balance to read on Robinhood Chain: `token`'s balanceOf at `holder`. */
 export type RobinhoodBalanceQuery = { holder: string; token: string };
 
-/** Raw balances, one per query in order, null for one that could not be read. Never throws. */
-export type RobinhoodBalanceReader = (queries: readonly RobinhoodBalanceQuery[]) => Promise<(bigint | null)[]>;
+/**
+ * One balance as read: the raw amount; null when it could not be read (the
+ * request failed, timed out, or answered nothing usable); "reverted" when
+ * the chain answered and that one token's balanceOf failed inside the
+ * aggregate (a token that reverts or has no code), which says nothing
+ * about any other token.
+ */
+export type RobinhoodBalance = bigint | null | "reverted";
+
+/** Raw balances, one per query in order. Never throws. */
+export type RobinhoodBalanceReader = (queries: readonly RobinhoodBalanceQuery[]) => Promise<RobinhoodBalance[]>;
 
 /**
  * Each owner's Robinhood Chain listings, in listing units by symbol (only
@@ -110,14 +119,14 @@ function aggregateCall(queries: readonly RobinhoodBalanceQuery[]): RpcCall {
   return { method: "eth_call", params: [{ to: ROBINHOOD_MULTICALL3, data }, "latest"] };
 }
 
-/** An aggregate3 answer as one raw balance (or null) per query. */
-function decodeAggregate(result: unknown, count: number): (bigint | null)[] {
+/** An aggregate3 answer as one raw balance per query: a failed inner call is "reverted", an unreadable answer null. */
+function decodeAggregate(result: unknown, count: number): RobinhoodBalance[] {
   if (typeof result !== "string" || !result.startsWith("0x") || result.length <= 2) return Array(count).fill(null);
   try {
     const answers = decodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", data: result as Hex });
     if (answers.length !== count) return Array(count).fill(null);
     return answers.map(({ success, returnData }) =>
-      success && returnData.length === 66 ? BigInt(returnData) : null,
+      !success ? "reverted" : returnData.length === 66 ? BigInt(returnData) : null,
     );
   } catch {
     return Array(count).fill(null);
@@ -133,7 +142,7 @@ function decodeAggregate(result: unknown, count: number): (bigint | null)[] {
 export const readRobinhoodTokenBalances: RobinhoodBalanceReader = async (queries) => {
   const valid = queries.map((query) => isAddress(query.holder, { strict: false }) && isAddress(query.token, { strict: false }));
   const indexed = queries.flatMap((query, index) => (valid[index] ? [{ query, index }] : []));
-  const out: (bigint | null)[] = queries.map(() => null);
+  const out: RobinhoodBalance[] = queries.map(() => null);
   const calls = chunks(indexed, BALANCES_PER_CALL);
   for (const request of chunks(calls, CALLS_PER_REQUEST)) {
     try {
@@ -157,13 +166,29 @@ export const readRobinhoodTokenBalances: RobinhoodBalanceReader = async (queries
   return out;
 };
 
-/** One owner's raw balances in ROBINHOOD_LISTINGS order as holdings by symbol; null when any is unknown. */
-function holdingsFrom(raw: readonly (bigint | null)[]): Record<string, number> | null {
+/** Symbols already warned about as reverting, so a broken token logs once per process, not once per wallet. */
+const warnedReverting = new Set<string>();
+
+/**
+ * One owner's raw balances in ROBINHOOD_LISTINGS order as holdings by
+ * symbol; null when any is unknown. A token whose own balanceOf reverted
+ * is left out of the holdings and logged (rh-server m1): one broken token
+ * must not make every wallet unknown, and so every Robinhood account lose
+ * its day.
+ */
+function holdingsFrom(raw: readonly RobinhoodBalance[]): Record<string, number> | null {
   if (raw.some((value) => value === null)) return null;
   const out: Record<string, number> = {};
   ROBINHOOD_LISTINGS.forEach((listing, index) => {
-    const value = raw[index] as bigint;
-    if (value > 0n) out[listing.symbol] = Number(formatUnits(value, listing.decimals));
+    const value = raw[index];
+    if (value === "reverted") {
+      if (!warnedReverting.has(listing.symbol)) {
+        warnedReverting.add(listing.symbol);
+        console.warn("[robinhood-balances] balanceOf reverted, left out", listing.symbol, listing.rhAddress);
+      }
+      return;
+    }
+    if (value !== null && value > 0n) out[listing.symbol] = Number(formatUnits(value, listing.decimals));
   });
   return out;
 }

@@ -55,14 +55,30 @@ describe("Robinhood Chain balances on the server", () => {
     expect(requests.count).toBe(2);
   });
 
-  it("leaves an owner out when any of its balances fails, and reads it again next time", async () => {
+  it("leaves out a token whose balanceOf reverts, logs it, and keeps every wallet and every other token (rh-server m1)", async () => {
     const requests = { count: 0, calls: 0 };
-    vi.stubGlobal("fetch", vi.fn(robinhoodRpcFake({ balances: { [owner(1)]: { NVDA: 1 } }, failing: ["NVDA"], requests })));
+    vi.stubGlobal("fetch", vi.fn(robinhoodRpcFake({ balances: { [owner(1)]: { NVDA: 1, TSLA: 2 }, [owner(2)]: { TSLA: 3 } }, failing: ["NVDA"], requests })));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const read = makeRobinhoodHoldingsReader();
+    const held = await read([owner(1), owner(2)]);
+    expect(Object.fromEntries(held)).toEqual({ [owner(1)]: { TSLA: 2 }, [owner(2)]: { TSLA: 3 } });
+    expect(await robinhoodTotal([owner(1), owner(2)], read)).toEqual({ TSLA: 5 });
+    expect(warn.mock.calls.flat().join(" ")).toContain("NVDA");
+    const nvda = ROBINHOOD_LISTINGS.find((listing) => listing.symbol === "NVDA")!;
+    expect(await readRobinhoodTokenBalances([{ holder: owner(1), token: nvda.rhAddress }])).toEqual(["reverted"]);
+    warn.mockRestore();
+  });
+
+  it("leaves an owner out when the chain does not answer for it, and reads it again next time", async () => {
+    const requests = { count: 0, calls: 0 };
+    const fake = robinhoodRpcFake({ balances: { [owner(1)]: { NVDA: 1 } }, requests });
+    let down = true;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => (down ? new Response("down", { status: 502 }) : fake(url, init))));
     const read = makeRobinhoodHoldingsReader();
     expect((await read([owner(1)])).has(owner(1))).toBe(false);
-    await read([owner(1)]);
-    expect(requests.count).toBe(2);
     await expect(robinhoodTotal([owner(1)], read)).rejects.toThrow("unread");
+    down = false;
+    expect((await read([owner(1)])).get(owner(1))).toEqual({ NVDA: 1 });
   });
 
   it("answers null for every balance when the chain is down, never zero", async () => {

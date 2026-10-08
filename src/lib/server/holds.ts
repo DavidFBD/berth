@@ -340,7 +340,9 @@ export function deliveredBalancesReader(
       out[index] = hubRead[position] ?? null;
     });
     robinhood.forEach(({ index }, position) => {
-      out[index] = robinhoodRead[position] ?? null;
+      // A reverted balanceOf is unknown here: a hold is never judged on it.
+      const value = robinhoodRead[position];
+      out[index] = typeof value === "bigint" ? value : null;
     });
     return out;
   };
