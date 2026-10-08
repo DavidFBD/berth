@@ -183,7 +183,12 @@ export type Copy = {
     opensPanel: string;
     /** The last trading day's move, only when it was large for the listing. Code's numbers, no cause. */
     move: (name: string, direction: "rose" | "fell", pct: string) => string;
-    /** Under the news line when news is linked. */
+    /**
+     * Above the one headline, so it reads as news a publisher wrote, never as
+     * Berth's pick: the first buy shows it a step from Buy (David, 2026-10-08).
+     */
+    newsLabel: string;
+    /** Straight under the headline and its publisher and time, whenever a headline shows. */
     newsNote: string;
     ask: (name: string) => string;
     askPrompt: (name: string) => string;
@@ -1555,21 +1560,16 @@ export type Copy = {
 /**
  * Berth's own automatic posts on X (lib/x-autopost, lib/server/x-autopost).
  * Strict templates filled with facts, never free text: no advice, no
- * prediction, no price, no performance, never "buy". A headline is quoted
- * verbatim and attributed. Each post is a body, a call to action and one
- * link, and must fit X's 280 (a link counts 23).
+ * prediction, no price, no performance, never "buy". Each post is a body,
+ * a call to action and one link, and must fit X's 280 (a link counts 23),
+ * so no template names a stock, a fund or a company, and none quotes a
+ * headline (David, 2026-10-08; lib/x-autopost postRefusals).
  */
 export type XAutopostCopy = {
   /** A whole day the market is shut: "Thursday 26 November", "Thanksgiving", the next session's day. */
   holiday: (day: string, name: string, reopens: string) => string;
   /** A 1pm close. */
   halfDay: (day: string) => string;
-  /** A headline, quoted as the publisher wrote it. */
-  news: (name: string, publisher: string, headline: string) => string;
-  /** Most held's top row, as the board publishes it (lib/most-held). */
-  mostHeld: (week: string, name: string, oneIn: number) => string;
-  /** Most bought's top row, as the board publishes it (lib/social-proof). */
-  mostBought: (week: string, name: string, people: number, plus: boolean) => string;
   /**
    * A signup campaign: a new account opened through the campaign's link,
    * set up and still in use `days` later, earns its owner the amount, never
@@ -2859,6 +2859,7 @@ export const COPY: Copy = {
     moreNews: (name) => `More news about ${name}`,
     opensPanel: "Opens the news panel in Berth",
     move: (name, direction, pct) => `${name} ${direction} ${pct} on the last trading day, more than it usually moves.`,
+    newsLabel: "News",
     newsNote: "News to read, not advice.",
     ask: (name) => `Ask about ${name}`,
     askPrompt: (name) => `What has been in the news about ${name} this week?`,
@@ -5013,11 +5014,6 @@ export const COPY: Copy = {
   xAutopost: {
     holiday: (day, name, reopens) => `US stock markets are closed on ${day} for ${name}. Trading resumes on ${reopens}.`,
     halfDay: (day) => `US stock markets close early on ${day}, at 1pm New York time.`,
-    news: (name, publisher, headline) => `${name} in the news. ${publisher} reports: \u201c${headline}\u201d`,
-    mostHeld: (week, name, oneIn) =>
-      `Most held on Berth, the week of ${week}: ${name}, held by 1 in ${oneIn} people who own a stock or fund on Berth.`,
-    mostBought: (week, name, people, plus) =>
-      `Most bought on Berth, the week of ${week}: ${name}, bought by ${people}${plus ? "+" : ""} ${people === 1 && !plus ? "person" : "people"}.`,
     campaign: (amount, days, places, ends) =>
       `New to Berth? Open an account through this link, set it up and still use Berth ${dayCount(days)} later, and ${amount} in USDC on Base is added to your account, while places last.` +
       (places !== null || ends !== null

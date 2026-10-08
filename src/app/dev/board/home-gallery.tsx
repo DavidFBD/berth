@@ -26,7 +26,7 @@ import type { Nudge } from "@/lib/nudge";
 import { cn } from "@/lib/utils";
 import { seededPortfolioClient } from "../account/portfolio-gallery";
 import { FirstStockCard } from "@/components/first-look";
-import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
+import { FIRST_LOOK_FIXTURE_META, FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
 import { FIXTURE_STORIES } from "./first-look-fixture";
 import type { StoryCard } from "@/lib/news-stories";
@@ -141,7 +141,10 @@ export function HomeGallery({
   const held = scene === "held" || walletEmail;
   const [{ client, rows: seededRows }] = useState(() => {
     const seeded = seededPortfolioClient(held ? "three-months" : "empty", { xp: 900 });
-    if (look) seeded.client.setQueryData(FIRST_LOOK_QUERY_KEY, firstLookFixture(look));
+    if (look) {
+      seeded.client.setQueryDefaults(FIRST_LOOK_QUERY_KEY, { meta: FIRST_LOOK_FIXTURE_META });
+      seeded.client.setQueryData(FIRST_LOOK_QUERY_KEY, firstLookFixture(look));
+    }
     return seeded;
   });
   const rows = seededRows.map((row, index) =>

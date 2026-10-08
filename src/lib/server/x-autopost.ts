@@ -1,16 +1,10 @@
 import { SLOT_STATES } from "@/lib/campaigns";
-import { MOST_HELD_FIRST_WEEK, type MostHeldResponse } from "@/lib/most-held";
-import { visibleSources } from "@/lib/news-schedule";
-import { publishedWeek, type MostBoughtResponse } from "@/lib/social-proof";
 import {
   autopostDue,
   autopostEnabled,
   calendarDrafts,
   choosePost,
-  milestoneDrafts,
-  newsDrafts,
-  NEWS_WINDOW_MS,
-  SAME_COMPANY_MS,
+  postRefusals,
   type Choice,
   type DraftSource,
   type LiveCampaign,
@@ -28,7 +22,10 @@ import { reserveBudget, settleBudget } from "@/lib/server/x-store";
  * needs (SELECT only, until the moment of posting), takes one from the X
  * day's cap (X_DAILY_POST_CAP, the same ledger the column reads against),
  * gets a fresh token (lib/server/x-oauth), writes `sending` to the log and
- * only then sends. It never throws: every outcome is a log row and a
+ * only then sends. Before it sends, the exact text goes through the guard
+ * (lib/x-autopost postRefusals) with the headlines of the last
+ * HEADLINES_WINDOW_MS; a refused post is logged as a skip and never sent.
+ * It never throws: every outcome is a log row and a
  * summary, and a refused token or an X error never touches the rest of the
  * evening.
  *
@@ -40,6 +37,8 @@ const REQUEST_TIMEOUT_MS = 10_000;
 /** A 401 is answered with a refresh and a second send only while this much of the budget is left: two requests and their writes. */
 export const AUTOPOST_RETRY_NEEDS_MS = 25_000;
 const LIVE = ["sending", "posted", "unknown"];
+/** How far back the guard reads headlines a post must not repeat. */
+export const HEADLINES_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 type Env = Record<string, string | undefined>;
 
@@ -97,23 +96,6 @@ export async function readLiveCampaign(now: number): Promise<LiveCampaign | null
   return null;
 }
 
-async function storedAnswer<T>(table: "most_held_weeks" | "most_bought_weeks", label: string): Promise<T | null> {
-  const rows = (await getSql().query(`select answer from ${table} where week_start = $1::date`, [label])) as { answer: unknown }[];
-  const answer = rows[0]?.answer;
-  if (!answer) return null;
-  return { ...((typeof answer === "string" ? JSON.parse(answer) : answer) as object), week: label } as T;
-}
-
-/** The published weeks the board shows, as stored; never computed or stored here. */
-async function readMilestones(now: number): Promise<{ mostHeld: MostHeldResponse | null; mostBought: MostBoughtResponse | null }> {
-  const heldWeek = publishedWeek(new Date(now), MOST_HELD_FIRST_WEEK);
-  const boughtWeek = publishedWeek(new Date(now));
-  return {
-    mostHeld: heldWeek ? await storedAnswer<MostHeldResponse>("most_held_weeks", heldWeek.label) : null,
-    mostBought: boughtWeek ? await storedAnswer<MostBoughtResponse>("most_bought_weeks", boughtWeek.label) : null,
-  };
-}
-
 /** The last live post: when, and from which source. */
 async function lastLive(): Promise<{ at: number; source: DraftSource | null } | undefined> {
   const rows = (await getSql().query(
@@ -123,43 +105,38 @@ async function lastLive(): Promise<{ at: number; source: DraftSource | null } | 
   return rows[0] ? { at: msOf(rows[0].at), source: rows[0].source } : undefined;
 }
 
+/** Every headline the stories of the window carry, hidden ones too: what a post must never repeat. */
+async function readHeadlines(now: number): Promise<string[]> {
+  const stories = await readStories({ sinceMs: now - HEADLINES_WINDOW_MS, versions: VERDICT_VERSIONS });
+  return [...new Set(stories.flatMap((story) => story.sources.map((source) => source.title)).filter(Boolean))];
+}
+
 /** Everything the day's choice reads. SELECT only, so it can be previewed against production. */
 export async function draftChoice({
   now = Date.now(),
-  env = process.env,
   lastSource,
 }: {
   now?: number;
+  /** Unused since the news source went (2026-10-08); kept so callers need not change. */
   env?: Env;
   lastSource?: DraftSource | null;
-} = {}): Promise<{ choice: Choice | null; inputs: Parameters<typeof choosePost>[0] }> {
+} = {}): Promise<{ choice: Choice | null; inputs: Parameters<typeof choosePost>[0]; headlines: string[]; refusals: string[] }> {
   const sql = getSql();
-  const [usedRows, recentRows, campaign, stories, milestones, last] = await Promise.all([
+  const [usedRows, campaign, headlines, last] = await Promise.all([
     sql.query(`select key from x_autopost_log where key is not null and status <> 'skipped'`) as Promise<{ key: string }[]>,
-    sql.query(`select symbol from x_autopost_log where symbol is not null and status = any($1::text[]) and at > $2::timestamptz`, [
-      LIVE,
-      at(now - SAME_COMPANY_MS),
-    ]) as Promise<{ symbol: string }[]>,
     readLiveCampaign(now),
-    readStories({ sinceMs: now - NEWS_WINDOW_MS, versions: VERDICT_VERSIONS }),
-    readMilestones(now),
+    readHeadlines(now),
     lastSource === undefined ? lastLive() : Promise.resolve(undefined),
   ]);
   const inputs = {
     campaign,
     calendar: calendarDrafts(now),
-    news: newsDrafts({
-      stories,
-      now,
-      marketauxVisible: visibleSources({ staff: false }, env).includes("marketaux"),
-      recentSymbols: new Set(recentRows.map((row) => row.symbol)),
-    }),
-    milestones: milestoneDrafts(milestones),
     used: new Set(usedRows.map((row) => row.key)),
     lastSource: lastSource === undefined ? (last?.source ?? null) : lastSource,
     now,
   };
-  return { choice: choosePost(inputs), inputs };
+  const choice = choosePost(inputs);
+  return { choice, inputs, headlines, refusals: choice ? postRefusals(choice.text, headlines) : [] };
 }
 
 async function log(row: {
@@ -178,7 +155,7 @@ async function log(row: {
       utcDay(row.now),
       draft?.source ?? null,
       draft?.key ?? null,
-      draft?.symbol ?? null,
+      null,
       row.choice?.campaignCode ?? null,
       row.choice?.text ?? null,
       row.status,
@@ -234,7 +211,9 @@ export async function runAutopost({
     const last = await lastLive();
     if (!autopostDue(last?.at, now)) return { ran: false, reason: "not due" };
 
-    let { choice } = await draftChoice({ now, env, lastSource: last?.source ?? null });
+    const drafted = await draftChoice({ now, env, lastSource: last?.source ?? null });
+    const headlines = drafted.headlines;
+    let choice = drafted.choice;
     if (!choice) {
       await log({ now, status: "skipped", detail: "nothing to say today" });
       return { ran: true, status: "skipped", detail: "nothing to say today" };
@@ -266,6 +245,15 @@ export async function runAutopost({
             return { ran: true, status: "skipped", detail: "campaign closed before posting" };
           }
         }
+      }
+
+      // The guard, on the exact text about to go out: a refused post is a logged skip, never a send.
+      const refusals = postRefusals(choice.text, headlines);
+      if (refusals.length > 0) {
+        const detail = `refused: ${refusals.join("; ")}`;
+        console.warn("[x-autopost]", detail);
+        await log({ now, choice, status: "skipped", detail });
+        return { ran: true, status: "skipped", source: choice.draft.source, key: choice.draft.key, detail };
       }
 
       const id = await log({ now, choice, status: "sending" });

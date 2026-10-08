@@ -1,11 +1,7 @@
-import { adviceShaped } from "@/lib/advice-shaped";
 import { campaignUsd } from "@/lib/campaigns";
 import { COPY } from "@/lib/copy";
-import { passes } from "@/lib/first-look";
-import { STOCK_LISTINGS, TOKEN_LISTINGS } from "@/lib/listings";
+import { TOKEN_LISTINGS } from "@/lib/listings";
 import { earlyCloses, marketHolidayNames, newYorkDate, nextOpen, sessionOn, shiftDate, type IsoDate } from "@/lib/market-calendar";
-import type { MostHeldResponse } from "@/lib/most-held";
-import type { MostBoughtResponse } from "@/lib/social-proof";
 
 /**
  * Berth's own automatic posts on X (@berthmarkets), as pure decisions: when
@@ -20,22 +16,24 @@ import type { MostBoughtResponse } from "@/lib/social-proof";
  * 1. A signup campaign that is active, inside its dates and funded for at
  *    least one more reward, but never two posts in a row (the feed is not
  *    a promotion). When it may not take the slot it may still be the call
- *    to action of a calendar or news post.
+ *    to action of a calendar post.
  * 2. The market calendar: a holiday or a 1pm close in the next six days.
- * 3. A Marketaux headline about one of the listed companies from the last
- *    three days, read by Jev as reporting something about it (the first
- *    look's own test), quoted verbatim and attributed. Headlines that read as a price move, a rating or
- *    advice are never quoted.
- * 4. A Berth milestone only where the board already publishes it: Most
- *    held's or Most bought's top row of the published week, thresholds and
- *    all.
  *
- * Every post but a campaign's links to the home page, never to a listing:
- * `/?open=` opens the buy drawer, and no headline or social proof may sit
- * one tap from a Buy button.
+ * Every post carries a call to action and one link, so no post names a
+ * stock, a fund or a company (David, 2026-10-08). Berth naming a listing
+ * beside a link or "see it on Berth" reads as a financial promotion of that
+ * listing, which is what the 6 Oct post (a quoted headline on one company
+ * and a link) was. Until 8 Oct there were two more sources, a headline about
+ * a listed company and the board's Most held and Most bought; both named a
+ * listing and both are gone. A fixed line without a link ("NVIDIA was in
+ * the news today") was the other choice: it still has Berth pick one
+ * company to put in front of its followers on a day of its choosing, and
+ * gives them nothing to read, so a post that names nothing is the safer one.
+ * `postRefusals` holds that line on the finished text, whatever a template
+ * says, and refuses any post that repeats a publisher's headline.
  *
- * Nothing is invented and nothing about a person is read. A story, a
- * holiday or a week is posted once, ever (`key`).
+ * Nothing is invented and nothing about a person is read. A holiday or a
+ * campaign's day is posted once, ever (`key`).
  */
 
 export const SITE = "https://www.berthmarkets.com";
@@ -66,23 +64,17 @@ export function autopostDue(lastPostAt: number | undefined, now: number): boolea
   return lastPostAt === undefined || now - lastPostAt >= AUTOPOST_EVERY_MS - AUTOPOST_SLACK_MS;
 }
 
+/** Where a post came from. "news" and "milestone" are only in the log, from before 2026-10-08: they named a listing and are drafted no more. */
 export type DraftSource = "campaign" | "calendar" | "news" | "milestone";
 
 export type Draft = {
-  source: DraftSource;
-  /** Once ever: `calendar:2026-11-26`, `news:<story id>`, `most_held:<week>`, `campaign:<code>:<day>`. */
+  source: Extract<DraftSource, "campaign" | "calendar">;
+  /** Once ever: `calendar:2026-11-26`, `campaign:<code>:<day>`. */
   key: string;
-  /** The listing it is about, when it is about one. */
-  symbol?: string;
   body: string;
   cta: string;
   url: string;
 };
-
-/** The listed companies (not the funds, not cash), by ticker. */
-const COMPANIES: ReadonlyMap<string, string> = new Map(
-  STOCK_LISTINGS.filter((listing) => listing.category === "equity").map((listing) => [listing.symbol, listing.name]),
-);
 
 export function campaignUrl(code: string): string {
   return `${SITE}/c/${encodeURIComponent(code)}`;
@@ -141,6 +133,94 @@ export function postProblems(text: string): string[] {
   return problems;
 }
 
+/* — the guard — */
+
+/**
+ * Every way a person might read a listing in a post: its ticker (and the
+ * class without its letter, GOOG for GOOGL), its name, its short name and
+ * its issuer's name without the wrapper ("Micron Technology").
+ */
+const LISTING_TICKERS: ReadonlySet<string> = new Set(
+  TOKEN_LISTINGS.flatMap((listing) => (listing.symbol.length === 5 ? [listing.symbol, listing.symbol.slice(0, 4)] : [listing.symbol])),
+);
+const LISTING_NAMES: readonly string[] = [
+  ...new Set(
+    TOKEN_LISTINGS.flatMap((listing) => [listing.name, listing.shortName, listing.issuerName.split(" • ")[0]])
+      .filter((name): name is string => Boolean(name && name.trim()))
+      .map((name) => name.trim().toLowerCase()),
+  ),
+];
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const NAME_PATTERN = new RegExp(`(?<![\\p{L}\\p{N}])(?:${[...LISTING_NAMES].sort((a, b) => b.length - a.length).map(escape).join("|")})(?![\\p{L}\\p{N}])`, "iu");
+
+/** The listing a post names, by ticker (as written, in capitals) or by name (any case), or null. */
+export function namedListing(text: string): string | null {
+  const words = text.replace(URL_PATTERN, " ");
+  const ticker = (words.match(/\$?\b[A-Z]{1,5}\b/g) ?? []).map((word) => word.replace("$", "")).find((word) => LISTING_TICKERS.has(word));
+  if (ticker) return ticker;
+  return words.match(NAME_PATTERN)?.[0] ?? null;
+}
+
+/** A call to action: Berth's own (COPY.xAutopost) and the usual ones in any words. */
+const CTA_PATTERN =
+  /\b(see it|see (?:them|more)|on berth|join|sign up|signup|open an account|this link|link in|tap|click|get started|download|how it works|find out|learn more|check (?:it|out)|trade|invest|own (?:it|some)|start (?:now|today))\b/i;
+
+export function hasCallToAction(text: string): boolean {
+  const words = text.replace(URL_PATTERN, " ");
+  return (
+    CTA_PATTERN.test(words) ||
+    [COPY.xAutopost.seeIt, COPY.xAutopost.campaignLink].some((cta) => words.toLowerCase().includes(cta.toLowerCase().replace(/[.:]$/, "")))
+  );
+}
+
+export function hasLink(text: string): boolean {
+  return /https?:\/\//i.test(text) || new RegExp(BARE_DOMAIN.source, "i").test(text.replace(URL_PATTERN, " "));
+}
+
+const normalised = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .replace(/[\u2018\u2019']/g, "")
+    .split(/[^\p{L}\p{N}&]+/u)
+    .filter(Boolean);
+
+/** How many words of a headline in a row make a quote of it. */
+export const HEADLINE_RUN_WORDS = 7;
+
+/**
+ * Whether a post repeats a headline word for word: the whole headline (at
+ * four words or more), or HEADLINE_RUN_WORDS of its words in a row,
+ * ignoring case and punctuation.
+ */
+export function quotesHeadline(text: string, headlines: readonly string[]): boolean {
+  const post = ` ${normalised(text.replace(URL_PATTERN, " ")).join(" ")} `;
+  for (const headline of headlines) {
+    const words = normalised(headline);
+    if (words.length < 4) continue;
+    if (post.includes(` ${words.join(" ")} `)) return true;
+    for (let i = 0; i + HEADLINE_RUN_WORDS <= words.length; i += 1) {
+      if (post.includes(` ${words.slice(i, i + HEADLINE_RUN_WORDS).join(" ")} `)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Why a finished post must not go out, or nothing: it names a listing and
+ * carries a link or a call to action (the two never meet), it quotes
+ * something in quotation marks, or it repeats a publisher's headline.
+ * lib/server/x-autopost runs it on the exact text about to be sent, with
+ * the recent stories' headlines, and a refused post is logged as a skip.
+ */
+export function postRefusals(text: string, headlines: readonly string[] = []): string[] {
+  const refusals: string[] = [];
+  const listing = namedListing(text);
+  if (listing && (hasLink(text) || hasCallToAction(text))) refusals.push(`names ${listing} beside a link or call to action`);
+  if (/[\u201c\u201d"]/.test(text)) refusals.push("quotes something");
+  if (quotesHeadline(text, headlines)) refusals.push("repeats a headline");
+  return refusals;
+}
+
 /** The post as it goes out: body, call to action, one link. */
 export function composePost(draft: Pick<Draft, "body" | "cta" | "url">): string {
   return `${draft.body} ${draft.cta} ${draft.url}`;
@@ -184,171 +264,6 @@ export function calendarDrafts(now: number): Draft[] {
   return drafts;
 }
 
-/* — news — */
-
-/** A story as lib/server/news-store readStories returns it, the parts read here. */
-export type NewsStory = {
-  id: number;
-  hidden: boolean;
-  sources: { source: string; publisher: string; title: string; url: string; publishedAt: number }[];
-  verdicts: { symbol: string; verdict: "material" | "fact" | "analysis" | null; about: number | null; kept: boolean }[];
-};
-
-const MOVE_WORDS =
-  /\b(soar|soars|soared|surge|surges|surged|plunge|plunges|plunged|tumble|tumbles|tumbled|skyrocket\w*|rall(y|ies|ied)|slump\w*|crash\w*|rocket\w*|sink|sinks|sank|jump|jumps|jumped|climb\w*|slide|slides|slid|rebound\w*|rise|rises|rose|fall|falls|fell|gain|gains|gained|drop|drops|dropped|spike\w*|sell-?off|selloff|all-time high|record high|price target|upgrade\w*|downgrade\w*|outperform\w*|underperform\w*|overweight|underweight|analyst\w*|rating|bull\w*|bear\w*|forecast\w*|predict\w*|should you|top pick|millionaire)\b/i;
-
-/**
- * The headline as it may be quoted, or null: the publisher's own suffix
- * (" - Reuters") taken off, and never one with a dash left in it, an emoji,
- * quotes, a ticker, a cashtag, a handle, a link, a percentage, a dollar
- * figure, a price move or rating, talk of the stock or its investors, a
- * web address (X would link it), or advice. Verbatim otherwise.
- */
-export function quotableHeadline(title: string, symbol: string, publisher: string): string | null {
-  let line = title.replace(/\s+/g, " ").trim();
-  const suffix = line.match(/\s[-–—|]\s([^-–—|]{1,60})$/);
-  if (suffix && suffix[1].trim().toLowerCase() === publisher.trim().toLowerCase()) line = line.slice(0, suffix.index).trim();
-  if (line.length < 20) return null;
-  if (DASH_PUNCTUATION.test(line) || /[|–—]/.test(line)) return null;
-  if (EMOJI.test(line)) return null;
-  if (/["“”]/.test(line)) return null;
-  if (/[$@#%]|https?:|www\./i.test(line) || new RegExp(BARE_DOMAIN.source, "i").test(line)) return null;
-  if (/\b(NASDAQ|NYSE)\s*:/i.test(line)) return null;
-  if ((line.match(/\b[A-Z]{1,5}\b/g) ?? []).some((word) => TICKERS.has(word))) return null;
-  // Company news, never commentary on the stock.
-  if (/\b(stocks?|shares?|investors?|valuation|portfolio)\b/i.test(line)) return null;
-  if (MOVE_WORDS.test(line)) return null;
-  if (adviceShaped(line)) return null;
-  return line;
-}
-
-const RANK = { material: 2, fact: 1, analysis: 0 } as const;
-
-/** Every listing's ticker, and the class without its letter (GOOGL, GOOG): a person reads names, not these. */
-const TICKERS: ReadonlySet<string> = new Set(
-  TOKEN_LISTINGS.flatMap((listing) => (listing.symbol.length === 5 ? [listing.symbol, listing.symbol.slice(0, 4)] : [listing.symbol])).filter(
-    // A company that goes by its letters in everyday speech ("AMD") is named, not tickered.
-    (ticker) => !TOKEN_LISTINGS.some((listing) => listing.shortName === ticker),
-  ),
-);
-
-/** A publisher known only by its web address ("foxbusiness.com"): X would link it, a second link to someone else's site, so it is never quoted. */
-export function namedPublisher(publisher: string): boolean {
-  return !/\.[a-z]{2,}$/i.test(publisher.trim()) && !new RegExp(BARE_DOMAIN.source, "i").test(publisher);
-}
-
-/**
- * The quotable Marketaux headlines of the last NEWS_WINDOW_MS, best first:
- * material before fact, then how surely the story is about the company,
- * then the newest; a company posted about in the last week after the rest.
- * `marketauxVisible` is whether the public may see Marketaux at all
- * (lib/news-schedule visibleSources): if not, there is no Marketaux source.
- */
-export function newsDrafts({
-  stories,
-  now,
-  marketauxVisible,
-  recentSymbols = new Set(),
-}: {
-  stories: readonly NewsStory[];
-  now: number;
-  marketauxVisible: boolean;
-  recentSymbols?: ReadonlySet<string>;
-}): Draft[] {
-  if (!marketauxVisible) return [];
-  const found: (Draft & { rank: number; about: number; at: number })[] = [];
-  for (const story of stories) {
-    if (story.hidden) continue;
-    const source = story.sources
-      .filter((item) => item.source === "marketaux" && now - item.publishedAt <= NEWS_WINDOW_MS && item.publishedAt <= now)
-      .sort((a, b) => b.publishedAt - a.publishedAt)[0];
-    if (!source) continue;
-    const verdicts = story.verdicts
-      .filter((verdict) => verdict.kept && verdict.verdict && COMPANIES.has(verdict.symbol))
-      .sort((a, b) => RANK[b.verdict!] - RANK[a.verdict!] || (b.about ?? 0) - (a.about ?? 0));
-    for (const verdict of verdicts) {
-      const name = COMPANIES.get(verdict.symbol)!;
-      const item = {
-        title: source.title,
-        url: source.url,
-        publishedAt: source.publishedAt,
-        source: source.publisher,
-        symbol: verdict.symbol,
-        name,
-        verdict: verdict.verdict!,
-        ...(verdict.about !== null && { about: verdict.about }),
-      };
-      if (!passes(item)) continue;
-      const headline = quotableHeadline(source.title, verdict.symbol, source.publisher);
-      if (!headline || !source.publisher.trim() || !namedPublisher(source.publisher)) continue;
-      found.push({
-        source: "news",
-        key: `news:${story.id}`,
-        symbol: verdict.symbol,
-        body: COPY.xAutopost.news(name, source.publisher.trim(), headline),
-        cta: COPY.xAutopost.seeIt,
-        url: SITE,
-        rank: RANK[verdict.verdict!],
-        about: verdict.about ?? 0,
-        at: source.publishedAt,
-      });
-      break;
-    }
-  }
-  return found
-    .sort(
-      (a, b) =>
-        Number(recentSymbols.has(a.symbol!)) - Number(recentSymbols.has(b.symbol!)) ||
-        b.rank - a.rank ||
-        b.about - a.about ||
-        b.at - a.at,
-    )
-    .map(({ source, key, symbol, body, cta, url }): Draft => ({ source, key, symbol, body, cta, url }));
-}
-
-/* — milestones — */
-
-/** "19 October", from a week's Monday label. */
-export function weekName(label: string): string {
-  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${label}T00:00:00Z`));
-}
-
-/** The published weeks' top rows, Most held first. Only what the board already shows, so only what passed its thresholds. */
-export function milestoneDrafts({
-  mostHeld,
-  mostBought,
-}: {
-  mostHeld?: MostHeldResponse | null;
-  mostBought?: MostBoughtResponse | null;
-}): Draft[] {
-  const drafts: Draft[] = [];
-  const held = mostHeld?.rows[0];
-  const heldName = held && STOCK_LISTINGS.find((listing) => listing.symbol === held.symbol)?.name;
-  if (held && heldName && mostHeld?.week) {
-    drafts.push({
-      source: "milestone",
-      key: `most_held:${mostHeld.week}`,
-      symbol: held.symbol,
-      body: COPY.xAutopost.mostHeld(weekName(mostHeld.week), heldName, held.oneIn),
-      cta: COPY.xAutopost.seeIt,
-      url: SITE,
-    });
-  }
-  const bought = mostBought?.rows[0];
-  const boughtName = bought && STOCK_LISTINGS.find((listing) => listing.symbol === bought.symbol)?.name;
-  if (bought && boughtName && mostBought?.week) {
-    drafts.push({
-      source: "milestone",
-      key: `most_bought:${mostBought.week}`,
-      symbol: bought.symbol,
-      body: COPY.xAutopost.mostBought(weekName(mostBought.week), boughtName, bought.people, bought.plus),
-      cta: COPY.xAutopost.seeIt,
-      url: SITE,
-    });
-  }
-  return drafts;
-}
-
 /* — the campaign — */
 
 /** A signup campaign that may be posted right now (lib/server/x-autopost readLiveCampaign decides that). */
@@ -384,7 +299,7 @@ export function campaignDraft(campaign: LiveCampaign, now: number): Draft {
   };
 }
 
-/** A calendar or news draft with the campaign as its call to action instead. */
+/** A calendar draft with the campaign as its call to action instead. */
 export function withCampaignCta(draft: Draft, campaign: LiveCampaign): Draft {
   return {
     ...draft,
@@ -401,32 +316,28 @@ export type Choice = { draft: Draft; text: string; campaignCode: string | null }
  * The day's post, or null: the first source in order of preference with a
  * draft never posted (`used`) whose finished text keeps every rule.
  * `lastSource` is the last post's source: a campaign never takes two slots
- * in a row. A calendar or news post carries the campaign as its call to
- * action when one is live and it still fits, and its own otherwise.
+ * in a row. A calendar post carries the campaign as its call to action when
+ * one is live and it still fits, and its own otherwise.
  */
 export function choosePost({
   campaign,
   calendar,
-  news,
-  milestones,
   used,
   lastSource,
   now,
 }: {
   campaign: LiveCampaign | null;
   calendar: readonly Draft[];
-  news: readonly Draft[];
-  milestones: readonly Draft[];
   used: ReadonlySet<string>;
   lastSource: DraftSource | null;
   now: number;
 }): Choice | null {
   const ordered: Draft[] = [];
   if (campaign && lastSource !== "campaign") ordered.push(campaignDraft(campaign, now));
-  ordered.push(...calendar, ...news, ...milestones);
+  ordered.push(...calendar);
   for (const draft of ordered) {
     if (used.has(draft.key)) continue;
-    if (campaign && draft.source !== "campaign" && (draft.source === "calendar" || draft.source === "news")) {
+    if (campaign && draft.source === "calendar") {
       const promoted = withCampaignCta(draft, campaign);
       const text = composePost(promoted);
       if (postProblems(text).length === 0) return { draft: promoted, text, campaignCode: campaign.code };

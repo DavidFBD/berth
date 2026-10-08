@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { neon } from "@neondatabase/serverless";
 import { setSqlClient } from "@/lib/server/db";
 import { draftChoice } from "@/lib/server/x-autopost";
-import { composePost, postLength, postProblems, withCampaignCta } from "@/lib/x-autopost";
+import { composePost, postLength, postProblems, postRefusals, withCampaignCta } from "@/lib/x-autopost";
 
 if (!process.env.DATABASE_URL) {
   try {
@@ -40,16 +40,18 @@ setSqlClient({
 
 const atFlag = process.argv.indexOf("--at");
 const now = atFlag > -1 ? Date.parse(process.argv[atFlag + 1]) : Date.now();
-const { choice, inputs } = await draftChoice({ now });
+const { choice, inputs, headlines, refusals } = await draftChoice({ now });
 
 const show = (label, draft) => {
   const text = composePost(draft);
-  console.log(`\n[${label}] ${draft.key}  (${postLength(text)} of 280${postProblems(text).length ? `, ${postProblems(text).join(", ")}` : ""})\n${text}`);
+  const issues = [...postProblems(text), ...postRefusals(text, headlines)];
+  console.log(`\n[${label}] ${draft.key}  (${postLength(text)} of 280${issues.length ? `, ${issues.join(", ")}` : ""})\n${text}`);
 };
 
 console.log(`As of ${new Date(now).toISOString()}. Live campaign: ${inputs.campaign ? inputs.campaign.code : "none"}. Last source: ${inputs.lastSource ?? "none"}.`);
 console.log(`\nChosen:\n${choice ? choice.text : "(nothing to say)"}`);
+if (refusals.length) console.log(`The guard would refuse it and log a skip: ${refusals.join("; ")}`);
 console.log("\nEvery candidate, in order of preference:");
-for (const draft of [...inputs.calendar, ...inputs.news, ...inputs.milestones]) {
+for (const draft of inputs.calendar) {
   show(draft.source, inputs.campaign ? withCampaignCta(draft, inputs.campaign) : draft);
 }

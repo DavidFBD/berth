@@ -11,7 +11,8 @@ import { budgetSpent } from "@/lib/server/x-store";
  * nothing here ever reaches api.x.com. The token rotates and every new pair
  * is kept, two runs never spend one refresh token, the kill switch and the
  * schedule hold, nothing is posted twice, the X day's cap holds, a campaign
- * is checked when the post goes out, and every attempt is logged.
+ * is checked when the post goes out, the guard refuses a post that repeats
+ * a headline, and every attempt is logged.
  */
 
 let sql: SqlClient;
@@ -29,8 +30,13 @@ const ENV = {
   NEWS_MARKETAUX: "everyone",
 };
 
-// Monday 5 October 2026, 22:00 UTC.
-const MON = Date.parse("2026-10-05T22:00:00Z");
+// Monday 23 November 2026, 22:00 UTC: Thanksgiving is on Thursday, and Friday closes at 1pm.
+const MON = Date.parse("2026-11-23T22:00:00Z");
+const MON_DAY = "2026-11-23";
+// Monday 5 October 2026, 22:00 UTC: no closure in the week ahead.
+const QUIET = Date.parse("2026-10-05T22:00:00Z");
+const THANKSGIVING =
+  "US stock markets are closed on Thursday 26 November for Thanksgiving. Trading resumes on Friday 27 November. See it on Berth. https://www.berthmarkets.com";
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
@@ -200,46 +206,61 @@ describe("the token", () => {
 describe("the evening's post", () => {
   it("does nothing at all with the kill switch off, or outside production", async () => {
     const x = fakeX();
-    await marketauxStory();
     expect(await runAutopost({ now: MON, env: { ...ENV, X_AUTOPOST_ENABLED: "0" }, fetchImpl: x.fetchImpl })).toEqual({ ran: false, reason: "disabled" });
     expect(await runAutopost({ now: MON, env: { ...ENV, VERCEL_ENV: "preview" }, fetchImpl: x.fetchImpl })).toEqual({ ran: false, reason: "disabled" });
     expect(x.calls).toHaveLength(0);
     expect(await rows()).toEqual([]);
   });
 
-  it("posts a headline once, logs it, and waits three days", async () => {
+  it("posts a market closure once, logs it, and waits three days", async () => {
     const x = fakeX();
-    const id = await marketauxStory();
     const result = await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl });
-    expect(result).toMatchObject({ ran: true, status: "posted", source: "news", key: `news:${id}`, tweetId: "1844000000000000001" });
-    expect(JSON.parse(x.posts()[0].body).text).toBe(
-      "NVIDIA in the news. Reuters reports: “NVIDIA opens a new research centre in Taipei” See it on Berth. https://www.berthmarkets.com",
-    );
+    expect(result).toMatchObject({ ran: true, status: "posted", source: "calendar", key: "calendar:2026-11-26", tweetId: "1844000000000000001" });
+    expect(JSON.parse(x.posts()[0].body).text).toBe(THANKSGIVING);
     expect(x.posts()[0].auth).toBe("Bearer access-1");
-    expect(await rows()).toMatchObject([{ status: "posted", source: "news", tweet_id: "1844000000000000001" }]);
+    expect(await rows()).toMatchObject([{ status: "posted", source: "calendar", tweet_id: "1844000000000000001" }]);
     expect((await readAutopostLog())[0]).toMatchObject({ status: "posted", tweetId: "1844000000000000001" });
-    expect(await budgetSpent("2026-10-05")).toBe(1);
+    expect(await budgetSpent(MON_DAY)).toBe(1);
 
     // The next evenings: not due.
     expect(await runAutopost({ now: MON + DAY, env: ENV, fetchImpl: x.fetchImpl })).toEqual({ ran: false, reason: "not due" });
     expect(await runAutopost({ now: MON + 2 * DAY, env: ENV, fetchImpl: x.fetchImpl })).toEqual({ ran: false, reason: "not due" });
 
-    // Thursday: due, and the same story is never posted again.
-    expect(await runAutopost({ now: MON + 3 * DAY, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "skipped", detail: "nothing to say today" });
-    expect(x.posts()).toHaveLength(1);
+    // Thursday: due, Thanksgiving is never posted again, and Friday's early close is.
+    expect(await runAutopost({ now: MON + 3 * DAY, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "posted", key: "calendar:2026-11-27" });
+    // Sunday: nothing left to say.
+    expect(await runAutopost({ now: MON + 6 * DAY, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "skipped", detail: "nothing to say today" });
+    expect(x.posts()).toHaveLength(2);
+  });
+
+  it("never posts about a company, however much news there is", async () => {
+    const x = fakeX();
+    await marketauxStory({ at: QUIET - 5 * HOUR });
+    await marketauxStory({ symbol: "AAPL", title: "Apple opens a new store in Mumbai this weekend", at: QUIET - 5 * HOUR });
+    expect(await runAutopost({ now: QUIET, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "skipped", detail: "nothing to say today" });
+    expect(x.calls).toHaveLength(0);
   });
 
   it("logs nothing to say as a skip, and posts nothing", async () => {
     const x = fakeX();
-    expect(await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "skipped" });
+    expect(await runAutopost({ now: QUIET, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "skipped" });
     expect(x.calls).toHaveLength(0);
     expect(await rows()).toMatchObject([{ status: "skipped", source: null }]);
   });
 
+  it("refuses a post that repeats a headline, logs the skip, and sends nothing", async () => {
+    const x = fakeX();
+    await marketauxStory({ title: "US stock markets are closed on Thursday 26 November for Thanksgiving", at: MON - 5 * HOUR });
+    const result = await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl });
+    expect(result).toMatchObject({ ran: true, status: "skipped", key: "calendar:2026-11-26", detail: "refused: repeats a headline" });
+    expect(x.posts()).toHaveLength(0);
+    expect(await rows()).toMatchObject([{ status: "skipped", key: "calendar:2026-11-26", detail: "refused: repeats a headline", text: THANKSGIVING }]);
+    expect(await budgetSpent(MON_DAY)).toBe(0);
+  });
+
   it("holds the X day's cap", async () => {
     const x = fakeX();
-    await marketauxStory();
-    await sql.query(`insert into x_read_budget (day, used) values ('2026-10-05', 50)`);
+    await sql.query(`insert into x_read_budget (day, used) values ($1, 50)`, [MON_DAY]);
     expect(await runAutopost({ now: MON, env: { ...ENV, X_DAILY_POST_CAP: "50" }, fetchImpl: x.fetchImpl })).toMatchObject({
       status: "skipped",
       detail: "X daily cap reached",
@@ -247,18 +268,17 @@ describe("the evening's post", () => {
     expect(x.calls).toHaveLength(0);
   });
 
-  it("never crashes on a dead token: it logs a skip and keeps the story for later", async () => {
+  it("never crashes on a dead token: it logs a skip and keeps the day for later", async () => {
     const x = fakeX({ refreshStatus: 401 });
-    const id = await marketauxStory();
     const result = await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl });
     expect(result).toMatchObject({ ran: true, status: "skipped", detail: expect.stringContaining("token") });
     expect(x.posts()).toHaveLength(0);
-    expect(await rows()).toMatchObject([{ status: "skipped", key: `news:${id}` }]);
-    expect(await budgetSpent("2026-10-05")).toBe(0);
-    // Authorised again: the next evening posts the same story.
+    expect(await rows()).toMatchObject([{ status: "skipped", key: "calendar:2026-11-26" }]);
+    expect(await budgetSpent(MON_DAY)).toBe(0);
+    // Authorised again: the next evening posts the same day.
     await sql.query(`delete from x_oauth_tokens`);
     const fixed = fakeX();
-    expect(await runAutopost({ now: MON + DAY, env: ENV, fetchImpl: fixed.fetchImpl })).toMatchObject({ status: "posted", key: `news:${id}` });
+    expect(await runAutopost({ now: MON + DAY, env: ENV, fetchImpl: fixed.fetchImpl })).toMatchObject({ status: "posted", key: "calendar:2026-11-26" });
   });
 
   it("refreshes once and tries again when X refuses the token", async () => {
@@ -266,7 +286,6 @@ describe("the evening's post", () => {
     const x = fakeX({
       post: () => (++n === 1 ? new Response("{}", { status: 401 }) : new Response(JSON.stringify({ data: { id: "77" } }), { status: 201 })),
     });
-    await marketauxStory();
     expect(await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "posted", tweetId: "77" });
     expect(x.refreshes()).toHaveLength(2);
     expect(x.posts().map((call) => call.auth)).toEqual(["Bearer access-1", "Bearer access-2"]);
@@ -274,7 +293,6 @@ describe("the evening's post", () => {
 
   it("does not refresh and retry after a 401 when the budget is nearly spent", async () => {
     const x = fakeX({ post: () => new Response("{}", { status: 401 }) });
-    await marketauxStory();
     expect(await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl, deadline: Date.now() + 5_000 })).toMatchObject({
       status: "skipped",
       detail: expect.stringContaining("no time left"),
@@ -285,26 +303,23 @@ describe("the evening's post", () => {
 
   it("counts an answer that never came as posted, so it is never sent twice", async () => {
     const x = fakeX({ post: () => Promise.reject(new DOMException("timed out", "TimeoutError")) });
-    const id = await marketauxStory();
     expect(await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "unknown" });
-    expect(await rows()).toMatchObject([{ status: "unknown", key: `news:${id}` }]);
+    expect(await rows()).toMatchObject([{ status: "unknown", key: "calendar:2026-11-26" }]);
     expect(await runAutopost({ now: MON + DAY, env: ENV, fetchImpl: x.fetchImpl })).toEqual({ ran: false, reason: "not due" });
-    expect(await budgetSpent("2026-10-05")).toBe(1);
+    expect(await budgetSpent(MON_DAY)).toBe(1);
   });
 
   it("logs X's refusal, and does not count it as a post", async () => {
     const x = fakeX({ post: () => new Response(JSON.stringify({ title: "Forbidden", detail: "duplicate content" }), { status: 403 }) });
-    await marketauxStory();
     expect(await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "failed", detail: expect.stringContaining("403") });
-    // The refused story is not tried again; the day after has nothing else.
-    expect(await runAutopost({ now: MON + DAY, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "skipped" });
-    expect(x.posts()).toHaveLength(1);
+    // The refused day is not tried again; the day after tries the next one.
+    expect(await runAutopost({ now: MON + DAY, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "failed", key: "calendar:2026-11-27" });
+    expect(x.posts()).toHaveLength(2);
+    expect(await budgetSpent(MON_DAY)).toBe(0);
   });
 
   it("posts at most once a day, however many runs", async () => {
     const x = fakeX();
-    await marketauxStory();
-    await marketauxStory({ symbol: "AAPL", title: "Apple opens a new store in Mumbai this weekend" });
     const results = await Promise.all([1, 2].map(() => runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl })));
     expect(results.filter((result) => result.ran && result.status === "posted")).toHaveLength(1);
     expect(x.posts()).toHaveLength(1);
@@ -359,11 +374,10 @@ describe("the campaign", () => {
   it("takes every other slot and is the call to action between", async () => {
     const x = fakeX();
     await signupCampaign();
-    await marketauxStory({ at: MON + 2 * DAY });
     expect(await runAutopost({ now: MON, env: ENV, fetchImpl: x.fetchImpl })).toMatchObject({ status: "posted", source: "campaign" });
     expect(JSON.parse(x.posts()[0].body).text).toContain("https://www.berthmarkets.com/c/welcome-oct");
     const second = await runAutopost({ now: MON + 3 * DAY, env: ENV, fetchImpl: x.fetchImpl });
-    expect(second).toMatchObject({ status: "posted", source: "news" });
+    expect(second).toMatchObject({ status: "posted", source: "calendar" });
     expect(JSON.parse(x.posts()[1].body).text).toContain("New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC on Base is yours");
     expect(JSON.parse(x.posts()[1].body).text).not.toMatch(/invite/i);
   });
@@ -371,20 +385,19 @@ describe("the campaign", () => {
   it("is checked again at the moment of posting", async () => {
     const x = fakeX();
     await signupCampaign();
-    await marketauxStory();
     // The campaign closes between the draft and the post (here, during the token refresh).
     const closing: FetchLike = async (url, init) => {
       if (url === TOKEN_URL) await sql.query(`update campaigns set active = false`);
       return x.fetchImpl(url, init);
     };
-    expect(await runAutopost({ now: MON, env: ENV, fetchImpl: closing })).toMatchObject({ status: "posted", source: "news" });
+    expect(await runAutopost({ now: MON, env: ENV, fetchImpl: closing })).toMatchObject({ status: "posted", source: "calendar" });
     const text = JSON.parse(x.posts()[0].body).text as string;
     expect(text).not.toContain("/c/");
     expect(text).toContain("See it on Berth.");
   });
 
   it("drafts read only: the preview writes nothing", async () => {
-    await marketauxStory();
+    await marketauxStory({ at: MON - 5 * HOUR });
     const writes: string[] = [];
     setSqlClient({
       query: (text, params) => {
@@ -394,7 +407,7 @@ describe("the campaign", () => {
     });
     try {
       const { choice } = await draftChoice({ now: MON, env: ENV });
-      expect(choice?.draft.source).toBe("news");
+      expect(choice?.draft.source).toBe("calendar");
     } finally {
       setSqlClient(sql);
     }

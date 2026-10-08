@@ -3,6 +3,8 @@ import { loadFirstLook } from "@/lib/server/first-look";
 
 export type { FirstLookResponse } from "@/lib/first-look";
 
+export const FIRST_LOOK_CACHE_CONTROL = "public, s-maxage=5, stale-while-revalidate=5";
+
 /** The first buy's readings (lib/first-look). Public, like the news it is made of. */
 /** `?also=AMZN` adds one stock, for the first stock card when it is none of the examples. */
 export async function GET(request?: Request): Promise<Response> {
@@ -21,9 +23,11 @@ export async function GET(request?: Request): Promise<Response> {
     also = url.searchParams.get("also");
   }
   return Response.json(await loadFirstLook({ also }), {
-    // Short at the edge, so a reading is never much older than its words say. A story
-    // hidden after it was read leaves the first buy within about four minutes at worst:
-    // 120 s fresh plus 60 s stale here, then the browser's 60 s (hooks/use-first-look).
-    headers: { "cache-control": "public, s-maxage=120, stale-while-revalidate=60" },
+    // Seconds at the edge, because a headline here sits a step from Buy: a story hidden
+    // after it was read (stories.hidden_reason, set by hand, so there is no hook to purge
+    // a cache from) leaves the first buy within about twenty seconds at worst: 5 s fresh
+    // plus 5 s stale here, then the browser's next ask within 10 s (hooks/use-first-look).
+    // The read is one query over the week's stories and cached verdicts, never Jev.
+    headers: { "cache-control": FIRST_LOOK_CACHE_CONTROL },
   });
 }

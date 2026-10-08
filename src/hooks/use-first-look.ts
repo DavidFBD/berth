@@ -20,6 +20,16 @@ export const FIRST_LOOK_QUERY_KEY = ["first-look"] as const;
 export const FIRST_LOOK_TIMEOUT_MS = 4_000;
 
 /**
+ * How often an open first look asks again, and how long an answer counts as
+ * fresh: with the edge's ten seconds (app/api/first-look), a headline hidden
+ * by moderation leaves Buy within about twenty, even on a card left open.
+ */
+export const FIRST_LOOK_REFRESH_MS = 10_000;
+
+/** A dev gallery's seeded look (`setQueryDefaults(FIRST_LOOK_QUERY_KEY, { meta: FIRST_LOOK_FIXTURE_META })`): never asked again. */
+export const FIRST_LOOK_FIXTURE_META = { fixture: true } as const;
+
+/**
  * The first look (lib/first-look): what may be said about each listing.
  * `also` adds one stock outside the first buy's examples (the first stock
  * card's); the examples alone share one cached answer.
@@ -40,8 +50,9 @@ export function useFirstLook(also?: string): {
       if (!response.ok) throw new Error(`first look ${response.status}`);
       return (await response.json()) as FirstLookResponse;
     },
-    // Short, so with the edge's three minutes a headline hidden since leaves Buy within about four.
-    staleTime: 60 * 1000,
+    // Short, and asked again while open, so a headline hidden since leaves Buy within seconds.
+    staleTime: (query) => (query.meta?.fixture ? Infinity : FIRST_LOOK_REFRESH_MS),
+    refetchInterval: (query) => (query.meta?.fixture ? false : FIRST_LOOK_REFRESH_MS),
     retry: false,
   });
   return {

@@ -220,7 +220,7 @@ describe("GET /api/first-look", () => {
 
   it("is cached briefly at the edge", async () => {
     expect((await GET(new Request("http://localhost/api/first-look"))).headers.get("cache-control")).toBe(
-      "public, s-maxage=120, stale-while-revalidate=60",
+      "public, s-maxage=5, stale-while-revalidate=5",
     );
   });
 });

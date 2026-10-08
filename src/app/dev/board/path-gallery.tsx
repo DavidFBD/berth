@@ -16,7 +16,7 @@ import { AccountDrawerScreens } from "@/components/account-drawer";
 import { AddMoneyDrawer, WalletAddMoney } from "@/components/account-button";
 import type { ArrivalView } from "@/lib/funding-handoff";
 import { FirstPathProvider, HomePathCard, pathOnScreen, useDoneMoment, type FirstPathValue } from "@/components/first-path";
-import { FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
+import { FIRST_LOOK_FIXTURE_META, FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { FIXTURE_STORIES } from "./first-look-fixture";
 import { buyStepState, firstPath, isPathStep, withSkip, withoutSkip, NUDGES_SAID_BY_PATH, type PathFacts, type PathStep } from "@/lib/first-path";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
@@ -148,6 +148,7 @@ export function PathGallery({ account, at, skipped: skippedParam, drawer: drawer
       hasEmail: account === "email",
       handle: start.usernameSet ? "gosia" : null,
     }));
+    seeded.client.setQueryDefaults(FIRST_LOOK_QUERY_KEY, { meta: FIRST_LOOK_FIXTURE_META });
     seeded.client.setQueryData(FIRST_LOOK_QUERY_KEY, firstLookFixture());
     return seeded;
   });

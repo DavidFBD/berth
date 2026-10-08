@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { COPY } from "@/lib/copy";
-import { STOCK_LISTINGS } from "@/lib/listings";
+import { TOKEN_LISTINGS } from "@/lib/listings";
 import {
   AUTOPOST_EVERY_MS,
   AUTOPOST_SLACK_MS,
@@ -10,16 +10,16 @@ import {
   campaignDraft,
   choosePost,
   composePost,
+  hasCallToAction,
   MAX_POST_LENGTH,
-  milestoneDrafts,
-  newsDrafts,
+  namedListing,
   postLength,
   postProblems,
-  quotableHeadline,
+  postRefusals,
+  quotesHeadline,
   withCampaignCta,
   type Draft,
   type LiveCampaign,
-  type NewsStory,
 } from "@/lib/x-autopost";
 
 const HOUR = 3_600_000;
@@ -79,125 +79,6 @@ describe("the calendar", () => {
   });
 });
 
-function story(id: number, over: Partial<NewsStory> & { title?: string; publisher?: string; symbol?: string; ageH?: number; verdict?: "material" | "fact" | "analysis"; about?: number } = {}): NewsStory {
-  return {
-    id,
-    hidden: over.hidden ?? false,
-    sources: over.sources ?? [
-      {
-        source: "marketaux",
-        publisher: over.publisher ?? "Reuters",
-        title: over.title ?? "NVIDIA opens a new research centre in Taipei",
-        url: `https://www.reuters.com/a/${id}`,
-        publishedAt: MON - (over.ageH ?? 5) * HOUR,
-      },
-    ],
-    verdicts: over.verdicts ?? [{ symbol: over.symbol ?? "NVDA", verdict: over.verdict ?? "material", about: over.about ?? 0.95, kept: true }],
-  };
-}
-
-describe("a headline to quote", () => {
-  it("is quoted verbatim, the publisher's own suffix taken off", () => {
-    expect(quotableHeadline("NVIDIA opens a new research centre in Taipei - Reuters", "NVDA", "Reuters")).toBe(
-      "NVIDIA opens a new research centre in Taipei",
-    );
-  });
-
-  it.each([
-    ["a price move", "NVIDIA shares surge after record quarter"],
-    ["a percentage", "NVIDIA lifts its dividend by 50%"],
-    ["a dollar figure", "NVIDIA wins a $2 billion contract with the Army"],
-    ["a ticker", "NVDA opens a new research centre in Taipei"],
-    ["an exchange prefix", "NVIDIA Corp (NASDAQ: NVDA) opens a research centre"],
-    ["a dash as punctuation", "NVIDIA opens a centre in Taipei - and hires 500"],
-    ["an em dash", "NVIDIA opens a centre in Taipei—and hires 500"],
-    ["a rating", "Analysts upgrade NVIDIA ahead of its developer conference"],
-    ["a prediction", "Where will NVIDIA be in five years? A forecast"],
-    ["advice", "Is NVIDIA a buy right now after its developer conference?"],
-    ["an emoji", "NVIDIA opens a new research centre in Taipei \u{1F680}"],
-    ["inner quotes", 'NVIDIA chief calls Taipei centre "a new home"'],
-    ["a handle", "NVIDIA opens a new research centre with @foxconn"],
-    ["too short", "NVIDIA news"],
-    ["another class's ticker", "Alphabet's GOOG launches a satellite prototype on a SpaceX mission"],
-    ["another listing's ticker", "NVIDIA and TSLA sign a chip supply agreement for robots"],
-    ["a bare web address", "Amazon.com announces a new warehouse in Ohio for next year"],
-    ["a relayed prediction", "Elon Musk says Tesla will be worth more than Apple and Microsoft combined"],
-    ["talk of the stock", "Tesla's delivery beat offers something the stock has been missing"],
-  ])("refuses %s", (_why, title) => {
-    expect(quotableHeadline(title, "NVDA", "Reuters")).toBeNull();
-  });
-});
-
-it("quotes a company that goes by its letters", () => {
-  expect(quotableHeadline("AMD unveils its next data centre chip in San Francisco", "AMD", "Reuters")).toBe(
-    "AMD unveils its next data centre chip in San Francisco",
-  );
-});
-
-describe("news drafts", () => {
-  it("quotes a Marketaux headline about a listed company and links to it on Berth", () => {
-    const [draft] = newsDrafts({ stories: [story(1)], now: MON, marketauxVisible: true });
-    expect(draft).toMatchObject({ source: "news", key: "news:1", symbol: "NVDA", url: "https://www.berthmarkets.com" });
-    expect(composePost(draft)).toBe(
-      "NVIDIA in the news. Reuters reports: “NVIDIA opens a new research centre in Taipei” See it on Berth. https://www.berthmarkets.com",
-    );
-  });
-
-  it("is nothing when the public may not see Marketaux", () => {
-    expect(newsDrafts({ stories: [story(1)], now: MON, marketauxVisible: false })).toEqual([]);
-  });
-
-  it("reads only Marketaux, only the window, only kept readings that report something about a company", () => {
-    const nasdaqOnly = story(2, {
-      sources: [{ source: "nasdaq", publisher: "Nasdaq", title: "NVIDIA opens a new research centre in Taipei", url: "u", publishedAt: MON - HOUR }],
-    });
-    const old = story(3, { ageH: 80 });
-    const analysis = story(4, { verdict: "analysis" });
-    const vague = story(5, { about: 0.5 });
-    const fund = story(6, { symbol: "SPY", title: "S&P 500 ETF sees record inflows this week" });
-    const hidden = story(7, { hidden: true });
-    const notKept = story(8, { verdicts: [{ symbol: "NVDA", verdict: "material", about: 1, kept: false }] });
-    expect(newsDrafts({ stories: [nasdaqOnly, old, analysis, vague, fund, hidden, notKept], now: MON, marketauxVisible: true })).toEqual([]);
-  });
-
-  it("never quotes a publisher known only by its web address, which X would turn into a second link", () => {
-    const stories = [story(1, { publisher: "foxbusiness.com" }), story(2, { publisher: "Reuters", about: 0.85, title: "Tesla names a new chief financial officer today", symbol: "TSLA" })];
-    expect(newsDrafts({ stories, now: MON, marketauxVisible: true }).map((d) => d.key)).toEqual(["news:2"]);
-  });
-
-  it("ranks material over fact, then how surely it is about the company, then the newest; a company posted this week goes last", () => {
-    const stories = [
-      story(1, { verdict: "fact", title: "Apple opens a new store in Mumbai this weekend", symbol: "AAPL", publisher: "Bloomberg" }),
-      story(2, { verdict: "material", about: 0.85, title: "Tesla names a new chief financial officer today", symbol: "TSLA" }),
-      story(3, { verdict: "material", about: 0.99 }),
-    ];
-    expect(newsDrafts({ stories, now: MON, marketauxVisible: true }).map((d) => d.key)).toEqual(["news:3", "news:2", "news:1"]);
-    expect(newsDrafts({ stories, now: MON, marketauxVisible: true, recentSymbols: new Set(["NVDA"]) }).map((d) => d.key)).toEqual([
-      "news:2",
-      "news:1",
-      "news:3",
-    ]);
-  });
-});
-
-describe("milestones", () => {
-  it("posts only the published top row, as the board says it", () => {
-    const drafts = milestoneDrafts({
-      mostHeld: { rows: [{ symbol: "NVDA", oneIn: 4 }], week: "2026-10-19" },
-      mostBought: { rows: [{ symbol: "TSLA", people: 15, plus: true }], days: 7, week: "2026-10-12" },
-    });
-    expect(drafts.map((draft) => [draft.key, draft.body])).toEqual([
-      ["most_held:2026-10-19", "Most held on Berth, the week of 19 October: NVIDIA, held by 1 in 4 people who own a stock or fund on Berth."],
-      ["most_bought:2026-10-12", "Most bought on Berth, the week of 12 October: Tesla, bought by 15+ people."],
-    ]);
-  });
-
-  it("is nothing before a week is published or when the board shows nothing", () => {
-    expect(milestoneDrafts({ mostHeld: null, mostBought: null })).toEqual([]);
-    expect(milestoneDrafts({ mostHeld: { rows: [], week: "2026-10-19" }, mostBought: { rows: [], days: 7, week: "2026-10-12" } })).toEqual([]);
-  });
-});
-
 const CAMPAIGN: LiveCampaign = { code: "welcome-oct", amountUsd: 5, stayDays: 7, placesLeft: 18, endsAt: new Date("2026-11-01T04:00:00Z") };
 
 describe("the campaign", () => {
@@ -209,6 +90,7 @@ describe("the campaign", () => {
     expect(text).not.toMatch(/invite/i);
     expect(text).not.toMatch(/\b(buy|bought|hold|trade)\b/i);
     expect(postProblems(text)).toEqual([]);
+    expect(postRefusals(text)).toEqual([]);
   });
 
   it("leaves out places and the end when they are not known", () => {
@@ -218,64 +100,130 @@ describe("the campaign", () => {
   });
 });
 
-const NEWS = newsDrafts({ stories: [story(1)], now: MON, marketauxVisible: true });
 const HOLIDAY = calendarDrafts(Date.parse("2026-11-23T22:00:00Z"));
-const MILESTONE = milestoneDrafts({ mostHeld: { rows: [{ symbol: "NVDA", oneIn: 4 }], week: "2026-10-19" } });
 
-it("never links a headline, a calendar day or a milestone to a listing, which opens the buy drawer", () => {
-  for (const draft of [...NEWS, ...HOLIDAY, ...MILESTONE]) {
+it("never links a calendar day to a listing, which opens the buy drawer", () => {
+  for (const draft of HOLIDAY) {
     expect(draft.url).toBe("https://www.berthmarkets.com");
     expect(draft.cta).toBe("See it on Berth.");
   }
-  const promoted = withCampaignCta(NEWS[0], CAMPAIGN);
+  const promoted = withCampaignCta(HOLIDAY[0], CAMPAIGN);
   expect(promoted.url).not.toContain("?open=");
 });
 
 describe("choosing the day's post", () => {
-  const base = { campaign: null, calendar: [] as Draft[], news: [] as Draft[], milestones: [] as Draft[], used: new Set<string>(), lastSource: null, now: MON };
+  const base = { campaign: null, calendar: [] as Draft[], used: new Set<string>(), lastSource: null, now: MON };
 
-  it("prefers the calendar, then news, then a milestone", () => {
-    expect(choosePost({ ...base, calendar: HOLIDAY, news: NEWS, milestones: MILESTONE })?.draft.source).toBe("calendar");
-    expect(choosePost({ ...base, news: NEWS, milestones: MILESTONE })?.draft.source).toBe("news");
-    expect(choosePost({ ...base, milestones: MILESTONE })?.draft.source).toBe("milestone");
+  it("posts the calendar, and nothing on a day without one", () => {
+    expect(choosePost({ ...base, calendar: HOLIDAY })?.draft.source).toBe("calendar");
     expect(choosePost(base)).toBeNull();
   });
 
-  it("never posts the same story, holiday or week twice", () => {
-    const used = new Set(["calendar:2026-11-26", "calendar:2026-11-27", "news:1"]);
-    expect(choosePost({ ...base, calendar: HOLIDAY, news: NEWS, milestones: MILESTONE, used })?.draft.key).toBe("most_held:2026-10-19");
+  it("never posts the same holiday twice", () => {
+    expect(choosePost({ ...base, calendar: HOLIDAY, used: new Set(["calendar:2026-11-26"]) })?.draft.key).toBe("calendar:2026-11-27");
+    expect(choosePost({ ...base, calendar: HOLIDAY, used: new Set(["calendar:2026-11-26", "calendar:2026-11-27"]) })).toBeNull();
   });
 
   it("lets a live campaign take the slot, but never two in a row", () => {
-    const first = choosePost({ ...base, campaign: CAMPAIGN, news: NEWS });
+    const first = choosePost({ ...base, campaign: CAMPAIGN, calendar: HOLIDAY });
     expect(first?.draft.source).toBe("campaign");
     expect(first?.campaignCode).toBe("welcome-oct");
-    const second = choosePost({ ...base, campaign: CAMPAIGN, news: NEWS, lastSource: "campaign" });
-    expect(second?.draft.source).toBe("news");
+    const second = choosePost({ ...base, campaign: CAMPAIGN, calendar: HOLIDAY, lastSource: "campaign" });
+    expect(second?.draft.source).toBe("calendar");
     expect(choosePost({ ...base, campaign: CAMPAIGN, lastSource: "campaign" })).toBeNull();
   });
 
-  it("gives a news or calendar post the campaign as its call to action when it fits, and never a milestone", () => {
-    const news = choosePost({ ...base, campaign: CAMPAIGN, news: NEWS, lastSource: "campaign" })!;
-    expect(news.campaignCode).toBe("welcome-oct");
-    expect(news.text).toBe(
-      "NVIDIA in the news. Reuters reports: “NVIDIA opens a new research centre in Taipei” New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC on Base is yours, while places last. https://www.berthmarkets.com/c/welcome-oct",
+  it("gives a calendar post the campaign as its call to action when it fits", () => {
+    const chosen = choosePost({ ...base, campaign: CAMPAIGN, calendar: HOLIDAY, lastSource: "campaign" })!;
+    expect(chosen.campaignCode).toBe("welcome-oct");
+    expect(chosen.text).toBe(
+      "US stock markets are closed on Thursday 26 November for Thanksgiving. Trading resumes on Friday 27 November. New here? Join through this link, set up and still use Berth 7 days later, and $5 in USDC on Base is yours, while places last. https://www.berthmarkets.com/c/welcome-oct",
     );
-    const milestone = choosePost({ ...base, campaign: CAMPAIGN, milestones: MILESTONE, lastSource: "campaign" })!;
-    expect(milestone.campaignCode).toBeNull();
-    expect(milestone.text).toContain("See it on Berth.");
   });
 
   it("falls back to its own call to action when the campaign's would not fit", () => {
-    const long = { ...NEWS[0], body: `NVIDIA in the news. Reuters reports: “${"x".repeat(150)}”` };
-    const chosen = choosePost({ ...base, campaign: CAMPAIGN, news: [long], lastSource: "campaign" })!;
+    const long = { ...HOLIDAY[0], body: "x".repeat(150) };
+    const chosen = choosePost({ ...base, campaign: CAMPAIGN, calendar: [long], lastSource: "campaign" })!;
     expect(chosen.campaignCode).toBeNull();
     expect(chosen.text).toContain("See it on Berth.");
   });
 
   it("skips a draft that breaks a rule rather than post it", () => {
-    const tooLong = { ...NEWS[0], key: "news:9", body: "y".repeat(300) };
-    expect(choosePost({ ...base, news: [tooLong, ...NEWS] })?.draft.key).toBe("news:1");
+    const tooLong = { ...HOLIDAY[0], key: "calendar:x", body: "y".repeat(300) };
+    expect(choosePost({ ...base, calendar: [tooLong, ...HOLIDAY] })?.draft.key).toBe("calendar:2026-11-26");
+  });
+});
+
+describe("the guard", () => {
+  const LINK = "https://www.berthmarkets.com";
+
+  it("finds a listing by its ticker, its name, its short name or its issuer, in any case but a ticker's", () => {
+    expect(namedListing("NVIDIA opened a lab")).toBe("NVIDIA");
+    expect(namedListing("nvidia opened a lab")).toBe("nvidia");
+    expect(namedListing("Watch $NVDA today")).toBe("NVDA");
+    expect(namedListing("AAPL and friends")).toBe("AAPL");
+    expect(namedListing("Micron Technology reports")).toMatch(/micron/i);
+    expect(namedListing("The S&P 500 ETF")).toBe("S&P 500 ETF");
+    expect(namedListing("US stock markets are closed on Thursday 26 November for Thanksgiving.")).toBeNull();
+    expect(namedListing("a story at https://example.com/NVDA")).toBeNull();
+    for (const listing of TOKEN_LISTINGS) {
+      expect(namedListing(`A post about ${listing.name} today.`), listing.symbol).not.toBeNull();
+      expect(namedListing(`A post about ${listing.symbol} today.`), listing.symbol).not.toBeNull();
+    }
+  });
+
+  it("knows a call to action, Berth's own and the usual ones", () => {
+    for (const line of ["See it on Berth.", "How it works:", "Join through this link", "Sign up now", "Learn more", "Tap to open", "Trade it on Berth"]) {
+      expect(hasCallToAction(line), line).toBe(true);
+    }
+    expect(hasCallToAction("NVIDIA was in the news today.")).toBe(false);
+    expect(hasCallToAction("US stock markets close early on Friday 27 November, at 1pm New York time.")).toBe(false);
+  });
+
+  it("refuses a listing beside a link or a call to action, however it is written", () => {
+    expect(postRefusals(`NVIDIA in the news. See it on Berth. ${LINK}`)).toEqual(["names NVIDIA beside a link or call to action"]);
+    expect(postRefusals(`Apple opens a store. ${LINK}`)).toEqual(["names Apple beside a link or call to action"]);
+    expect(postRefusals("Tesla was in the news today. See it on Berth.")).toEqual(["names Tesla beside a link or call to action"]);
+    expect(postRefusals("Read about TSLA at berthmarkets.com")).toEqual(["names TSLA beside a link or call to action"]);
+    expect(postRefusals("Most held on Berth this week: SpaceX. Join through this link")).toHaveLength(1);
+  });
+
+  it("lets a listing alone or a link alone through", () => {
+    expect(postRefusals("NVIDIA was in the news today.")).toEqual([]);
+    expect(postRefusals(`US stock markets close early on Friday 27 November, at 1pm New York time. See it on Berth. ${LINK}`)).toEqual([]);
+  });
+
+  it("refuses the 6 October post as it went out", () => {
+    const sent =
+      "Meta Platforms in the news. GuruFocus reports: “Meta Platforms Expands AI Infrastructure With New Data Center Deal” See it on Berth. https://www.berthmarkets.com";
+    const refusals = postRefusals(sent, ["Meta Platforms Expands AI Infrastructure With New Data Center Deal"]);
+    expect(refusals).toContain("names Meta Platforms beside a link or call to action");
+    expect(refusals).toContain("quotes something");
+    expect(refusals).toContain("repeats a headline");
+  });
+
+  it("refuses a headline repeated word for word, whole or seven words in a row, whatever the case or punctuation", () => {
+    const headline = "NVIDIA opens a new research centre in Taipei - Reuters";
+    expect(quotesHeadline("NVIDIA opens a new research centre in Taipei - Reuters", [headline])).toBe(true);
+    expect(quotesHeadline("nvidia OPENS a new, research centre in taipei!", [headline])).toBe(true);
+    expect(quotesHeadline("Today: opens a new research centre in Taipei.", [headline])).toBe(true);
+    expect(quotesHeadline("NVIDIA opens a centre", [headline])).toBe(false);
+    expect(quotesHeadline("Fed holds rates", ["Fed holds rates"])).toBe(false);
+    expect(quotesHeadline("Markets shut for the day", ["Markets shut for the day"])).toBe(true);
+    expect(postRefusals("Fed holds rates steady as markets wait for jobs data", ["Fed holds rates steady as markets wait for jobs data"])).toEqual([
+      "repeats a headline",
+    ]);
+  });
+
+  it("passes every template Berth drafts today", () => {
+    const posts = [
+      ...calendarDrafts(Date.parse("2026-11-23T22:00:00Z")),
+      ...calendarDrafts(Date.parse("2026-12-21T22:00:00Z")),
+      ...calendarDrafts(Date.parse("2026-06-29T22:00:00Z")),
+    ].flatMap((draft) => [composePost(draft), composePost(withCampaignCta(draft, CAMPAIGN))]);
+    posts.push(composePost(campaignDraft(CAMPAIGN, MON)));
+    expect(posts.length).toBeGreaterThan(4);
+    for (const post of posts) expect(postRefusals(post), post).toEqual([]);
   });
 });
 
@@ -301,37 +249,29 @@ describe("length and the copy rules", () => {
   });
 
   it("keeps every template within the rules at its longest", () => {
-    const longestName = [...STOCK_LISTINGS].sort((a, b) => b.name.length - a.name.length)[0];
     const longestHoliday = "Martin Luther King Jr. Day";
     const longestDay = "Wednesday 30 September";
     const t = COPY.xAutopost;
     const posts = [
       composePost({ body: t.holiday(longestDay, longestHoliday, longestDay), cta: t.seeIt, url: "https://www.berthmarkets.com" }),
       composePost({ body: t.halfDay(longestDay), cta: t.seeIt, url: "https://www.berthmarkets.com" }),
-      composePost({ body: t.mostHeld("30 September", longestName.name, 20), cta: t.seeIt, url: "https://www.berthmarkets.com" }),
-      composePost({ body: t.mostBought("30 September", longestName.name, 1000, true), cta: t.seeIt, url: "https://www.berthmarkets.com" }),
       composePost(campaignDraft({ code: "a".repeat(32), amountUsd: 12.5, stayDays: 90, placesLeft: 1000, endsAt: new Date("2026-09-30T12:00:00Z") }, MON)),
       composePost(withCampaignCta(HOLIDAY[0], { ...CAMPAIGN, amountUsd: 12.5, stayDays: 90 })),
     ];
     for (const post of posts) {
       expect(postProblems(post), post).toEqual([]);
+      expect(postRefusals(post), post).toEqual([]);
       expect(postLength(post)).toBeLessThanOrEqual(MAX_POST_LENGTH);
     }
   });
 
-  it("leaves a news post room for a headline of at least 140 characters with the longest name", () => {
-    const longestName = [...STOCK_LISTINGS].sort((a, b) => b.name.length - a.name.length)[0].name;
+  it("never says buy, sell, advice or a prediction in its own words, and never names a listing", () => {
     const t = COPY.xAutopost;
-    const post = composePost({ body: t.news(longestName, "The Wall Street Journal", "h".repeat(140)), cta: t.seeIt, url: "https://www.berthmarkets.com" });
-    expect(postLength(post)).toBeLessThanOrEqual(MAX_POST_LENGTH);
-  });
-
-  it("never says buy, sell, advice or a prediction in its own words", () => {
-    const t = COPY.xAutopost;
-    const own = [t.holiday("d", "n", "r"), t.halfDay("d"), t.news("N", "P", ""), t.mostHeld("w", "N", 2), t.mostBought("w", "N", 3, false), t.seeIt, t.campaignCta("$5", 7), t.campaignLink, t.campaign("$5", 7, 3, "1 May")];
+    const own = [t.holiday("d", "n", "r"), t.halfDay("d"), t.seeIt, t.campaignCta("$5", 7), t.campaignLink, t.campaign("$5", 7, 3, "1 May")];
     for (const line of own) {
       expect(line).not.toMatch(/\b(buy|sell|invest|advice|will rise|target|guarantee)\b/i);
       expect(line).not.toMatch(/\s-\s|[–—]/);
+      expect(namedListing(line), line).toBeNull();
     }
   });
 });

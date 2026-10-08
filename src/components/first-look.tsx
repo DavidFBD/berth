@@ -17,7 +17,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * The first look at one stock (lib/first-look): whether it is in the recent
- * news, with the one headline that says so (title, publisher, time), a large
+ * news, with the one headline that says so (a visible News label, title,
+ * publisher, time, then "News to read, not advice." straight under it, so
+ * beside Buy it reads as news and never as a recommendation), a large
  * move in code's numbers, and a way to the news drawer, where the column's
  * own rules apply. The headline opens the drawer on itself, never the
  * article: the link out lives in the drawer, one step from Buy. Jev decided
@@ -74,15 +76,16 @@ export function FirstLookReadingView({
           story={story}
           onOpen={drawer ? () => onReadNews(story) : undefined}
           describedBy={opensId}
+          label={words.newsLabel}
           byline={copy.newsByline(story.publisher, formatTimeAgo(story.publishedAt))}
         />
       )}
+      {inNews && <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{words.newsNote}</p>}
       {movePct !== undefined && (
         <p className={cn(inNews && "mt-2.5")}>
           {words.move(name, movePct >= 0 ? "rose" : "fell", `${Math.abs(movePct).toFixed(1)}%`)}
         </p>
       )}
-      {inNews && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{words.newsNote}</p>}
       {drawer && (
         <span id={opensId} className="sr-only">
           {words.opensPanel}
@@ -118,23 +121,28 @@ const QUIET_ACTION =
   "inline-flex min-h-9 items-center gap-1.5 rounded-full px-1 text-[13.5px] text-secondary-foreground outline-none transition-colors duration-150 ease-lift hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
 
 /**
- * The one headline, compact: title (two lines at most), then publisher and
- * time. A button into the news drawer, never a link out, so it carries no
- * arrow; without a drawer it is plain text.
+ * The one headline, compact: the News label, the title (two lines at most),
+ * then publisher and time. A button into the news drawer, never a link out,
+ * so it carries no arrow; without a drawer it is plain text.
  */
 function InlineHeadline({
   story,
   onOpen,
   describedBy,
+  label,
   byline,
 }: {
   story: StoryCard;
   onOpen?: () => void;
   describedBy: string;
+  label: string;
   byline: string;
 }) {
   const body = (
     <>
+      <span className="mb-1 flex w-fit items-center rounded-full border border-border px-2 py-px text-[11px] leading-4 font-medium tracking-[0.02em] text-muted-foreground">
+        {label}
+      </span>
       <span className="line-clamp-2 text-[13.5px] leading-snug font-medium text-foreground">{story.title}</span>
       <span className="mt-0.5 block text-xs text-muted-foreground">{byline}</span>
     </>

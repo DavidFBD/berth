@@ -65,6 +65,20 @@ describe("FirstLookReadingView", () => {
     expect(html).toContain("Opens the news panel in Berth");
   });
 
+  it("marks the headline as news, with its source and time and the not advice line straight under it, before any move", () => {
+    const html = view({ listing: nvidia, look: { kind: "shown", look: { looked: true, inNews: true, movePct: 4, story: storyAbout("NVDA") } }, onReadNews: noop });
+    const at = (text: string) => html.indexOf(text);
+    expect(html).toMatch(/>News<\/span>/);
+    expect(at(">News</span>")).toBeLessThan(at("Nvidia agrees to supply chips"));
+    expect(at("Nvidia agrees to supply chips")).toBeLessThan(at("Reuters, 2 hours ago"));
+    expect(at("Reuters, 2 hours ago")).toBeLessThan(at("News to read, not advice."));
+    expect(at("News to read, not advice.")).toBeLessThan(at("NVIDIA rose 4.0%"));
+    // Without a drawer the headline is plain text, and still labelled.
+    const plain = view({ listing: nvidia, look: { kind: "shown", look: { looked: true, inNews: true, story: storyAbout("NVDA") } } });
+    expect(plain).toMatch(/>News<\/span>/);
+    expect(plain).toContain("News to read, not advice.");
+  });
+
   it("says the week's news, never today, when what passed is older than today", () => {
     const html = view({
       listing: nvidia,
