@@ -2,6 +2,7 @@ import { erc20Abi, parseUnits, type Address } from "viem";
 import { NOT_NO_XP } from "@/lib/server/no-xp";
 import { getSql } from "@/lib/server/db";
 import { awardXp } from "@/lib/server/accounts";
+import { accountEvmAddresses } from "@/lib/server/identities";
 import { getSodax } from "@/lib/server/pour-verify";
 import { readRobinhoodTokenBalances, type RobinhoodBalanceReader } from "@/lib/server/robinhood-balances";
 import { TOKEN_LISTINGS } from "@/lib/listings";
@@ -123,6 +124,8 @@ export type HoldCandidate = {
   orderId: string;
   intentTx: string;
   userId: string;
+  /** The owning account's users.wallet_address, for its linked wallets (Robinhood Chain rows). */
+  userWallet?: string | null;
   /** The listing's Sonic address, whichever chain it is held on (orders.listing_address). */
   listingAddress: string;
   /** Where the buy was delivered, so where its balance is read. */
@@ -186,6 +189,7 @@ type CandidateRow = {
   id: string;
   intent_tx: string;
   user_id: string;
+  user_wallet: string | null;
   listing_address: string;
   holding_chain: HoldingChain;
   delivered_to: string;
@@ -228,15 +232,17 @@ export function holdScope(): HoldScope {
  * the least recently attempted, each oldest first, so a row whose read
  * always fails cannot starve the ones behind it.
  */
-export const CANDIDATES_SQL = `select o.id, o.intent_tx, u.id as user_id,
+export const CANDIDATES_SQL = `select o.id, o.intent_tx, u.id as user_id, u.wallet_address as user_wallet,
        o.listing_address, ${CHAIN_OF("o")} as holding_chain, o.delivered_to, o.quantity::text as quantity,
        (select coalesce(sum(p.quantity), 0)::text
           from orders p
          where p.direction = 'buy'
            and p.hold_outcome = 'paid'
            and lower(p.listing_address) = lower(o.listing_address)
-           and p.delivered_to = o.delivered_to
            and ${CHAIN_OF("p")} = ${CHAIN_OF("o")}
+           -- On the hub, per delivery wallet; on Robinhood Chain, across the
+           -- account's wallets there (ROBINHOOD_ACCOUNT_WIDE, rh-server m2).
+           and (p.delivered_to = o.delivered_to or ${CHAIN_OF("o")} = 'robinhood')
            and (p.user_id = u.id
                 or (p.user_id is null and p.wallet_address = u.wallet_address))
        ) as paid_before,
@@ -265,6 +271,7 @@ export async function holdCandidates(
     orderId: row.id,
     intentTx: row.intent_tx,
     userId: row.user_id,
+    userWallet: row.user_wallet,
     listingAddress: row.listing_address,
     holdingChain: row.holding_chain === "robinhood" ? "robinhood" : "sonic",
     deliveredTo: row.delivered_to,
@@ -351,6 +358,26 @@ export function deliveredBalancesReader(
 /** Every delivered balance, each on its own chain. */
 export const readDeliveredBalances: BalanceReader = deliveredBalancesReader();
 
+/**
+ * ROBINHOOD_ACCOUNT_WIDE (rh-server m2). On Robinhood Chain the token is a
+ * plain ERC-20 in the person's own wallets, and one transfer moves it
+ * between them, so judging each delivery wallet on its own could pay two
+ * buys off one holding moved from wallet to wallet between their checks.
+ * A Robinhood Chain buy is therefore judged against the account's whole
+ * holding there: the listing's balance summed over every EVM wallet on the
+ * account (and the delivery wallet), against every Robinhood Chain buy of
+ * that listing the account was already paid for, whichever wallet it went
+ * to. Moving tokens between the account's wallets changes nothing; moving
+ * them out of the account forfeits, as selling does. Chosen over reading
+ * each wallet's Transfer logs since the fill: it needs no log scan over a
+ * month of blocks (three or more eth_getLogs spans per wallet on the
+ * public RPC) and has no window to game.
+ */
+export type AccountWallets = (userId: string, usersWallet: string | null) => Promise<string[]>;
+
+const accountWallets: AccountWallets = async (userId, usersWallet) =>
+  (await accountEvmAddresses(userId, usersWallet, { failClosed: true })).all;
+
 export type HoldRunSummary = {
   /** Candidates looked at this run. */
   checked: number;
@@ -386,12 +413,15 @@ const STAMP_SQL = `update orders o
 export async function runHoldCheck({
   now = new Date(),
   readBalances = readDeliveredBalances,
+  walletsOf = accountWallets,
   limit = HOLD_BATCH_LIMIT,
   scope = holdScope(),
   deadline = Number.POSITIVE_INFINITY,
 }: {
   now?: Date;
   readBalances?: BalanceReader;
+  /** The account's EVM wallets, where its Robinhood Chain holding is summed (ROBINHOOD_ACCOUNT_WIDE). */
+  walletsOf?: AccountWallets;
   limit?: number;
   scope?: HoldScope;
   /**
@@ -427,13 +457,40 @@ export async function runHoldCheck({
     }
   };
 
-  // One read per (listing, wallet), however many buys share it.
+  // Where each candidate's holding is read: its delivery wallet on the
+  // hub; on Robinhood Chain every wallet on the account (ROBINHOOD_ACCOUNT_WIDE).
+  const holdersOf = new Map<string, string[] | null>();
+  for (const candidate of candidates) {
+    if (candidate.holdingChain !== "robinhood" || holdersOf.has(candidate.userId)) continue;
+    let wallets: string[] | null;
+    try {
+      wallets = (await walletsOf(candidate.userId, candidate.userWallet ?? null)).map((wallet) => wallet.toLowerCase());
+    } catch (error) {
+      console.warn("[holds] account wallets unread, its Robinhood Chain buys retried", error instanceof Error ? error.message : error);
+      wallets = null;
+    }
+    holdersOf.set(candidate.userId, wallets);
+  }
+  const holders = (candidate: HoldCandidate): string[] | null => {
+    if (candidate.holdingChain !== "robinhood") return [candidate.deliveredTo.toLowerCase()];
+    const wallets = holdersOf.get(candidate.userId);
+    return wallets ? [...new Set([candidate.deliveredTo.toLowerCase(), ...wallets])] : null;
+  };
+  /** The group a buy is judged in: per delivery wallet on the hub, per account on Robinhood Chain. */
+  const groupKey = (candidate: HoldCandidate) =>
+    candidate.holdingChain === "robinhood"
+      ? `${candidate.userId}|robinhood|${candidate.listingAddress.toLowerCase()}`
+      : `${candidate.userId}|${balanceKey(candidate.listingAddress, candidate.deliveredTo, candidate.holdingChain)}`;
+
+  // One read per (listing, wallet, chain), however many buys share it.
   const queries = [
     ...new Map(
-      candidates.map((candidate) => [
-        balanceKey(candidate.listingAddress, candidate.deliveredTo, candidate.holdingChain),
-        { holder: candidate.deliveredTo, listing: candidate.listingAddress, chain: candidate.holdingChain },
-      ]),
+      candidates.flatMap((candidate) =>
+        (holders(candidate) ?? []).map((holder) => [
+          balanceKey(candidate.listingAddress, holder, candidate.holdingChain),
+          { holder, listing: candidate.listingAddress, chain: candidate.holdingChain },
+        ] as const),
+      ),
     ).values(),
   ];
   const balances = new Map<string, bigint | null>();
@@ -452,12 +509,25 @@ export async function runHoldCheck({
     await markAttempted();
     return summary;
   }
+  /** The candidate's holding: its wallet's balance, or the account's sum on Robinhood Chain; null when any part is unknown. */
+  const holdingOf = (candidate: HoldCandidate): bigint | null => {
+    const wallets = holders(candidate);
+    if (!wallets) return null;
+    let sum = 0n;
+    for (const holder of wallets) {
+      const balance = balances.get(balanceKey(candidate.listingAddress, holder, candidate.holdingChain));
+      if (balance === null || balance === undefined) return null;
+      sum += balance;
+    }
+    return sum;
+  };
 
   // Cumulative accounting: one account's buys of one listing at one wallet
-  // are judged together, oldest first, each paid one raising the bar.
+  // (on Robinhood Chain, across its wallets) are judged together, oldest
+  // first, each paid one raising the bar.
   const groups = new Map<string, HoldCandidate[]>();
   for (const candidate of candidates) {
-    const key = `${candidate.userId}|${balanceKey(candidate.listingAddress, candidate.deliveredTo, candidate.holdingChain)}`;
+    const key = groupKey(candidate);
     const group = groups.get(key);
     if (group) group.push(candidate);
     else groups.set(key, [candidate]);
@@ -470,8 +540,7 @@ export async function runHoldCheck({
         a.effectiveAt.getTime() - b.effectiveAt.getTime() ||
         (a.orderId < b.orderId ? -1 : a.orderId > b.orderId ? 1 : 0),
     );
-    const balance =
-      balances.get(balanceKey(group[0].listingAddress, group[0].deliveredTo, group[0].holdingChain)) ?? null;
+    const balance = holdingOf(group[0]);
     let alreadyPaid = toRaw(group[0].paidBefore);
 
     for (const candidate of group) {
