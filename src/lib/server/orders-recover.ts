@@ -94,6 +94,12 @@ export type RecoveryDeps = {
   fetchIntents: (address: string) => Promise<IntentResponse[]>;
   /** The address's hub wallet, lowercased, or null: on the home chain for EVM, on its own chain otherwise. */
   hubOf: (address: string, family: WalletFamily) => Promise<string | null>;
+  /**
+   * An EVM address's hub wallet derived on Robinhood Chain, lowercased, or
+   * null: the creator of a sell from the person's wallet there (plan P3a),
+   * under which SODAX's backend files that intent. Absent reads none.
+   */
+  robinhoodHubOf?: (address: string) => Promise<string | null>;
   /** The pour route's own check of the intent and its owner. */
   verify: typeof verifyPourTx;
   /** Whether `fillTx` fills `intent` whole on chain, and when. */
@@ -136,6 +142,11 @@ export function defaultRecoveryDeps(): RecoveryDeps {
     hubOf: (address, family) =>
       sodax.hubProvider
         .getUserHubWalletAddress(sdkAddress(HUB_CHAIN_OF[family], address), HUB_CHAIN_OF[family])
+        .then((wallet) => wallet.toLowerCase())
+        .catch(() => null),
+    robinhoodHubOf: (address) =>
+      sodax.hubProvider
+        .getUserHubWalletAddress(sdkAddress(ChainKeys.ROBINHOOD_MAINNET, address), ChainKeys.ROBINHOOD_MAINNET)
         .then((wallet) => wallet.toLowerCase())
         .catch(() => null),
     verify: verifyPourTx,
@@ -236,10 +247,15 @@ export async function recoverAccountOrders(
   const wallets = await accountOwnedWallets(account.id, account.wallet_address);
   const distinct = [...new Map(wallets.map((wallet) => [`${wallet.family}:${wallet.address}`, wallet])).values()];
   const hubs = await Promise.all(distinct.map((wallet) => deps.hubOf(wallet.address, wallet.family)));
+  // And each EVM address's hub wallet on Robinhood Chain, which creates a
+  // sell from the person's own wallet there (plan P3a, rh-money m3).
+  const evm = distinct.filter((wallet) => wallet.family === "evm").map((wallet) => wallet.address);
+  const robinhoodHubs = deps.robinhoodHubOf ? await Promise.all(evm.map((address) => deps.robinhoodHubOf!(address))) : [];
   const addresses = [
     ...new Set([
-      ...distinct.filter((wallet) => wallet.family === "evm").map((wallet) => wallet.address),
+      ...evm,
       ...hubs.filter((hub): hub is string => !!hub),
+      ...robinhoodHubs.filter((hub): hub is string => !!hub),
     ]),
   ];
   report.addresses = addresses.length;

@@ -189,6 +189,17 @@ describe("recovering orders", () => {
     expect(rows[0].n).toBe(1);
   });
 
+  it("also reads the intents filed under the account's hub wallet on Robinhood Chain, where a sell from there is made (rh-money m3)", async () => {
+    const RH_HUB = "0x5555555555555555555555555555555555555555";
+    const used = depsFor(items, {
+      robinhoodHubOf: vi.fn(async (address: string) => (address === EOA ? RH_HUB : null)),
+    });
+    const report = await recoverAccountOrders({ id: userId, wallet_address: EOA }, { deps: used });
+    expect(report.addresses).toBe(3);
+    expect(used.fetchIntents).toHaveBeenCalledWith(RH_HUB);
+    expect(used.robinhoodHubOf).toHaveBeenCalledWith(EOA);
+  });
+
   it("write: inserts the sell, keeps the recorded buy exactly, pays no XP, and a rerun adds nothing", async () => {
     const before = (await sql.query(`select * from orders where intent_tx = $1`, [tx(0x102)])) as Record<string, unknown>[];
     const used = deps();
