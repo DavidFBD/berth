@@ -9,9 +9,11 @@ import type { Listing } from "@/lib/listings";
  * the switch (ROBINHOOD_DELIVERY) lets them.
  *
  * One row per listing, summed, with where each part sits. This is for
- * showing and valuing only. Anything that spends (a sell, a limit sell,
- * their Max, the assistant's sell cap) reads the hub alone, never `balance`
- * here: a hub sell cannot spend what sits on Robinhood Chain.
+ * showing and valuing, and for whether there is anything to sell at all.
+ * Nothing sizes an order from `balance` here: a sell spends one place at a
+ * time (plan P3a), a hub wallet or one wallet on Robinhood Chain, each read
+ * on its own (components/home SellHost, hooks/use-robinhood-sell), and a
+ * limit sell spends the hub alone.
  */
 
 /** Where the Robinhood Chain read stands: off (no EVM wallet), loading, read, or failed (unknown, shown as nothing, never as zero). */
@@ -21,7 +23,7 @@ export type AccountHolding = {
   listing: Listing;
   /** Everything held of the listing that was read: `hub` plus `robinhood`. */
   balance: bigint;
-  /** On the hub, in the Berth account: the only part a sell spends. */
+  /** On the hub, in the Berth account: what a sell from the account spends. */
   hub: bigint;
   /** In the person's own wallet on Robinhood Chain; 0 when unread or off. */
   robinhood: bigint;

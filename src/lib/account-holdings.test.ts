@@ -80,12 +80,13 @@ describe("robinhoodReadPlan", () => {
   });
 });
 
-describe("what spends stays on the hub", () => {
-  // A sell, a limit sell, their Max and the assistant's sell cap spend the
-  // hub alone; none may read the two-chain holdings (plan, carried into P1).
+describe("what spends is one place, never the sum", () => {
+  // A sell spends one place at a time (plan P3a): a hub wallet, or one
+  // wallet on Robinhood Chain. A limit sell, the cash shelf and the
+  // assistant's per place cap never spend the two-chain sum, so none may
+  // read the summed holdings to size an order.
   const spenders = [
     "src/components/flow/withdraw-drawer.tsx",
-    "src/components/assistant/draft-link-opener.tsx",
     "src/components/account-wallets.tsx",
     "src/components/board/cash-shelf.tsx",
     "src/lib/server/berth-tools/registry.ts",
@@ -96,11 +97,20 @@ describe("what spends stays on the hub", () => {
     expect(source).not.toContain("useAccountHoldings");
   });
 
-  it("the home's sell drawer and draft sells read the hub", () => {
+  it("the home's sell drawer reads each place on its own, never the sum", () => {
     const source = readFileSync("src/components/home.tsx", "utf8");
     const sellDrawer = source.slice(source.indexOf("function SellHost"));
-    expect(sellDrawer.slice(0, 1500)).toContain("useHubHoldings(account.hubWallets)");
-    expect(sellDrawer.slice(0, 1500)).not.toContain("useAccountHoldings");
-    expect(source).toContain("heldAddresses: holdings.held.map");
+    expect(sellDrawer.slice(0, 2500)).toContain("useHubHoldings(account.hubWallets)");
+    expect(sellDrawer.slice(0, 2500)).toContain("useRobinhoodSellBalances(listing, account, open)");
+    expect(sellDrawer.slice(0, 2500)).not.toContain("useAccountHoldings");
+  });
+
+  it("a draft sell opens for a holding in either place, and the sheet sizes it per place", () => {
+    const home = readFileSync("src/components/home.tsx", "utf8");
+    expect(home).toContain("heldAddresses: ownedHoldings.held.map");
+    const opener = readFileSync("src/components/assistant/draft-link-opener.tsx", "utf8");
+    expect(opener).toContain("useAccountHoldings(account, hub)");
+    // Only whether to open; the amount is capped by the chosen place in the sheet.
+    expect(opener).not.toContain("availableShares");
   });
 });
