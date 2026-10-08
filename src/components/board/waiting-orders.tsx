@@ -29,6 +29,7 @@ import {
   type LimitOrderView,
 } from "@/hooks/use-limit-orders";
 import { useVaultWallet } from "@/hooks/use-vault-wallet";
+import { useSignGasCheck } from "@/hooks/use-gas-gate";
 
 /**
  * Waiting orders (lib/limit-orders): a thin line under the account total,
@@ -246,6 +247,9 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
   const chainKey = (order.direction === "sell" ? HOME_CHAIN : (order.srcChain ?? HOME_CHAIN)) as SpokeChainKey;
   const wallet = useVaultWallet(chainKey);
   const cancel = useCancelWaitingOrder();
+  // Said before the tap: a wallet that cannot pay the cancel's fee is told
+  // how much to add and the button waits (hooks/use-gas-gate).
+  const gasNote = useSignGasCheck({ chainKey, address: wallet.address, enabled: true, order: "sell", purpose: "cancel" });
   const confirm = async () => {
     if (!wallet.walletProvider || !wallet.address) return;
     onBusy(true);
@@ -258,7 +262,7 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
       if (outcome.ok) {
         toast.success(copy.limitCancelledToast, { description: order.direction === "buy" ? copy.limitRefundBuy : copy.limitRefundSell });
         onDone();
-      } else if (outcome.rejected) {
+      } else if (outcome.rejected || outcome.calm) {
         toast(outcome.message);
       } else {
         toast.error(outcome.message);
@@ -274,6 +278,7 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
       order={order}
       busy={cancel.isPending}
       ready={!!wallet.walletProvider && !!wallet.address}
+      gasNote={gasNote}
       onKeep={onDone}
       onConfirm={() => void confirm()}
     />
@@ -284,12 +289,15 @@ export function CancelCheckView({
   order,
   busy,
   ready = true,
+  gasNote = null,
   onKeep,
   onConfirm,
 }: {
   order: LimitOrderView;
   busy: boolean;
   ready?: boolean;
+  /** The wallet cannot pay the cancel's fee: this guidance shows and the button waits. */
+  gasNote?: string | null;
   onKeep: () => void;
   onConfirm: () => void;
 }) {
@@ -302,8 +310,13 @@ export function CancelCheckView({
           {order.direction === "buy" ? copy.limitCancelBodyBuy : copy.limitCancelBodySell}
         </p>
       </div>
+      {gasNote && (
+        <p className="text-sm text-muted-foreground" data-testid="cancel-gas-note">
+          {gasNote}
+        </p>
+      )}
       <div className="flex flex-col gap-2">
-        <Button className={cn("h-12 w-full text-base")} disabled={busy || !ready} onClick={onConfirm}>
+        <Button className={cn("h-12 w-full text-base")} disabled={busy || !ready || !!gasNote} onClick={onConfirm}>
           {busy && <Spinner className="size-4" />}
           {busy ? copy.limitCancelling : copy.limitCancel}
         </Button>

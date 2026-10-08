@@ -691,6 +691,10 @@ export type Copy = {
    * `amount` is a plain decimal rounded up, "0.00034".
    */
   gasToAdd: (amount: string, symbol: string, chainName: string) => string;
+  /** The same guidance when the signature would cancel a waiting order. */
+  gasToAddCancel: (amount: string, symbol: string, chainName: string) => string;
+  /** The same, when how much cannot be told. */
+  gasNeededToCancel: (symbol: string, chainName: string) => string;
   /**
    * Under the button when the order clears the gate but a wallet attaching
    * 2 gwei would ask for more (lib/gas-need floorWarns). The person may sign.
@@ -3196,6 +3200,10 @@ export const COPY: Copy = {
   ctaNeedsGas: (symbol) => `Not enough ${symbol} for the network fee`,
   gasToAdd: (amount, symbol, chainName) =>
     `Add about ${amount} ${symbol} on ${chainName} to pay the network fee, then this order can start.`,
+  gasToAddCancel: (amount, symbol, chainName) =>
+    `Cancelling has a network fee. Add about ${amount} ${symbol} on ${chainName}, then you can cancel this order.`,
+  gasNeededToCancel: (symbol, chainName) =>
+    `Cancelling has a network fee. Add a little ${symbol} on ${chainName}, then you can cancel this order.`,
   gasFloorWarning: (symbol) =>
     `Some wallets ask for a higher network fee. If yours refuses, add a little ${symbol}.`,
   selfPaidFeeNote: (symbol, chainName) =>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { getXChainType, getXService } from "@sodax/wallet-sdk-react";
+import { getXChainType, getXService, useXService } from "@sodax/wallet-sdk-react";
+import { useXBalances } from "@sodax/dapp-kit";
 import { isEvmChainKeyType, type EvmChainKey, type SpokeChainKey, type XToken } from "@sodax/sdk";
 import { getChainName, getNativeGasToken, toBalanceReadToken } from "@/lib/chains";
 import { formatUnits } from "viem";
@@ -113,11 +114,12 @@ export function useGasPreflight(): (args: {
   amount: bigint;
   approval: boolean;
   order?: GasOrder;
+  purpose?: GasPurpose;
 }) => Promise<string | null> {
   const queryClient = useQueryClient();
   const copy = useCopy();
   const sponsored = useGasSponsored();
-  return async ({ chainKey, address, token, amount, approval, order = "buy" }) => {
+  return async ({ chainKey, address, token, amount, approval, order = "buy", purpose = "order" }) => {
     // Privy pays: nothing to check. If Privy refuses at send time, the send
     // falls back to an ordinary one (lib/gas-sponsor withGasSponsor), and a
     // wallet with no gas then hears the calm insufficient-funds sentence.
@@ -135,7 +137,7 @@ export function useGasPreflight(): (args: {
     const facts = { chainKey, isNative, nativeBalance, amount: isNative ? amount : 0n };
     const need = blockingNeed({ chainKey, feePerGas, approval, order });
     if (!orderGasShort({ ...facts, need })) return null;
-    return gasShortMessage(copy, native, chainKey, gasToAdd({ ...facts, need }));
+    return gasShortMessage(copy, native, chainKey, gasToAdd({ ...facts, need }), purpose);
   };
 }
 
@@ -144,12 +146,69 @@ export function useGasPreflight(): (args: {
  * token, the network and roughly how much to add when that can be told.
  */
 export function gasShortMessage(
-  copy: Pick<Copy, "gasToAdd" | "gasNeededToPay">,
+  copy: Pick<Copy, "gasToAdd" | "gasNeededToPay" | "gasToAddCancel" | "gasNeededToCancel">,
   native: { symbol: string; decimals: number },
   chainKey: SpokeChainKey,
   toAdd: bigint | undefined,
+  purpose: GasPurpose = "order",
 ): string {
-  return toAdd !== undefined
-    ? copy.gasToAdd(formatUnits(toAdd, native.decimals), native.symbol, getChainName(chainKey))
-    : copy.gasNeededToPay(native.symbol, getChainName(chainKey));
+  const chainName = getChainName(chainKey);
+  if (toAdd === undefined) {
+    return purpose === "cancel"
+      ? copy.gasNeededToCancel(native.symbol, chainName)
+      : copy.gasNeededToPay(native.symbol, chainName);
+  }
+  const amount = formatUnits(toAdd, native.decimals);
+  return purpose === "cancel"
+    ? copy.gasToAddCancel(amount, native.symbol, chainName)
+    : copy.gasToAdd(amount, native.symbol, chainName);
+}
+
+/** What the signature is for: an order, or cancelling a waiting one. The words differ. */
+export type GasPurpose = "order" | "cancel";
+
+/**
+ * Whether the wallet at `address` can pay one signature's fee on
+ * `chainKey` right now, read live: the same need as the drawers
+ * (blockingNeed), for screens with no drawer of their own, such as the
+ * cancel check. `message` is the calm guidance when it cannot; `null`
+ * while it can, while anything is unknown, or when Privy pays.
+ */
+export function useSignGasCheck({
+  chainKey,
+  address,
+  enabled,
+  order = "sell",
+  purpose = "order",
+}: {
+  chainKey: SpokeChainKey;
+  address: string | undefined;
+  enabled: boolean;
+  order?: GasOrder;
+  purpose?: GasPurpose;
+}): string | null {
+  const copy = useCopy();
+  const gate = useGasGate([chainKey], enabled);
+  const native = getNativeGasToken(chainKey);
+  const xService = useXService({ xChainType: getXChainType(chainKey) });
+  const query = useXBalances({
+    params: {
+      xService,
+      xChainId: chainKey,
+      xTokens: native ? [toBalanceReadToken(native)] : [],
+      address: enabled && native ? address : undefined,
+    },
+    queryOptions: { refetchInterval: 30_000, staleTime: 15_000 },
+  });
+  if (!native || !query.data) return null;
+  const facts = {
+    chainKey,
+    isNative: false,
+    nativeBalance: query.data[toBalanceReadToken(native).address] ?? 0n,
+    amount: 0n,
+    need: gate.needFor(chainKey, false, order),
+    sponsored: gate.sponsored(chainKey),
+  };
+  if (!orderGasShort(facts)) return null;
+  return gasShortMessage(copy, native, chainKey, gasToAdd(facts), purpose);
 }
