@@ -5,7 +5,8 @@ vi.mock("@/lib/server/pour-verify", () => ({
   getSodax: () => ({ hubProvider: { publicClient: { multicall } } }),
 }));
 
-import { readDeliveredBalances } from "./holds";
+import { deliveredBalancesReader, readDeliveredBalances } from "./holds";
+import { TOKEN_LISTINGS } from "@/lib/listings";
 
 /** The real balance reader, with only the chain client stubbed. */
 
@@ -67,5 +68,36 @@ describe("readDeliveredBalances", () => {
   it("treats a short result as unknown for the missing rows", async () => {
     multicall.mockResolvedValue([]);
     expect(await readDeliveredBalances([{ holder: HOLDER, listing: A }])).toEqual([null]);
+  });
+});
+
+describe("deliveredBalancesReader", () => {
+  const NVDA = TOKEN_LISTINGS.find((listing) => listing.symbol === "NVDA")!;
+
+  beforeEach(() => {
+    multicall.mockReset();
+  });
+
+  it("reads a Robinhood Chain row as the listing's token there and a hub row on the hub, in the order asked", async () => {
+    multicall.mockResolvedValue([{ status: "success", result: 7n }]);
+    const robinhood = vi.fn(async (queries: readonly { holder: string; token: string }[]) => queries.map(() => 3n));
+    const read = deliveredBalancesReader(robinhood);
+    const balances = await read([
+      { holder: HOLDER, listing: NVDA.address, chain: "robinhood" },
+      { holder: HOLDER, listing: A },
+      { holder: HOLDER, listing: A, chain: "robinhood" },
+    ]);
+    // The hub row from the hub; NVDA from its token on Robinhood Chain; a listing with no token there is unknown.
+    expect(balances).toEqual([3n, 7n, null]);
+    expect(robinhood).toHaveBeenCalledWith([{ holder: HOLDER, token: NVDA.rhAddress }]);
+    expect(multicall.mock.calls[0][0].contracts).toHaveLength(1);
+  });
+
+  it("answers unknown, never zero, when Robinhood Chain throws", async () => {
+    const read = deliveredBalancesReader(async () => {
+      throw new Error("down");
+    });
+    expect(await read([{ holder: HOLDER, listing: NVDA.address, chain: "robinhood" }])).toEqual([null]);
+    expect(multicall).not.toHaveBeenCalled();
   });
 });
