@@ -4,6 +4,7 @@ import { CompanyMark } from "@/components/company-marks";
 import { useCopy } from "@/components/settings-provider";
 import { heldMarks } from "@/lib/held-marks";
 import { LISTING_MARK_BY_SYMBOL, TOKEN_LISTINGS, rowName } from "@/lib/listings";
+import { cn } from "@/lib/utils";
 
 function nameOf(symbol: string): string {
   const listing = TOKEN_LISTINGS.find((entry) => entry.symbol === symbol);
@@ -11,12 +12,12 @@ function nameOf(symbol: string): string {
 }
 
 /**
- * Beside the legend's "Your portfolio": small monochrome marks of what it
+ * Attached to the legend's "Your portfolio" (inline after the label on wide screens, on its own line under it on a phone, set by the caller's className): small monochrome marks of what it
  * holds (lib/held-marks), the company's own mark where one is pinned and
  * the lettered tile otherwise, then "+N". Read aloud as the names. Still,
  * never a button, and never an amount.
  */
-export function HeldMarks({ held }: { held: readonly string[] | undefined }) {
+export function HeldMarks({ held, className }: { held: readonly string[] | undefined; className?: string }) {
   const copy = useCopy();
   const { shown, more } = heldMarks(held);
   if (shown.length === 0) return null;
@@ -27,7 +28,7 @@ export function HeldMarks({ held }: { held: readonly string[] | undefined }) {
       // Blocked, not masked: a company mark is path data a replay could read back as a holding.
       data-ph-block
       data-held-marks
-      className="inline-flex items-center gap-1 text-secondary-foreground"
+      className={cn("inline-flex items-center gap-1 text-secondary-foreground", className)}
     >
       {shown.map((symbol) => {
         const mark = LISTING_MARK_BY_SYMBOL[symbol];

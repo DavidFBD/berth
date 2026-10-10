@@ -239,6 +239,9 @@ function Swatch({ dashed }: { dashed?: boolean }) {
   );
 }
 
+/** The held marks inside the "Your portfolio" group: inline on wide screens, last and full width, indented past the swatch, on a phone. */
+const MARKS_IN_GROUP = "order-last basis-full pl-[22px] pt-0.5 sm:order-none sm:basis-auto sm:pl-0 sm:pt-0 sm:self-center";
+
 /** A listing's name as a person reads it, from its symbol. */
 function nameOf(symbol: string): string {
   const listing = TOKEN_LISTINGS.find((entry) => entry.symbol === symbol);
@@ -741,15 +744,15 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
         readout && "invisible",
       )}
     >
-      <span className="whitespace-nowrap">
-        <Swatch />
-        {copy.portfolioYou}
-        {youPct !== null && (
-          <>
-            {" "}
-            <Pct value={youPct} dim={stale} />
-          </>
-        )}
+      {/* One group: label, its marks, then the percent. On a phone the marks
+          drop to their own line under the label, indented to its text. */}
+      <span className="flex flex-wrap items-baseline gap-x-1.5 sm:flex-nowrap sm:whitespace-nowrap">
+        <span className="whitespace-nowrap">
+          <Swatch />
+          {copy.portfolioYou}
+        </span>
+        <HeldMarks held={stripSource.at(-1)?.held} className={MARKS_IN_GROUP} />
+        {youPct !== null && <Pct value={youPct} dim={stale} />}
       </span>
       {/* The benchmark's name is the chooser in every state, so another is
           always one tap away, with or without its line drawn. */}
@@ -762,10 +765,6 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
             <Pct value={otherPct} dim={stale} />
           </>
         )}
-      </span>
-      {/* What the portfolio holds, as small marks at the row's end: names only. */}
-      <span className="ml-auto self-center">
-        <HeldMarks held={stripSource.at(-1)?.held} />
       </span>
     </p>
   );
@@ -864,19 +863,14 @@ function FirstDay({
     <div data-ph-mask className="mt-5 lg:mt-[22px]">
       <div className="relative flex min-h-5 items-center">
         <p className={cn("flex w-full flex-wrap items-baseline gap-x-[18px] gap-y-1 text-[13px] leading-5 text-foreground", scrubbed && "invisible")}>
-          <span>
-            <Swatch />
-            {copy.portfolioYou}
-            {point.changePct != null && (
-              <>
-                {" "}
-                <Pct value={point.changePct} />
-              </>
-            )}{" "}
+          <span className="flex flex-wrap items-baseline gap-x-1.5">
+            <span className="whitespace-nowrap">
+              <Swatch />
+              {copy.portfolioYou}
+            </span>
+            <HeldMarks held={point.held} className={MARKS_IN_GROUP} />
+            {point.changePct != null && <Pct value={point.changePct} />}
             <span className="text-muted-foreground">{copy.portfolioSinceBuy}</span>
-          </span>
-          <span className="ml-auto self-center">
-            <HeldMarks held={point.held} />
           </span>
         </p>
         {scrubbed && (
