@@ -22,6 +22,7 @@ import { withStory } from "@/lib/portfolio-story";
 import type { MoveNews } from "@/app/api/moves/route";
 import { isNewAccount } from "@/components/board/account-total";
 import MARKS_JSON from "./portfolio-marks.json";
+import { FRIEND_CHOICE_KEY, FRIEND_WEEK_RANGES, friendWindow, returnSeries, type CompareFriend } from "@/lib/friend-week";
 
 /**
  * Dev-only: the account's figure with its comparison, and "What you own",
@@ -46,6 +47,9 @@ import MARKS_JSON from "./portfolio-marks.json";
  *   /dev/account?portfolio=narrow         a double-digit day and an unmarked name, for a 320px check
  *   /dev/account?portfolio=empty          nothing held
  *   /dev/account?portfolio=loading        the query still out
+ *
+ * Add &friend=mara to pick a friend who compares their week (lib/friend-week):
+ * her line is drawn from the same real closes, over 1W and First buy.
  *
  * The prices are real: daily closes from the `marks` table (NVIDIA, Apple,
  * Tesla and the five benchmarks, 2026-06-26 to 2026-09-24), saved beside
@@ -105,6 +109,20 @@ type Scene = {
   movedToday?: boolean;
   /** No day before this one is stored: the record starts after the first buy. */
   recordFrom?: string;
+};
+
+/** Dev only: made up friends who compare their week, and the orders behind mara's line. */
+const COMPARE_FRIENDS: CompareFriend[] = [
+  { handle: "mara", avatarId: "ring", level: 4 },
+  { handle: "quay_side", avatarId: "lantern", level: 2 },
+];
+const FRIEND_SCENE: Scene = {
+  from: "2026-08-12",
+  buys: [
+    { symbol: "TSLA", day: "2026-08-12", usd: 50 },
+    { symbol: "AAPL", day: "2026-09-08", usd: 30 },
+  ],
+  sells: [],
 };
 
 const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
@@ -376,6 +394,26 @@ export function seededPortfolioClient(
     };
     client.setQueryData(["portfolio-history", null, benchmark.symbol], response);
   }
+  // Compare with friends, seeded as the social route answers them: mara's
+  // line over each window the card can show, from her own made up orders.
+  client.setQueryData(["social-me", null], {
+    hasEmail: true,
+    handle: "harbourfan",
+    visible: true,
+    linkFace: false,
+    shareHoldings: false,
+    shareWeek: true,
+    nextChangeAt: null,
+    requests: 0,
+  });
+  client.setQueryData(["social-compare-friends", null], COMPARE_FRIENDS);
+  const friend = build({ ...FRIEND_SCENE, to: scene.to });
+  const series = returnSeries({ days: friend.days, orders: friend.orders, listingCloses: MARKS });
+  const anyRanges = (client.getQueryData(["portfolio-history", null, BENCHMARKS[0].symbol]) as PortfolioHistoryResponse).ranges;
+  for (const range of FRIEND_WEEK_RANGES) {
+    const from = anyRanges[range]?.days[0]?.day;
+    if (from) client.setQueryData(["social-compare-week", null, "mara", range, from], friendWindow(series, from));
+  }
   // The board's moves (/api/moves), seeded: a made up post on the scene's last day.
   client.setQueryData(["listings", "moves"], scene.move ? [sceneMove(scene.move, newest.day)] : []);
   // As the board judges it (AccountTotal), with the scene's last day as now.
@@ -402,8 +440,18 @@ function sceneMove(move: NonNullable<Scene["move"]>, day: string): MoveNews {
   };
 }
 
-export function PortfolioGallery({ state }: { state: PortfolioState }) {
-  const [{ client, rows, young }] = useState(() => seededPortfolioClient(state));
+export function PortfolioGallery({ state, friend }: { state: PortfolioState; friend?: string | null }) {
+  const [{ client, rows, young }] = useState(() => {
+    // The friend picked, as the card keeps it (PortfolioSummary FRIEND_KEY): set before it first reads.
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(FRIEND_CHOICE_KEY, friend ?? "");
+      } catch {
+        // Storage blocked: the card shows the benchmark.
+      }
+    }
+    return seededPortfolioClient(state);
+  });
   const total = rows.reduce((sum, row) => sum + (row.worth ?? 0), 0);
   return (
     <QueryClientProvider client={client}>

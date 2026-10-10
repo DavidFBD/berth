@@ -7,6 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { PortfolioChart, type ChartMarker } from "@/components/board/portfolio-chart";
 import { WeekStrip, type StripDay } from "@/components/board/week-strip";
+import { HeldMarks } from "@/components/board/held-marks";
+import { AvatarWithRank } from "@/components/rank-glyph";
+import { useCompareFriends, useFriendWeek, useMySocial } from "@/hooks/use-social";
+import { FRIEND_CHOICE_KEY, alignWithFriend, type CompareFriend, type FriendWeekRange } from "@/lib/friend-week";
 import { useMoves } from "@/hooks/use-moves";
 import { usePortfolioHistory } from "@/hooks/use-profile";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
@@ -18,9 +22,12 @@ import { changeDirection, formatPercentChange, type ChangeDirection } from "@/li
 import { RANGES, type HistoryPoint, type HistoryResult, type Range } from "@/lib/portfolio-history";
 import { pickMove, type StoryMove, type StoryOrder, type StoryPoint } from "@/lib/portfolio-story";
 import { cn } from "@/lib/utils";
+import { dayLineDate, describeMover, describeYou, type DayFacts } from "@/lib/day-line";
 
 const BENCHMARK_KEY = "berth.portfolio.benchmark";
 const RANGE_KEY = "berth.portfolio.range";
+/** The friend whose line is drawn instead of a benchmark, by username; empty for none. */
+const FRIEND_KEY = FRIEND_CHOICE_KEY;
 
 /** Range labels that are words, set in the body font. */
 const WORD_RANGES: ReadonlySet<Range> = new Set<Range>(["since", "all"]);
@@ -59,23 +66,47 @@ function defaultRange(available: readonly Range[], ranges: Partial<Record<Range,
   return best ?? "since";
 }
 
+/** The picker's value for a friend: never a benchmark symbol. */
+const FRIEND_PREFIX = "friend:";
+
+const ITEM =
+  "flex cursor-default items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 outline-none select-none data-[highlighted]:bg-muted";
+
+function ItemCheck() {
+  return (
+    <Menu.RadioItemIndicator keepMounted className="size-4 text-muted-foreground data-[unchecked]:invisible">
+      <Check weight="duotone" className="size-4" aria-hidden />
+    </Menu.RadioItemIndicator>
+  );
+}
+
 /**
  * The benchmark's name in the headline, and the way to change it: a button
- * that opens a small menu of the five. The choice is kept per viewer.
+ * that opens a small menu of the five, and below them the friends who
+ * compare their week (lib/friend-week), each with their face. The choice is
+ * kept per viewer.
  *
  * `shown` is the benchmark the numbers beside it belong to, so the name and
  * the figure never disagree while a new choice loads; `value` is the choice
- * itself, which the menu checks. The button's name is just the visible name,
- * so the sentence reads on naturally; its purpose is its description.
+ * itself, which the menu checks. With a friend picked the button is their
+ * face and username. The button's name is just the visible name, so the
+ * sentence reads on naturally; its purpose is its description.
  */
 function BenchmarkChooser({
   value,
   shown,
+  friend,
+  friends,
   onChange,
+  onFriend,
 }: {
   value: BenchmarkSymbol;
   shown: BenchmarkSymbol;
+  /** The friend whose line is drawn instead of a benchmark, if any. */
+  friend: CompareFriend | null;
+  friends: readonly CompareFriend[];
   onChange: (symbol: BenchmarkSymbol) => void;
+  onFriend: (handle: string) => void;
 }) {
   const copy = useCopy();
   const hintId = useId();
@@ -88,38 +119,64 @@ function BenchmarkChooser({
         aria-describedby={hintId}
         className="inline-flex items-baseline gap-0.5 rounded-sm font-medium text-foreground underline decoration-border decoration-1 underline-offset-[3px] outline-none transition-colors duration-150 ease-lift hover:decoration-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:decoration-foreground"
       >
-        {copy.benchmarkNames[shown]}
+        {friend ? (
+          <>
+            <AvatarWithRank avatarId={friend.avatarId} level={friend.level} size={16} className="mr-1 self-center" />
+            <span data-ph-mask>{friend.handle}</span>
+          </>
+        ) : (
+          copy.benchmarkNames[shown]
+        )}
         <CaretDown weight="duotone" className="size-3 self-center" aria-hidden />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="start" sideOffset={6} collisionPadding={16} className="z-50">
           <Menu.Popup className="min-w-48 origin-[var(--transform-origin)] rounded-xl border border-border bg-popover p-1 text-sm text-popover-foreground shadow-raised outline-none transition-[opacity,transform] duration-150 ease-lift data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0">
-            <Menu.Group>
-              <Menu.GroupLabel className="px-2.5 pt-1.5 pb-1 text-[11px] text-muted-foreground">
-                {copy.portfolioCompareWith}
-              </Menu.GroupLabel>
-              <Menu.RadioGroup
-                value={value}
-                onValueChange={(next) => {
-                  const found = findBenchmark(String(next));
-                  if (found) onChange(found.symbol);
-                }}
-              >
+            <Menu.RadioGroup
+              value={friend ? `${FRIEND_PREFIX}${friend.handle}` : value}
+              onValueChange={(next) => {
+                const picked = String(next);
+                if (picked.startsWith(FRIEND_PREFIX)) {
+                  onFriend(picked.slice(FRIEND_PREFIX.length));
+                  return;
+                }
+                const found = findBenchmark(picked);
+                if (found) onChange(found.symbol);
+              }}
+            >
+              <Menu.Group>
+                <Menu.GroupLabel className="px-2.5 pt-1.5 pb-1 text-[11px] text-muted-foreground">
+                  {copy.portfolioCompareWith}
+                </Menu.GroupLabel>
                 {BENCHMARKS.map((benchmark) => (
-                  <Menu.RadioItem
-                    key={benchmark.symbol}
-                    value={benchmark.symbol}
-                    closeOnClick
-                    className="flex cursor-default items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 outline-none select-none data-[highlighted]:bg-muted"
-                  >
+                  <Menu.RadioItem key={benchmark.symbol} value={benchmark.symbol} closeOnClick className={ITEM}>
                     {copy.benchmarkNames[benchmark.symbol]}
-                    <Menu.RadioItemIndicator keepMounted className="size-4 text-muted-foreground data-[unchecked]:invisible">
-                      <Check weight="duotone" className="size-4" aria-hidden />
-                    </Menu.RadioItemIndicator>
+                    <ItemCheck />
                   </Menu.RadioItem>
                 ))}
-              </Menu.RadioGroup>
-            </Menu.Group>
+              </Menu.Group>
+              {friends.length > 0 && (
+                <Menu.Group data-ph-mask className="mt-1 border-t border-border pt-1">
+                  <Menu.GroupLabel className="px-2.5 pt-1.5 pb-1 text-[11px] text-muted-foreground">
+                    {copy.portfolioFriendsGroup}
+                  </Menu.GroupLabel>
+                  {friends.map((person) => (
+                    <Menu.RadioItem
+                      key={person.handle}
+                      value={`${FRIEND_PREFIX}${person.handle}`}
+                      closeOnClick
+                      className={ITEM}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <AvatarWithRank avatarId={person.avatarId} level={person.level} size={20} />
+                        <span className="truncate">{person.handle}</span>
+                      </span>
+                      <ItemCheck />
+                    </Menu.RadioItem>
+                  ))}
+                </Menu.Group>
+              )}
+            </Menu.RadioGroup>
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
@@ -188,16 +245,6 @@ function nameOf(symbol: string): string {
   return listing ? rowName(listing) : symbol;
 }
 
-/** "Thu, Sep 24", from an ISO day, read in UTC. */
-function dayName(iso: string): string {
-  return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
 /** "Thursday, September 24", for a screen reader. */
 function longDayName(iso: string): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", {
@@ -231,6 +278,69 @@ function Figure({ children }: { children: ReactNode }) {
   return <span className="money whitespace-nowrap tabular-nums text-foreground">{children}</span>;
 }
 
+/** "2.5%": a size after "up" or "down", unsigned, one decimal. */
+function size(pct: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(Math.abs(pct)) + "%";
+}
+
+/**
+ * The day's two sentences (lib/day-line), in words: the portfolio's move and
+ * the holding that moved most. Each comes with the figures it says, so the
+ * line can set them in the money font.
+ */
+function useDaySentences() {
+  const copy = useCopy();
+  const money = useMoney();
+  const signed = useSignedMoney();
+  return (facts: DayFacts, today: boolean): { you: string; mover: string | null; figures: string[] } => {
+    const figures: string[] = [];
+    const say = (pct: number | null, usd: number | null, direction: "up" | "down") => {
+      const out = {
+        pct: pct === null ? null : size(pct),
+        usd: usd === null ? null : money.format(usd),
+        usdSigned: usd === null ? null : signed(direction === "up" ? usd : -usd),
+      };
+      for (const figure of [out.pct, out.pct ? out.usdSigned : out.usd]) if (figure) figures.push(figure);
+      return out;
+    };
+    const youPart = describeYou(facts);
+    const you =
+      youPart.kind === "unknown"
+        ? copy.portfolioDayUnknown
+        : copy.portfolioDayYou({
+            direction: youPart.kind,
+            ...(youPart.kind === "flat"
+              ? { pct: null, usd: null, usdSigned: null }
+              : say(youPart.pct, youPart.usd, youPart.kind)),
+            today,
+            fromBuy: facts.fromBuy === true,
+          });
+    const moverPart = describeMover(facts);
+    const mover = moverPart
+      ? copy.portfolioDayMover({
+          name: nameOf(moverPart.symbol),
+          direction: moverPart.direction,
+          ...say(moverPart.pct, moverPart.usd, moverPart.direction),
+          today,
+        })
+      : null;
+    return { you, mover, figures };
+  };
+}
+
+/** A sentence with the figures it says set in the money font. */
+function Figured({ text, figures }: { text: string; figures: readonly string[] }) {
+  const wanted = [...new Set(figures)].sort((a, b) => b.length - a.length);
+  if (wanted.length === 0) return <>{text}</>;
+  const escaped = wanted.map((figure) => figure.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const parts = text.split(new RegExp(`(${escaped.join("|")})`));
+  return (
+    <>
+      {parts.map((part, index) => (wanted.includes(part) ? <Figure key={index}>{part}</Figure> : part))}
+    </>
+  );
+}
+
 /**
  * Under the week strip: what happened on the day marked, or on the latest
  * day when none is. The day's change with buys and sells set aside, the
@@ -251,47 +361,21 @@ function DayLine({
 }) {
   const copy = useCopy();
   const money = useMoney();
-  const signed = useSignedMoney();
-  // The day's pick is the holding that moved most in percent, told with its dollars.
-  const top = point.mover ?? point.top ?? null;
-  // One holding moving the whole day says it once.
-  const sameAsTop = top !== null && point.change != null && Math.abs(top.usd - point.change) < 0.005;
+  const sentences = useDaySentences();
   const shownOrders = orders.slice(0, 2);
   // Each part keeps its own words together; the line breaks between parts.
   const parts: { key: string; node: ReactNode }[] = [];
   // Nothing held and nothing moved: say that, not that a figure is missing.
   const empty = point.value <= 0 && !point.mover && (point.change == null || Math.abs(point.change) < 0.005);
+  const top = point.mover ?? point.top ?? null;
   if (empty) {
     parts.push({ key: "empty", node: copy.portfolioNothingHeld });
-  } else if (point.change == null) {
-    parts.push({ key: "unknown", node: copy.portfolioDayUnknown });
   } else {
-    if (!sameAsTop || point.fromBuy) {
-      parts.push({
-        key: "you",
-        node: (
-          <>
-            {point.fromBuy ? copy.portfolioFromBuy : copy.portfolioYou} <Figure>{signed(point.change)}</Figure>
-          </>
-        ),
-      });
-    }
-    if (top) {
-      parts.push({
-        key: "top",
-        node: (
-          <>
-            {nameOf(top.symbol)}{" "}
-            {top.pct !== null && (
-              <>
-                <Figure>{formatPercentChange(top.pct, 1)}</Figure>,{" "}
-              </>
-            )}
-            <Figure>{signed(top.usd)}</Figure>
-          </>
-        ),
-      });
-    }
+    // The portfolio's move, then the holding that moved most: a flat day
+    // still names it, so "flat" never sits beside a loss unexplained.
+    const { you, mover, figures } = sentences(point, today);
+    parts.push({ key: "you", node: <Figured text={you} figures={figures} /> });
+    if (mover) parts.push({ key: "top", node: <Figured text={mover} figures={figures} /> });
   }
   for (const order of shownOrders) {
     parts.push({
@@ -338,7 +422,7 @@ function DayLine({
   return (
     // Short sentences, so the line wraps like prose and never strands a separator.
     <p className="mt-3 min-h-10 text-[13px] leading-5 text-muted-foreground">
-      <span className="whitespace-nowrap text-foreground">{today ? copy.portfolioToday : dayName(point.day)}.</span>
+      <span className="whitespace-nowrap text-foreground">{today ? copy.portfolioToday : dayLineDate(point.day)}.</span>
       {parts.map((part) => (
         <span key={part.key}>
           {" "}
@@ -352,25 +436,16 @@ function DayLine({
 /** The strip's days from story points: names, labels and which is today. */
 function useStripDays(points: readonly StoryPoint[], liveDay: string | null): StripDay[] {
   const copy = useCopy();
-  const money = useMoney();
-  // After "Up" or "Down" the figures are plain sizes: no sign to contradict the word.
-  const size = (pct: number) =>
-    new Intl.NumberFormat("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(Math.abs(pct)) + "%";
+  const sentences = useDaySentences();
   return points.map((point) => {
     const today = point.day === liveDay;
     const moverName = point.mover ? nameOf(point.mover.symbol) : null;
-    const pct = point.changePct;
-    const change =
-      point.change == null || pct == null
-        ? null
-        : Math.abs(pct) < 0.05
-          ? copy.portfolioDayFlat
-          : (pct > 0 ? copy.portfolioDayUp : copy.portfolioDayDown)(size(pct), money.format(Math.abs(point.change)));
     const date = today ? copy.portfolioToday : longDayName(point.day);
     if (point.value <= 0 && !point.mover && (point.change == null || Math.abs(point.change) < 0.005)) {
       return { ...point, moverName, today, label: `${date}. ${copy.portfolioNothingHeld}.` };
     }
-    return { ...point, moverName, today, label: copy.portfolioDayAria(date, change, moverName) };
+    const { you, mover } = sentences(point, today);
+    return { ...point, moverName, today, label: copy.portfolioDayAria(date, you, mover) };
   });
 }
 
@@ -467,6 +542,27 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
     Boolean(stripSource.find((point) => point.day === day)?.held?.includes(symbol)),
   );
 
+  // The range on show, once there is data to choose it from.
+  const stored = storedRange as Range | null;
+  const range: Range | null = data
+    ? stored && data.available.includes(stored)
+      ? stored
+      : defaultRange(data.available, data.ranges)
+    : null;
+  const result = data && range ? data.ranges[range] : undefined;
+
+  // Compare with friends (lib/friend-week): a friend picked in the chooser,
+  // while they still compare, is drawn instead of the benchmark, over the
+  // card's own window only (1W, or since first buy).
+  const [storedFriend, setFriend] = useStoredChoice(FRIEND_KEY);
+  // Asked only while the viewer's own switch is on: off, there is nobody to offer.
+  const mine = useMySocial(holdsAnything, { prompt: false });
+  const friends = useCompareFriends(holdsAnything && mine.data?.shareWeek === true);
+  const friend = (storedFriend && friends.find((person) => person.handle === storedFriend)) || null;
+  const friendRange: FriendWeekRange | null = friend && (range === "1w" || range === "since") ? range : null;
+  const friendFrom = friendRange && result && result.days.length >= 2 ? result.days[0].day : null;
+  const friendWeek = useFriendWeek(friend?.handle ?? null, friendRange, friendFrom);
+
   if (!holdsAnything) return null;
 
   if (!data) {
@@ -481,11 +577,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
       </div>
     );
   }
-
-  const stored = storedRange as Range | null;
-  const range: Range =
-    stored && data.available.includes(stored) ? stored : defaultRange(data.available, data.ranges);
-  const result = data.ranges[range];
+  if (!range) return null;
 
   // In the first seven market days the strip shows the days to come, empty.
   // Only an account whose record reaches its first buy is in its first seven days.
@@ -527,16 +619,35 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   const shownBenchmark = data.benchmark.symbol as BenchmarkSymbol;
   const stale = query.isPlaceholderData;
   const status = result.benchmarkStatus;
-  const withBenchmark = status === "ok" && result.benchmarkPct !== null;
-
   // The line is the return so far, both sides from the same start, so a
   // buy is never a step up. Where that return cannot be told the line is
   // dollars, as it was, with the reason said below the legend.
   const percent = result.changePct !== null && days.every((point) => point.returnPct != null);
+  // A friend's line, when one is picked: both lines from 0% on the first
+  // close they share (lib/friend-week alignWithFriend), percent only.
+  const aligned = friend && percent ? alignWithFriend(days, friendWeek.week) : null;
+  const withBenchmark = !friend && status === "ok" && result.benchmarkPct !== null;
+  const withLine = aligned !== null || withBenchmark;
   // Since first buy counts from the buy itself: an origin at 0% before the
-  // first close, where the first buy's mark sits.
-  const origin = percent && range === "since" && !result.rebasedFrom && days[0].fromBuy === true;
-  const chart = buildChart(days, { percent, origin, withBenchmark });
+  // first close, where the first buy's mark sits. Beside a friend both
+  // lines count from the shared close instead.
+  const origin = !aligned && percent && range === "since" && !result.rebasedFrom && days[0].fromBuy === true;
+  const chart: ChartPoint[] = aligned
+    ? aligned.points.map((point) => ({
+        day: point.day,
+        value: point.you,
+        benchmark: point.friend,
+        dollars: days.find((entry) => entry.day === point.day)?.value ?? null,
+        origin: false,
+      }))
+    : buildChart(days, { percent, origin, withBenchmark });
+  // The two figures in the legend: each line's last value.
+  const youPct = aligned ? aligned.points.at(-1)!.you : result.changePct;
+  const otherPct = aligned
+    ? (aligned.points.findLast((point) => point.friend !== null)?.friend ?? null)
+    : withBenchmark
+      ? result.benchmarkPct
+      : null;
   const indexOf = new Map(chart.flatMap((point, index) => (point.origin ? [] : [[point.day, index] as const])));
   // The day in hand, from either side: the line's scrub, then the strip's
   // hover, then its pick. The strip and the day line always show it; the
@@ -545,8 +656,20 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   const markedDay = (scrub !== null ? (chart[scrub]?.day ?? null) : null) ?? hover ?? pinned;
   const marked = scrub ?? (markedDay !== null ? (indexOf.get(markedDay) ?? null) : null);
   const chooser = (
-    <BenchmarkChooser value={benchmark} shown={shownBenchmark} onChange={setBenchmark} />
+    <BenchmarkChooser
+      value={benchmark}
+      shown={shownBenchmark}
+      friend={friend}
+      friends={friends}
+      onChange={(symbol) => {
+        setFriend("");
+        setBenchmark(symbol);
+      }}
+      onFriend={setFriend}
+    />
   );
+  // The other line's name in the readout: the friend's username, or the benchmark's.
+  const otherName = friend ? friend.handle : copy.benchmarkNames[shownBenchmark];
   // In a reason's sentence the name is plain text: the legend holds the chooser.
   const named = `${copy.benchmarkArticle[shownBenchmark]}${copy.benchmarkNames[shownBenchmark]}`;
 
@@ -578,13 +701,13 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
           </>
         )}
       </span>
-      {withBenchmark && scrubbed.benchmark !== null && (
+      {withLine && scrubbed.benchmark !== null && (
         <>
           <span className="whitespace-nowrap">
             <span aria-hidden="true" className="mr-1.5">
               ·
             </span>
-            {copy.benchmarkNames[shownBenchmark]}{" "}
+            {otherName}{" "}
             <span className="money tabular-nums">{figure(scrubbed.benchmark)}</span>
           </span>
         </>
@@ -593,7 +716,12 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   );
 
   let reason: string | null = null;
-  if (status === "unpriced_orders" || status === "unexplained_balance") {
+  if (friend) {
+    // Beside a friend: over which days (the first close both lines have), or why their line is not drawn.
+    if (!friendRange) reason = copy.portfolioFriendRanges(friend.handle);
+    else if (aligned && (range === "since" || aligned.anchor > days[0].day)) reason = copy.portfolioFriendFrom(shortDate(aligned.anchor));
+    else if (percent && !aligned && !friendWeek.loading) reason = copy.portfolioFriendNone(friend.handle);
+  } else if (status === "unpriced_orders" || status === "unexplained_balance") {
     reason = copy.portfolioNoBenchmark[status](named);
   } else if (status === "no_marks") {
     reason = copy.portfolioNoMarks(copy.benchmarkNames[shownBenchmark]);
@@ -609,17 +737,17 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   const legend = (
     <p
       className={cn(
-        "flex flex-wrap items-baseline gap-x-[18px] gap-y-1 text-[13px] leading-5 text-foreground",
+        "flex w-full flex-wrap items-baseline gap-x-[18px] gap-y-1 text-[13px] leading-5 text-foreground",
         readout && "invisible",
       )}
     >
       <span className="whitespace-nowrap">
         <Swatch />
         {copy.portfolioYou}
-        {result.changePct !== null && (
+        {youPct !== null && (
           <>
             {" "}
-            <Pct value={result.changePct} dim={stale} />
+            <Pct value={youPct} dim={stale} />
           </>
         )}
       </span>
@@ -628,12 +756,16 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
       <span className="whitespace-nowrap">
         <Swatch dashed />
         {chooser}
-        {withBenchmark && (
+        {otherPct !== null && (
           <>
             {" "}
-            <Pct value={result.benchmarkPct!} dim={stale} />
+            <Pct value={otherPct} dim={stale} />
           </>
         )}
+      </span>
+      {/* What the portfolio holds, as small marks at the row's end: names only. */}
+      <span className="ml-auto self-center">
+        <HeldMarks held={stripSource.at(-1)?.held} />
       </span>
     </p>
   );
@@ -655,10 +787,10 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
         <PortfolioChart
           days={chart}
           unit={percent ? "pct" : "usd"}
-          withBenchmark={withBenchmark}
+          withBenchmark={withLine}
           scrubIndex={marked}
           onScrub={setScrub}
-          drawKey={`${range}:${shownBenchmark}`}
+          drawKey={`${range}:${friend && aligned ? `friend:${friend.handle}` : shownBenchmark}`}
           markers={markersFor(chart, result.orders ?? [])}
         />
       </div>
@@ -731,16 +863,21 @@ function FirstDay({
   return (
     <div data-ph-mask className="mt-5 lg:mt-[22px]">
       <div className="relative flex min-h-5 items-center">
-        <p className={cn("text-[13px] leading-5 text-foreground", scrubbed && "invisible")}>
-          <Swatch />
-          {copy.portfolioYou}
-          {point.changePct != null && (
-            <>
-              {" "}
-              <Pct value={point.changePct} />
-            </>
-          )}{" "}
-          <span className="text-muted-foreground">{copy.portfolioSinceBuy}</span>
+        <p className={cn("flex w-full flex-wrap items-baseline gap-x-[18px] gap-y-1 text-[13px] leading-5 text-foreground", scrubbed && "invisible")}>
+          <span>
+            <Swatch />
+            {copy.portfolioYou}
+            {point.changePct != null && (
+              <>
+                {" "}
+                <Pct value={point.changePct} />
+              </>
+            )}{" "}
+            <span className="text-muted-foreground">{copy.portfolioSinceBuy}</span>
+          </span>
+          <span className="ml-auto self-center">
+            <HeldMarks held={point.held} />
+          </span>
         </p>
         {scrubbed && (
           <p className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-1.5 text-[13px] leading-5 text-muted-foreground">

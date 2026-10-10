@@ -16,6 +16,8 @@ export type SocialAction =
   | "link_face_off"
   | "share_holdings_on"
   | "share_holdings_off"
+  | "share_week_on"
+  | "share_week_off"
   | "salute"
   | "unsalute"
   | "friend_request"

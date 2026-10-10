@@ -29,6 +29,8 @@ export const SOCIAL_LIMITS = {
   settings: 30,
   /** "Your friends hold": a read of the viewer's own friends, a join per call. */
   holding: 60,
+  /** Compare with friends: the picker's list and each friend's line, a read of one friend per call. */
+  compare: 60,
 } as const;
 
 export type SocialBucket = keyof typeof SOCIAL_LIMITS;

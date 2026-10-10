@@ -32,6 +32,20 @@ function read(key: string): string | null {
 }
 
 /**
+ * Forget a stored choice everywhere: storage, the in-memory copy, and every
+ * control reading it (a per-account choice at sign-out).
+ */
+export function forgetStoredChoice(key: string): void {
+  memory.delete(key);
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage blocked: the in-memory copy was all there was.
+  }
+  for (const listener of listeners.get(key) ?? []) listener();
+}
+
+/**
  * `key` may be null while it is not yet known (a per-account key before the
  * account is): the value is then null and setting it does nothing.
  */

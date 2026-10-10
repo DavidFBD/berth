@@ -6,7 +6,8 @@ import { markNoticeSeen, pendingNotices } from "@/lib/server/notices";
 import { acceptTerms, termsStatus } from "@/lib/server/terms-acceptance";
 import { NOT_FOUND, readCard, SIGN_IN } from "@/lib/server/social/cards";
 import { friendAction, friendLink, listFriends, readLinkCard } from "@/lib/server/social/friends";
-import { checkHandle, mySocial, setHandle, setLinkFace, setShareHoldings, setVisible } from "@/lib/server/social/handles";
+import { checkHandle, mySocial, setHandle, setLinkFace, setShareHoldings, setShareWeek, setVisible } from "@/lib/server/social/handles";
+import { compareFriends, friendWeek } from "@/lib/server/social/compare";
 import { takeSocialPlace, type SocialBucket } from "@/lib/server/social/limits";
 import { hasVerifiedEmail, type SocialViewer } from "@/lib/server/social/people";
 import { setSalute } from "@/lib/server/social/salutes";
@@ -99,6 +100,12 @@ export async function runSocialOp(
       const social = await setShareHoldings(viewer, body.on);
       return social ? ok(social) : bad("no username");
     }
+    case "share-week": {
+      if (typeof body.on !== "boolean") return bad("on");
+      if (!(await take("settings"))) return slow;
+      const social = await setShareWeek(viewer, body.on);
+      return social ? ok(social) : bad("no username");
+    }
     case "salute": {
       if (typeof body.on !== "boolean") return bad("on");
       if (!(await take("salute"))) return slow;
@@ -157,6 +164,14 @@ export async function runSocialOp(
     case "holding":
       if (!(await take("holding"))) return slow;
       return ok(await friendsHolding(viewer));
+    // Compare with friends (lib/server/social/compare): who may be drawn,
+    // and one friend's line, percent only, over the viewer's own window.
+    case "compare-friends":
+      if (!(await take("compare"))) return slow;
+      return ok(await compareFriends(viewer));
+    case "compare-week":
+      if (!(await take("compare"))) return slow;
+      return ok(await friendWeek(viewer, { handle: body.handle, range: body.range, from: body.from }));
     default:
       return { status: 404, body: { error: "unknown" } };
   }

@@ -663,6 +663,14 @@ alter table profiles add column if not exists link_face boolean not null default
 -- others' only by sharing their own). Never an amount, in either direction.
 alter table profiles add column if not exists share_holdings boolean not null default false;
 
+-- "Let my friends compare their week with mine": off unless the owner turns
+-- it on (lib/server/social/compare). Only then may a friend who turned it on
+-- too draw this account's return beside their own on the account card, in
+-- percent only, over the window their card shows; and only an account with
+-- it on sees its friends' (each sees the others' only by sharing their own).
+-- Never an amount, a holding or a value, in either direction.
+alter table profiles add column if not exists share_week boolean not null default false;
+
 -- One Salute per giver per card. Revoking sets revoked_at; saluting again
 -- clears it and keeps first_at, so toggling cannot mint a new salute point
 -- in a new month (ADR-0005).

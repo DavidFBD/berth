@@ -555,10 +555,22 @@ export type Copy = {
    */
   portfolioSince: (date: string, days: number) => string;
   portfolioYou: string;
+  /** The legend's marks of what the portfolio holds, read aloud: names, never amounts. */
+  portfolioHolds: (names: readonly string[], more: number) => string;
+  /** After the marks, the rest of what is held, as a count. */
+  portfolioHoldsMore: (count: number) => string;
   /** Before the benchmark's name, by id: "the same money in the" S&P 500 fund, "in" Gold. */
   portfolioSameDollarsIn: Record<"SPY" | "QQQ" | "PAXG" | "BTC" | "SGOV", string>;
   /** The chooser's menu heading, and the description its button carries. */
   portfolioCompareWith: string;
+  /** The picker's second group: friends who compare their week (lib/friend-week). */
+  portfolioFriendsGroup: string;
+  /** Under the legend when a friend is picked: the window both lines count from. */
+  portfolioFriendFrom: (date: string) => string;
+  /** A friend picked on a range their line is not drawn over. */
+  portfolioFriendRanges: (handle: string) => string;
+  /** A friend picked whose line cannot be drawn now (no recent day, or no return to tell). */
+  portfolioFriendNone: (handle: string) => string;
   portfolioChooserHint: string;
   /** One day stored: the line runs from what was paid to what it is worth now. */
   portfolioFirstDay: string;
@@ -581,10 +593,29 @@ export type Copy = {
    * A day of the strip for a screen reader: the date, the day's change
    * ("up 1.2%, $0.42"), and the holding that moved most, when known.
    */
-  portfolioDayAria: (date: string, change: string | null, mover: string | null) => string;
-  portfolioDayUp: (pct: string, usd: string) => string;
-  portfolioDayDown: (pct: string, usd: string) => string;
-  portfolioDayFlat: string;
+  portfolioDayAria: (date: string, you: string, mover: string | null) => string;
+  /**
+   * The portfolio's day under the week strip (lib/day-line): flat when what
+   * is shown rounds to zero. `pct` and `usd` unsigned, `usdSigned` with its
+   * sign, each null when not said.
+   */
+  portfolioDayYou: (say: {
+    direction: "up" | "down" | "flat";
+    pct: string | null;
+    usd: string | null;
+    usdSigned: string | null;
+    today: boolean;
+    fromBuy: boolean;
+  }) => string;
+  /** The holding that moved the day most, by name, with its own move. */
+  portfolioDayMover: (say: {
+    name: string;
+    direction: "up" | "down";
+    pct: string | null;
+    usd: string | null;
+    usdSigned: string | null;
+    today: boolean;
+  }) => string;
   /** The day line: the first day, counted from what was paid. */
   portfolioFromBuy: string;
   /** The day line when a price for the day is missing. The line adds the full stop. */
@@ -2003,6 +2034,9 @@ export type SocialCopy = {
   /** The opt-in for friends to see which listings you hold (lib/server/social-proof), off by default. */
   shareHoldings: string;
   shareHoldingsSub: string;
+  /** The opt-in to compare weeks with friends (lib/server/social/compare), off by default. */
+  shareWeek: string;
+  shareWeekSub: string;
   /** Beside friend requests: what accepting does and does not share. */
   acceptHoldingsNote: string;
   /** Beside a card's Accept or Add friend, when the viewer's own switch is on. */
@@ -3317,7 +3351,12 @@ export const COPY: Copy = {
   holdingsBenchmarkNote:
     "The line is the return on your money so far, each day at the close and today at the live price, beside the return of the same money put on the same days into what you compare it with. Both start at 0% together and count the same money on the same days, so the gap between them is the difference, your fee included. The return is time weighted: money you add or take out moves neither line, only prices do. Where a return cannot be told, the line shows your money in dollars instead and says why. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. Each day under the line is what your holdings made or lost that day, with buys and sells set aside, and the holding that moved most. A ringed dot on the line is a buy, a hollow ring a sell. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
   portfolioSince: (date, days) => `Since ${date}, ${marketDays(days)}.`,
-  portfolioYou: "You",
+  portfolioYou: "Your portfolio",
+  portfolioHolds: (names, more) => {
+    const all = more > 0 ? [...names, `${more} more`] : [...names];
+    return `Holds ${all.length === 1 ? all[0] : `${all.slice(0, -1).join(", ")} and ${all[all.length - 1]}`}`;
+  },
+  portfolioHoldsMore: (count) => `+${count}`,
   portfolioSameDollarsIn: {
     SPY: "the same money in the",
     QQQ: "the same money in the",
@@ -3326,6 +3365,10 @@ export const COPY: Copy = {
     SGOV: "the same money in",
   },
   portfolioCompareWith: "Compare with",
+  portfolioFriendsGroup: "Friends",
+  portfolioFriendFrom: (date) => `Both lines from ${date}, the first day both have.`,
+  portfolioFriendRanges: (handle) => `${handle}'s line is drawn over 1W and First buy.`,
+  portfolioFriendNone: (handle) => `No line for ${handle} right now.`,
   portfolioChooserHint: "What your money is compared with. Choose another.",
   portfolioFirstDay:
     "Your first day, from what you paid, fee included, to what it is worth now. Daily values start after the next close.",
@@ -3334,13 +3377,17 @@ export const COPY: Copy = {
   portfolioNow: "Now",
   portfolioSinceBuy: "since you bought",
   portfolioToday: "Today",
-  portfolioWeekLabel: "Your last seven market days",
-  portfolioFirstWeek: (day) => `Your first seven market days. Day ${day}.`,
-  portfolioDayAria: (date, change, mover) =>
-    [date, change ?? "No figure for this day", mover ? `Moved most: ${mover}` : null].filter(Boolean).join(". ") + ".",
-  portfolioDayUp: (pct, usd) => `Up ${pct}, ${usd}`,
-  portfolioDayDown: (pct, usd) => `Down ${pct}, ${usd}`,
-  portfolioDayFlat: "Unchanged",
+  portfolioWeekLabel: "Your week, and what moved it most each day",
+  portfolioFirstWeek: (day) => `Your first week, and what moved it most each day. Day ${day} of 7.`,
+  portfolioDayAria: (date, you, mover) => [date, you, mover].filter(Boolean).join(". ") + ".",
+  portfolioDayYou: ({ direction, pct, usd, usdSigned, today, fromBuy }) => {
+    const verb = today ? "is" : "was";
+    const lead = fromBuy ? `Since you bought, your portfolio ${verb}` : `Your portfolio ${verb}`;
+    if (direction === "flat") return `${lead} flat`;
+    return `${lead} ${direction} ${pct ? `${pct}${usdSigned ? ` (${usdSigned})` : ""}` : usd}`;
+  },
+  portfolioDayMover: ({ name, direction, pct, usd, usdSigned, today }) =>
+    `${name} ${today ? "has moved" : "moved"} most, ${direction} ${pct ? `${pct}${usdSigned ? ` (${usdSigned})` : ""}` : usd}`,
   portfolioFromBuy: "Since you bought",
   portfolioDayUnknown: "No figure for this day, a price is missing",
   portfolioNothingHeld: "Nothing held",
@@ -4389,6 +4436,7 @@ export const COPY: Copy = {
           "The preview of a link to your profile or of your invite link, its picture, title and description, names no one unless you turn on Show my avatar, username and rank on links I share. Then a profile link's preview shows your username, your avatar (or your rank mark if you have not picked one) and your rank name, and an invite link's preview shows your username and your avatar or rank mark, to anyone who opens or previews the link, or guesses your username. Never your email, your wallets, your money or what you own. It is off unless you turn it on, and it shows no one while your profile is hidden. When you turn it off or hide your profile, Berth stops serving your preview within ten minutes. Apps where a link was already shared may keep their own copy of its preview for longer, and we cannot remove it from them.",
           "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. A friend can see whether you saluted them. Nobody else can see who you block. A friend who opens your profile sees which of their own friends are also yours, by username and avatar, unless that person's profile is hidden. The record of changes is kept for a year.",
           "If you turn on Let my friends see which stocks and funds I hold, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username and avatar, for up to four of the friends who hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
+          "If you turn on Let my friends compare their week with mine, your friends who turned it on too can draw a line of your return beside their own on their account page, with your username, avatar and rank: how your portfolio moved, in percent, day by day, over the days their page shows, the last week or since the later of your two first buys. Money you add or take out does not move it. They never see how much money you have, what you paid or what it is worth, and it shows no ranking. With only a few holdings, a friend may be able to tell from your line what you hold and in what share. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your daily values and not shown once the last is more than three days old. While your profile is hidden you are not shown.",
           "Most bought on Berth is public: anyone who opens the board sees it. It counts how many people bought each listing in one week, Monday to Sunday in UTC, from the orders we keep. Each week is counted once, after it ends, and kept as it was published; the first week counted begins on 5 October 2026. It names no one and shows no amount. Two accounts merged into one count as one person. Only buys of at least $10, from accounts at least a week old with a verified email, are counted, and staff accounts and buys that earn no XP are not. A listing bought by fewer than five people is left out, counts above ten are rounded down to a multiple of five, and the list is not shown at all in a week when fewer than ten people bought.",
           "Most held on Berth is public too. Once a week, published on Tuesday for the week before, Monday to Sunday in UTC, the board shows for each stock or fund a rounded share, such as 1 in 4, of the people who own a stock or fund on Berth who hold that one. It is never a count of people and never an amount, and never anything about one person. The people counted are those with a verified email whose account is at least 7 days old and held at least $10 of stocks and funds at its last daily value of the week; staff accounts are not counted. A listing is shown only when at least 20 people hold it, and nothing is shown in a week when fewer than 50 people hold a stock or fund. Each week is counted once, after it ends, and kept as published. The first week counted is the week of 19 October 2026, published on 27 October 2026.",
         ],
@@ -4539,7 +4587,7 @@ export const COPY: Copy = {
       {
         id: "what-changed",
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
-        body: ["The first three changes below are new on 8 October 2026 and the last is new on 9 October 2026. The others came on 6 October 2026."],
+        body: ["The first three changes below are new on 8 October 2026, the second to last on 9 October 2026 and the last on 10 October 2026. The others came on 6 October 2026."],
         list: [
           "For a sign up through a campaign's link, we keep only whether the country your connection came from could not be told, as a signal for the reviewer. Never the country itself.",
           "A note that a campaign reward was paid to your account is an account notice, sent whatever your email settings say.",
@@ -4552,6 +4600,7 @@ export const COPY: Copy = {
           "The record of which version of the terms you accepted, and when.",
           "Campaigns now record the account opened through a campaign's own link, which is the one paid, instead of who invited whom. Inviting someone with your own invite link never earns money.",
           "A friend who opens your profile now sees the friends you have in common, the day you became friends, the days you reached each rank and the Salutes between the two of you, including whether you saluted them.",
+          "Compare with friends: if you and a friend both turn it on, each of you can see the other's return, in percent only, beside your own.",
         ],
       },
       {
@@ -5068,6 +5117,8 @@ export const COPY: Copy = {
     youAreFriends: (handle) => `You and ${handle} are friends.`,
     shareHoldings: "Let my friends see which stocks and funds I hold",
     shareHoldingsSub: "Only the names, never how much, to every friend who shares too, including friends you add later. You see theirs only while yours is on. Off unless you turn it on.",
+    shareWeek: "Let my friends compare their week with mine",
+    shareWeekSub: "Friends who turn it on too can see how your portfolio moved, in percent only, beside their own over the same days. With only a few holdings, a friend may be able to tell from your line what you hold and in what share. Never how much money. You see theirs only while yours is on. Off unless you turn it on.",
     acceptHoldingsNote: "Friends never see your money. Which stocks and funds you hold is shared only if you both turn it on.",
     cardShareNote: "Your switch to share what you hold is on: they will see which stocks and funds you hold if they share theirs.",
     holdingTitle: "Your friends hold",

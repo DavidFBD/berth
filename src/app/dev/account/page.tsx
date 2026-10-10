@@ -73,7 +73,7 @@ function WalletsGallery({ scene }: { scene: string }) {
       {scene === "prompt" && <UnlinkedWalletLine address={DEMO_UNLINKED} busy={false} onAdd={() => {}} onDismiss={() => {}} />}
       {scene === "drawer" && (
         <Panel>
-          <SocialSection demo={{ me: { hasEmail: true, handle: "harbourfan", visible: true, linkFace: false, shareHoldings: false, nextChangeAt: null, requests: 1 } }} />
+          <SocialSection demo={{ me: { hasEmail: true, handle: "harbourfan", visible: true, linkFace: false, shareHoldings: false, shareWeek: false, nextChangeAt: null, requests: 1 } }} />
         </Panel>
       )}
       {scene === "signed-in-as" && (
@@ -184,7 +184,7 @@ function Inspector() {
   const params = useSearchParams();
   const portfolio = params.get("portfolio");
   if (portfolio && (PORTFOLIO_STATES as readonly string[]).includes(portfolio)) {
-    return <PortfolioGallery key={portfolio} state={portfolio as PortfolioState} />;
+    return <PortfolioGallery key={portfolio} state={portfolio as PortfolioState} friend={params.get("friend")} />;
   }
   if (params.has("consent")) {
     const kind = params.get("consent");

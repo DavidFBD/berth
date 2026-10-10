@@ -203,6 +203,25 @@ export async function setShareHoldings(viewer: SocialViewer, on: boolean, now = 
   return mine ? mySocial(viewer, now) : null;
 }
 
+/**
+ * "Let my friends compare their week with mine": one switch, off by
+ * default. It decides whether a friend who turned it on too may draw this
+ * account's return, percent only, beside their own on the account card,
+ * and, by the same switch, whether this account may draw theirs
+ * (lib/server/social/compare).
+ */
+export async function setShareWeek(viewer: SocialViewer, on: boolean, now = new Date()): Promise<MySocial | null> {
+  const rows = (await getSql().query(
+    `update profiles set share_week = $2, updated_at = $3::timestamptz
+     where user_id = $1 and share_week is distinct from $2
+     returning share_week`,
+    [viewer.id, on, now.toISOString()],
+  )) as { share_week: boolean }[];
+  if (rows[0]) await socialAudit(viewer.id, on ? "share_week_on" : "share_week_off", viewer.id);
+  const mine = await ownHandle(viewer.id);
+  return mine ? mySocial(viewer, now) : null;
+}
+
 /** The drawer's view of the viewer's own social state. */
 export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<MySocial> {
   const mine = await ownHandle(viewer.id);
@@ -220,6 +239,7 @@ export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<
     visible: mine?.visible ?? false,
     linkFace: mine?.linkFace ?? false,
     shareHoldings: mine?.shareHoldings ?? false,
+    shareWeek: mine?.shareWeek ?? false,
     nextChangeAt: mine ? nextChange(mine.changedAt, now) : null,
     requests,
   };

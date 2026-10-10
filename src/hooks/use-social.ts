@@ -21,6 +21,7 @@ import type {
 import type { HandleRefusal } from "@/lib/handle";
 import { carryMore } from "@/lib/profile-more";
 import type { FriendsHolding, FriendsHoldingResponse } from "@/lib/social-proof";
+import type { CompareFriend, CompareFriendsResponse, FriendWeek, FriendWeekRange, FriendWeekResponse } from "@/lib/friend-week";
 
 /**
  * The client side of the social routes (app/api/social/[op]). Every call is
@@ -61,6 +62,9 @@ const KEYS = {
   blocked: (key: string | null) => ["social-blocked", key] as const,
   board: (key: string | null) => ["social-board", key] as const,
   holding: (key: string | null) => ["social-holding", key] as const,
+  compareFriends: (key: string | null) => ["social-compare-friends", key] as const,
+  compareWeek: (key: string | null, handle: string, range: string, from: string) =>
+    ["social-compare-week", key, handle, range, from] as const,
   notices: (key: string | null) => ["social-notices", key] as const,
   card: (key: string | null, handle: string) => ["social-card", key, handle.toLowerCase()] as const,
 };
@@ -162,6 +166,73 @@ export function useSetShareHoldings() {
       void queryClient.invalidateQueries({ queryKey: ["social-card"] });
     },
   });
+}
+
+export function useSetShareWeek() {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  return useMutation({
+    mutationFn: (on: boolean) => must(call<MySocial>("share-week", { on })),
+    onSuccess: (social) => {
+      queryClient.setQueryData(KEYS.me(key), social);
+      void queryClient.invalidateQueries({ queryKey: KEYS.compareFriends(key) });
+      void queryClient.invalidateQueries({ queryKey: ["social-compare-week", key] });
+    },
+  });
+}
+
+/** A quiet social read: only a session already at hand, never a wallet prompt; any failure reads as `empty`. */
+async function quietRead<T>(headers: () => Promise<Record<string, string> | null>, op: string, body: Record<string, unknown>, empty: T): Promise<T> {
+  const auth = await headers();
+  if (!auth) return empty;
+  const response = await fetch(`/api/social/${op}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...auth },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) return empty;
+  return ((await response.json()) as T) ?? empty;
+}
+
+/**
+ * The friends the benchmark picker offers (lib/server/social/compare): those
+ * who compare their week, while the viewer does too. Never asks a wallet to
+ * sign; says nothing without a session. Private: no-store on the route,
+ * keyed on the viewer here.
+ */
+export function useCompareFriends(enabled = true): CompareFriend[] {
+  const { key, headers } = useAccountHeaders({ prompt: false });
+  const query = useQuery({
+    queryKey: KEYS.compareFriends(key),
+    enabled: enabled && key !== null,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: async () => (await quietRead<CompareFriendsResponse>(headers, "compare-friends", {}, { friends: [] })).friends ?? [],
+  });
+  // Off, nobody is offered, whatever an earlier answer cached.
+  return enabled ? (query.data ?? []) : [];
+}
+
+/**
+ * One friend's line, percent only, over the card's window (`range` and its
+ * first day `from`). Null while it loads, when it may not be drawn, or for
+ * no friend.
+ */
+export function useFriendWeek(
+  handle: string | null,
+  range: FriendWeekRange | null,
+  from: string | null,
+): { week: FriendWeek | null; loading: boolean } {
+  const { key, headers } = useAccountHeaders({ prompt: false });
+  const ready = handle !== null && range !== null && from !== null;
+  const query = useQuery({
+    queryKey: KEYS.compareWeek(key, handle ?? "", range ?? "", from ?? ""),
+    enabled: ready && key !== null,
+    staleTime: 10 * 60_000,
+    retry: false,
+    queryFn: async () => (await quietRead<FriendWeekResponse>(headers, "compare-week", { handle, range, from }, { week: null })).week ?? null,
+  });
+  return { week: ready ? (query.data ?? null) : null, loading: ready && query.isPending && query.fetchStatus !== "idle" };
 }
 
 export function useFriendsList(enabled: boolean) {
@@ -356,6 +427,10 @@ export function useSocialAction() {
         void queryClient.invalidateQueries({ queryKey: KEYS.board(key) });
         void queryClient.invalidateQueries({ queryKey: KEYS.holding(key) });
         void queryClient.invalidateQueries({ queryKey: KEYS.blocked(key) });
+        // A block, an unfriend or a removal drops a friend's line at once:
+        // reset, not just marked stale, so the old line is never drawn again.
+        void queryClient.resetQueries({ queryKey: KEYS.compareFriends(key) });
+        void queryClient.resetQueries({ queryKey: ["social-compare-week", key] });
       }
     },
   });

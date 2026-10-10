@@ -316,6 +316,10 @@ const REVIEWED_CLAIMS: readonly string[] = [
   "While hidden, your username finds no one, and friends do not see what you hold.",
   // The link preview (lib/server/og-people) never carries holdings, switch or not.
   "Never your email, your wallets, your money or what you own.",
+  // Compare with friends (lib/server/social/compare, 2026-10-10, review M1): the line is
+  // days and percentages only, and with few holdings its shape can show what is held and
+  // in what share. Said at the switch and in the policy in these words.
+  "With only a few holdings, a friend may be able to tell from your line what you hold and in what share.",
   // Not about who sees holdings.
   "Jev has not read the latest stories about what you own yet.",
   "Your change counts what your holdings did, not money you added or took out.",
