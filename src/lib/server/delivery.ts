@@ -6,7 +6,7 @@ import { ROBINHOOD_RESTRICTED_COUNTRIES, deliveryFor, hubDelivery, knownCountry,
 import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
 import { accountEvmAddresses } from "@/lib/server/identities";
 import { HUB_RPC_URLS, getPinnedRpcUrls } from "@/lib/sodax-config";
-import { PRIVY_SPONSORABLE_CHAIN_IDS } from "@/lib/gas-sponsor";
+import { sponsorChainsFromEnv } from "@/lib/gas-sponsor";
 import { getSql } from "@/lib/server/db";
 import { readPrivyEmbeddedWallet } from "@/lib/server/privy";
 
@@ -56,15 +56,18 @@ export function robinhoodDeliveryOn(identifiers: readonly (string | null | undef
 
 /**
  * Whether a Privy email wallet (the embedded wallet) may take delivery on
- * Robinhood Chain: only once Robinhood Chain (4663) is sponsorable
- * (lib/gas-sponsor PRIVY_SPONSORABLE_CHAIN_IDS, held out until SODAX
- * confirms its relayer picks up a sponsored 7702 send, the plan's decision
- * 2). An email wallet holds no ETH there and has no way to get any, so
- * until then it could take delivery but never sell (rh-ux-sec B1). The
- * day 4663 joins that set, email wallets become eligible with no other
- * change. External plain key wallets stay eligible either way.
+ * Robinhood Chain: exactly when Privy sponsors its fee there, that is when
+ * Robinhood Chain (4663) is on NEXT_PUBLIC_GAS_SPONSOR_CHAINS and on the
+ * sponsorable set (lib/gas-sponsor sponsorChainsFromEnv; 4663 joined it on
+ * 2026-10-10, once SODAX confirmed its relayer picks up a sponsored 7702
+ * send). An email wallet holds no ETH there, so without sponsorship it
+ * could take delivery but never sell (rh-ux-sec B1); a deploy whose env
+ * leaves 4663 out keeps email wallets on the hub rather than strand them.
+ * Read on every call. External plain key wallets are eligible either way.
  */
-export function embeddedEligible(ids: ReadonlySet<number> = PRIVY_SPONSORABLE_CHAIN_IDS): boolean {
+export function embeddedEligible(
+  ids: ReadonlySet<number> = sponsorChainsFromEnv(process.env.NEXT_PUBLIC_GAS_SPONSOR_CHAINS),
+): boolean {
   return ids.has(4663);
 }
 

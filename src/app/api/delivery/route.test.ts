@@ -92,6 +92,8 @@ beforeEach(() => {
   vi.stubEnv("ROBINHOOD_DELIVERY", "on");
   vi.stubEnv("ROBINHOOD_DELIVERY_USERS", undefined);
   vi.stubEnv("ROBINHOOD_DELIVERY_DENY", undefined);
+  // Privy not sponsoring Robinhood Chain unless a case says so (embeddedEligible).
+  vi.stubEnv("NEXT_PUBLIC_GAS_SPONSOR_CHAINS", undefined);
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -143,10 +145,13 @@ describe("POST /api/delivery", () => {
     expect(walletReads()).toHaveLength(2);
   });
 
-  it("keeps a Privy email wallet on the hub while Robinhood Chain is not sponsorable, and an external wallet delivered there (rh-ux-sec B1)", async () => {
+  it("delivers a Privy email wallet to Robinhood Chain once Privy sponsors 4663 there, and keeps it on the hub on a deploy that does not (rh-ux-sec B1)", async () => {
     query.mockImplementation(async (text?: string) =>
       String(text).includes("privy_wallet") ? [{ embedded: true }] : [linked(HOME, true), linked(SIGNER, false)],
     );
+    vi.stubEnv("NEXT_PUBLIC_GAS_SPONSOR_CHAINS", "8453,42161,4663");
+    expect(await ask("NL")).toEqual(RH(SIGNER));
+    vi.stubEnv("NEXT_PUBLIC_GAS_SPONSOR_CHAINS", "8453,42161");
     expect(await ask("NL")).toEqual(HUB("embedded_wallet"));
     query.mockImplementation(async (text?: string) =>
       String(text).includes("privy_wallet") ? [{ embedded: false }] : [linked(HOME, true), linked(SIGNER, false)],

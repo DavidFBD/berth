@@ -1,13 +1,14 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setSqlClient, type SqlClient } from "./db";
 import { makeTestDb } from "./pglite-test-db";
 import { recordHomeWallet } from "./identities";
 import { embeddedEligible, isEmbeddedWallet, recheckDestination } from "./delivery";
 
 /**
- * A Privy email wallet and Robinhood Chain (rh-ux-sec B1): no delivery
- * there while 4663 is not sponsorable, since such a wallet holds no ETH to
- * sell from there; an external wallet stays eligible. Against the real
+ * A Privy email wallet and Robinhood Chain (rh-ux-sec B1): delivery there
+ * exactly when Privy sponsors 4663 (on NEXT_PUBLIC_GAS_SPONSOR_CHAINS),
+ * since such a wallet holds no ETH to sell from there otherwise; an
+ * external wallet stays eligible either way. Against the real
  * schema.
  */
 
@@ -22,6 +23,9 @@ beforeAll(async () => {
 afterAll(async () => {
   setSqlClient(null);
   await close();
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 beforeEach(async () => {
   await sql.query("delete from user_identities");
@@ -45,9 +49,16 @@ const plainChain = vi.fn(async (_url: string | URL, init?: RequestInit) => {
 }) as unknown as typeof fetch;
 
 describe("a Privy email wallet on Robinhood Chain", () => {
-  it("becomes eligible exactly when Robinhood Chain joins the sponsorable chains", () => {
-    expect(embeddedEligible()).toBe(false);
+  it("is eligible exactly when Privy sponsors Robinhood Chain: 4663 on the sponsor list", () => {
     expect(embeddedEligible(new Set([8453, 4663]))).toBe(true);
+    expect(embeddedEligible(new Set([8453]))).toBe(false);
+    vi.stubEnv("NEXT_PUBLIC_GAS_SPONSOR_CHAINS", "8453,42161,10,137,56,4663");
+    expect(embeddedEligible()).toBe(true);
+    // A deploy whose env leaves 4663 out keeps email wallets on the hub.
+    vi.stubEnv("NEXT_PUBLIC_GAS_SPONSOR_CHAINS", "8453,42161");
+    expect(embeddedEligible()).toBe(false);
+    vi.stubEnv("NEXT_PUBLIC_GAS_SPONSOR_CHAINS", undefined);
+    expect(embeddedEligible()).toBe(false);
   });
 
   it("is told apart from an external wallet by Privy's proof, or as an email account's home before proofs", async () => {
@@ -61,7 +72,25 @@ describe("a Privy email wallet on Robinhood Chain", () => {
     expect(await isEmbeddedWallet(external, EXTERNAL)).toBe(false);
   });
 
-  it("is refused when the order is recorded, and an external wallet allowed", async () => {
+  it("is allowed when the order is recorded once 4663 is sponsored, Privy's 7702 delegate still a plain key", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GAS_SPONSOR_CHAINS", "8453,4663");
+    const delegated = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      const call = JSON.parse(String(init?.body)) as { id: number };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: call.id, result: "0xef0100d6cedde84be40893d153be9d467cd6ad37875b28" }));
+    }) as unknown as typeof fetch;
+    const place = { ok: true } as const;
+    const email = await user("did:privy:d", EMAIL_WALLET);
+    await recordHomeWallet(email, EMAIL_WALLET, "privy_wallet");
+    expect(
+      await recheckDestination({ userId: email, usersWallet: EMAIL_WALLET, signer: EMAIL_WALLET, place, dstAddress: EMAIL_WALLET, fetcher: delegated }),
+    ).toEqual({ verdict: "allowed" });
+    expect(
+      await recheckDestination({ userId: email, usersWallet: EMAIL_WALLET, signer: EMAIL_WALLET, place, dstAddress: EMAIL_WALLET, fetcher: plainChain }),
+    ).toEqual({ verdict: "allowed" });
+  });
+
+  it("is refused when the order is recorded on a deploy that does not sponsor 4663, and an external wallet allowed", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GAS_SPONSOR_CHAINS", "8453");
     const place = { ok: true } as const;
     const email = await user("did:privy:c", EMAIL_WALLET);
     await recordHomeWallet(email, EMAIL_WALLET, "privy_wallet");

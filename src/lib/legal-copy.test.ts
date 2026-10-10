@@ -166,20 +166,29 @@ describe("Robinhood Chain delivery, said as it is (review: copy honesty)", () =>
     }
   });
 
-  it("calls it a beta for some accounts, for market buys, in the terms, the privacy note and the info sheet", () => {
+  it("says plainly that a market buy lands in your own wallet on Robinhood Chain, email accounts included, in the terms, the privacy note and the info sheet", () => {
     const terms = all(COPY.termsOfUse);
-    expect(terms).toMatch(/During a beta, for some accounts that sign in with a wallet of their own, a market buy of a stock/);
-    expect(terms).toMatch(/Limit orders, the Treasury bill fund and accounts that sign in with email stay with the Berth account/);
-    expect(all(COPY.privacyPolicy as typeof COPY.termsOfUse)).toMatch(/During a beta, some accounts can have a buy delivered/);
-    expect(COPY.infoHowBody).toMatch(/During a beta, some accounts that sign in with a wallet of their own can have a market buy/);
-    for (const text of [COPY.infoHowBody, COPY.rhChain.limitBuyStaysInAccount]) expect(text).not.toMatch(/ [-–—] |—|–/);
+    const privacy = all(COPY.privacyPolicy as typeof COPY.termsOfUse);
+    for (const text of [terms, privacy, COPY.infoHowBody]) {
+      expect(text).not.toMatch(/during a beta/i);
+      expect(text).not.toMatch(/some accounts/i);
+    }
+    expect(terms).toMatch(/A stock bought at the market price lands there, where Robinhood offers its tokens/);
+    expect(terms).toMatch(/the one Privy creates for you if you sign in with email/);
+    expect(terms).toMatch(/Limit orders and the Treasury bill fund stay with the Berth account/);
+    expect(terms).not.toMatch(/accounts that sign in with email stay with the Berth account/);
+    expect(privacy).toMatch(/A stock bought at the market price can land in your own wallet on Robinhood Chain/);
+    expect(COPY.infoHowBody).toMatch(/A stock bought at the market price lands in your own wallet on Robinhood Chain/);
+    for (const text of [terms, COPY.infoHowBody, COPY.rhChain.limitBuyStaysInAccount]) expect(text).not.toMatch(/ [-–—] |—|–/);
+    expect(terms).not.toMatch(/sodax.{0,40}(fault|blame)/i);
   });
 
   it("says the same in llms.txt", async () => {
     const { readFileSync } = await import("node:fs");
     const source = readFileSync("src/app/llms.txt/route.ts", "utf8");
     expect(source).not.toMatch(/Depending on their country and wallet/);
-    expect(source).toMatch(/During a beta, some accounts that sign in with a wallet of their own can have a market buy of a stock delivered/);
+    expect(source).not.toMatch(/During a beta/);
+    expect(source).toMatch(/A stock bought at the market price lands instead as the issuer's own token in the person's own wallet on Robinhood Chain/);
   });
 });
 

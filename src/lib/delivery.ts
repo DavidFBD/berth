@@ -52,7 +52,7 @@ export type DeliveryReason =
   | "read_failed"
   | "no_evm_wallet"
   | "not_eoa"
-  /** A Privy email wallet, while Robinhood Chain is not sponsorable (lib/server/delivery embeddedEligible). */
+  /** A Privy email wallet, on a deploy where Privy does not sponsor Robinhood Chain (lib/server/delivery embeddedEligible). */
   | "embedded_wallet"
   | "restricted_country"
   | "unknown_country";

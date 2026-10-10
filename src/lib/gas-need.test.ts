@@ -439,7 +439,7 @@ describe("Robinhood Chain (4663), where a sell from the person's own wallet sign
     expect(orderGasShort({ chainKey: RH, isNative: false, nativeBalance: 0n, amount: 0n, need: undefined })).toBe(true);
   });
 
-  it("would cost nothing if sponsored, which it is not until SODAX answers (lib/gas-sponsor)", () => {
+  it("costs an email account nothing when sponsored there, so a sell needs no ETH and holds nothing back", () => {
     expect(gasModel(RH, true)).toEqual({ kind: "free" });
     expect(orderGasShort({ chainKey: RH, isNative: false, nativeBalance: 0n, amount: 0n, need: 1n, sponsored: true })).toBe(false);
   });

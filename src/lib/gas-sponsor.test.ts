@@ -64,9 +64,9 @@ describe("sponsorChainsFromEnv", () => {
   it("keeps only chains Privy sponsors for Berth, and warns about each one dropped", () => {
     const warn = vi.fn();
     expect([...sponsorChainsFromEnv("8453,146,42161,43114,999,10,137,56,1,4663", warn)]).toEqual([
-      8453, 42161, 10, 137, 56,
+      8453, 42161, 10, 137, 56, 4663,
     ]);
-    expect(warn).toHaveBeenCalledTimes(5);
+    expect(warn).toHaveBeenCalledTimes(4);
     expect(warn.mock.calls.map(([message]) => message).join(" ")).toMatch(/146.*43114.*999.*\b1,/);
   });
   it("gives nothing for chains Privy cannot sponsor, nor for Ethereum, whose blocks outlast Privy's 20 second wait", () => {
@@ -75,7 +75,7 @@ describe("sponsorChainsFromEnv", () => {
     expect(sponsorChainsFromEnv("").size).toBe(0);
   });
   it("is exactly the agreed set", () => {
-    expect([...PRIVY_SPONSORABLE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 56, 137, 8453, 42161]);
+    expect([...PRIVY_SPONSORABLE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 56, 137, 4663, 8453, 42161]);
   });
 });
 
@@ -920,15 +920,21 @@ describe("the call inside a sponsored transaction", () => {
 });
 
 describe("Robinhood Chain (4663)", () => {
-  it("is never sponsored, even when listed, until SODAX confirms its relayer picks up a sponsored 7702 send (plan decision 2)", () => {
+  it("is sponsorable once listed, for an email session only, and drops out once Privy refuses it", () => {
     const RH = ChainKeys.ROBINHOOD_MAINNET;
     const warn = vi.fn();
     const ids = sponsorChainsFromEnv("8453,4663", warn);
-    expect(PRIVY_SPONSORABLE_CHAIN_IDS.has(4663)).toBe(false);
-    expect([...ids]).toEqual([8453]);
-    expect(warn).toHaveBeenCalledOnce();
-    expect(isSponsoredChain(RH, ids)).toBe(false);
-    expect(gasSponsored(RH, true, ids, new Set())).toBe(false);
+    expect(PRIVY_SPONSORABLE_CHAIN_IDS.has(4663)).toBe(true);
+    expect([...ids]).toEqual([8453, 4663]);
+    expect(warn).not.toHaveBeenCalled();
+    expect(isSponsoredChain(RH, ids)).toBe(true);
+    expect(gasSponsored(RH, true, ids, new Set())).toBe(true);
+    // An external wallet signs and pays for itself.
+    expect(gasSponsored(RH, false, ids, new Set())).toBe(false);
+    // Not listed in the env: not sponsored.
+    expect(isSponsoredChain(RH, sponsorChainsFromEnv("8453"))).toBe(false);
+    // A refusal (credits out, the dashboard not ticking it) falls back to the ordinary, paid send.
+    expect(gasSponsored(RH, true, ids, new Set([4663]))).toBe(false);
   });
 });
 

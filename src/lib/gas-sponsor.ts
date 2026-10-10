@@ -31,27 +31,25 @@ export function parseSponsorChains(raw: string | undefined): ReadonlySet<number>
 
 /**
  * The chains Privy sponsors (docs.privy.io/wallets/gas-and-asset-management/gas/overview,
- * read 2026-10-04) that Berth uses: Optimism, BNB Chain, Polygon, Base and
- * Arbitrum. Any other id in the env list is ignored, so a typo or a hopeful
- * 146 can never drop the gas gate or claim "no network fee" on a chain
- * nobody pays for.
+ * read 2026-10-04) that Berth uses: Optimism, BNB Chain, Polygon, Base,
+ * Arbitrum and Robinhood Chain. Any other id in the env list is ignored,
+ * so a typo or a hopeful 146 can never drop the gas gate or claim "no
+ * network fee" on a chain nobody pays for.
  *
- * Robinhood Chain (4663) is held out on purpose, although Privy sponsors
- * it: a sponsored send goes out inside an EIP-7702 bundle, and SODAX has
- * not yet confirmed its relayer picks up an intent sent that way
- * (docs/plans/2026-10-05-robinhood-chain-delivery.md, decision 2). A sell
- * from Robinhood Chain moves the tokens into the asset manager in that very
- * send, so a packet the relayer never sees would strand them, and the
- * fallback for a refused sponsorship cannot help after the send. Until
- * SODAX answers yes, listing 4663 in NEXT_PUBLIC_GAS_SPONSOR_CHAINS does
- * nothing: the person pays their own fee there. Add 4663 here only then.
+ * Robinhood Chain (4663) is sponsorable since 2026-10-10: SODAX confirmed
+ * its relayer picks up an intent sent inside a sponsored EIP-7702 bundle
+ * (docs/plans/2026-10-05-robinhood-chain-delivery.md, decision 2), and
+ * David enabled and funded 4663 in the Privy dashboard. Listed in
+ * NEXT_PUBLIC_GAS_SPONSOR_CHAINS, it pays an email account's sell from its
+ * wallet there, and makes email wallets eligible for delivery there
+ * (lib/server/delivery embeddedEligible).
  *
  * Ethereum (1) is left out on purpose although Privy sponsors it: Privy's
  * client gives up after 20 seconds while it waits for inclusion, and with
  * 12 second blocks a sponsored send there would often end as an unknown
  * outcome, held for a minute with the money perhaps on its way.
  */
-export const PRIVY_SPONSORABLE_CHAIN_IDS: ReadonlySet<number> = new Set([10, 56, 137, 8453, 42161]);
+export const PRIVY_SPONSORABLE_CHAIN_IDS: ReadonlySet<number> = new Set([10, 56, 137, 8453, 42161, 4663]);
 
 /** The env list, kept only where Privy can sponsor; each dropped id is warned about in development. */
 export function sponsorChainsFromEnv(
