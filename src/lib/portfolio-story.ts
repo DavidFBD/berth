@@ -71,6 +71,14 @@ export type DayStory = {
   fromBuy: boolean;
   /** Every holding's part of the change, dollars, by symbol. Empty when the change is unknown. */
   parts: Readonly<Record<string, number>>;
+  /**
+   * The money at work in each holding that day, dollars, by symbol: what
+   * was held at the day before's price plus what was paid for it that day.
+   * What a holding's part is a return on. Absent when the change is unknown.
+   */
+  atWork?: Readonly<Record<string, number>>;
+  /** Dollars paid for each holding's buys that day, by symbol. Absent when the change is unknown. */
+  paid?: Readonly<Record<string, number>>;
 };
 
 /** An order as the line marks it: the point it landed on. */
@@ -89,8 +97,28 @@ export type StoryOrder = {
   usd: number | null;
 };
 
-/** Each holding's part of a window's change, largest first. */
-export type Contribution = { symbol: string; usd: number };
+/**
+ * Each holding's part of a window's change, largest first: the dollars its
+ * price moves made on the units held each day, summed over the window's
+ * days (A DAY'S CHANGE). A buy or a sell mid-window adds nothing by itself;
+ * only the price moves while it was held count (and, on the day of a buy,
+ * the move from what was paid to that close, fee included, as the return
+ * counts it, so the fee on a buy is in it). So the contributions add up to
+ * the window's `changeUsd`.
+ */
+export type Contribution = {
+  symbol: string;
+  usd: number;
+  /**
+   * The holding's own return while held, percent, over the window's days it
+   * was held: its dollars over the money put to work in it, which is what
+   * was at work in it on its first day in the window (lib/portfolio-story
+   * dailyStory's rule for a day's mover) plus what was paid for it on the
+   * days after. So it has the dollars' sign and period, fee included. Null
+   * when no money was at work in it.
+   */
+  pct?: number | null;
+};
 
 /** What a range adds to lib/portfolio-history's answer. */
 export type RangeStory = {
@@ -349,6 +377,8 @@ export function dailyStory(input: StoryInput): { stories: DayStory[]; orders: St
       held: [...point.held.keys()].sort(),
       fromBuy: !before,
       parts: Object.fromEntries(parts),
+      atWork: Object.fromEntries([...parts.keys()].map((symbol) => [symbol, atWorkIn(symbol)])),
+      paid: Object.fromEntries(paid),
     };
   });
   return { stories, orders };
@@ -367,6 +397,7 @@ export function rangeStory(
   fromZero: boolean,
 ): RangeStory {
   const sums = new Map<string, number>();
+  const putIn = new Map<string, number>();
   let changeUsd: number | null = 0;
   result.days.forEach((point, index) => {
     if (index === 0 && !fromZero) return;
@@ -376,12 +407,20 @@ export function rangeStory(
       return;
     }
     if (changeUsd !== null) changeUsd += story.change;
-    for (const [symbol, usd] of Object.entries(story.parts)) sums.set(symbol, (sums.get(symbol) ?? 0) + usd);
+    for (const [symbol, usd] of Object.entries(story.parts)) {
+      sums.set(symbol, (sums.get(symbol) ?? 0) + usd);
+      // Money put to work: the first day's whole stake, then only new money.
+      const put = putIn.has(symbol) ? (story.paid?.[symbol] ?? 0) : (story.atWork?.[symbol] ?? 0);
+      putIn.set(symbol, (putIn.get(symbol) ?? 0) + put);
+    }
   });
   const since = result.days[0]?.day;
   return {
     contributions: [...sums]
-      .map(([symbol, usd]) => ({ symbol, usd }))
+      .map(([symbol, usd]) => {
+        const put = putIn.get(symbol) ?? 0;
+        return { symbol, usd, pct: put > DUST_USD ? (usd / put) * 100 : null };
+      })
       .sort((a, b) => Math.abs(b.usd) - Math.abs(a.usd) || a.symbol.localeCompare(b.symbol)),
     changeUsd: result.days.length < 2 && !fromZero ? null : changeUsd,
     orders: since === undefined ? [] : orders.filter((order) => order.day >= since),
@@ -414,6 +453,68 @@ export function withStory(
     };
   }
   return out;
+}
+
+/**
+ * The names traded in a window, for the line under its movers: each
+ * listing bought, and each sold, once, in the order first traded.
+ */
+export function tradeSummary(orders: readonly Pick<StoryOrder, "symbol" | "direction">[]): {
+  bought: string[];
+  sold: string[];
+} {
+  const bought: string[] = [];
+  const sold: string[] = [];
+  for (const order of orders) {
+    const list = order.direction === "buy" ? bought : sold;
+    if (!list.includes(order.symbol)) list.push(order.symbol);
+  }
+  return { bought, sold };
+}
+
+/** Rows in a range's "What moved your portfolio" list. */
+export const RANGE_MOVERS_SHOWN = 5;
+/** Names per side in the line of trades under it, before "and N more". */
+export const RANGE_TRADES_NAMED = 3;
+
+/**
+ * The rows of a range's movers list: the holdings whose price moves made or
+ * lost at least a cent over the range, by size of the dollars, at most
+ * RANGE_MOVERS_SHOWN. Empty when nothing moved, or when any day of the
+ * range is unknown (`changeUsd` null): rows that leave out a day would add
+ * up to nothing the card says. The list is then not drawn.
+ */
+export function rangeMovers(
+  contributions: readonly Contribution[] | undefined,
+  changeUsd: number | null | undefined,
+): Contribution[] {
+  if (changeUsd === null || changeUsd === undefined) return [];
+  return (contributions ?? [])
+    .filter((entry) => Number.isFinite(entry.usd) && Math.abs(entry.usd) >= 0.005)
+    .sort((a, b) => Math.abs(b.usd) - Math.abs(a.usd) || a.symbol.localeCompare(b.symbol))
+    .slice(0, RANGE_MOVERS_SHOWN);
+}
+
+/**
+ * The line of trades under a range's movers: up to RANGE_TRADES_NAMED
+ * symbols bought and sold, with how many more; null when nothing was
+ * traded in the range. `after`, on a range based at its first close (a
+ * fixed range, or one built on a snapshot), is that first day: an order
+ * landing on it is inside the base, as its moves are left out of the rows,
+ * so it is not named either.
+ */
+export function rangeTrades(
+  orders: readonly Pick<StoryOrder, "symbol" | "direction" | "day">[] | undefined,
+  after: IsoDay | null = null,
+): { bought: string[]; moreBought: number; sold: string[]; moreSold: number } | null {
+  const { bought, sold } = tradeSummary((orders ?? []).filter((order) => after === null || order.day > after));
+  if (bought.length === 0 && sold.length === 0) return null;
+  return {
+    bought: bought.slice(0, RANGE_TRADES_NAMED),
+    moreBought: Math.max(bought.length - RANGE_TRADES_NAMED, 0),
+    sold: sold.slice(0, RANGE_TRADES_NAMED),
+    moreSold: Math.max(sold.length - RANGE_TRADES_NAMED, 0),
+  };
 }
 
 /** A large move with news, as lib/server/moves tells it, reduced to what the line shows. */

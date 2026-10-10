@@ -89,12 +89,52 @@ import { dayOfOrder, type SnapshotBase } from "@/lib/portfolio-days";
  * old vault positions, which `portfolio_days` does not value either.
  */
 
-export type Range = "1w" | "1m" | "3m" | "6m" | "1y" | "since" | "all";
+export type Range = "1w" | "14d" | "30d" | "90d" | "1m" | "3m" | "6m" | "1y" | "since" | "all";
 
 /** Every range, in the order a control would offer them. */
-export const RANGES: readonly Range[] = ["1w", "1m", "3m", "6m", "1y", "since", "all"];
+export const RANGES: readonly Range[] = ["1w", "14d", "30d", "1m", "90d", "3m", "6m", "1y", "since", "all"];
 
-const FIXED_RANGES: readonly Range[] = ["1w", "1m", "3m", "6m", "1y"];
+const FIXED_RANGES: readonly Range[] = ["1w", "14d", "30d", "1m", "90d", "3m", "6m", "1y"];
+
+/** The account card's ranges, in the order its toggle shows them. */
+export type CardRange = "1w" | "14d" | "30d" | "90d" | "since";
+export const CARD_RANGES: readonly CardRange[] = ["1w", "14d", "30d", "90d", "since"];
+
+/** The card's ranges counted in calendar days back from today. */
+export const RANGE_DAYS: Readonly<Record<"1w" | "14d" | "30d" | "90d", number>> = {
+  "1w": 7,
+  "14d": 14,
+  "30d": 30,
+  "90d": 90,
+};
+
+/**
+ * The card's toggle, from what the data offers (availableRanges): First buy
+ * always, 1W whenever it has a line to draw (historyRanges computes it even
+ * before a week fills it), 14D, 30D and 90D once the record reaches back
+ * that far (availableRanges' rule: the first valued day on or before today
+ * minus the span).
+ */
+export function cardRanges(
+  available: readonly Range[],
+  ranges: Partial<Record<Range, Pick<HistoryResult, "days">>>,
+): CardRange[] {
+  return CARD_RANGES.filter(
+    (range) =>
+      range === "since" ||
+      available.includes(range) ||
+      (range === "1w" && (ranges["1w"]?.days.length ?? 0) >= 2),
+  );
+}
+
+/**
+ * The range the card opens on: the one the viewer last picked when it is
+ * still offered, else First buy, the longest view.
+ */
+export function pickCardRange(stored: string | null, offered: readonly CardRange[]): CardRange {
+  const found = offered.find((range) => range === stored);
+  return found ?? "since";
+}
 
 export type PortfolioDay = {
   day: IsoDay;
@@ -449,7 +489,10 @@ function basisOf(input: HistoryInput, series: readonly SeriesPoint[]): Basis {
 function rangeStart(range: Range, lastDay: IsoDay, sinceDay: IsoDay | undefined): IsoDay | undefined {
   switch (range) {
     case "1w":
-      return addDays(lastDay, -7);
+    case "14d":
+    case "30d":
+    case "90d":
+      return addDays(lastDay, -RANGE_DAYS[range]);
     case "1m":
       return subtractMonths(lastDay, 1);
     case "3m":
@@ -584,10 +627,12 @@ export function portfolioHistory(input: HistoryInput, range: Range): HistoryResu
 }
 
 /**
- * The ranges worth offering. A fixed range (a week, a month, ...) only when
- * the data fills it, reaching back to its start, so no two buttons ever
- * draw the same line; since first buy whenever there are two days to draw;
- * all only when there was value before the first buy (a transfer in).
+ * The ranges worth offering. A fixed range (a week, 14 days, a month, ...)
+ * only when the data fills it, reaching back to its start, so no two
+ * buttons ever draw the same line; since first buy whenever there are two
+ * days to draw; all only when there was value before the first buy (a
+ * transfer in). The account card shows 1W regardless (cardRanges), so
+ * historyRanges computes it whenever since first buy can be drawn.
  */
 export function availableRanges(input: HistoryInput): Range[] {
   const series = buildSeries(input);
@@ -622,7 +667,10 @@ export function historyRanges(input: HistoryInput): {
 } {
   const available = availableRanges(input);
   const ranges: Partial<Record<Range, HistoryResult>> = {};
-  for (const range of new Set<Range>([...available, "since"])) {
+  // The card always offers 1W beside First buy (cardRanges): computed
+  // whenever there is a line, even before a week fills it.
+  const always: Range[] = available.includes("since") ? ["since", "1w"] : ["since"];
+  for (const range of new Set<Range>([...available, ...always])) {
     ranges[range] = portfolioHistory(input, range);
   }
   return { ranges, available };

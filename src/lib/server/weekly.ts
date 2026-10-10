@@ -139,7 +139,9 @@ export async function weeklyNotice(userId: string, window: WeeklyWindow): Promis
   if (lastInWeek && lastInWeek.value > 0) {
     const symbols = [...new Set([benchmark.symbol, ...orders.map((order) => order.symbol), ...days.flatMap((day) => day.holdings.map((h) => h.symbol))])];
     const marks = await readMarks(symbols);
-    const week = storedComparison({ days, orders, benchmark, marks }).ranges["1w"];
+    const comparison = storedComparison({ days, orders, benchmark, marks });
+    // Only a week the record fills: the card computes 1W before that (lib/portfolio-history cardRanges).
+    const week = comparison.available.includes("1w") ? comparison.ranges["1w"] : undefined;
     // The chart's one week range, and only when it ends on this week's close.
     const told = week && week.days.at(-1)?.day === lastInWeek.day ? week : undefined;
     const change = told?.changePct ?? null;

@@ -43,6 +43,7 @@ import { FRIEND_CHOICE_KEY, FRIEND_WEEK_RANGES, friendWindow, returnSeries, type
  *   /dev/account?portfolio=day-3          a first buy three market days ago and a second since
  *   /dev/account?portfolio=day-7          the first seven market days, full, with news on the last
  *   /dev/account?portfolio=one-month      a month with several buys and a sell
+ *   /dev/account?portfolio=ninety-days    the whole ninety days of stored closes: every range, a stock bought mid-way, two sold
  *   /dev/account?portfolio=down-week      a week in which most days fell
  *   /dev/account?portfolio=narrow         a double-digit day and an unmarked name, for a 320px check
  *   /dev/account?portfolio=empty          nothing held
@@ -55,8 +56,8 @@ import { FRIEND_CHOICE_KEY, FRIEND_WEEK_RANGES, friendWindow, returnSeries, type
  * Tesla and the five benchmarks, 2026-06-26 to 2026-09-24), saved beside
  * this file. The arithmetic is the server's own (historyRanges), run here on
  * those closes and a made up set of orders. The stored marks begin on
- * 2026-06-26, so a three month range is not yet offered by any account and
- * is not offered here either; the longest stretch is "First buy".
+ * 2026-06-26, ninety days before their last, so "ninety-days" is the one
+ * scene that offers every range on the card (1W, 14D, 30D, 90D, First buy).
  *
  * As in the rewards gallery, the data is seeded under the signed-out
  * identity (key null); signed in, the real account's history shows instead.
@@ -75,6 +76,7 @@ export const PORTFOLIO_STATES = [
   "day-3",
   "day-7",
   "one-month",
+  "ninety-days",
   "down-week",
   "narrow",
   "empty",
@@ -230,6 +232,20 @@ const SCENES: Record<Exclude<PortfolioState, "empty" | "loading">, Scene> = {
       { symbol: "NVDA", day: "2026-09-17", usd: 10 },
     ],
     sells: [{ symbol: "AAPL", day: "2026-09-21", share: 0.4 }],
+  },
+  "ninety-days": {
+    from: "2026-06-26",
+    buys: [
+      { symbol: "NVDA", day: "2026-06-26", usd: 40 },
+      { symbol: "TSLA", day: "2026-06-26", usd: 20 },
+      { symbol: "AAPL", day: "2026-07-20", usd: 25 },
+      { symbol: "NVDA", day: "2026-08-24", usd: 15 },
+      { symbol: "AAPL", day: "2026-09-16", usd: 10 },
+    ],
+    sells: [
+      { symbol: "TSLA", day: "2026-09-08", share: 1 },
+      { symbol: "AAPL", day: "2026-09-21", share: 0.3 },
+    ],
   },
   narrow: {
     from: "2026-06-26",

@@ -261,9 +261,10 @@ describe("rangeStory and withStory", () => {
     const story = withStory(ranges, { days, orders }, { rebased: false });
     const since = story.since!;
     // NVIDIA: 0 on the buy day, +4, −2. Apple: 50 − 51 on its buy day, +3.
+    // Each one's return while held: Apple from the $51 paid (fee in) to 53, NVIDIA from 100 to 102.
     expect(since.contributions).toEqual([
-      { symbol: "AAPL", usd: expect.closeTo(2) },
-      { symbol: "NVDA", usd: expect.closeTo(2) },
+      { symbol: "AAPL", usd: expect.closeTo(2), pct: expect.closeTo((53 / 51 - 1) * 100, 9) },
+      { symbol: "NVDA", usd: expect.closeTo(2), pct: expect.closeTo(2, 9) },
     ]);
     expect(since.changeUsd).toBeCloseTo(4);
     expect(since.orders?.map((order) => order.symbol)).toEqual(["NVDA", "AAPL"]);

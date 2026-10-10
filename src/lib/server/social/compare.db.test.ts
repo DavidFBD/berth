@@ -232,6 +232,58 @@ describe("compare with friends", () => {
     expect(week.days.map((point) => point.day)).toEqual(Object.keys(WEEK));
   });
 
+  it("draws 14D, 30D and 90D by the same rule, each within its own reach, with every check unchanged", async () => {
+    const me = await named("cmp_ranges_me");
+    const friend = await named("cmp_ranges_friend");
+    const hidden = await named("cmp_ranges_hidden", { visible: false });
+    await befriend(me, friend);
+    await befriend(me, hidden);
+    const HISTORY = { "2026-07-01": 70, "2026-07-13": 72, "2026-08-03": 75, "2026-09-01": 80, "2026-09-21": 85, ...LONG };
+    await record(me, HISTORY);
+    await record(friend, HISTORY);
+    await record(hidden, HISTORY);
+    const ask = (range: string, from: string, handle = "cmp_ranges_friend") =>
+      friendWeek(as(me), { handle, range, from }, NOW).then((body) => body.week);
+
+    // Each range from the card's first day, the friend's first close on or after it at 0%.
+    const cases = [
+      ["14d", "2026-09-25", "2026-09-28", "2026-09-19", "2026-09-18"],
+      ["30d", "2026-09-09", "2026-09-21", "2026-08-30", "2026-08-29"],
+      ["90d", "2026-07-11", "2026-07-13", "2026-07-01", "2026-06-30"],
+    ] as const;
+    for (const [range, from, starts, earliest, tooEarly] of cases) {
+      const week = (await ask(range, from))!;
+      expect(week.from).toBe(starts);
+      expect(week.days[0]).toEqual({ day: starts, pct: 0 });
+      expect(week.days.at(-1)!.day).toBe("2026-10-08");
+      for (const point of week.days) expect(Object.keys(point).sort()).toEqual(["day", "pct"]);
+      // Within its own reach and no further back.
+      expect(await ask(range, earliest)).not.toBeNull();
+      expect(await ask(range, tooEarly)).toBeNull();
+      // The same empty answer for a friend whose card is hidden.
+      expect(await ask(range, from, "cmp_ranges_hidden")).toBeNull();
+    }
+    expect(JSON.stringify(await ask("90d", "2026-07-11"))).not.toMatch(/value|usd|holding|quantity|price|NVDA/);
+  });
+
+  it("gives a viewer whose own record is short the same empty answer for 14D, 30D and 90D", async () => {
+    const me = await named("cmp_short_me");
+    const friend = await named("cmp_short_friend");
+    await befriend(me, friend);
+    // The viewer's record starts on Sep 28; the friend's in July.
+    await record(me, LONG);
+    await record(friend, { "2026-07-01": 70, "2026-08-03": 75, "2026-09-01": 80, ...LONG });
+    const ask = (range: string, from: string) =>
+      friendWeek(as(me), { handle: "cmp_short_friend", range, from }, NOW).then((body) => body);
+    expect(await ask("90d", "2026-07-11")).toEqual({ week: null });
+    expect(await ask("30d", "2026-09-09")).toEqual({ week: null });
+    // Eleven days back is enough for neither 14D nor more.
+    expect(await ask("14d", "2026-09-25")).toEqual({ week: null });
+    // 1W and since first buy still answer, as the card offers them.
+    expect((await ask("1w", "2026-10-02")).week).not.toBeNull();
+    expect((await ask("since", "2026-09-28")).week).not.toBeNull();
+  });
+
   it("is answered only to a signed in viewer, and rate limited", async () => {
     const me = await named("cmp_limit_me");
     expect((await runSocialOp("compare-friends", {}, { viewer: null, anonKey: "k" })).status).toBe(401);

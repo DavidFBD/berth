@@ -497,9 +497,10 @@ describe("windows", () => {
       orders: [buy("2026-06-24T15:00:00Z", 90)],
     };
     // Three months back from the 24th is June 24: filled, just.
-    expect(availableRanges(fromJune)).toEqual(["1w", "1m", "3m", "since"]);
+    expect(availableRanges(fromJune)).toEqual(["1w", "14d", "30d", "1m", "90d", "3m", "since"]);
     const fromLateJune = { ...fromJune, days: [{ day: "2026-06-26", value: 90 }, ...long.days] };
-    expect(availableRanges(fromLateJune)).toEqual(["1w", "1m", "since"]);
+    // Ninety calendar days back from the 24th is June 26: filled, just.
+    expect(availableRanges(fromLateJune)).toEqual(["1w", "14d", "30d", "1m", "90d", "since"]);
   });
 
   it("offers all only when there is value from before the first buy", () => {

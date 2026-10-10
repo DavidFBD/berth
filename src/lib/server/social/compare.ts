@@ -102,7 +102,7 @@ const NONE: FriendWeekResponse = { week: null };
 
 /**
  * One friend's return, percent only, over the viewer's window: `range` the
- * card's ("1w" or "since") and `from` its first day (lib/friend-week
+ * card's ("1w", "14d", "30d", "90d" or "since") and `from` its first day (lib/friend-week
  * windowAllowed bounds it by the viewer's own record). The line starts on
  * the friend's first close on or after `from`, so since first buy is the
  * overlap from the later of the two first buys.
@@ -116,9 +116,11 @@ export async function friendWeek(
   if (!norm) return NONE;
   if (!(await viewerSharesWeek(viewer.id, now))) return NONE;
   const today = newYorkDay(now);
-  // The viewer's own first valued day bounds since first buy: never longer than their own line.
+  // The viewer's own first valued day bounds since first buy (never longer
+  // than their own line) and 14D, 30D and 90D (only once their record
+  // reaches back that far, as the card offers them).
   const ownFirstDay =
-    body.range === "since"
+    body.range === "since" || body.range === "14d" || body.range === "30d" || body.range === "90d"
       ? ((await loadPortfolioDays(viewer.id)).find((day) => day.value > 0)?.day ?? null)
       : null;
   if (!windowAllowed(body.range, body.from, { today, ownFirstDay })) return NONE;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { CaretDown, Check } from "@phosphor-icons/react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,7 +10,14 @@ import { WeekStrip, type StripDay } from "@/components/board/week-strip";
 import { HeldMarks } from "@/components/board/held-marks";
 import { AvatarWithRank } from "@/components/rank-glyph";
 import { useCompareFriends, useFriendWeek, useMySocial } from "@/hooks/use-social";
-import { FRIEND_CHOICE_KEY, alignWithFriend, type CompareFriend, type FriendWeekRange } from "@/lib/friend-week";
+import { RangeMovers } from "@/components/board/range-movers";
+import {
+  FRIEND_CHOICE_KEY,
+  FRIEND_WEEK_RANGES,
+  alignWithFriend,
+  type CompareFriend,
+  type FriendWeekRange,
+} from "@/lib/friend-week";
 import { useMoves } from "@/hooks/use-moves";
 import { usePortfolioHistory } from "@/hooks/use-profile";
 import { useStoredChoice } from "@/hooks/use-stored-choice";
@@ -19,9 +26,10 @@ import { TOKEN_LISTINGS, rowName } from "@/lib/listings";
 import { isTradingDay } from "@/lib/market-calendar";
 import { addDays } from "@/lib/marks";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
-import { RANGES, type HistoryPoint, type HistoryResult, type Range } from "@/lib/portfolio-history";
+import { cardRanges, pickCardRange, type CardRange, type HistoryPoint } from "@/lib/portfolio-history";
 import { pickMove, type StoryMove, type StoryOrder, type StoryPoint } from "@/lib/portfolio-story";
 import { cn } from "@/lib/utils";
+import { edgeFades, scrollToShow } from "@/lib/chip-scroll";
 import { dayLineDate, describeMover, describeYou, type DayFacts } from "@/lib/day-line";
 
 const BENCHMARK_KEY = "berth.portfolio.benchmark";
@@ -30,7 +38,7 @@ const RANGE_KEY = "berth.portfolio.range";
 const FRIEND_KEY = FRIEND_CHOICE_KEY;
 
 /** Range labels that are words, set in the body font. */
-const WORD_RANGES: ReadonlySet<Range> = new Set<Range>(["since", "all"]);
+const WORD_RANGES: ReadonlySet<CardRange> = new Set<CardRange>(["since"]);
 
 const TONE: Record<ChangeDirection, string> = {
   up: "text-good",
@@ -54,16 +62,6 @@ function Pct({ value, dim }: { value: number; dim?: boolean }) {
       {formatPercentChange(value, 1)}
     </span>
   );
-}
-
-/** Which range opens: a month when there is one, else the longest there is. */
-function defaultRange(available: readonly Range[], ranges: Partial<Record<Range, HistoryResult>>): Range {
-  if (available.includes("1m")) return "1m";
-  let best: Range | undefined;
-  for (const range of available) {
-    if (!best || (ranges[range]?.days.length ?? 0) > (ranges[best]?.days.length ?? 0)) best = range;
-  }
-  return best ?? "since";
 }
 
 /** The picker's value for a friend: never a benchmark symbol. */
@@ -184,44 +182,86 @@ function BenchmarkChooser({
   );
 }
 
-/** Under the chart and attached to it: only the ranges the data fills. */
+/**
+ * Under the chart and attached to it: 1W and First buy always, 14D, 30D
+ * and 90D once the record reaches back that far (lib/portfolio-history
+ * cardRanges). One row; on a narrow screen it scrolls inside its pill, the
+ * selected chip scrolled into view and the edge with chips past it faded.
+ */
 function RangeControl({
-  available,
+  offered,
   value,
   onChange,
   sinceFrom,
 }: {
-  available: readonly Range[];
-  value: Range;
-  onChange: (range: Range) => void;
+  offered: readonly CardRange[];
+  value: CardRange;
+  onChange: (range: CardRange) => void;
   /** When since first buy starts on a later snapshot, that day: the chip names it. */
   sinceFrom: string | null;
 }) {
   const copy = useCopy();
+  const row = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState({ start: false, end: false });
+  const measure = useCallback(() => {
+    const element = row.current;
+    if (!element) return;
+    const next = edgeFades(element);
+    setFade((current) => (current.start === next.start && current.end === next.end ? current : next));
+  }, []);
+  // The selected chip in view, sideways only (never scrollIntoView, which
+  // could move the page), on every change and whenever the row resizes.
+  useEffect(() => {
+    const element = row.current;
+    if (!element) return;
+    const show = () => {
+      const chip = element.querySelector<HTMLElement>('[aria-pressed="true"]');
+      if (chip) element.scrollLeft = scrollToShow(element, { left: chip.offsetLeft, width: chip.offsetWidth });
+      measure();
+    };
+    show();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(show);
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, [value, offered.length, measure]);
+  const mask =
+    fade.start || fade.end
+      ? `linear-gradient(to right, ${fade.start ? "transparent, #000 20px" : "#000"}, ${fade.end ? "#000 calc(100% - 20px), transparent" : "#000"})`
+      : undefined;
   return (
     // A pill group: the active range is the ink chip, so the board's one
-    // accent is never spent on a filter.
-    <div role="group" aria-label={copy.portfolioRangeLabel} className="inline-flex flex-wrap gap-0.5 rounded-full border border-border bg-card p-0.5">
-      {RANGES.filter((range) => available.includes(range)).map((range) => (
-        <button
-          key={range}
-          type="button"
-          aria-pressed={range === value}
-          onClick={() => onChange(range)}
-          className={cn(
-            // Numbers in the money font; "First buy" and "All" are words.
-            WORD_RANGES.has(range) ? "" : "money tabular-nums",
-            "inline-flex h-7 items-center rounded-full px-3 text-xs leading-none font-medium outline-none transition-colors duration-150 ease-lift focus-visible:ring-3 focus-visible:ring-ring/50",
-            range === value
-              ? "bg-foreground text-background"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {range === "since" && sinceFrom
-            ? copy.portfolioRangeSince(shortDate(sinceFrom))
-            : copy.portfolioRanges[range]}
-        </button>
-      ))}
+    // accent is never spent on a filter. The pill keeps its border; only
+    // the chips inside it scroll and fade.
+    <div className="inline-flex max-w-full shrink-0 rounded-full border border-border bg-card p-0.5">
+      <div
+        ref={row}
+        role="group"
+        aria-label={copy.portfolioRangeLabel}
+        onScroll={measure}
+        style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
+        className="flex min-w-0 flex-nowrap gap-0.5 overflow-x-auto overscroll-x-contain rounded-full [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {offered.map((range) => (
+          <button
+            key={range}
+            type="button"
+            aria-pressed={range === value}
+            onClick={() => onChange(range)}
+            className={cn(
+              // Numbers in the money font; "First buy" and "All" are words.
+              WORD_RANGES.has(range) ? "" : "money tabular-nums",
+              "inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-xs leading-none font-medium outline-none transition-colors duration-150 ease-lift focus-visible:ring-3 focus-visible:ring-ring/50",
+              range === value
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {range === "since" && sinceFrom
+              ? copy.portfolioRangeSince(shortDate(sinceFrom))
+              : copy.portfolioRanges[range]}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -545,24 +585,22 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
     Boolean(stripSource.find((point) => point.day === day)?.held?.includes(symbol)),
   );
 
-  // The range on show, once there is data to choose it from.
-  const stored = storedRange as Range | null;
-  const range: Range | null = data
-    ? stored && data.available.includes(stored)
-      ? stored
-      : defaultRange(data.available, data.ranges)
-    : null;
+  // The range on show, once there is data to choose it from: the one the
+  // viewer last picked while it is offered, else First buy.
+  const offered = data ? cardRanges(data.available, data.ranges) : [];
+  const range: CardRange | null = data ? pickCardRange(storedRange, offered) : null;
   const result = data && range ? data.ranges[range] : undefined;
 
   // Compare with friends (lib/friend-week): a friend picked in the chooser,
   // while they still compare, is drawn instead of the benchmark, over the
-  // card's own window only (1W, or since first buy).
+  // card's own window only.
   const [storedFriend, setFriend] = useStoredChoice(FRIEND_KEY);
   // Asked only while the viewer's own switch is on: off, there is nobody to offer.
   const mine = useMySocial(holdsAnything, { prompt: false });
   const friends = useCompareFriends(holdsAnything && mine.data?.shareWeek === true);
   const friend = (storedFriend && friends.find((person) => person.handle === storedFriend)) || null;
-  const friendRange: FriendWeekRange | null = friend && (range === "1w" || range === "since") ? range : null;
+  const friendRange: FriendWeekRange | null =
+    friend && range && (FRIEND_WEEK_RANGES as readonly string[]).includes(range) ? (range as FriendWeekRange) : null;
   const friendFrom = friendRange && result && result.days.length >= 2 ? result.days[0].day : null;
   const friendWeek = useFriendWeek(friend?.handle ?? null, friendRange, friendFrom);
 
@@ -721,8 +759,7 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
   let reason: string | null = null;
   if (friend) {
     // Beside a friend: over which days (the first close both lines have), or why their line is not drawn.
-    if (!friendRange) reason = copy.portfolioFriendRanges(friend.handle);
-    else if (aligned && (range === "since" || aligned.anchor > days[0].day)) reason = copy.portfolioFriendFrom(shortDate(aligned.anchor));
+    if (aligned && (range === "since" || aligned.anchor > days[0].day)) reason = copy.portfolioFriendFrom(shortDate(aligned.anchor));
     else if (percent && !aligned && !friendWeek.loading) reason = copy.portfolioFriendNone(friend.handle);
   } else if (status === "unpriced_orders" || status === "unexplained_balance") {
     reason = copy.portfolioNoBenchmark[status](named);
@@ -793,7 +830,18 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
           markers={markersFor(chart, result.orders ?? [])}
         />
       </div>
-      {stripDays.length > 0 && (
+      {range !== "1w" ? (
+        // Past a week the strip gives way to what moved the range most.
+        <RangeMovers
+          since={shortDate(result.since ?? days[0].day)}
+          contributions={result.contributions}
+          changeUsd={result.changeUsd}
+          orders={result.orders}
+          // Since first buy counts from nothing, so its first day's trades are in it; any other range starts from its first close.
+          tradesAfter={range === "since" && !result.rebasedFrom ? null : (result.since ?? days[0].day)}
+          nameOf={nameOf}
+        />
+      ) : stripDays.length > 0 && (
         <WeekStrip
           days={stripDays}
           slots={slots}
@@ -810,14 +858,15 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
         move={moveOn(shownPoint.day)}
         today={shownPoint.day === liveDay}
       />
-      <div className="mt-2 flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      {/* The caption and the range share a row while both fit; the range wraps under it otherwise. */}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
         <span className="text-[12.5px] text-muted-foreground">
           {percent ? copy.portfolioReturnCaption : copy.portfolioSameDays}
           {/* The percentages are dollar returns; in another currency, say so. */}
           {money.converted && `. ${copy.inUsDollars}`}
         </span>
         <RangeControl
-          available={data.available}
+          offered={offered}
           value={range}
           sinceFrom={data.ranges.since?.rebasedFrom ?? null}
           onChange={(next) => {

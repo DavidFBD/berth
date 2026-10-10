@@ -26,6 +26,7 @@ import { mySocial } from "@/lib/server/social/handles";
 import {
   BENCHMARK_CHOICES,
   PERIODS,
+  periodsWithHistory,
   STATUS_WORDS,
   loadAccountRow,
   readHoldings,
@@ -400,8 +401,10 @@ const getPerformance = defineTool({
     const history = await loadPortfolioHistory({ userId: row.id, spokes: (await spokesOf(row)).all, benchmark });
     const wanted = PERIODS[period];
     const result = history.ranges[wanted.range];
-    if (!result || result.days.length === 0) {
-      const offered = history.available.length > 0 ? ` Periods with enough history: ${history.available.join(", ")}.` : "";
+    // The card computes 1W before a week fills it; asked here, a week is offered only once it is filled.
+    if (!result || result.days.length === 0 || (wanted.range !== "since" && !history.available.includes(wanted.range))) {
+      const periods = periodsWithHistory(history.available);
+      const offered = periods.length > 0 ? ` Periods with enough history: ${periods.join(", ")}.` : "";
       return ok(`There is not enough history for ${wanted.words} yet.${offered}`);
     }
     const last = result.days.at(-1)!;

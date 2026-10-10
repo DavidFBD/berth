@@ -187,6 +187,17 @@ export const PERIODS: Record<string, { range: Range; words: string }> = {
   since_first_buy: { range: "since", words: "since the first buy" },
 };
 
+/**
+ * The tool's own period names (PERIODS keys, what it accepts) whose range
+ * the history fills, in PERIODS order: what a "not enough history" reply
+ * offers instead, never the internal range ids.
+ */
+export function periodsWithHistory(available: readonly Range[]): string[] {
+  return Object.entries(PERIODS)
+    .filter(([, entry]) => available.includes(entry.range))
+    .map(([name]) => name);
+}
+
 export const BENCHMARK_CHOICES: Record<string, BenchmarkSymbol> = {
   sp500: "SPY",
   nasdaq100: "QQQ",

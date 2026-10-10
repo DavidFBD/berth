@@ -4,6 +4,8 @@ import { COPY } from "@/lib/copy";
 import { TERMS_VERSION } from "@/lib/legal-version";
 import { markAsOf } from "@/lib/marks";
 import {
+  FRIEND_WEEK_RANGES,
+  FRIEND_WINDOW_MAX_DAYS,
   alignWithFriend,
   friendWindow,
   returnSeries,
@@ -92,6 +94,37 @@ describe("the window a viewer may ask for", () => {
     expect(windowAllowed("1w", "2026-10-10", { today, ownFirstDay: null })).toBe(false);
   });
 
+  it("bounds each fixed range by its own reach: 14D twenty days, 30D forty, 90D a hundred", () => {
+    const cases = [
+      ["14d", "2026-09-19", "2026-09-18"],
+      ["30d", "2026-08-30", "2026-08-29"],
+      ["90d", "2026-07-01", "2026-06-30"],
+    ] as const;
+    const long = { today, ownFirstDay: "2026-01-01" };
+    for (const [range, earliest, tooEarly] of cases) {
+      expect(windowAllowed(range, earliest, long)).toBe(true);
+      expect(windowAllowed(range, tooEarly, long)).toBe(false);
+      expect(windowAllowed(range, "2026-10-10", long)).toBe(false);
+    }
+    // 1W's reach stays ten days: a 14D start is not a 1W one.
+    expect(windowAllowed("1w", "2026-09-25", { today, ownFirstDay: null })).toBe(false);
+    expect(Object.keys(FRIEND_WINDOW_MAX_DAYS)).toEqual(["1w", "14d", "30d", "90d"]);
+    expect(FRIEND_WEEK_RANGES).toEqual(["1w", "14d", "30d", "90d", "since"]);
+  });
+
+  it("offers 14D, 30D and 90D only to a viewer whose own record reaches back that far, as the card does", () => {
+    // Today minus 14, 30 and 90 days: Sep 25, Sep 9, Jul 11.
+    expect(windowAllowed("14d", "2026-09-25", { today, ownFirstDay: "2026-09-25" })).toBe(true);
+    expect(windowAllowed("14d", "2026-09-26", { today, ownFirstDay: "2026-09-26" })).toBe(false);
+    expect(windowAllowed("30d", "2026-09-09", { today, ownFirstDay: "2026-09-09" })).toBe(true);
+    expect(windowAllowed("30d", "2026-09-10", { today, ownFirstDay: "2026-09-10" })).toBe(false);
+    expect(windowAllowed("90d", "2026-07-11", { today, ownFirstDay: "2026-07-11" })).toBe(true);
+    expect(windowAllowed("90d", "2026-07-11", { today, ownFirstDay: "2026-10-08" })).toBe(false);
+    expect(windowAllowed("90d", "2026-07-11", { today, ownFirstDay: null })).toBe(false);
+    // 1W is offered before a week fills: its reach alone bounds it.
+    expect(windowAllowed("1w", "2026-10-02", { today, ownFirstDay: "2026-10-08" })).toBe(true);
+  });
+
   it("lets since first buy start no earlier than the viewer's own first day", () => {
     expect(windowAllowed("since", "2026-08-01", { today, ownFirstDay: "2026-08-01" })).toBe(true);
     expect(windowAllowed("since", "2026-07-31", { today, ownFirstDay: "2026-08-01" })).toBe(false);
@@ -163,6 +196,33 @@ describe("two lines over the same days", () => {
     expect(aligned.points[1].friend).toBeCloseTo((1.03 / 1.02 - 1) * 100, 6);
   });
 
+  it("aligns a 14D, 30D or 90D window by the same rule: the later of the range's start and the first day both have", () => {
+    // Your line over a long window, from its first close; the friend's
+    // record starts partway in, so both lines start at 0% there.
+    const long = [
+      { day: "2026-07-01", returnPct: 0 },
+      { day: "2026-08-03", returnPct: 5 },
+      { day: "2026-09-01", returnPct: 10.25 },
+      { day: "2026-10-01", returnPct: 15.5 },
+    ];
+    const friendSeries = [
+      { day: "2026-08-03", pct: 0 },
+      { day: "2026-09-01", pct: 2 },
+      { day: "2026-10-01", pct: 4 },
+    ];
+    for (const from of ["2026-07-01", "2026-08-03", "2026-09-01"]) {
+      const week = friendWindow(friendSeries, from)!;
+      const aligned = alignWithFriend(long.filter((point) => point.day >= from), week)!;
+      const anchor = from > "2026-08-03" ? from : "2026-08-03";
+      expect(aligned.anchor).toBe(anchor);
+      expect(aligned.points[0]).toEqual({ day: anchor, you: 0, friend: 0 });
+      const youBase = 1 + long.find((point) => point.day === anchor)!.returnPct / 100;
+      const friendBase = 1 + friendSeries.find((point) => point.day === anchor)!.pct / 100;
+      expect(aligned.points.at(-1)!.you).toBeCloseTo((1.155 / youBase - 1) * 100, 6);
+      expect(aligned.points.at(-1)!.friend).toBeCloseTo(roundTenth((1.04 / friendBase - 1) * 100), 1);
+    }
+  });
+
   it("draws nothing when the lines do not share two days", () => {
     expect(alignWithFriend(you, null)).toBeNull();
     expect(alignWithFriend(you, { from: "2026-10-08", days: [{ day: "2026-10-08", pct: 0 }, { day: "2026-10-09", pct: 1 }] })).toBeNull();
@@ -188,7 +248,7 @@ describe("the words around it", () => {
     ]) {
       expect(sub).toContain(part);
     }
-    for (const text of [COPY.social.shareWeek, COPY.social.shareWeekLabel, COPY.social.shareWeekShort, sub, COPY.portfolioFriendFrom("Oct 2"), COPY.portfolioFriendRanges("mara"), COPY.portfolioFriendNone("mara")]) {
+    for (const text of [COPY.social.shareWeek, COPY.social.shareWeekLabel, COPY.social.shareWeekShort, sub, COPY.portfolioFriendFrom("Oct 2"), COPY.portfolioFriendNone("mara")]) {
       expect(text).not.toMatch(/ [-–—] |[–—]/);
       expect(text).not.toMatch(/beat|win|lead|rank/i);
     }
@@ -197,12 +257,16 @@ describe("the words around it", () => {
   it("is in the privacy policy, with a line in what changed, and the terms version is not bumped", () => {
     expect(policy).toContain("If you turn on Let my friends compare their week with mine");
     expect(policy).toContain("in percent, day by day");
+    expect(policy).toContain("over the days their page shows, which are the last week, the last 14, 30 or 90 days, or since the later of your two first buys.");
+    expect(policy).not.toMatch(/page shows:/);
     expect(policy).toContain("you see theirs only while yours is on");
     // Said where consent is given and in the policy in the same words (review M1).
     expect(policy).toContain("With only a few holdings, a friend may be able to tell from your line what you hold and in what share.");
     const changed = COPY.privacyPolicy.sections.find((section) => section.id === "what-changed")!;
-    expect(changed.list?.at(-1)).toContain("Compare with friends");
-    expect(changed.body[0]).toContain("10 October 2026");
+    expect(changed.list?.at(-2)).toContain("Compare with friends");
+    // The longer windows, a line of their own the same day.
+    expect(changed.list?.at(-1)).toContain("over the last 14, 30 or 90 days");
+    expect(changed.body[0]).toContain("the last two on 10 October 2026");
     expect(TERMS_VERSION).toBe("2026-10-08");
   });
 });

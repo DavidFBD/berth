@@ -1,14 +1,14 @@
 import type { Marks, OrderFacts } from "@/lib/benchmark";
 import { addDays, type IsoDay } from "@/lib/marks";
 import { explainedFrom, ledgerExplains, type SnapshotBase } from "@/lib/portfolio-days";
-import { portfolioHistory, type PortfolioDay } from "@/lib/portfolio-history";
+import { RANGE_DAYS, portfolioHistory, type PortfolioDay } from "@/lib/portfolio-history";
 
 /**
  * "Compare with friends": a friend's line beside yours on the account card,
  * percent only. Off unless both turn on "Let my friends compare their week
  * with mine" (profiles.share_week, lib/server/social/compare), and only ever
- * over the window the card already shows: 1W, or since first buy from the
- * later of the two first buys.
+ * over the window the card already shows: 1W, 14D, 30D or 90D, each from
+ * its first close, or since first buy from the later of the two first buys.
  *
  * What leaves the server is the friend's return so far, day by day, from
  * the window's first close: time weighted, so money in and out moves
@@ -28,12 +28,21 @@ import { portfolioHistory, type PortfolioDay } from "@/lib/portfolio-history";
  */
 export const FRIEND_CHOICE_KEY = "berth.portfolio.friend";
 
-/** The windows a friend's line is drawn over: the card's 1W and First buy. */
-export type FriendWeekRange = "1w" | "since";
-export const FRIEND_WEEK_RANGES: readonly FriendWeekRange[] = ["1w", "since"];
+/** The windows a friend's line is drawn over: every range the card shows. */
+export type FriendWeekRange = "1w" | "14d" | "30d" | "90d" | "since";
+export const FRIEND_WEEK_RANGES: readonly FriendWeekRange[] = ["1w", "14d", "30d", "90d", "since"];
 
-/** How far back a 1W window may start: a week plus a long weekend. */
-export const FRIEND_WEEK_MAX_DAYS = 10;
+/**
+ * How far back each fixed window may start: its span plus room for a long
+ * weekend and a late snapshot (1W ten days, 14D twenty, 30D forty, 90D a
+ * hundred). Since first buy is bounded by the viewer's own first day.
+ */
+export const FRIEND_WINDOW_MAX_DAYS: Readonly<Record<Exclude<FriendWeekRange, "since">, number>> = {
+  "1w": 10,
+  "14d": 20,
+  "30d": 40,
+  "90d": 100,
+};
 
 /** A friend's return so far on one day, percent, rounded to a tenth. */
 export type FriendWeekPoint = { day: IsoDay; pct: number };
@@ -121,9 +130,11 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Whether the viewer may ask for a window starting on `from`: never in the
- * future, a 1W window within FRIEND_WEEK_MAX_DAYS of today, and since first
- * buy never before the viewer's own first valued day. So the friend's line
- * is only ever as long as the viewer's own.
+ * future, a fixed window within its FRIEND_WINDOW_MAX_DAYS of today (14D,
+ * 30D and 90D only when the viewer's own first day is that span back, as
+ * the card offers them), and
+ * since first buy never before the viewer's own first valued day. So the
+ * friend's line is only ever as long as the window the card shows.
  */
 export function windowAllowed(
   range: unknown,
@@ -131,7 +142,14 @@ export function windowAllowed(
   { today, ownFirstDay }: { today: IsoDay; ownFirstDay: IsoDay | null },
 ): from is IsoDay {
   if (typeof from !== "string" || !ISO_DAY.test(from) || from > today) return false;
-  if (range === "1w") return from >= addDays(today, -FRIEND_WEEK_MAX_DAYS);
+  if (range === "1w") return from >= addDays(today, -FRIEND_WINDOW_MAX_DAYS[range]);
+  if (range === "14d" || range === "30d" || range === "90d") {
+    // The card's own offer rule (lib/portfolio-history cardRanges): the
+    // viewer's record reaches back the whole span. 1W is offered before a
+    // week fills, so it is not asked this.
+    if (ownFirstDay === null || ownFirstDay > addDays(today, -RANGE_DAYS[range])) return false;
+    return from >= addDays(today, -FRIEND_WINDOW_MAX_DAYS[range]);
+  }
   if (range === "since") return ownFirstDay !== null && from >= ownFirstDay;
   return false;
 }
