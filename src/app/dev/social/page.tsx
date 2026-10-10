@@ -40,6 +40,9 @@ import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
  *   /dev/social?state=profile-holds      a friend's profile, both sharing what they hold
  *   /dev/social?state=section-holding    the drawer section, sharing on, Your friends hold open
  *   /dev/social?state=section-holding-off  the same, sharing off (the default)
+ *   /dev/social?state=section-switches   the drawer section folded, nobody blocked, nothing held: no empty folds
+ *   /dev/social?state=section-details    the same, the week switch's Details open
+ *   /dev/social?state=section-full       sharing on, friends holding and two blocked: both folds offered
  *   /dev/social?state=notice             the once per account notice strip
  *   /dev/social?state=policy-notice      the once per account notice of the new terms and policy
  *   /dev/social?state=terms-sheet        the terms sheet before a buy (terms-sheet-sell: before a sell; terms-sheet-pending: while the answer loads)
@@ -189,6 +192,26 @@ function Gallery() {
             me: { ...SECTION.me, shareHoldings: state === "section-holding" },
             open: "holding",
             holding: FRIENDS_HOLDING_FIXTURE,
+          }}
+        />
+      </Panel>
+    );
+  if (state === "section-switches" || state === "section-details" || state === "section-full")
+    return (
+      <Panel>
+        <SocialSection
+          demo={{
+            ...SECTION,
+            open: undefined,
+            friends: { ...SECTION.friends!, incoming: [] },
+            ...(state === "section-details" ? { details: "shareWeek" as const } : {}),
+            ...(state === "section-full"
+              ? {
+                  me: { ...SECTION.me, shareHoldings: true, requests: 0 },
+                  holding: FRIENDS_HOLDING_FIXTURE,
+                  blocked: [{ handle: "loud_gull" }, { handle: "spam_ship" }],
+                }
+              : {}),
           }}
         />
       </Panel>

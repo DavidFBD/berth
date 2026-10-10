@@ -174,7 +174,11 @@ describe("the words around it", () => {
 
   it("asks in plain words, off by default, reciprocal, never money", () => {
     const sub = COPY.social.shareWeekSub;
-    expect(COPY.social.shareWeek).toBe("Let my friends compare their week with mine");
+    // The switch is named by the sentence the privacy policy uses; the title is its short form.
+    expect(COPY.social.shareWeekLabel).toBe("Let my friends compare their week with mine");
+    expect(COPY.social.shareWeek).toBe("Compare weeks with friends");
+    // The layered notice keeps the inference risk in view, not only behind Details.
+    expect(COPY.social.shareWeekShort).toBe("Percent only. With few holdings, friends may guess what you hold.");
     for (const part of [
       "in percent only",
       "With only a few holdings, a friend may be able to tell from your line what you hold and in what share.",
@@ -184,7 +188,7 @@ describe("the words around it", () => {
     ]) {
       expect(sub).toContain(part);
     }
-    for (const text of [COPY.social.shareWeek, sub, COPY.portfolioFriendFrom("Oct 2"), COPY.portfolioFriendRanges("mara"), COPY.portfolioFriendNone("mara")]) {
+    for (const text of [COPY.social.shareWeek, COPY.social.shareWeekLabel, COPY.social.shareWeekShort, sub, COPY.portfolioFriendFrom("Oct 2"), COPY.portfolioFriendRanges("mara"), COPY.portfolioFriendNone("mara")]) {
       expect(text).not.toMatch(/ [-–—] |[–—]/);
       expect(text).not.toMatch(/beat|win|lead|rank/i);
     }

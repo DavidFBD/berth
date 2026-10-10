@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useId, useState, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { toast } from "@/lib/toast";
 import { track } from "@/lib/analytics";
@@ -41,7 +41,16 @@ import { isPlainClick } from "@/lib/drawer-return";
  * there are any, friends and the friend link folded, the friends board, the
  * hide switch, the link picture switch, "Your friends hold" folded with its
  * sharing switch (off by default), and blocked people folded. One (i), on the title.
+ *
+ * Each privacy switch is a layered notice (PrivacySwitch): a short title,
+ * one short line with the essential fact, and its full consent text, word
+ * for word, behind Details. "Your friends hold" and "Blocked" show only when
+ * they have someone in them: an empty fold is not offered, and while they
+ * load they stay away rather than flash in and out.
  */
+
+/** The privacy switches whose full text a demo can show unfolded. */
+export type PrivacySwitchId = "hide" | "linkFace" | "shareHoldings" | "shareWeek";
 
 export type SocialDemo = {
   me: MySocial;
@@ -52,6 +61,8 @@ export type SocialDemo = {
   /** Stands in for the "holding" op's answer. */
   holding?: FriendsHolding[];
   find?: { value: string; result: FindResult };
+  /** A privacy switch whose Details start open. */
+  details?: PrivacySwitchId;
 };
 
 /** Where the rewards panel's add email row lives, so the no-email row can bring it into view. */
@@ -113,6 +124,14 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
   const linkFace = useSetLinkFace();
   const shareHoldings = useSetShareHoldings();
   const shareWeek = useSetShareWeek();
+  const [details, setDetails] = useState<PrivacySwitchId | null>(demo?.details ?? null);
+  const toggleDetails = (which: PrivacySwitchId) => setDetails((current) => (current === which ? null : which));
+  // Asked up front so the folds can stay away while they would be empty.
+  const sharing = social.shareHoldings && social.visible;
+  const fetchedHolding = useFriendsHolding(!demo && sharing);
+  const holding = holdingRows(demo ? (demo.holding ?? []) : [...fetchedHolding.values()]);
+  const fetchedBlocked = useBlocked(!demo);
+  const blocked = demo ? (demo.blocked ?? []) : (fetchedBlocked.data ?? []);
   const handle = social.handle!;
   const own = useDrawerLink(`/u/${handle}`);
   const board = useDrawerLink("/friends");
@@ -158,77 +177,77 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
         <ArrowRight weight="duotone" className="size-4 text-muted-foreground" aria-hidden />
       </Link>
 
-      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-sm text-foreground">{copy.hide}</span>
-          <span className="text-xs text-muted-foreground">{copy.hideSub}</span>
-        </span>
-        <Toggle
-          label={copy.hide}
-          on={!social.visible}
-          disabled={visible.isPending}
-          onChange={(hidden) => {
-            if (demo) return;
-            visible.mutate(!hidden, { onError: () => toast.error(copy.actionFailed) });
-          }}
-        />
-      </div>
+      <PrivacySwitch
+        title={copy.hide}
+        label={copy.hide}
+        short={copy.hideShort}
+        details={copy.hideSub}
+        detailsOpen={details === "hide"}
+        onDetails={() => toggleDetails("hide")}
+        on={!social.visible}
+        disabled={visible.isPending}
+        onChange={(hidden) => {
+          if (demo) return;
+          visible.mutate(!hidden, { onError: () => toast.error(copy.actionFailed) });
+        }}
+      />
 
-      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-sm text-foreground">{copy.linkFace}</span>
-          <span className="text-xs text-muted-foreground">{copy.linkFaceSub}</span>
-        </span>
-        <Toggle
-          label={copy.linkFace}
-          on={social.linkFace}
-          disabled={linkFace.isPending}
-          onChange={(on) => {
-            if (demo) return;
-            linkFace.mutate(on, { onError: () => toast.error(copy.actionFailed) });
-          }}
-        />
-      </div>
+      <PrivacySwitch
+        title={copy.linkFace}
+        label={copy.linkFaceLabel}
+        short={copy.linkFaceShort}
+        details={copy.linkFaceSub}
+        detailsOpen={details === "linkFace"}
+        onDetails={() => toggleDetails("linkFace")}
+        on={social.linkFace}
+        disabled={linkFace.isPending}
+        onChange={(on) => {
+          if (demo) return;
+          linkFace.mutate(on, { onError: () => toast.error(copy.actionFailed) });
+        }}
+      />
 
-      <Fold open={open === "holding"} onToggle={() => toggle("holding")} title={copy.holdingTitle}>
-        <HoldingFold sharing={social.shareHoldings && social.visible} demo={demo} />
-      </Fold>
+      {sharing && holding.length > 0 && (
+        <Fold open={open === "holding"} onToggle={() => toggle("holding")} title={copy.holdingTitle}>
+          <HoldingFold rows={holding} />
+        </Fold>
+      )}
 
-      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-sm text-foreground">{copy.shareHoldings}</span>
-          <span className="text-xs text-muted-foreground">{copy.shareHoldingsSub}</span>
-        </span>
-        <Toggle
-          label={copy.shareHoldings}
-          on={social.shareHoldings}
-          disabled={shareHoldings.isPending}
-          onChange={(on) => {
-            if (demo) return;
-            shareHoldings.mutate(on, { onError: () => toast.error(copy.actionFailed) });
-          }}
-        />
-      </div>
+      <PrivacySwitch
+        title={copy.shareHoldings}
+        label={copy.shareHoldingsLabel}
+        short={copy.shareHoldingsShort}
+        details={copy.shareHoldingsSub}
+        detailsOpen={details === "shareHoldings"}
+        onDetails={() => toggleDetails("shareHoldings")}
+        on={social.shareHoldings}
+        disabled={shareHoldings.isPending}
+        onChange={(on) => {
+          if (demo) return;
+          shareHoldings.mutate(on, { onError: () => toast.error(copy.actionFailed) });
+        }}
+      />
 
-      <div className="flex min-h-14 items-center gap-3 px-3 py-2.5">
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-sm text-foreground">{copy.shareWeek}</span>
-          <span className="text-xs text-muted-foreground">{copy.shareWeekSub}</span>
-        </span>
-        <Toggle
-          label={copy.shareWeek}
-          on={social.shareWeek}
-          disabled={shareWeek.isPending}
-          onChange={(on) => {
-            if (demo) return;
-            shareWeek.mutate(on, { onError: () => toast.error(copy.actionFailed) });
-          }}
-        />
-      </div>
+      <PrivacySwitch
+        title={copy.shareWeek}
+        label={copy.shareWeekLabel}
+        short={copy.shareWeekShort}
+        details={copy.shareWeekSub}
+        detailsOpen={details === "shareWeek"}
+        onDetails={() => toggleDetails("shareWeek")}
+        on={social.shareWeek}
+        disabled={shareWeek.isPending}
+        onChange={(on) => {
+          if (demo) return;
+          shareWeek.mutate(on, { onError: () => toast.error(copy.actionFailed) });
+        }}
+      />
 
-      <Fold open={open === "blocked"} onToggle={() => toggle("blocked")} title={copy.blocked}>
-        <BlockedFold demo={demo} />
-      </Fold>
+      {blocked.length > 0 && (
+        <Fold open={open === "blocked"} onToggle={() => toggle("blocked")} title={copy.blocked} count={blocked.length}>
+          <BlockedFold people={blocked} demo={Boolean(demo)} />
+        </Fold>
+      )}
     </div>
   );
 }
@@ -363,22 +382,24 @@ function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; de
   );
 }
 
-/**
- * "Your friends hold": which board listings friends who share hold, as a
- * count, named when one or two. Read only: no row buys or opens a buy, and
- * nothing here says how much. Empty, with the reason, unless the viewer
- * shares too (lib/server/social-proof).
- */
-function HoldingFold({ sharing, demo }: { sharing: boolean; demo?: SocialDemo }) {
-  const copy = useCopy();
-  const fetched = useFriendsHolding(!demo && sharing);
-  const lines = demo ? (demo.holding ?? []) : [...fetched.values()];
-  if (!sharing) return <p className="px-3 pb-3 text-xs text-muted-foreground">{copy.social.holdingOff}</p>;
-  const rows = lines.flatMap((line) => {
+type HoldingRow = { listing: (typeof STOCK_LISTINGS)[number]; line: FriendsHolding };
+
+/** The "holding" op's lines that name a listing on the board, in its order. */
+function holdingRows(lines: readonly FriendsHolding[]): HoldingRow[] {
+  return lines.flatMap((line) => {
     const listing = STOCK_LISTINGS.find((candidate) => candidate.symbol === line.symbol);
     return listing ? [{ listing, line }] : [];
   });
-  if (rows.length === 0) return <p className="px-3 pb-3 text-xs text-muted-foreground">{copy.social.holdingNone}</p>;
+}
+
+/**
+ * "Your friends hold": which board listings friends who share hold, as a
+ * count, named when one or two. Read only: no row buys or opens a buy, and
+ * nothing here says how much. Offered only while the viewer shares too and
+ * a friend who shares holds something (lib/server/social-proof).
+ */
+function HoldingFold({ rows }: { rows: readonly HoldingRow[] }) {
+  const copy = useCopy();
   return (
     <ul data-friends-hold data-ph-mask className="flex flex-col px-3 pb-2.5">
       {rows.map(({ listing, line }) => (
@@ -424,11 +445,9 @@ export function FriendFaces({ faces, count }: { faces: readonly FriendFace[]; co
   );
 }
 
-function BlockedFold({ demo }: { demo?: SocialDemo }) {
+function BlockedFold({ people, demo }: { people: readonly BlockedName[]; demo: boolean }) {
   const copy = useCopy().social;
-  const blocked = useBlocked(!demo);
   const action = useSocialAction();
-  const people = demo?.blocked ?? blocked.data ?? [];
   return (
     <ul data-ph-block className="flex flex-col px-3 pb-2.5">
       {people.map((person) => (
@@ -521,14 +540,98 @@ function Fold({ open, onToggle, title, count, children }: { open: boolean; onTog
   );
 }
 
+/**
+ * One privacy switch as a layered notice: the short title and one muted line
+ * with the essential fact stay in view; the full consent text, word for word,
+ * opens under a small Details. The switch is named by `label` (the full
+ * sentence the privacy policy uses) and described by the short line.
+ */
+function PrivacySwitch({
+  title,
+  label,
+  short,
+  details,
+  detailsOpen,
+  onDetails,
+  on,
+  disabled,
+  onChange,
+}: {
+  title: string;
+  label: string;
+  short: string;
+  details: string;
+  detailsOpen: boolean;
+  onDetails: () => void;
+  on: boolean;
+  disabled?: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  const copy = useCopy().social;
+  const id = useId();
+  const shortId = `${id}-short`;
+  const detailsId = `${id}-details`;
+  return (
+    <div className="flex flex-col px-3 py-2.5">
+      <div className="flex min-h-9 items-center gap-3">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm text-foreground">{title}</span>
+          <span id={shortId} className="text-xs text-muted-foreground">
+            {short}
+          </span>
+        </span>
+        <Toggle label={label} describedBy={shortId} on={on} disabled={disabled} onChange={onChange} />
+      </div>
+      <button
+        type="button"
+        aria-expanded={detailsOpen}
+        aria-controls={detailsOpen ? detailsId : undefined}
+        aria-label={copy.detailsLabel(title)}
+        onClick={onDetails}
+        className="-mx-1 mt-0.5 inline-flex min-h-7 w-fit items-center gap-1 rounded-md px-1 text-xs text-muted-foreground underline-offset-2 transition-colors duration-150 ease-lift hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        {copy.details}
+        <CaretDown className={cn("size-3 transition-transform", detailsOpen && "rotate-180")} aria-hidden />
+      </button>
+      <AnimatePresence initial={false}>
+        {detailsOpen && (
+          <motion.div
+            id={detailsId}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={SPRING_SHELF}
+            className="overflow-hidden"
+          >
+            <p className="pt-1 pr-13 text-xs leading-relaxed text-muted-foreground">{details}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /** A plain on/off switch (here, on means hidden; the Email section reuses it). */
-export function Toggle({ label, on, onChange, disabled }: { label: string; on: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+export function Toggle({
+  label,
+  on,
+  onChange,
+  disabled,
+  describedBy,
+}: {
+  label: string;
+  on: boolean;
+  onChange: (on: boolean) => void;
+  disabled?: boolean;
+  describedBy?: string;
+}) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={on}
       aria-label={label}
+      aria-describedby={describedBy}
       disabled={disabled}
       onClick={() => onChange(!on)}
       className={cn(

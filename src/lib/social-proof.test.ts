@@ -268,12 +268,37 @@ describe("the words", () => {
       COPY.social.cardShareNote,
       COPY.friendsHold(4, []),
       COPY.social.shareHoldings,
+      COPY.social.shareHoldingsLabel,
+      COPY.social.shareHoldingsShort,
       COPY.social.shareHoldingsSub,
       COPY.social.acceptHoldingsNote,
-      COPY.social.holdingOff,
       COPY.socialNotice.text,
     ];
     for (const text of texts) expect(text).not.toMatch(/ [-–—] |—|–|[↑↓▲▼]|hot|trending|popular|best/i);
+  });
+
+  it("the drawer's privacy switches are a layered notice", () => {
+    const policy = COPY.privacyPolicy.sections.flatMap((section) => [...section.body, ...(section.list ?? [])]).join("\n");
+    const switches = [
+      { title: COPY.social.hide, label: COPY.social.hide, short: COPY.social.hideShort },
+      { title: COPY.social.linkFace, label: COPY.social.linkFaceLabel, short: COPY.social.linkFaceShort },
+      { title: COPY.social.shareHoldings, label: COPY.social.shareHoldingsLabel, short: COPY.social.shareHoldingsShort },
+      { title: COPY.social.shareWeek, label: COPY.social.shareWeekLabel, short: COPY.social.shareWeekShort },
+    ];
+    const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
+    for (const { title, label, short } of switches) {
+      expect(words(title)).toBeGreaterThanOrEqual(2);
+      expect(words(title)).toBeLessThanOrEqual(5);
+      expect(words(short)).toBeLessThanOrEqual(12);
+      for (const text of [title, label, short]) expect(text).not.toMatch(/ [-–—] |[–—]/);
+    }
+    // Each switch is still named by the sentence the privacy policy uses for it.
+    for (const label of [COPY.social.linkFaceLabel, COPY.social.shareHoldingsLabel, COPY.social.shareWeekLabel]) expect(policy).toContain(label);
+    // The essential facts stay in view, outside Details.
+    expect(COPY.social.shareHoldingsShort).toMatch(/Names only, never amounts/);
+    expect(COPY.social.shareHoldingsShort).toMatch(/Friends who share too/);
+    expect(COPY.social.shareWeekShort).toMatch(/Percent only/);
+    expect(COPY.social.shareWeekShort).toMatch(/guess what you hold/);
   });
 
   it("promise nothing the code does not do", () => {

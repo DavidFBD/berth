@@ -1993,11 +1993,24 @@ export type SocialCopy = {
   view: string;
   change: string;
   cancel: string;
+  /**
+   * The drawer's privacy switches are a layered notice: a short title, one
+   * short line with the essential fact (`…Short`, always shown), and the full
+   * consent text (`…Sub`, kept word for word) behind Details. `…Label` is the
+   * switch's accessible name, the full sentence the privacy policy names it by.
+   */
   hide: string;
+  hideShort: string;
   hideSub: string;
   /** The opt-in for a personal link preview card on /u/<username> (lib/og/people). */
   linkFace: string;
+  linkFaceLabel: string;
+  linkFaceShort: string;
   linkFaceSub: string;
+  /** The small disclosure under a privacy switch that opens its full text. */
+  details: string;
+  /** Its accessible name, which says whose details. */
+  detailsLabel: (title: string) => string;
   hiddenNote: string;
   friends: string;
   friendsNone: string;
@@ -2033,18 +2046,20 @@ export type SocialCopy = {
   youAreFriends: (handle: string) => string;
   /** The opt-in for friends to see which listings you hold (lib/server/social-proof), off by default. */
   shareHoldings: string;
+  shareHoldingsLabel: string;
+  shareHoldingsShort: string;
   shareHoldingsSub: string;
   /** The opt-in to compare weeks with friends (lib/server/social/compare), off by default. */
   shareWeek: string;
+  shareWeekLabel: string;
+  shareWeekShort: string;
   shareWeekSub: string;
   /** Beside friend requests: what accepting does and does not share. */
   acceptHoldingsNote: string;
   /** Beside a card's Accept or Add friend, when the viewer's own switch is on. */
   cardShareNote: string;
-  /** The read-only fold of which listings friends who share hold. */
+  /** The read-only fold of which listings friends who share hold, shown only when it has rows. */
   holdingTitle: string;
-  holdingOff: string;
-  holdingNone: string;
   /** On a friend's card, when both share: which listings they hold, by name. */
   cardHolds: (names: readonly string[]) => string;
   requestSent: string;
@@ -5075,9 +5090,14 @@ export const COPY: Copy = {
     change: "Change",
     cancel: "Cancel",
     hide: "Hide my profile",
+    hideShort: "While hidden, your username finds no one.",
     hideSub: "While hidden, your username finds no one, and friends do not see what you hold.",
-    linkFace: "Show my avatar, username and rank on links I share",
+    linkFace: "Show me on shared links",
+    linkFaceLabel: "Show my avatar, username and rank on links I share",
+    linkFaceShort: "Your username, avatar and rank, to anyone who opens them.",
     linkFaceSub: "Links to your profile and your invite link then show your username, your avatar or rank mark, and your rank name to anyone who opens or previews them, or guesses your username. Off, they show no one.",
+    details: "Details",
+    detailsLabel: (title) => `Details: ${title}`,
     hiddenNote: "Hidden. Only you can see this.",
     friends: "Friends",
     friendsNone: "No friends yet.",
@@ -5115,15 +5135,17 @@ export const COPY: Copy = {
     removeConfirm: "Tap again to remove",
     needHandle: "Pick a username to add friends.",
     youAreFriends: (handle) => `You and ${handle} are friends.`,
-    shareHoldings: "Let my friends see which stocks and funds I hold",
+    shareHoldings: "Share my holdings with friends",
+    shareHoldingsLabel: "Let my friends see which stocks and funds I hold",
+    shareHoldingsShort: "Names only, never amounts. Friends who share too.",
     shareHoldingsSub: "Only the names, never how much, to every friend who shares too, including friends you add later. You see theirs only while yours is on. Off unless you turn it on.",
-    shareWeek: "Let my friends compare their week with mine",
+    shareWeek: "Compare weeks with friends",
+    shareWeekLabel: "Let my friends compare their week with mine",
+    shareWeekShort: "Percent only. With few holdings, friends may guess what you hold.",
     shareWeekSub: "Friends who turn it on too can see how your portfolio moved, in percent only, beside their own over the same days. With only a few holdings, a friend may be able to tell from your line what you hold and in what share. Never how much money. You see theirs only while yours is on. Off unless you turn it on.",
     acceptHoldingsNote: "Friends never see your money. Which stocks and funds you hold is shared only if you both turn it on.",
     cardShareNote: "Your switch to share what you hold is on: they will see which stocks and funds you hold if they share theirs.",
     holdingTitle: "Your friends hold",
-    holdingOff: "Turn on the switch below to see which stocks and funds your friends hold, if they share theirs too.",
-    holdingNone: "None of your friends who share hold anything right now.",
     cardHolds: (names) =>
       names.length === 1 ? `Holds ${names[0]}.` : `Holds ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}.`,
     requestSent: "Request sent.",
