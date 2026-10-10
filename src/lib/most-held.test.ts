@@ -41,21 +41,24 @@ describe("the rounding ladder", () => {
   });
 
   it("never overstates the share: 1/N is never more than held/total", () => {
+    // One assertion over the whole grid: 80k expect() calls take over 5 s on CI.
+    const wrong: string[] = [];
     for (let total = 1; total <= 400; total += 1) {
       for (let held = 1; held <= total; held += 1) {
         const n = oneIn(held, total);
         if (n === null) {
           // Silent only when even 1 in 20 would overstate it.
-          expect(held * 20).toBeLessThan(total);
+          if (!(held * 20 < total)) wrong.push(`${held}/${total} silent`);
           continue;
         }
-        expect(MOST_HELD_LADDER).toContain(n);
-        expect(held * n).toBeGreaterThanOrEqual(total);
+        if (!MOST_HELD_LADDER.includes(n)) wrong.push(`${held}/${total} off ladder ${n}`);
+        if (!(held * n >= total)) wrong.push(`${held}/${total} overstates 1 in ${n}`);
         // And it is the tightest true rung: the next smaller N would overstate.
         const smaller = MOST_HELD_LADDER.filter((rung) => rung < n).at(-1);
-        if (smaller !== undefined) expect(held * smaller).toBeLessThan(total);
+        if (smaller !== undefined && !(held * smaller < total)) wrong.push(`${held}/${total} not tightest ${n}`);
       }
     }
+    expect(wrong).toEqual([]);
   });
 
   it("rounds toward the larger N at the edges", () => {
