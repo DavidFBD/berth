@@ -241,6 +241,28 @@ export function HeroPhone({ className }: { className?: string }) {
 }
 
 /**
+ * The hero film for the How Berth works drawer: no phone, no tilt, just the
+ * film in one hairline at a height that leaves the drawer room for its
+ * lines. Muted, inline and looping like the welcome page's; with reduced
+ * motion the poster waits behind a play button. The sound pill sits under
+ * it, as on the welcome page.
+ */
+export function DrawerFilm({ className }: { className?: string }) {
+  const copy = useCopy().welcomePage.films;
+  const reduced = useReducedMotionPreference();
+  const ref = useRef<HTMLVideoElement>(null);
+  const film = useFilm(ref, reduced, 0);
+  return (
+    <div className={cn("flex shrink-0 flex-col items-center gap-3", className)}>
+      <div data-drawer-film className="aspect-[9/16] h-[min(46svh,400px)] shrink-0 overflow-hidden rounded-2xl border border-border bg-card">
+        <Film sources={HERO} label={copy.hero.label} reduced={reduced} videoRef={ref} playing={film.playing} onPlay={film.play} onTogglePlay={film.togglePlay} preload="metadata" className="size-full" />
+      </div>
+      <SoundPill muted={film.muted} onToggle={film.toggleSound} />
+    </div>
+  );
+}
+
+/**
  * The Wall Street film in a wide flat card with one hairline and no shadow,
  * rising into place the first time it comes into view, its line and sound
  * pill underneath it. It closes the page, just before the way in again.

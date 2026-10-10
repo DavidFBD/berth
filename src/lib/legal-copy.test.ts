@@ -160,7 +160,7 @@ describe("Robinhood Chain delivery, said as it is (review: copy honesty)", () =>
   const docs = [COPY.termsOfUse, COPY.privacyPolicy as typeof COPY.termsOfUse];
 
   it("never says it depends on the country and the wallet alone, or that every buy can now go there", () => {
-    for (const text of [...docs.map(all), COPY.infoHowBody]) {
+    for (const text of [...docs.map(all), COPY.infoPoints.wallet, COPY.infoFineCustody]) {
       expect(text).not.toMatch(/depending on your country and your wallet/i);
       expect(text).not.toMatch(/can now be delivered/i);
     }
@@ -169,7 +169,7 @@ describe("Robinhood Chain delivery, said as it is (review: copy honesty)", () =>
   it("says plainly that a market buy lands in your own wallet on Robinhood Chain, email accounts included, in the terms, the privacy note and the info sheet", () => {
     const terms = all(COPY.termsOfUse);
     const privacy = all(COPY.privacyPolicy as typeof COPY.termsOfUse);
-    for (const text of [terms, privacy, COPY.infoHowBody]) {
+    for (const text of [terms, privacy, COPY.infoPoints.wallet, COPY.infoFineCustody]) {
       expect(text).not.toMatch(/during a beta/i);
       expect(text).not.toMatch(/some accounts/i);
     }
@@ -178,8 +178,9 @@ describe("Robinhood Chain delivery, said as it is (review: copy honesty)", () =>
     expect(terms).toMatch(/Limit orders and the Treasury bill fund stay with the Berth account/);
     expect(terms).not.toMatch(/accounts that sign in with email stay with the Berth account/);
     expect(privacy).toMatch(/A stock bought at the market price can land in your own wallet on Robinhood Chain/);
-    expect(COPY.infoHowBody).toMatch(/A stock bought at the market price lands in your own wallet on Robinhood Chain/);
-    for (const text of [terms, COPY.infoHowBody, COPY.rhChain.limitBuyStaysInAccount]) expect(text).not.toMatch(/ [-–—] |—|–/);
+    expect(COPY.infoPoints.wallet).toMatch(/What you buy at market price lands in your own wallet on Robinhood Chain/);
+    expect(COPY.infoFineCustody).toMatch(/stays in your Berth account, as do limit orders/);
+    for (const text of [terms, ...Object.values(COPY.infoPoints), COPY.infoFineOwn, COPY.infoFineFills, COPY.infoFineCustody, COPY.rhChain.limitBuyStaysInAccount]) expect(text).not.toMatch(/ [-–—] |—|–/);
     expect(terms).not.toMatch(/sodax.{0,40}(fault|blame)/i);
   });
 
@@ -211,5 +212,37 @@ describe("selling from Robinhood Chain switched off (review: the kill switch)", 
     const { readFileSync } = await import("node:fs");
     expect(readFileSync("src/components/home.tsx", "utf8")).toContain("robinhoodPaused={robinhoodSellPaused(snapshot, sellFromWallet)}");
     expect(readFileSync("src/components/flow/withdraw-drawer.tsx", "utf8")).toContain("copy.rhChain.sellPaused");
+  });
+});
+
+describe("How Berth works reads as Berth, with its fine print kept (2026-10-10)", () => {
+  const drawer = [
+    COPY.infoTitle,
+    COPY.infoSub,
+    ...Object.values(COPY.infoPoints),
+    COPY.infoFinePrintTitle,
+    COPY.infoFineOwn,
+    COPY.infoFees("0.4%"),
+    COPY.infoFineFills,
+    COPY.infoFineCustody,
+  ];
+
+  it("names SODAX once, factually, and never calls the solvers independent", () => {
+    expect(drawer.join(" ").match(/SODAX/g)).toHaveLength(1);
+    expect(COPY.infoFineFills).toMatch(/^Orders are filled through SODAX/);
+    for (const text of drawer) expect(text).not.toMatch(/independent/i);
+  });
+
+  it("keeps what a stock token is, the fee, when orders fill and who holds the funds", () => {
+    expect(COPY.infoFineOwn).toMatch(/debt security from Robinhood Assets in Jersey/);
+    expect(COPY.infoFineOwn).toMatch(/no voting rights/);
+    expect(COPY.infoFineOwn).toMatch(/credit risk/);
+    expect(COPY.infoFees("0.4%")).toMatch(/0\.4% fee.*Berth charges nothing else/);
+    expect(COPY.infoFineFills).toMatch(/any day/);
+    expect(COPY.infoFineCustody).toMatch(/Berth never holds your funds/);
+  });
+
+  it("uses no dash as punctuation", () => {
+    for (const text of drawer) expect(text).not.toMatch(/ [-–—] |—|–/);
   });
 });

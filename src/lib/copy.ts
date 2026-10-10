@@ -1039,18 +1039,17 @@ export type Copy = {
   /** Collapsed, closed by default: the private key export lives here now. */
   advancedSectionLabel: string;
 
-  /* — info drawer: what this is, what you own, what it costs — */
+  /* — info drawer: the film, three lines on Berth, and the fine print — */
   infoTitle: string;
   infoSub: string;
-  infoHowTitle: string;
-  infoHowBody: string;
-  infoOwnTitle: string;
-  infoOwnBody: string;
+  /** Three one line points under the film, in order: buying, ranks, delivery. */
+  infoPoints: { buy: string; ranks: string; wallet: string };
+  /** Collapsed by default: the disclosures the law wants said. */
+  infoFinePrintTitle: string;
+  infoFineOwn: string;
   infoFees: (feePct: string) => string;
-  infoBuiltTitle: string;
-  infoBuiltBody: string;
-  infoBuildersCta: string;
-  infoDocsCta: string;
+  infoFineFills: string;
+  infoFineCustody: string;
 
   /* — rewards: ranks, avatars, invites, the ledger — */
   /** A wallet account's drawer, which holds the rewards and the assistant section. */
@@ -3648,20 +3647,19 @@ export const COPY: Copy = {
     "The percentages here are the change in US dollars, the currency Berth's listings are priced in. Figures in your own currency use the latest rate for every day, so the line's shape is the dollar line's.",
 
   infoTitle: "How Berth works",
-  infoSub: "What an order does, what you own, and what it costs.",
-  infoHowTitle: "One signature, any network",
-  infoHowBody:
-    "You pay with what you hold, on the network where you hold it, and sign once. Independent solvers fill the order through SODAX. A stock bought at the market price lands in your own wallet on Robinhood Chain, where Robinhood offers its tokens. Limit orders and the Treasury bill fund are held in your Berth account. Selling works the same way in reverse. Orders fill any day, weekends included. Berth never holds your funds.",
-  infoOwnTitle: "What you own",
-  infoOwnBody:
-    "A Robinhood Stock Token is a debt security issued by Robinhood Assets in Jersey that tracks the price of a share and its dividends. It is not the share itself: no voting rights, and the issuer's credit risk sits with you. Cash you park is a token tracking a fund of short US Treasury bills.",
-  infoFees: (feePct) =>
-    `Every order includes a ${feePct} fee, taken from the amount before the order is filled. There are no other charges from Berth.`,
-  infoBuiltTitle: "How it was built",
-  infoBuiltBody:
-    "On the SODAX System, which reaches more than 20 networks, native Bitcoin among them, and written with Claude in the open.",
-  infoBuildersCta: "See how it is built at SODAX Builders",
-  infoDocsCta: "SODAX developer docs",
+  infoSub: "Stocks by name, paid with the crypto you already hold.",
+  infoPoints: {
+    buy: "Buy a company by name, with the crypto you already hold, in one signature.",
+    ranks: "Climb the ranks and salute your friends as you go.",
+    wallet: "What you buy at market price lands in your own wallet on Robinhood Chain.",
+  },
+  infoFinePrintTitle: "The fine print",
+  infoFineOwn:
+    "A Robinhood Stock Token is a debt security from Robinhood Assets in Jersey that tracks a share. It is not the share itself. It carries no voting rights, and you carry the issuer's credit risk.",
+  infoFees: (feePct) => `Every order includes a ${feePct} fee, taken before it is filled. Berth charges nothing else.`,
+  infoFineFills: "Orders are filled through SODAX, any day, weekends included.",
+  infoFineCustody:
+    "Cash you park is a token tracking a fund of short US Treasury bills. It stays in your Berth account, as do limit orders and any buy where Robinhood Chain is not open to you. Berth never holds your funds.",
 
   walletAccountDrawerTitle: "Your account",
   walletAccountDrawerSub: "Your rank, rewards and avatar, and the AI you bring Berth into.",
