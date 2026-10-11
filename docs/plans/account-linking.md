@@ -57,7 +57,7 @@ session exists.
 | Privy user for the wallet (`POST /api/v1/users/wallet/address`) | `did:privy:cmubcgcyh0…`, one linked account (the external wallet, no email). `latest_verified_at` = **2026-09-28T14:57:02Z**. So the SIWE login **succeeded** just now, and the failure happened after it. |
 | Vercel logs, `--since 3h --limit 5000` (1,700 lines) | No 4xx, 5xx or error-level entries on any route, and no `/api/siwe/*` calls. Every Privy call is made from the browser straight to Privy, so it never shows up here. One `POST /api/profile 200` at **14:57:03Z**, one second after the SIWE. That is the refetch from `invalidateQueries` in `finish()` (line 184), after the logout. `save()` never ran, so the flow never got past sending the code. |
 | Email on a Privy user (`POST /api/v1/users/email/address`) | 404, not linked to any Privy user. `linked_to_another_user` is ruled out, and so is the "taken" state. |
-| Email on a Berth `users` row | No row has it. The wallet row (`46b223cd…`, 800 XP, created 2026-09-17) has `privy_did` equal to the Privy user above and `email` null. |
+| Email on a Berth `users` row | No row has it. The wallet row (`<wallet-row-id>`, 800 XP, created 2026-09-17) has `privy_did` equal to the Privy user above and `email` null. |
 | Privy app config | `wallet_auth: true`, `email_auth: true`, www and apex are both in `allowed_domains`, `merge_accounts_by_email: true`. The configuration does not block SIWE or email linking. |
 | The Hana prompt said "on Sonic" | Nothing to worry about. The SIWE message says `eip155:8453` (line 211), Hana shows its active network, and the signature is a plain EIP-191 `personal_sign`. Privy accepted it, as the `latest_verified_at` above shows. |
 

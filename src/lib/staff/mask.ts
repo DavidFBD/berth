@@ -4,7 +4,7 @@
  * recognise someone who wrote in, never enough to contact or trace them.
  * The full value comes only through a reveal, which is audited.
  *
- *   maskEmail("david@sodax.com")          "d***@sodax.com"
+ *   maskEmail("dana@sodax.com")          "d***@sodax.com"
  *   maskWallet("0x12ab…(40 hex)…cdab")     "0x12…ab"
  *   maskWallet("eip155:0x12ab…cdab")       "0x12…ab"
  *   maskWallet("7EcDhSYG…FLtV")            "7EcD…tV"

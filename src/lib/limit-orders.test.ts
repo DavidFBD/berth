@@ -217,11 +217,11 @@ describe("limitStateFrom", () => {
 });
 
 describe("switchedOn", () => {
-  const list = " 0xBE59d5bf40ac4a349bd748e0d7c19ef27ad3ca23 , 46b223cd-fac6-48df-be5c-011e4d0f74c8";
+  const list = " 0xBE59d5bf40ac4a349bd748e0d7c19ef27ad3ca23 , 3f2a9c1e-5b7d-4e8a-9c4f-1a2b3c4d5e6f";
 
   it("matches a wallet or a user id, any case", () => {
     expect(switchedOn(list, ["0xbe59d5bf40ac4a349bd748e0d7c19ef27ad3ca23"])).toBe(true);
-    expect(switchedOn(list, [null, "46B223CD-FAC6-48DF-BE5C-011E4D0F74C8"])).toBe(true);
+    expect(switchedOn(list, [null, "3F2A9C1E-5B7D-4E8A-9C4F-1A2B3C4D5E6F"])).toBe(true);
   });
 
   it("switches nobody else on, and nobody at all when the list is empty", () => {

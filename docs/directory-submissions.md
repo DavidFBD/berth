@@ -32,7 +32,7 @@ Portal: https://claude.ai/directory/manage, Submit new, MCP connector. Escalatio
 **Who can submit.** Any paid Claude plan (Pro, Max, Team, Enterprise). On Pro/Max you submit as yourself; on
 Team/Enterprise only an Owner (or a custom role with the Directory permission). The listing belongs to the
 organization you submit from, so submit from the account that should own Berth long term (David's own account,
-not a SODAX Team org, since the operator is RD Norra-Winkels). No partner program, no domain verification, no
+not a SODAX Team org, since the operator is David). No partner program, no domain verification, no
 Verified application: every submission is scanned automatically and listed as **Community** by default;
 Anthropic may escalate it to **Verified** review, where a person tests each tool.
 
@@ -86,7 +86,7 @@ shared by ChatGPT and Codex.
 **Who can submit.** A member of an OpenAI Platform organization with **Apps Management: Write** (owners have it).
 Every public submission needs a **verified individual or business identity** in the Platform, and that identity
 must match the listing name, website, support contact, privacy policy and terms. For Berth this means individual
-verification as RD Norra-Winkels (or business verification if Berth is registered as a business). No ChatGPT plan
+verification as David (or business verification if Berth is registered as a business). No ChatGPT plan
 requirement is stated.
 
 **Hard requirements.**
@@ -141,7 +141,7 @@ Screenshots are optional and only for plugins with UI; Berth should submit none.
 | Descriptions free of injection patterns | Mostly. `draft_order` ends "Show the person the link."; `list_listings` says "Use the ticker or name from here in the other tools." | Low risk, see gap 4 |
 | Actionable errors | `refuse(...)` with plain sentences; `guarded()` wraps failures | OK |
 | No conversation data stored | `mcp_calls` stores user, grant, assistant, tool, ok, error, duration only; privacy page says so | OK |
-| Privacy policy | https://www.berthmarkets.com/privacy (effective 2026-09-28): operator RD Norra-Winkels, Netherlands; david@sodax.com; categories, purposes, recipients (Privy, Neon, Vercel, SODAX, chains, GitHub, OpenAI, TypeSafe, price/news sources), retention incl. assistant tokens and 90 day request logs; EU rights and the Dutch DPA; a section on the connector | OK for both |
+| Privacy policy | https://www.berthmarkets.com/privacy (effective 2026-09-28): operator David, Netherlands; support@berthmarkets.com; categories, purposes, recipients (Privy, Neon, Vercel, SODAX, chains, GitHub, OpenAI, TypeSafe, price/news sources), retention incl. assistant tokens and 90 day request logs; EU rights and the Dutch DPA; a section on the connector | OK for both |
 | Terms of service URL | `/terms` is 404 | **Gap 1 (OpenAI requires it)** |
 | Support URL | `/support` is 404; email only | Gap 2 (email is enough for Claude; OpenAI asks for a URL) |
 | Public documentation | `/llms.txt` (plain text, accurate); no human page | Gap 2 |
@@ -156,7 +156,7 @@ Screenshots are optional and only for plugins with UI; Berth should submit none.
    assistant can only draft, that nothing is advice, fees, eligible jurisdictions, liability, Dutch law. OpenAI
    requires a terms URL that matches the verified identity.
 2. **A human documentation and support page**, e.g. `/assistants`: how to connect in Claude and ChatGPT, the two
-   scopes, the tool list, how to disconnect, and "Write to david@sodax.com". Use it as documentation URL and
+   scopes, the tool list, how to disconnect, and "Write to support@berthmarkets.com". Use it as documentation URL and
    support URL. Point `resource_documentation` at it too, keeping llms.txt.
 3. **Decide the `draft_order` annotation.** It persists nothing (only the shared usage log row): by OpenAI's own
    wording ("previews, or computes information and doesn't change anything") it is read only, and a reviewer can
@@ -226,7 +226,7 @@ no key exists on the server; the person signs in Berth or closes it.
 
 ## 4. Listing copy (Berth's voice)
 
-Operator: RD Norra-Winkels, Netherlands. Website: https://www.berthmarkets.com. Support: support@berthmarkets.com.
+Operator: David, Netherlands. Website: https://www.berthmarkets.com. Support: support@berthmarkets.com.
 Privacy: https://www.berthmarkets.com/privacy. Terms: https://www.berthmarkets.com/terms.
 Documentation: https://www.berthmarkets.com/assistants (and https://www.berthmarkets.com/llms.txt).
 
@@ -253,7 +253,7 @@ Documentation: https://www.berthmarkets.com/assistants (and https://www.berthmar
 - **Use cases:** see what I own and what it is worth; compare my performance with a benchmark; review my orders; see what moved and why people were talking about it; prepare an order to sign in Berth.
 - **Before connecting:** a Berth account (free, at berthmarkets.com, email or wallet sign in). Holdings are needed for the account tools; the market tools work with an empty account.
 - **Reads or writes:** Both. Eight tools only read. `draft_order` writes nothing lasting; it returns a link, and is marked as a write so you confirm each draft.
-- **Company:** RD Norra-Winkels (Berth), Netherlands, https://www.berthmarkets.com. Primary contact: David, support@berthmarkets.com.
+- **Company:** David (Berth), Netherlands, https://www.berthmarkets.com. Primary contact: David, support@berthmarkets.com.
 - **Authentication:** OAuth, client ID metadata document (DCR also accepted).
 - **Data handling:** our own API. Market data comes from licensed sources Berth pays for or is permitted to use (X, TypeSafe, price and news feeds). No health data. No sponsored content.
 - **Example prompts (three required, five offered):**
@@ -279,7 +279,7 @@ Documentation: https://www.berthmarkets.com/assistants (and https://www.berthmar
 
 - **Category:** Finance
 - **Website / Support / Privacy / Terms:** https://www.berthmarkets.com, https://www.berthmarkets.com/assistants, https://www.berthmarkets.com/privacy, https://www.berthmarkets.com/terms
-- **Developer identity:** RD Norra-Winkels (verified individual)
+- **Developer identity:** David (verified individual)
 - **Countries:** everywhere Berth is offered: not the United States and its territories, and not the sanctioned places the terms name.
 - **Starter prompts:** the first four Claude prompts above.
 - **Positive test cases (5):**
@@ -315,7 +315,7 @@ Documentation: https://www.berthmarkets.com/assistants (and https://www.berthmar
 1. **Claude:** submit from his own paid account (Pro or Max), or as Owner of the org that should own the listing.
    Not from the SODAX Team org unless SODAX should own it.
 2. **OpenAI:** in the OpenAI Platform, own or get Apps Management write on an org, and complete **individual
-   identity verification** as RD Norra-Winkels (name must match the privacy and terms pages).
+   identity verification** as David (name must match the privacy and terms pages).
 3. **Reviewer test account.** David creates and funds it; no agent may. Both directories want a fully populated
    account; OpenAI forbids email confirmation codes, which is how Berth's email sign in works.
    - Enable Privy's test account feature for the Berth app (Privy dashboard, login methods; it gives a fixed

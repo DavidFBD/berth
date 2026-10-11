@@ -78,7 +78,7 @@ describe("property values", () => {
       "0xAbC123",
       "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
       "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV",
-      "david@sodax.com",
+      "alice@example.com",
       "Apple beats earnings estimates",
       "a".repeat(33),
       "$50",
@@ -228,7 +228,7 @@ describe("replay text fails closed", () => {
 
 describe("replay attributes", () => {
   it("hide names, emails, addresses and money in word attributes", () => {
-    expect(maskAttribute("aria-label", "Account total, signed in as david@sodax.com", false)).toMatch(/^\*+$/);
+    expect(maskAttribute("aria-label", "Account total, signed in as alice@example.com", false)).toMatch(/^\*+$/);
     expect(maskAttribute("title", "0x1234567890abcdef", false)).toMatch(/^\*+$/);
     expect(maskAttribute("aria-label", "$1,234.56", false)).toMatch(/^\*+$/);
     expect(maskAttribute("alt", "harbourfox", true)).toMatch(/^\*+$/);

@@ -3,8 +3,8 @@ import { bareAddress, holdsPersonal, maskEmail, maskWallet, scrubPersonal, scrub
 
 describe("masking", () => {
   it("keeps the first letter, a webmail domain whole, any other domain by its first letter and ending", () => {
-    expect(maskEmail("david@gmail.com")).toBe("d***@gmail.com");
-    expect(maskEmail("david@sodax.com")).toBe("d***@s****.com");
+    expect(maskEmail("dana@gmail.com")).toBe("d***@gmail.com");
+    expect(maskEmail("dana@sodax.com")).toBe("d***@s****.com");
     expect(maskEmail("  A.Person+tag@mail.employer.co.uk ")).toBe("A***@m****.uk");
     expect(maskEmail("not an email")).toBe("***");
     expect(maskEmail("")).toBeNull();
