@@ -1138,6 +1138,11 @@ export type Copy = {
   levelUpLine: (level: number, total: number, reason: string | null) => string;
   /** The card's second line, when the rung opened something. */
   levelUpUnlock: (unlock: Unlock) => string;
+  /** The level-up takeover (components/level-up-takeover): its one button, and what the tap outside it is called. */
+  levelUpNice: string;
+  levelUpDismiss: string;
+  /** Said once to a screen reader, politely, as the takeover opens. */
+  levelUpAnnounce: (rankName: string, level: number) => string;
   /* rank-gated faces in the picker */
   /** `face` is the avatar's own name, `rankName` the rung it opens on. */
   avatarLockedLabel: (face: string, rankName: string) => string;
@@ -1916,9 +1921,9 @@ export type FirstPathCopy = {
   /** The toast after a skip, with its Undo. */
   skipped: string;
   undo: string;
-  titles: { avatar: string; username: string; money: string; walletMoney: string; firstBuy: string; invite: string };
+  titles: { avatar: string; username: string; friends: string; money: string; walletMoney: string; firstBuy: string; invite: string };
   /** The Done moment, said once as a step closes. */
-  done: { avatar: string; username: string; money: string; walletMoney: string; firstBuy: string; invite: string; inviteCopied: string };
+  done: { avatar: string; username: string; friends: string; money: string; walletMoney: string; firstBuy: string; invite: string; inviteCopied: string };
   doneNext: (title: string) => string;
   doneLast: string;
   avatarSub: string;
@@ -1928,6 +1933,11 @@ export type FirstPathCopy = {
   inviteSub: string;
   inviteNeedsName: string;
   inviteNeedsNameAction: string;
+  /** The friends step's one benefit line (components/social/friends-all). */
+  friendsSub: string;
+  friendsNeedsName: string;
+  /** The friends step's quiet way past it, in place of "Skip for now". */
+  notNow: string;
   /** The first buy step when the money step was set aside and nothing spendable is known. */
   firstUnfunded: string;
   /** The drawer's first buy line when money is ready: the choice itself is on the home. */
@@ -2059,6 +2069,38 @@ export type SocialCopy = {
   removeConfirm: string;
   needHandle: string;
   youAreFriends: (handle: string) => string;
+  /**
+   * "Turn on all friend features" (components/social/friends-all): one calm
+   * offer with a layered notice. The summary says, before the tap, what
+   * turning everything on shares; the full consent texts of the four
+   * switches stay behind Details, word for word.
+   */
+  friendsAll: {
+    title: string;
+    /** The one benefit line. */
+    line: string;
+    /** Some are on already: how many. */
+    count: (on: number, total: number) => string;
+    /** Only while the one time bonus is unclaimed (lib/xp friends_all_on). */
+    xp: (amount: number) => string;
+    summaryTitle: string;
+    /** Profile shown, shown on links, holdings, week: in that order. */
+    summary: readonly [string, string, string, string];
+    /** The inference warning, in full: what and in what share. */
+    inference: string;
+    /** Only while the person has hidden their profile: turning all on shows it again. */
+    showsAgain: string;
+    later: string;
+    /** Beside `later` while the bonus is unclaimed: the XP is not taken back. */
+    xpKept: string;
+    action: string;
+    /** When some are on already. */
+    actionRest: string;
+    done: string;
+    /** Details: the profile switch's text, which is turned off. */
+    hideOff: (title: string) => string;
+    detailsLabel: string;
+  };
   /** The opt-in for friends to see which listings you hold (lib/server/social-proof), off by default. */
   shareHoldings: string;
   shareHoldingsShort: string;
@@ -3183,6 +3225,7 @@ export const COPY: Copy = {
     titles: {
       avatar: "Choose your avatar",
       username: "Pick a username",
+      friends: "Turn on friend features",
       money: "Add money",
       walletMoney: "Pay from your wallet",
       firstBuy: "Your first buy",
@@ -3191,6 +3234,7 @@ export const COPY: Copy = {
     done: {
       avatar: "Avatar chosen.",
       username: "Username picked.",
+      friends: "Friend features on.",
       money: "Money added.",
       walletMoney: "Your wallet can pay.",
       firstBuy: "Your first buy is in.",
@@ -3205,6 +3249,9 @@ export const COPY: Copy = {
     inviteSub: "Send your friend link. Anyone with it can ask to be friends.",
     inviteNeedsName: "Your friend link needs a username first.",
     inviteNeedsNameAction: "Pick a username",
+    friendsSub: "See what your friends hold and how their week went, when they share too.",
+    friendsNeedsName: "Friend features need a username first.",
+    notNow: "Not now",
     firstUnfunded: "Choose one to buy. The order asks how to pay, and you can add money there.",
     firstFunded: "Your money is ready. Choose your first stock or fund on the home.",
     xpFirstBuy: (amount) => `+${amount} XP when your first buy fills`,
@@ -3797,6 +3844,9 @@ export const COPY: Copy = {
       : unlock.kind === "invite"
         ? "Your own invite link is ready in your account."
         : `The ${unlock.face} avatar is now in your avatar picker.`,
+  levelUpNice: "Nice",
+  levelUpDismiss: "Close",
+  levelUpAnnounce: (rankName, level) => `You reached ${rankName}, level ${level}.`,
   avatarLockedLabel: (face, rankName) => `${face}, unlocks at ${rankName}`,
   avatarUnlocksAt: (rankName) => `Unlocks at ${rankName}`,
   pickFace: (amount) => `Pick an avatar · +${amount} XP`,
@@ -4483,6 +4533,7 @@ export const COPY: Copy = {
           "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. A friend can see whether you saluted them. Nobody else can see who you block. A friend who opens your profile sees which of their own friends are also yours, by username and avatar, unless that person's profile is hidden. The record of changes is kept for a year.",
           "If you turn on Share my holdings with friends, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username and avatar, for up to four of the friends who hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
           "If you turn on Compare weeks with friends, your friends who turned it on too can draw a line of your return beside their own on their account page, with your username, avatar and rank: how your portfolio moved, in percent, day by day, over the days their page shows, which are the last week, the last 14, 30 or 90 days, or since the later of your two first buys. Money you add or take out does not move it. They never see how much money you have, what you paid or what it is worth, and it shows no ranking. With only a few holdings, a friend may be able to tell from your line what you hold and in what share. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your daily values and not shown once the last is more than three days old. While your profile is hidden you are not shown.",
+          "Turn on all friend features turns on all four at once: your profile shown, Show me on shared links, Share my holdings with friends and Compare weeks with friends, each as described above. Before you turn them on, Berth shows what they share. The first time all four are on, whether you turn them on with it or one at a time, your account gets a one time XP bonus. The bonus does not depend on keeping them on: you can turn any of them off at any time, one at a time, and the XP is never taken back. Turning them off and on again earns nothing more. A profile hidden by staff stays hidden, and no bonus is paid while it is.",
           "Most bought on Berth is public: anyone who opens the board sees it. It counts how many people bought each listing in one week, Monday to Sunday in UTC, from the orders we keep. Each week is counted once, after it ends, and kept as it was published; the first week counted begins on 5 October 2026. It names no one and shows no amount. Two accounts merged into one count as one person. Only buys of at least $10, from accounts at least a week old with a verified email, are counted, and staff accounts and buys that earn no XP are not. A listing bought by fewer than five people is left out, counts above ten are rounded down to a multiple of five, and the list is not shown at all in a week when fewer than ten people bought.",
           "Most held on Berth is public too. Once a week, published on Tuesday for the week before, Monday to Sunday in UTC, the board shows for each stock or fund a rounded share, such as 1 in 4, of the people who own a stock or fund on Berth who hold that one. It is never a count of people and never an amount, and never anything about one person. The people counted are those with a verified email whose account is at least 7 days old and held at least $10 of stocks and funds at its last daily value of the week; staff accounts are not counted. A listing is shown only when at least 20 people hold it, and nothing is shown in a week when fewer than 50 people hold a stock or fund. Each week is counted once, after it ends, and kept as published. The first week counted is the week of 19 October 2026, published on 27 October 2026.",
         ],
@@ -4633,7 +4684,7 @@ export const COPY: Copy = {
       {
         id: "what-changed",
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
-        body: ["The first three changes below are new on 8 October 2026, the third to last on 9 October 2026 and the last two on 10 October 2026. The others came on 6 October 2026. The last line below is new on 11 October 2026."],
+        body: ["The first three changes below are new on 8 October 2026. The line on what a friend sees when they open your profile is new on 9 October 2026, and the two lines on Compare with friends on 10 October 2026. A line that begins with a date is new on that date. The others came on 6 October 2026."],
         list: [
           "For a sign up through a campaign's link, we keep only whether the country your connection came from could not be told, as a signal for the reviewer. Never the country itself.",
           "A note that a campaign reward was paid to your account is an account notice, sent whatever your email settings say.",
@@ -4649,6 +4700,7 @@ export const COPY: Copy = {
           "Compare with friends: if you and a friend both turn it on, each of you can see the other's return, in percent only, beside your own.",
           "Compare with friends can now draw a friend's line over the last 14, 30 or 90 days as well as the last week and since your first buys, and only over a span your own record already covers.",
           "On 11 October 2026 the names of the privacy switches in this policy were made to match the app: Hide my profile, Show me on shared links, Share my holdings with friends and Compare weeks with friends. What each one does has not changed.",
+          "On 11 October 2026, Turn on all friend features: one button that turns on all four switches, which stay separate, and a one time XP bonus the first time all four are on, which stays yours whatever you turn off later.",
         ],
       },
       {
@@ -5167,6 +5219,28 @@ export const COPY: Copy = {
     removeConfirm: "Tap again to remove",
     needHandle: "Pick a username to add friends.",
     youAreFriends: (handle) => `You and ${handle} are friends.`,
+    friendsAll: {
+      title: "Turn on all friend features",
+      line: "See what your friends hold and how their week went, when they share too.",
+      count: (on, total) => `${on} of ${total} are on.`,
+      xp: (amount) => `+${amount} XP, once`,
+      summaryTitle: "Turning them all on shares",
+      summary: [
+        "Your profile, with people who know your username.",
+        "Your username, avatar and rank, to anyone who opens or guesses your shared links. Previews other apps already saved cannot be removed.",
+        "The names of stocks you hold, never amounts, with friends who share theirs.",
+        "Your portfolio's percent line over the range a friend picks, up to 90 days or since your first buy, with friends who compare theirs.",
+      ],
+      inference: "With few holdings, friends may guess what you hold and in what share.",
+      showsAgain: "Your profile is hidden now. This shows it again.",
+      later: "You can turn any of them off later, one at a time.",
+      xpKept: "The XP stays yours whatever you turn off.",
+      action: "Turn on all",
+      actionRest: "Turn on the rest",
+      done: "All friend features are on.",
+      hideOff: (title) => `${title}, turned off`,
+      detailsLabel: "Details: all friend features",
+    },
     shareHoldings: "Share my holdings with friends",
     shareHoldingsShort: "Names only, never amounts. Friends who share too.",
     shareHoldingsSub: "Only the names, never how much, to every friend who shares too, including friends you add later. You see theirs only while yours is on. Off unless you turn it on.",

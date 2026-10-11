@@ -52,7 +52,7 @@ describe("readFirstPath", () => {
       skipped: [],
       finished: false,
       referred: false,
-      facts: { avatarSet: false, usernameSet: false, hasEmail: false, funded: false, firstBuy: false, inviteSent: false },
+      facts: { avatarSet: false, usernameSet: false, hasEmail: false, funded: false, firstBuy: false, inviteSent: false, friendsOn: false },
     });
   });
 
@@ -156,6 +156,8 @@ describe("writeFirstPath", () => {
     await sql.query(`update users set avatar_id = 'buoy', email = 'b@example.com' where id = $1`, [id]);
     expect(await at()).toBe("username");
     await writeFirstPath(id, { kind: "skip", step: "username" });
+    expect(await at()).toBe("friends");
+    await writeFirstPath(id, { kind: "skip", step: "friends" });
     expect(await at()).toBe("money");
     await writeFirstPath(id, { kind: "funded" });
     expect(await at()).toBe("firstBuy");
@@ -164,7 +166,15 @@ describe("writeFirstPath", () => {
     await writeFirstPath(id, { kind: "unskip", step: "username" });
     expect(await at()).toBe("username");
     await sql.query(`insert into handles (user_id, handle, handle_norm) values ($1, 'walker', 'walker')`, [id]);
+    await sql.query(`insert into profiles (user_id) values ($1)`, [id]);
     expect(await at()).toBe("invite");
+    // Every friend feature turned on proves the step set aside, as the one time XP would.
+    await sql.query(`update profiles set link_face = true, share_holdings = true, share_week = true where user_id = $1`, [id]);
+    expect((await readFirstPath(id))!.facts.friendsOn).toBe(true);
+    await sql.query(`update profiles set share_week = false where user_id = $1`, [id]);
+    expect((await readFirstPath(id))!.facts.friendsOn).toBe(false);
+    await sql.query(`insert into xp_events (user_id, kind, amount) values ($1, 'friends_all_on', 100)`, [id]);
+    expect((await readFirstPath(id))!.facts.friendsOn).toBe(true);
     await writeFirstPath(id, { kind: "invited" });
     expect(await at()).toBe("complete");
     await writeFirstPath(id, { kind: "finish" });

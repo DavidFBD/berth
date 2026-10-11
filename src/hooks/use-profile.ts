@@ -849,7 +849,7 @@ const NOT_ON_PATH: FirstPathResponse = {
   skipped: [],
   finished: true,
   referred: false,
-  facts: { avatarSet: false, usernameSet: false, hasEmail: false, funded: false, firstBuy: false, inviteSent: false },
+  facts: { avatarSet: false, usernameSet: false, hasEmail: false, funded: false, firstBuy: false, inviteSent: false, friendsOn: false },
 };
 
 export type FirstPathWriteBody = { skip: PathStep } | { unskip: PathStep } | { funded: true } | { invited: true } | { finish: true };

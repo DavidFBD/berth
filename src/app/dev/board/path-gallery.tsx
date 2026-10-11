@@ -42,7 +42,7 @@ import { campaignLine, type CampaignProgress } from "@/lib/campaigns";
  *   /dev/board?home=path                 a new email account, at step 1
  *   &account=wallet                      a wallet account without an email
  *   &country=US                          where Berth cannot take an order
- *   &at=username|money|firstBuy|invite|complete
+ *   &at=username|friends|money|firstBuy|invite|complete
  *                                        start with the steps before it done
  *   &skipped=avatar,username             start with those set aside
  *   &drawer=1                            the account drawer open on it
@@ -89,8 +89,8 @@ function fundingScene(scene: string | null | undefined): { view: ArrivalView; ta
   }
 }
 
-const ORDER: readonly (keyof PathFacts)[] = ["avatarSet", "usernameSet", "funded", "firstBuy", "inviteSent"];
-const AT: Record<string, number> = { avatar: 0, username: 1, money: 2, firstBuy: 3, invite: 4, complete: 5 };
+const ORDER: readonly (keyof PathFacts)[] = ["avatarSet", "usernameSet", "friendsOn", "funded", "firstBuy", "inviteSent"];
+const AT: Record<string, number> = { avatar: 0, username: 1, friends: 2, money: 3, firstBuy: 4, invite: 5, complete: 6 };
 
 function startFacts(account: "email" | "wallet", at: string | null): PathFacts {
   const upTo = AT[at ?? "avatar"] ?? 0;
@@ -101,6 +101,7 @@ function startFacts(account: "email" | "wallet", at: string | null): PathFacts {
     funded: false,
     firstBuy: false,
     inviteSent: false,
+    friendsOn: false,
   };
   ORDER.slice(0, upTo).forEach((key) => {
     (facts as Record<string, boolean | undefined>)[key] = true;
@@ -160,7 +161,7 @@ export function PathGallery({ account, at, skipped: skippedParam, drawer: drawer
 
   const set = (next: Partial<PathFacts>) => setFacts((previous) => ({ ...previous, ...next }));
   const xpOf = () => client.getQueryData<Profile>(["profile", null])?.xp ?? 25;
-  const pay = (kind: "avatar_set" | "pour_in", amount: number) => {
+  const pay = (kind: "avatar_set" | "pour_in" | "friends_all_on", amount: number) => {
     const xp = xpOf() + amount;
     client.setQueryData<Profile>(["profile", null], (profile) => ({ ...(profile as Profile), xp }));
     toast.rewards([{ kind, amount }], xp);
@@ -192,6 +193,10 @@ export function PathGallery({ account, at, skipped: skippedParam, drawer: drawer
       saveName: (name) => {
         client.setQueryData<MySocial>(["social-me", null], (me) => ({ ...(me as MySocial), handle: name }));
         set({ usernameSet: true });
+      },
+      friendsOn: () => {
+        pay("friends_all_on", XP_ACTIONS.friends_all_on.amount);
+        set({ friendsOn: true });
       },
       // The gallery has no share sheet: the link is copied, and the Done moment says so.
       share: () => set({ inviteSent: true }),

@@ -137,31 +137,55 @@ export function useSetHandle() {
   });
 }
 
-export function useSetVisible() {
+type WithBonus = MySocial & { rewards?: RewardList; xp?: number | null };
+
+/**
+ * A switch turned on can complete all four friend features, which pays the
+ * one time friends_all_on bonus (lib/server/social/ops): announce it like
+ * every reward, and keep only the social state in the cache.
+ */
+function useSettleSwitch() {
   const queryClient = useQueryClient();
-  const { key, call } = useSocialCall();
+  const { key } = useSocialCall();
+  return (data: WithBonus): MySocial => {
+    const { rewards = [], xp = null, ...social } = data;
+    queryClient.setQueryData(KEYS.me(key), social);
+    if (rewards.length > 0 && xp !== null) {
+      announceRewards(rewards, xp);
+      queryClient.setQueryData<{ xp: number }>(["profile", key], (previous) => (previous ? { ...previous, xp } : previous));
+      void queryClient.invalidateQueries({ queryKey: ["xp-history", key] });
+      void queryClient.invalidateQueries({ queryKey: ["first-path", key] });
+    }
+    return social;
+  };
+}
+
+export function useSetVisible() {
+  const { call } = useSocialCall();
+  const settle = useSettleSwitch();
   return useMutation({
-    mutationFn: (visible: boolean) => must(call<MySocial>("visibility", { visible })),
-    onSuccess: (social) => queryClient.setQueryData(KEYS.me(key), social),
+    mutationFn: (visible: boolean) => must(call<WithBonus>("visibility", { visible })),
+    onSuccess: (data) => void settle(data),
   });
 }
 
 export function useSetLinkFace() {
-  const queryClient = useQueryClient();
-  const { key, call } = useSocialCall();
+  const { call } = useSocialCall();
+  const settle = useSettleSwitch();
   return useMutation({
-    mutationFn: (on: boolean) => must(call<MySocial>("link-face", { on })),
-    onSuccess: (social) => queryClient.setQueryData(KEYS.me(key), social),
+    mutationFn: (on: boolean) => must(call<WithBonus>("link-face", { on })),
+    onSuccess: (data) => void settle(data),
   });
 }
 
 export function useSetShareHoldings() {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
+  const settle = useSettleSwitch();
   return useMutation({
-    mutationFn: (on: boolean) => must(call<MySocial>("share-holdings", { on })),
-    onSuccess: (social) => {
-      queryClient.setQueryData(KEYS.me(key), social);
+    mutationFn: (on: boolean) => must(call<WithBonus>("share-holdings", { on })),
+    onSuccess: (data) => {
+      settle(data);
       void queryClient.invalidateQueries({ queryKey: KEYS.holding(key) });
       void queryClient.invalidateQueries({ queryKey: ["social-card"] });
     },
@@ -171,13 +195,49 @@ export function useSetShareHoldings() {
 export function useSetShareWeek() {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
+  const settle = useSettleSwitch();
   return useMutation({
-    mutationFn: (on: boolean) => must(call<MySocial>("share-week", { on })),
-    onSuccess: (social) => {
-      queryClient.setQueryData(KEYS.me(key), social);
+    mutationFn: (on: boolean) => must(call<WithBonus>("share-week", { on })),
+    onSuccess: (data) => {
+      settle(data);
       void queryClient.invalidateQueries({ queryKey: KEYS.compareFriends(key) });
       void queryClient.invalidateQueries({ queryKey: ["social-compare-week", key] });
     },
+  });
+}
+
+/**
+ * "Turn on all friend features": every friend sharing switch on at once
+ * (lib/server/social/handles setAllFriends). The first time pays
+ * friends_all_on, which rides beside the social state like the first
+ * username's XP and is announced the same way.
+ */
+export function useTurnOnAllFriends() {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall();
+  return useMutation({
+    /** `features`: the feature ids the offer's summary named, which the server checks against its own. */
+    mutationFn: async (features: readonly string[]): Promise<{ social: MySocial; rewards: RewardList; xp: number | null }> => {
+      type Saved = MySocial & { rewards?: RewardList; xp?: number | null };
+      const { rewards = [], xp = null, ...social } = await must(call<Saved>("friends-all", { features }));
+      return { social, rewards, xp };
+    },
+    onSuccess: ({ social, rewards, xp }) => {
+      queryClient.setQueryData(KEYS.me(key), social);
+      if (rewards.length > 0 && xp !== null) {
+        announceRewards(rewards, xp);
+        queryClient.setQueryData<{ xp: number }>(["profile", key], (previous) => (previous ? { ...previous, xp } : previous));
+        void queryClient.invalidateQueries({ queryKey: ["xp-history", key] });
+      }
+      void queryClient.invalidateQueries({ queryKey: KEYS.holding(key) });
+      void queryClient.invalidateQueries({ queryKey: KEYS.compareFriends(key) });
+      void queryClient.invalidateQueries({ queryKey: ["social-compare-week", key] });
+      void queryClient.invalidateQueries({ queryKey: ["social-card"] });
+      void queryClient.invalidateQueries({ queryKey: KEYS.board(key) });
+      void queryClient.invalidateQueries({ queryKey: ["first-path", key] });
+    },
+    // A refused list means the offer is out of date: read the state again.
+    onError: () => void queryClient.invalidateQueries({ queryKey: KEYS.me(key) }),
   });
 }
 

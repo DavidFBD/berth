@@ -25,6 +25,16 @@ export const XP_ACTIONS = {
    */
   username_set: { amount: 25, once: true },
   /**
+   * "Turn on all friend features" (lib/server/social/handles setAllFriends),
+   * once per person, ever: the once per account index (xp_events_once_per_user)
+   * settles a second tap, two taps racing and a merge alike. Never taken
+   * back: switching any feature off later deducts nothing, and switching
+   * everything off and on again earns nothing more. A buy's worth (100), four
+   * times a username, because it is four consents at once and the moment
+   * friends become worth having; less than an email, which is the account.
+   */
+  friends_all_on: { amount: 100, once: true },
+  /**
    * Trying a mode for the first time. Repeatable kind, but the dedup ref is
    * `userId:modeId`, so each theme pays exactly once per account — the whole
    * ladder caps at modes × 10 XP no matter how much the switch is toggled.
@@ -101,6 +111,7 @@ export const REWARD_REASONS: Record<XpKind, string> = {
   email_linked: "for adding an email",
   avatar_set: "for picking an avatar",
   username_set: "for picking a username",
+  friends_all_on: "for turning on friend features",
   theme_tried: "for trying another appearance",
   friend_poured: "a friend made their first trade",
   friend_stayed: "for a friend who set up and stayed",

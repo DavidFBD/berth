@@ -13,6 +13,8 @@ import { AddEmailBlock } from "@/components/rewards-panel";
 import { XMark } from "@/components/x-mark";
 import { BERTH_X_URL } from "@/lib/berth-x";
 import { useShareFriendLink } from "@/components/social/social-section";
+import { FriendsAllOffer } from "@/components/social/friends-all";
+import { friendsAllState } from "@/lib/friends-all";
 import { PRIMARY, StepCard, type StepFrame } from "@/components/home-next-step";
 import { useFirstPathRecord, useFirstPathWrite, useProfile } from "@/hooks/use-profile";
 import { useMySocial } from "@/hooks/use-social";
@@ -53,6 +55,8 @@ import { cn } from "@/lib/utils";
 export type PathDemo = {
   saveAvatar: (avatarId: string) => void;
   saveName: (name: string) => void;
+  /** "Turn on all friend features", on the fixture. */
+  friendsOn: () => void;
   share: () => void;
 };
 
@@ -165,6 +169,11 @@ export function useLiveFirstPath({
     funded: server?.facts.funded || funded === true ? true : funded,
     firstBuy: server?.facts.firstBuy || ownsStock === true ? true : ownsStock === undefined ? undefined : false,
     inviteSent: Boolean(server?.facts.inviteSent),
+    // The social cache moves first when the switches are turned on here.
+    friendsOn:
+      Boolean(server?.facts.friendsOn) ||
+      Boolean(social.data?.friendsAllClaimed) ||
+      Boolean(social.data?.handle && friendsAllState(social.data).all),
   };
   const off = server !== undefined && (!server.eligible || server.finished);
   const view: PathView = server
@@ -262,7 +271,7 @@ export function PathProgress({ view, className }: { view: Extract<PathView, { ki
 }
 
 /** The quiet skip under a step's action. */
-function SkipLink({ onSkip, className }: { onSkip: () => void; className?: string }) {
+function SkipLink({ onSkip, className, label }: { onSkip: () => void; className?: string; label?: string }) {
   const copy = useCopy().firstPath;
   return (
     <div className={cn("flex justify-center px-[18px] pb-3 lg:px-6", className)}>
@@ -271,7 +280,7 @@ function SkipLink({ onSkip, className }: { onSkip: () => void; className?: strin
         onClick={onSkip}
         className="min-h-11 rounded-full px-3 text-[13px] text-muted-foreground underline-offset-4 outline-none transition-colors duration-150 ease-lift hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        {copy.skip}
+        {label ?? copy.skip}
       </button>
     </div>
   );
@@ -321,7 +330,7 @@ export function HomePathCard({ slots, footnote }: { slots: HomePathSlots; footno
             footer: (
               <>
                 <Footnote>{footnote}</Footnote>
-                <SkipLink onSkip={() => path.skip(view.step)} />
+                <SkipLink onSkip={() => path.skip(view.step)} label={view.step === "friends" ? copy.notNow : undefined} />
               </>
             ),
           };
@@ -372,6 +381,8 @@ function stepLine(copy: FirstPathCopy, step: PathStep, path: FirstPathValue): st
       return copy.avatarSub;
     case "username":
       return path.account === "wallet" && !path.facts.hasEmail ? copy.usernameNeedsEmail : copy.usernameSub;
+    case "friends":
+      return path.facts.usernameSet ? copy.friendsSub : copy.friendsNeedsName;
     case "invite":
       return path.facts.usernameSet ? copy.inviteSub : copy.inviteNeedsName;
     default:
@@ -379,7 +390,7 @@ function stepLine(copy: FirstPathCopy, step: PathStep, path: FirstPathValue): st
   }
 }
 
-/** The body of the three steps the home and the drawer draw the same way: avatar, username, invite. */
+/** The body of the four steps the home and the drawer draw the same way: avatar, username, friends, invite. */
 function StepBody({ step }: { step: PathStep }) {
   const path = useFirstPath();
   const profile = useProfile();
@@ -392,8 +403,30 @@ function StepBody({ step }: { step: PathStep }) {
     if (path.account === "wallet" && !path.facts.hasEmail) return <AddEmailBlock hasEmail={false} />;
     return path.demo ? <DemoNamePicker onSave={path.demo.saveName} /> : <NamePicker />;
   }
+  if (step === "friends") return <FriendsBody />;
   if (step === "invite") return <InviteBody />;
   return null;
+}
+
+/** "Turn on all friend features": the summary, its Details, one button. A username comes first. */
+function FriendsBody() {
+  const path = useFirstPath();
+  const copy = useCopy().firstPath;
+  const social = useMySocial(!path?.demo);
+  if (!path) return null;
+  if (!path.facts.usernameSet) {
+    return (
+      <Button className={PRIMARY} onClick={() => path.unskip("username")}>
+        {copy.inviteNeedsNameAction}
+      </Button>
+    );
+  }
+  if (path.demo) {
+    const demoSocial = { hasEmail: true, handle: "gosia", visible: true, linkFace: false, shareHoldings: false, shareWeek: false, nextChangeAt: null, requests: 0 };
+    return <FriendsAllOffer social={demoSocial} variant="card" demo={path.demo.friendsOn} />;
+  }
+  if (!social.data) return null;
+  return <FriendsAllOffer social={social.data} variant="card" />;
 }
 
 function InviteBody() {
@@ -601,7 +634,7 @@ export function DrawerPathStep() {
       ) : (
         <StepBody step={view.step} />
       )}
-      <SkipLink onSkip={() => path.skip(view.step)} className="px-0 pb-0" />
+      <SkipLink onSkip={() => path.skip(view.step)} className="px-0 pb-0" label={view.step === "friends" ? words.notNow : undefined} />
     </Panel>
   );
 }

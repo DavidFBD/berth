@@ -262,12 +262,22 @@ describe("the words around it", () => {
     // Said where consent is given and in the policy in the same words (review M1).
     expect(policy).toContain("With only a few holdings, a friend may be able to tell from your line what you hold and in what share.");
     const changed = COPY.privacyPolicy.sections.find((section) => section.id === "what-changed")!;
-    expect(changed.list?.at(-3)).toContain("Compare with friends");
+    expect(changed.list?.at(-4)).toContain("Compare with friends");
     // The longer windows, a line of their own the same day.
-    expect(changed.list?.at(-2)).toContain("over the last 14, 30 or 90 days");
+    expect(changed.list?.at(-3)).toContain("over the last 14, 30 or 90 days");
     // The switch names now match the app, dated today, effective date and terms version untouched.
-    expect(changed.list?.at(-1)).toContain("On 11 October 2026 the names of the privacy switches");
-    expect(changed.body[0]).toContain("the last two on 10 October 2026");
+    expect(changed.list?.at(-2)).toContain("On 11 October 2026 the names of the privacy switches");
+    // The combined switch and its one time XP, the same day.
+    expect(changed.list?.at(-1)).toContain("On 11 October 2026, Turn on all friend features");
+    // The intro names lines by what they say and when, never by position, so a new line cannot make it wrong.
+    expect(changed.body[0]).not.toMatch(/\blast\b|third/);
+    expect(changed.body[0]).toContain("the two lines on Compare with friends on 10 October 2026");
+    expect(changed.body[0]).toContain("A line that begins with a date is new on that date.");
+    for (const line of changed.list ?? []) if (line.includes("11 October 2026")) expect(line.startsWith("On 11 October 2026")).toBe(true);
+    expect(changed.list?.filter((line) => line.startsWith("Compare with friends"))).toHaveLength(2);
+    expect(policy).toContain("The bonus does not depend on keeping them on");
+    expect(policy).toContain("no bonus is paid while it is.");
+    expect(policy).toContain("whether you turn them on with it or one at a time");
     expect(TERMS_VERSION).toBe("2026-10-08");
   });
 });

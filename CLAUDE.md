@@ -214,6 +214,16 @@ Playwright browser each take gigabytes, so these are rules, not advice:
   (`src/components/plug-figure.tsx`). Monochrome in ink and stone tokens, no
   accent, and pointer-reactive only: never moving on their own, never a
   status, held still under prefers-reduced-motion. Not near money.
+- A second exception, David's call 2026-10-11: the one level-up takeover
+  (`src/components/level-up-takeover.tsx`, rules in `src/lib/level-up.ts`).
+  When a rank is reached the person's face opens at the centre of the
+  screen with two rings of the new rank's glyph spreading out in ink, the
+  rank's name and any creature it unlocked settle in, and everything has
+  stopped in under two seconds; then it is a still card closed by Nice, Esc
+  or a tap outside. Once per rung per account, never over a signing window
+  or an open order drawer (it waits for them to close), no confetti, glow
+  or gradient, the accent only on Nice, and no motion at all under
+  prefers-reduced-motion. Nothing else may take the screen this way.
 - Before 2026-09-14 this repo was LSTeaTime, a leveraged staking app in a
   tea-house voice. The tea is gone from the code; git history keeps it.
 

@@ -721,7 +721,8 @@ export function WithdrawDrawer({
         onOpenChange={handleOpenChange}
         disablePointerDismissal={action.locked}
       >
-        <DrawerContent>
+        {/* An order drawer: the level-up takeover waits until it closes (lib/level-up). */}
+        <DrawerContent data-order-drawer="">
           <DrawerHeader>
             <DrawerTitle>
               {listing

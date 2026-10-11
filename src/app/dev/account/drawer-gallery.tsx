@@ -21,6 +21,7 @@ function scenePath(scene: DrawerScene, old = false): FirstPathValue {
     funded: scene !== "new" && scene !== "mid",
     firstBuy: scene !== "new" && scene !== "mid",
     inviteSent: scene === "established",
+    friendsOn: scene === "named" || scene === "established",
   };
   const noop = () => {};
   return {

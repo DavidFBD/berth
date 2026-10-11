@@ -1,4 +1,5 @@
-import type { CardAnswer, FriendAction } from "@/lib/social-types";
+import type { CardAnswer, FriendAction, MySocial } from "@/lib/social-types";
+import type { RewardList } from "@/lib/profile-types";
 import { isReportReason, listBlocked, report, setBlock } from "@/lib/server/social/blocks";
 import { friendsBoard } from "@/lib/server/social/board";
 import { friendsHolding } from "@/lib/server/social-proof";
@@ -6,7 +7,7 @@ import { markNoticeSeen, pendingNotices } from "@/lib/server/notices";
 import { acceptTerms, termsStatus } from "@/lib/server/terms-acceptance";
 import { NOT_FOUND, readCard, SIGN_IN } from "@/lib/server/social/cards";
 import { friendAction, friendLink, listFriends, readLinkCard } from "@/lib/server/social/friends";
-import { checkHandle, mySocial, setHandle, setLinkFace, setShareHoldings, setShareWeek, setVisible } from "@/lib/server/social/handles";
+import { checkHandle, mySocial, payFriendsAllIfOn, setAllFriends, setHandle, setLinkFace, setShareHoldings, setShareWeek, setVisible } from "@/lib/server/social/handles";
 import { compareFriends, friendWeek } from "@/lib/server/social/compare";
 import { takeSocialPlace, type SocialBucket } from "@/lib/server/social/limits";
 import { hasVerifiedEmail, type SocialViewer } from "@/lib/server/social/people";
@@ -33,6 +34,17 @@ const ok = (body: unknown): SocialOpResult => ({ status: 200, body });
 const bad = (error: string): SocialOpResult => ({ status: 400, body: { error } });
 const slow: SocialOpResult = { status: 429, body: { error: "rate limited" } };
 const signedOut: SocialOpResult = { status: 401, body: { error: "sign in" } };
+
+/**
+ * A switch turned on may have been the last friend feature off: then the
+ * one time friends_all_on bonus rides beside the social state, as the
+ * combined button's does. Nothing is added when it pays nothing.
+ */
+async function withAllOnBonus(viewer: SocialViewer, social: MySocial): Promise<MySocial & { rewards?: RewardList; xp?: number }> {
+  const paid = await payFriendsAllIfOn(viewer);
+  if (paid.rewards.length === 0 || paid.xp === null) return social;
+  return { ...social, friendsAllClaimed: true, rewards: paid.rewards, xp: paid.xp };
+}
 
 export async function runSocialOp(
   op: string,
@@ -86,25 +98,41 @@ export async function runSocialOp(
       if (typeof body.visible !== "boolean") return bad("visible");
       if (!(await take("settings"))) return slow;
       const social = await setVisible(viewer, body.visible);
-      return social ? ok(social) : bad("no username");
+      if (!social) return bad("no username");
+      return ok(body.visible ? await withAllOnBonus(viewer, social) : social);
     }
     case "link-face": {
       if (typeof body.on !== "boolean") return bad("on");
       if (!(await take("settings"))) return slow;
       const social = await setLinkFace(viewer, body.on);
-      return social ? ok(social) : bad("no username");
+      if (!social) return bad("no username");
+      return ok(body.on ? await withAllOnBonus(viewer, social) : social);
     }
     case "share-holdings": {
       if (typeof body.on !== "boolean") return bad("on");
       if (!(await take("settings"))) return slow;
       const social = await setShareHoldings(viewer, body.on);
-      return social ? ok(social) : bad("no username");
+      if (!social) return bad("no username");
+      return ok(body.on ? await withAllOnBonus(viewer, social) : social);
     }
     case "share-week": {
       if (typeof body.on !== "boolean") return bad("on");
       if (!(await take("settings"))) return slow;
       const social = await setShareWeek(viewer, body.on);
-      return social ? ok(social) : bad("no username");
+      if (!social) return bad("no username");
+      return ok(body.on ? await withAllOnBonus(viewer, social) : social);
+    }
+    case "friends-all": {
+      // Every friend sharing switch on at once, and the one time XP with it.
+      if (!(await take("friendsAll"))) return slow;
+      const result = await setAllFriends(viewer, body.features);
+      if (!result.ok) {
+        if (result.reason === "email") return { status: 403, body: { error: "email" } };
+        // The offer on screen named a different set: it must be read again.
+        if (result.reason === "features") return { status: 409, body: { error: "features" } };
+        return bad("no username");
+      }
+      return ok({ ...result.social, rewards: result.rewards, xp: result.xp });
     }
     case "salute": {
       if (typeof body.on !== "boolean") return bad("on");

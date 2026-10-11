@@ -27,6 +27,8 @@ export const SOCIAL_LIMITS = {
   report: 10,
   /** Hide, unhide, a new friend link. */
   settings: 30,
+  /** "Turn on all friend features": a handful an hour is all a person needs. */
+  friendsAll: 10,
   /** "Your friends hold": a read of the viewer's own friends, a join per call. */
   holding: 60,
   /** Compare with friends: the picker's list and each friend's line, a read of one friend per call. */

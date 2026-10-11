@@ -52,6 +52,7 @@ type Row = {
   username_set: boolean;
   first_buy: boolean;
   friend_made: boolean;
+  friends_on: boolean;
   skipped: string[] | null;
   funded_at: string | Date | null;
   invite_shared_at: string | Date | null;
@@ -74,6 +75,10 @@ export async function readFirstPath(userId: string): Promise<FirstPathResponse |
                           where (f.a_id = u.id or f.b_id = u.id)
                             and (u.referred_by is null
                                  or (case when f.a_id = u.id then f.b_id else f.a_id end) <> u.referred_by))) as friend_made,
+            (exists (select 1 from xp_events x where x.user_id = u.id and x.kind = 'friends_all_on')
+              or exists (select 1 from profiles pr
+                          where pr.user_id = u.id and pr.link_face and pr.share_holdings and pr.share_week
+                            and (pr.visible or pr.staff_hidden_at is not null))) as friends_on,
             p.skipped, p.funded_at, p.invite_shared_at, p.finished_at
        from users u left join first_paths p on p.user_id = u.id
       where u.id = $1`,
@@ -95,6 +100,7 @@ export async function readFirstPath(userId: string): Promise<FirstPathResponse |
       // A friend made other than the one who invited this account, a request
       // sent, someone who joined on this account's code, or a link shared.
       inviteSent: row.friend_made || row.invite_shared_at !== null,
+      friendsOn: row.friends_on,
     },
   };
 }

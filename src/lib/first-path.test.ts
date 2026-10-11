@@ -29,6 +29,7 @@ const NEW: PathFacts = {
   funded: false,
   firstBuy: false,
   inviteSent: false,
+  friendsOn: false,
 };
 const RECORD: PathRecord = { eligible: true, skipped: [], finished: false };
 const EMAIL: PathContext = { account: "email", canBuy: true };
@@ -45,8 +46,8 @@ function current(v: PathView): string {
 }
 
 describe("the path, step by step", () => {
-  it("starts at the avatar, step 1 of 5", () => {
-    expect(current(view())).toBe("avatar 1/5");
+  it("starts at the avatar, step 1 of 6", () => {
+    expect(current(view())).toBe("avatar 1/6");
   });
 
   it("walks every transition in order and ends with You're set up", () => {
@@ -55,6 +56,7 @@ describe("the path, step by step", () => {
     for (const next of [
       { avatarSet: true },
       { usernameSet: true },
+      { friendsOn: true },
       { funded: true },
       { firstBuy: true },
       { inviteSent: true },
@@ -62,7 +64,7 @@ describe("the path, step by step", () => {
       facts = { ...facts, ...next };
       seen.push(current(view(facts)));
     }
-    expect(seen).toEqual(["avatar 1/5", "username 2/5", "money 3/5", "firstBuy 4/5", "invite 5/5", "complete"]);
+    expect(seen).toEqual(["avatar 1/6", "username 2/6", "friends 3/6", "money 4/6", "firstBuy 5/6", "invite 6/6", "complete"]);
   });
 
   it("is off for good once finished", () => {
@@ -91,45 +93,46 @@ describe("the path, step by step", () => {
 describe("facts out of order", () => {
   it("a first buy before anything else closes money and buy, and the path asks for the avatar", () => {
     const v = view({ firstBuy: true });
-    expect(current(v)).toBe("avatar 1/5");
-    expect(v.kind === "step" && v.steps.map((s) => s.state)).toEqual(["open", "open", "done", "done", "open"]);
+    expect(current(v)).toBe("avatar 1/6");
+    expect(v.kind === "step" && v.steps.map((s) => s.state)).toEqual(["open", "open", "open", "done", "done", "open"]);
   });
 
   it("a username before an avatar is skipped over once the avatar is in", () => {
-    expect(current(view({ usernameSet: true }))).toBe("avatar 1/5");
-    expect(current(view({ usernameSet: true, avatarSet: true }))).toBe("money 3/5");
+    expect(current(view({ usernameSet: true }))).toBe("avatar 1/6");
+    expect(current(view({ usernameSet: true, avatarSet: true }))).toBe("friends 3/6");
+    expect(current(view({ usernameSet: true, avatarSet: true, friendsOn: true }))).toBe("money 4/6");
   });
 
   it("an invite sent early is done when its turn comes", () => {
-    const facts = { avatarSet: true, usernameSet: true, funded: true, firstBuy: true, inviteSent: true };
+    const facts = { avatarSet: true, usernameSet: true, friendsOn: true, funded: true, firstBuy: true, inviteSent: true };
     expect(view(facts).kind).toBe("complete");
   });
 
   it("money already in the wallet means the next step is the first buy", () => {
-    expect(current(view({ avatarSet: true, usernameSet: true, funded: true }))).toBe("firstBuy 4/5");
+    expect(current(view({ avatarSet: true, usernameSet: true, friendsOn: true, funded: true }))).toBe("firstBuy 5/6");
   });
 
   it("waits only when the unknown fact is the one that decides the current step", () => {
     // Balances unknown, but the avatar comes first: no wait.
-    expect(current(view({ funded: undefined, firstBuy: undefined }))).toBe("avatar 1/5");
+    expect(current(view({ funded: undefined, firstBuy: undefined }))).toBe("avatar 1/6");
     // At the money step with balances unknown: hold its place.
-    expect(view({ avatarSet: true, usernameSet: true, funded: undefined }).kind).toBe("wait");
+    expect(view({ avatarSet: true, usernameSet: true, friendsOn: true, funded: undefined }).kind).toBe("wait");
     // A filled buy proves money even while balances are unknown.
-    expect(current(view({ avatarSet: true, usernameSet: true, funded: undefined, firstBuy: true }))).toBe("invite 5/5");
+    expect(current(view({ avatarSet: true, usernameSet: true, friendsOn: true, funded: undefined, firstBuy: true }))).toBe("invite 6/6");
     // At the buy step with orders unknown: hold its place.
-    expect(view({ avatarSet: true, usernameSet: true, funded: true, firstBuy: undefined }).kind).toBe("wait");
+    expect(view({ avatarSet: true, usernameSet: true, friendsOn: true, funded: true, firstBuy: undefined }).kind).toBe("wait");
   });
 });
 
 describe("skip and unskip", () => {
   it("a skip moves to the next step and keeps the count", () => {
-    expect(current(view({}, { skipped: ["avatar"] }))).toBe("username 2/5");
+    expect(current(view({}, { skipped: ["avatar"] }))).toBe("username 2/6");
   });
 
   it("an unskip brings the step back to its place", () => {
     const skipped = withSkip([], "avatar");
-    expect(current(view({}, { skipped }))).toBe("username 2/5");
-    expect(current(view({}, { skipped: withoutSkip(skipped, "avatar") }))).toBe("avatar 1/5");
+    expect(current(view({}, { skipped }))).toBe("username 2/6");
+    expect(current(view({}, { skipped: withoutSkip(skipped, "avatar") }))).toBe("avatar 1/6");
   });
 
   it("skipping twice is skipping once, and unskipping what was never skipped changes nothing", () => {
@@ -143,51 +146,68 @@ describe("skip and unskip", () => {
   });
 
   it("skipping every open step completes, naming what was set aside", () => {
-    const v = view({ avatarSet: true }, { skipped: ["username", "money", "firstBuy", "invite"] });
+    const v = view({ avatarSet: true }, { skipped: ["username", "friends", "money", "firstBuy", "invite"] });
     expect(v.kind).toBe("complete");
-    expect(v.kind === "complete" && v.skipped).toEqual(["username", "money", "firstBuy", "invite"]);
+    expect(v.kind === "complete" && v.skipped).toEqual(["username", "friends", "money", "firstBuy", "invite"]);
   });
 
   it("an invite without a username stays open, so its card can offer the username", () => {
     const facts = { avatarSet: true, funded: true, firstBuy: true };
-    expect(current(view(facts, { skipped: ["username"] }))).toBe("invite 5/5");
+    expect(current(view(facts, { skipped: ["username", "friends"] }))).toBe("invite 6/6");
+  });
+
+  it("friend features without a username stay open, so their card can offer the username", () => {
+    expect(current(view({ avatarSet: true }, { skipped: ["username"] }))).toBe("friends 3/6");
+  });
+
+  it("friend features turned on early are done when their turn comes", () => {
+    expect(current(view({ avatarSet: true, usernameSet: true, friendsOn: true }))).toBe("money 4/6");
+  });
+
+  it("Not now sets the friends step aside like any skip, and it comes back from You're set up", () => {
+    expect(current(view({ avatarSet: true, usernameSet: true }, { skipped: ["friends"] }))).toBe("money 4/6");
+    const done = { avatarSet: true, usernameSet: true, funded: true, firstBuy: true, inviteSent: true };
+    const v = view(done, { skipped: ["friends"] });
+    expect(v.kind === "complete" && v.skipped).toEqual(["friends"]);
   });
 });
 
 describe("where Berth cannot take an order", () => {
   it("has no money step and no buy step", () => {
-    expect(stepsFor(AWAY)).toEqual(["avatar", "username", "invite"]);
-    expect(current(view({}, {}, AWAY))).toBe("avatar 1/3");
-    expect(current(view({ avatarSet: true }, {}, AWAY))).toBe("username 2/3");
-    expect(current(view({ avatarSet: true, usernameSet: true }, {}, AWAY))).toBe("invite 3/3");
-    expect(view({ avatarSet: true, usernameSet: true, inviteSent: true }, {}, AWAY).kind).toBe("complete");
+    expect(stepsFor(AWAY)).toEqual(["avatar", "username", "friends", "invite"]);
+    expect(current(view({}, {}, AWAY))).toBe("avatar 1/4");
+    expect(current(view({ avatarSet: true }, {}, AWAY))).toBe("username 2/4");
+    expect(current(view({ avatarSet: true, usernameSet: true }, {}, AWAY))).toBe("friends 3/4");
+    expect(current(view({ avatarSet: true, usernameSet: true, friendsOn: true }, {}, AWAY))).toBe("invite 4/4");
+    expect(view({ avatarSet: true, usernameSet: true, friendsOn: true, inviteSent: true }, {}, AWAY).kind).toBe("complete");
   });
 
   it("never waits on balances it will not ask about", () => {
-    expect(current(view({ avatarSet: true, usernameSet: true, funded: undefined, firstBuy: undefined }, {}, AWAY))).toBe("invite 3/3");
+    expect(current(view({ avatarSet: true, usernameSet: true, friendsOn: true, funded: undefined, firstBuy: undefined }, {}, AWAY))).toBe("invite 4/4");
   });
 });
 
 describe("wallet and email accounts", () => {
-  it("walk the same five steps", () => {
+  it("walk the same six steps", () => {
     expect(stepsFor(WALLET)).toEqual(stepsFor(EMAIL));
-    expect(current(view({ avatarSet: true }, {}, WALLET))).toBe("username 2/5");
+    expect(current(view({ avatarSet: true }, {}, WALLET))).toBe("username 2/6");
   });
 
   it("a wallet account without an email is still asked for a username (the card adds the email first)", () => {
-    expect(current(view({ avatarSet: true, hasEmail: false }, {}, WALLET))).toBe("username 2/5");
+    expect(current(view({ avatarSet: true, hasEmail: false }, {}, WALLET))).toBe("username 2/6");
   });
 
   it("a wallet that already holds money passes the money step at once", () => {
-    expect(current(view({ avatarSet: true, usernameSet: true, funded: true }, {}, WALLET))).toBe("firstBuy 4/5");
+    expect(current(view({ avatarSet: true, usernameSet: true, friendsOn: true, funded: true }, {}, WALLET))).toBe("firstBuy 5/6");
   });
 });
 
 describe("the Done moment", () => {
   it("names the step a fact just finished", () => {
     expect(finishedStep(view(), view({ avatarSet: true }))).toBe("avatar");
-    const last = view({ avatarSet: true, usernameSet: true, funded: true, firstBuy: true });
-    expect(finishedStep(last, view({ avatarSet: true, usernameSet: true, funded: true, firstBuy: true, inviteSent: true }))).toBe("invite");
+    expect(finishedStep(view({ avatarSet: true, usernameSet: true }), view({ avatarSet: true, usernameSet: true, friendsOn: true }))).toBe("friends");
+    const last = view({ avatarSet: true, usernameSet: true, friendsOn: true, funded: true, firstBuy: true });
+    expect(finishedStep(last, view({ avatarSet: true, usernameSet: true, friendsOn: true, funded: true, firstBuy: true, inviteSent: true }))).toBe("invite");
   });
 
   it("stays quiet for a skip, for no change and from a wait", () => {
@@ -202,6 +222,7 @@ describe("what the path pays and says", () => {
   it("pays only through the existing XP kinds", () => {
     expect(stepXp("avatar", { referred: false })).toBe(XP_ACTIONS.avatar_set.amount);
     expect(stepXp("username", { referred: false })).toBe(XP_ACTIONS.username_set.amount);
+    expect(stepXp("friends", { referred: false })).toBe(XP_ACTIONS.friends_all_on.amount);
     expect(stepXp("money", { referred: false })).toBeNull();
     expect(stepXp("firstBuy", { referred: false })).toBe(XP_ACTIONS.pour_in.amount);
     expect(stepXp("firstBuy", { referred: true })).toBe(XP_ACTIONS.pour_in.amount + XP_ACTIONS.invite_accepted.amount);

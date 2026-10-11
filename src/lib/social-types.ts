@@ -121,6 +121,16 @@ export type MySocial = {
   nextChangeAt: string | null;
   /** Friend requests waiting for an answer. */
   requests: number;
+  /**
+   * The one time friends_all_on XP ("Turn on all friend features") has been
+   * paid: the offer then stops promising it. Absent reads as unclaimed.
+   */
+  friendsAllClaimed?: boolean;
+  /**
+   * Staff hid the card (moderation): the person's own switches cannot show
+   * it, so "all friend features on" is judged without it.
+   */
+  staffHidden?: true;
 };
 
 /**

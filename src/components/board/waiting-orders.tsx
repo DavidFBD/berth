@@ -211,7 +211,8 @@ export function WaitingOrdersDrawer({
   };
   return (
     <Drawer open={open} onOpenChange={change} disablePointerDismissal={busy}>
-      <DrawerContent>
+      {/* A cancel is signed here: the level-up takeover waits until it closes (lib/level-up). */}
+      <DrawerContent data-order-drawer="">
         <DrawerHeader>
           <DrawerTitle>{copy.limitWaitingTitle}</DrawerTitle>
           <DrawerDescription>{copy.limitListSub}</DrawerDescription>

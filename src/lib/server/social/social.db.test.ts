@@ -80,7 +80,7 @@ describe("usernames", () => {
 
   it("turn the card on with the first pick", async () => {
     const mira = await person("Mira");
-    expect(await mySocial(mira)).toEqual({ hasEmail: true, handle: "mira", visible: true, linkFace: false, shareHoldings: false, shareWeek: false, nextChangeAt: expect.any(String), requests: 0 });
+    expect(await mySocial(mira)).toEqual({ hasEmail: true, handle: "mira", visible: true, linkFace: false, shareHoldings: false, shareWeek: false, nextChangeAt: expect.any(String), requests: 0, friendsAllClaimed: false });
   });
 
   it("change once per 30 days; typed in capitals, a name is the same lowercase name", async () => {

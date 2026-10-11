@@ -30,6 +30,9 @@ import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
  *   /dev/social?state=picker             the username picker, a free name
  *   /dev/social?state=picker-taken       the picker, a taken name
  *   /dev/social?state=section            the drawer section, friends open
+ *   /dev/social?state=section-all        Turn on all friend features, unclaimed, Details open
+ *   /dev/social?state=section-all-claimed  the same offer after the bonus was paid, some on
+ *   /dev/social?state=section-all-on     every friend feature on: the switches alone
  *   /dev/social?state=section-new        the drawer section before a pick
  *   /dev/social?state=section-noemail    the drawer section without an email
  *   /dev/social?state=board              the friends board
@@ -212,6 +215,25 @@ function Gallery() {
                   blocked: [{ handle: "loud_gull" }, { handle: "spam_ship" }],
                 }
               : {}),
+          }}
+        />
+      </Panel>
+    );
+  if (state === "section-all" || state === "section-all-claimed" || state === "section-all-on")
+    return (
+      <Panel>
+        <SocialSection
+          demo={{
+            ...SECTION,
+            open: undefined,
+            friends: { ...SECTION.friends!, incoming: [] },
+            me: {
+              ...SECTION.me,
+              requests: 0,
+              ...(state === "section-all-claimed" ? { friendsAllClaimed: true, linkFace: true } : {}),
+              ...(state === "section-all-on" ? { friendsAllClaimed: true, linkFace: true, shareHoldings: true, shareWeek: true } : {}),
+            },
+            allDetails: state === "section-all",
           }}
         />
       </Panel>

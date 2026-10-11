@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useCopy } from "@/components/settings-provider";
 import { NamePicker } from "@/components/social/name-picker";
+import { FriendsAllOffer } from "@/components/social/friends-all";
+import { friendsAllState } from "@/lib/friends-all";
 import { FindFriend, type FindResult } from "@/components/social/find-friend";
 import {
   useBlocked,
@@ -42,6 +44,10 @@ import { isPlainClick } from "@/lib/drawer-return";
  * hide switch, the link picture switch, "Your friends hold" folded with its
  * sharing switch (off by default), and blocked people folded. One (i), on the title.
  *
+ * While any friend feature is off, "Turn on all friend features"
+ * (components/social/friends-all) stands above the switches; once all are
+ * on it steps aside and the switches alone remain, each still its own.
+ *
  * Each privacy switch is a layered notice (PrivacySwitch): a short title,
  * one short line with the essential fact, and its full consent text, word
  * for word, behind Details. "Your friends hold" and "Blocked" show only when
@@ -63,6 +69,8 @@ export type SocialDemo = {
   find?: { value: string; result: FindResult };
   /** A privacy switch whose Details start open. */
   details?: PrivacySwitchId;
+  /** "Turn on all friend features" with its Details open. */
+  allDetails?: boolean;
 };
 
 /** Where the rewards panel's add email row lives, so the no-email row can bring it into view. */
@@ -176,6 +184,9 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
         </span>
         <ArrowRight weight="duotone" className="size-4 text-muted-foreground" aria-hidden />
       </Link>
+
+      {/* While any friend feature is off, the one tap that turns them all on leads the switches. */}
+      {!friendsAllState(social).all && <FriendsAllOffer social={social} variant="row" demo={demo ? () => {} : undefined} detailsOpen={demo?.allDetails} />}
 
       <PrivacySwitch
         title={copy.hide}

@@ -1,5 +1,5 @@
 import type { RewardList } from "@/lib/profile-types";
-import { levelUpRank } from "@/lib/xp";
+import { celebrationFor, celebrations } from "@/lib/level-up";
 import { ToastQueue, type ToastAction, type ToastTone } from "@/lib/toast-queue";
 
 /**
@@ -35,14 +35,16 @@ function say(tone: ToastTone) {
 /**
  * XP just paid. `newXp` is the fresh total; the rewards are exactly the
  * delta, so the rank crossing derives here with no cached "before". A
- * crossing gets its own card; the XP line itself still joins the action
- * that earned it, so one batch is at most a card and a line.
+ * crossing gets the level-up takeover (lib/level-up,
+ * components/level-up-takeover), or its own toast card where no takeover
+ * is mounted; the XP line itself still joins the action that earned it, so
+ * one batch is at most a celebration and a line.
  */
 function rewards(list: RewardList | undefined, newXp: number) {
   if (!list?.length) return;
-  const total = list.reduce((sum, reward) => sum + reward.amount, 0);
-  if (levelUpRank(newXp - total, newXp)) {
-    toastQueue.push({ kind: "levelup", rewards: list, newXp });
+  const crossing = celebrationFor(list, newXp);
+  if (crossing) {
+    if (!celebrations.push(crossing)) toastQueue.push({ kind: "levelup", rewards: list, newXp });
     // A single reward's reason is already on the card.
     if (list.length === 1) return;
   }

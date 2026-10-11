@@ -16,12 +16,15 @@ vi.mock("@/hooks/use-profile", () => ({
   useFirstPathRecord: () => ({ data: undefined }),
   useFirstPathWrite: () => ({ mutate: () => {} }),
 }));
-vi.mock("@/hooks/use-social", () => ({ useMySocial: () => ({ data: { handle: "gosia" } }) }));
+vi.mock("@/hooks/use-social", () => ({
+  useMySocial: () => ({ data: { hasEmail: true, handle: "gosia", visible: true, linkFace: false, shareHoldings: false, shareWeek: false, nextChangeAt: null, requests: 0 } }),
+  useTurnOnAllFriends: () => ({ mutate: () => {}, isPending: false }),
+}));
 const { FirstPathProvider, HomePathCard } = await import("./first-path");
 type Value = import("./first-path").FirstPathValue;
 
-const NONE: PathFacts = { avatarSet: false, usernameSet: false, hasEmail: true, funded: false, firstBuy: false, inviteSent: false };
-const ALL: PathFacts = { avatarSet: true, usernameSet: true, hasEmail: true, funded: true, firstBuy: true, inviteSent: true };
+const NONE: PathFacts = { avatarSet: false, usernameSet: false, hasEmail: true, funded: false, firstBuy: false, inviteSent: false, friendsOn: false };
+const ALL: PathFacts = { avatarSet: true, usernameSet: true, hasEmail: true, funded: true, firstBuy: true, inviteSent: true, friendsOn: true };
 const noop = () => {};
 
 function value(facts: PathFacts, extra: Partial<Value> = {}, skipped: PathStep[] = []): Value {
@@ -61,7 +64,8 @@ describe("the campaign line under every path card", () => {
   it("stands under a step, the money and buy steps, a Done moment and You're set up", () => {
     expect(render(value(NONE))).toContain(FOOTNOTE);
     expect(render(value({ ...NONE, avatarSet: true, usernameSet: true }))).toContain(FOOTNOTE);
-    expect(render(value({ ...NONE, avatarSet: true, usernameSet: true, funded: true }))).toContain(FOOTNOTE);
+    expect(render(value({ ...NONE, avatarSet: true, usernameSet: true, friendsOn: true }))).toContain(FOOTNOTE);
+    expect(render(value({ ...NONE, avatarSet: true, usernameSet: true, friendsOn: true, funded: true }))).toContain(FOOTNOTE);
     expect(render(value({ ...NONE, avatarSet: true }, { done: "avatar" }))).toContain(FOOTNOTE);
     expect(render(value(ALL))).toContain(FOOTNOTE);
   });
@@ -88,6 +92,25 @@ describe("the path's words are exact", () => {
     expect(render(value(ALL, { done: "invite" }))).toContain("That was the last step.");
     const back = render(value({ ...ALL, usernameSet: false }, { done: "invite" }, ["username"]));
     expect(back).not.toContain("That was the last step.");
+  });
+
+  it("offers every friend feature in one calm card: what it shares, the warning, the XP once, Not now", () => {
+    const html = render(value({ ...NONE, avatarSet: true, usernameSet: true }));
+    expect(html).toContain("Turn on friend features");
+    expect(html).toContain("Turning them all on shares");
+    expect(html).toContain("With few holdings, friends may guess what you hold and in what share.");
+    expect(html).toContain("You can turn any of them off later, one at a time.");
+    expect(html).toContain("The XP stays yours whatever you turn off.");
+    expect(html).toContain("+100 XP, once");
+    expect(html).toContain("Turn on all");
+    expect(html).toContain("Not now");
+    expect(html).not.toContain("Skip for now");
+  });
+
+  it("asks for the username first when friend features come without one", () => {
+    const html = render(value({ ...NONE, avatarSet: true }, {}, ["username"]));
+    expect(html).toContain("Friend features need a username first.");
+    expect(html).not.toContain("Turning them all on shares");
   });
 
   it("draws the marks of steps to come in a faint ink, visible in both themes", () => {

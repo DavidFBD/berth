@@ -18,6 +18,8 @@ export type SocialAction =
   | "share_holdings_off"
   | "share_week_on"
   | "share_week_off"
+  /** "Turn on all friend features"; meta.xp is what it paid (0 after the first time). */
+  | "friends_all_on"
   | "salute"
   | "unsalute"
   | "friend_request"

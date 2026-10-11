@@ -11,9 +11,10 @@ import { XP_ACTIONS } from "@/lib/xp";
  *
  *   1. avatar     choose your avatar
  *   2. username   pick a username (a wallet account adds an email first)
- *   3. money      add money, or for a wallet account pay from your wallet
- *   4. firstBuy   the first buy of a stock or fund
- *   5. invite     invite a friend
+ *   3. friends    turn on all friend features, once, for its XP (2026-10-11)
+ *   4. money      add money, or for a wallet account pay from your wallet
+ *   5. firstBuy   the first buy of a stock or fund
+ *   6. invite     invite a friend
  *
  * Each step is done by a fact, never by a click alone: the avatar is set,
  * the username exists, the account holds enough to place an order, a buy
@@ -28,7 +29,7 @@ import { XP_ACTIONS } from "@/lib/xp";
  * before the path existed are not on it.
  */
 
-export const PATH_STEPS = ["avatar", "username", "money", "firstBuy", "invite"] as const;
+export const PATH_STEPS = ["avatar", "username", "friends", "money", "firstBuy", "invite"] as const;
 export type PathStep = (typeof PATH_STEPS)[number];
 
 export function isPathStep(value: unknown): value is PathStep {
@@ -56,6 +57,11 @@ export type PathFacts = {
   firstBuy: boolean | undefined;
   /** A friend link or invite went out, or a friend joined through one. */
   inviteSent: boolean;
+  /**
+   * Every friend feature is on, or "Turn on all friend features" was used
+   * once (its XP is in the ledger): either way the friends step is done.
+   */
+  friendsOn: boolean;
 };
 
 /** The server's record of the path for one account. */
@@ -103,6 +109,8 @@ export type FirstPathResponse = {
     /** A buy of a stock or fund filled (the ledger). */
     firstBuy: boolean;
     inviteSent: boolean;
+    /** Every friend feature on, or the friends_all_on XP paid once. */
+    friendsOn: boolean;
   };
 };
 
@@ -118,6 +126,10 @@ function factState(step: PathStep, facts: PathFacts): "done" | "open" | "unknown
       return facts.avatarSet ? "done" : "open";
     case "username":
       return facts.usernameSet ? "done" : "open";
+    case "friends":
+      // Like the invite: without a username the step is open with nothing to
+      // turn on yet, and the card offers the username.
+      return facts.friendsOn ? "done" : "open";
     case "money":
       // A filled buy proves there was money; otherwise the balances decide.
       if (facts.firstBuy === true || facts.funded === true) return "done";
@@ -198,7 +210,8 @@ export function finishedStep(previous: PathView, next: PathView): PathStep | nul
 /**
  * The XP a step earns, from the existing award paths only (lib/xp): the path
  * itself pays nothing, so nothing is ever paid twice. The first avatar pays
- * avatar_set, the first username username_set; the first buy pays pour_in, and invite_accepted too for an
+ * avatar_set, the first username username_set, turning on every friend
+ * feature friends_all_on (paid by the act itself, once); the first buy pays pour_in, and invite_accepted too for an
  * account that came on a friend's invite. The invite step shares the friend
  * link, which pays no XP (friend_links); friend_stayed belongs to the invite
  * code, which opens at level 3 (ADR-0002, ADR-0004), so the step promises
@@ -210,6 +223,8 @@ export function stepXp(step: PathStep, { referred }: { referred: boolean }): num
       return XP_ACTIONS.avatar_set.amount;
     case "username":
       return XP_ACTIONS.username_set.amount;
+    case "friends":
+      return XP_ACTIONS.friends_all_on.amount;
     case "firstBuy":
       return XP_ACTIONS.pour_in.amount + (referred ? XP_ACTIONS.invite_accepted.amount : 0);
     default:

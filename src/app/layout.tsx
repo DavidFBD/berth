@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { BERTH_X_HANDLE } from "@/lib/berth-x";
 import { Providers } from "@/components/providers";
 import { ToastStack } from "@/components/toast-stack";
+import { LevelUpTakeover } from "@/components/level-up-takeover";
 import "./globals.css";
 
 /* Plain and calm, one column on a phone, two on a desktop. Berth's type
@@ -109,6 +110,7 @@ export default function RootLayout({
         <Providers>
           {children}
           <ToastStack />
+          <LevelUpTakeover />
         </Providers>
       </body>
     </html>

@@ -9,6 +9,8 @@ import {
 import type { HandleCheck, MySocial } from "@/lib/social-types";
 import type { RewardList } from "@/lib/profile-types";
 import { awardXp, flushUnannounced } from "@/lib/server/accounts";
+import { XP_ACTIONS } from "@/lib/xp";
+import { sameFriendFeatures } from "@/lib/friends-all";
 import { socialAudit } from "@/lib/server/social/audit";
 import { hasVerifiedEmail, ownHandle, type SocialViewer } from "@/lib/server/social/people";
 
@@ -222,6 +224,119 @@ export async function setShareWeek(viewer: SocialViewer, on: boolean, now = new 
   return mine ? mySocial(viewer, now) : null;
 }
 
+export type SetAllFriendsResult =
+  | { ok: true; social: MySocial; rewards: RewardList; xp: number | null }
+  | { ok: false; reason: "email" | "no username" | "features" };
+
+/**
+ * "Turn on all friend features": every friend sharing switch to its sharing
+ * state in one statement (so one transaction): the profile shown, shown on
+ * shared links, holdings shared, weeks compared. A card staff hid stays
+ * hidden (staff_hidden_at is never overridden), and while it is, the one
+ * time friends_all_on XP is not paid: the person has not ended with
+ * everything on, and can claim it once staff show the card again.
+ *
+ * The XP is paid in the same statement, at most once per person, ever (the
+ * once per account index on xp_events), and never depends on keeping the
+ * features on: turning any of them off later takes nothing back, and
+ * turning everything off and on again pays nothing more. Each switch that
+ * moved writes its own audit line, and the combined act one more, which
+ * records the features the person was shown.
+ */
+export async function setAllFriends(viewer: SocialViewer, shown: unknown, now = new Date()): Promise<SetAllFriendsResult> {
+  if (!hasVerifiedEmail(viewer)) return { ok: false, reason: "email" };
+  // Consent covers what was shown: the offer sends the features its summary
+  // named, and a list that is not exactly today's set is refused, so a new
+  // feature can never be turned on by an offer that did not mention it.
+  if (!sameFriendFeatures(shown)) return { ok: false, reason: "features" };
+  const rows = (await getSql().query(
+    `with before as (
+       select p.visible, p.link_face, p.share_holdings, p.share_week, p.staff_hidden_at
+       from profiles p
+       where p.user_id = $1 and exists (select 1 from handles h where h.user_id = $1)
+     ),
+     up as (
+       update profiles p set
+         visible = case when p.staff_hidden_at is null then true else p.visible end,
+         hidden_at = case when p.staff_hidden_at is null then null else p.hidden_at end,
+         hidden_handle = case when p.staff_hidden_at is null then null else p.hidden_handle end,
+         link_face = true,
+         share_holdings = true,
+         share_week = true,
+         updated_at = $2::timestamptz
+       where p.user_id = $1 and exists (select 1 from before)
+       returning p.staff_hidden_at
+     ),
+     ins as (
+       insert into xp_events (user_id, kind, amount, ref, announced)
+       select $1, 'friends_all_on', $3, null, true from up where up.staff_hidden_at is null
+       on conflict do nothing
+       returning amount
+     ),
+     paid as (
+       update users set xp = xp + (select amount from ins), updated_at = now()
+       where id = $1 and exists (select 1 from ins)
+       returning xp
+     )
+     select b.visible, b.link_face, b.share_holdings, b.share_week, b.staff_hidden_at is not null as staff_hidden,
+            (select amount from ins) as awarded, (select xp from paid) as xp
+     from before b`,
+    [viewer.id, now.toISOString(), XP_ACTIONS.friends_all_on.amount],
+  )) as {
+    visible: boolean;
+    link_face: boolean;
+    share_holdings: boolean;
+    share_week: boolean;
+    staff_hidden: boolean;
+    awarded: number | null;
+    xp: number | null;
+  }[];
+  const was = rows[0];
+  if (!was) return { ok: false, reason: "no username" };
+  if (!was.visible && !was.staff_hidden) await socialAudit(viewer.id, "unhide", viewer.id);
+  if (!was.link_face) await socialAudit(viewer.id, "link_face_on", viewer.id);
+  if (!was.share_holdings) await socialAudit(viewer.id, "share_holdings_on", viewer.id);
+  if (!was.share_week) await socialAudit(viewer.id, "share_week_on", viewer.id);
+  await socialAudit(viewer.id, "friends_all_on", viewer.id, { xp: was.awarded ?? 0, shown: (shown as string[]).join(",") });
+  let rewards: RewardList = [];
+  let xp: number | null = null;
+  if (was.awarded) {
+    rewards = [{ kind: "friends_all_on", amount: was.awarded }, ...(await flushUnannounced(viewer.id))];
+    xp = was.xp;
+  }
+  return { ok: true, social: await mySocial(viewer, now), rewards, xp };
+}
+
+/**
+ * The same one time friends_all_on bonus for someone who turns the four
+ * friend features on one at a time: called after a switch is turned on
+ * (lib/server/social/ops), it pays when that switch was the last one off.
+ * One statement, under the same once per account index as the combined
+ * button, so the bonus is paid at most once however it is reached, never
+ * while staff hide the card, and only with a verified email.
+ */
+export async function payFriendsAllIfOn(viewer: SocialViewer): Promise<{ rewards: RewardList; xp: number | null }> {
+  if (!hasVerifiedEmail(viewer)) return { rewards: [], xp: null };
+  const rows = (await getSql().query(
+    `with ins as (
+       insert into xp_events (user_id, kind, amount, ref, announced)
+       select $1, 'friends_all_on', $2, null, true from profiles p
+       where p.user_id = $1 and p.visible and p.link_face and p.share_holdings and p.share_week
+         and p.staff_hidden_at is null
+       on conflict do nothing
+       returning amount
+     )
+     update users set xp = xp + (select amount from ins), updated_at = now()
+     where id = $1 and exists (select 1 from ins)
+     returning xp, (select amount from ins) as awarded`,
+    [viewer.id, XP_ACTIONS.friends_all_on.amount],
+  )) as { xp: number; awarded: number }[];
+  const paid = rows[0];
+  if (!paid) return { rewards: [], xp: null };
+  await socialAudit(viewer.id, "friends_all_on", viewer.id, { xp: paid.awarded, by: "switches" });
+  return { rewards: [{ kind: "friends_all_on", amount: paid.awarded }, ...(await flushUnannounced(viewer.id))], xp: paid.xp };
+}
+
 /** The drawer's view of the viewer's own social state. */
 export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<MySocial> {
   const mine = await ownHandle(viewer.id);
@@ -233,6 +348,10 @@ export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<
         [viewer.id],
       )) as { n: number }[])[0]?.n ?? 0)
     : 0;
+  const claimed = (((await getSql().query(
+    `select exists (select 1 from xp_events where user_id = $1 and kind = 'friends_all_on') as claimed`,
+    [viewer.id],
+  )) as { claimed: boolean }[])[0]?.claimed ?? false);
   return {
     hasEmail: hasVerifiedEmail(viewer),
     handle: mine?.handle ?? null,
@@ -242,5 +361,7 @@ export async function mySocial(viewer: SocialViewer, now = new Date()): Promise<
     shareWeek: mine?.shareWeek ?? false,
     nextChangeAt: mine ? nextChange(mine.changedAt, now) : null,
     requests,
+    friendsAllClaimed: claimed,
+    ...(mine?.staffHidden ? { staffHidden: true as const } : {}),
   };
 }
