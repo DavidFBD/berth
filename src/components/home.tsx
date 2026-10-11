@@ -14,6 +14,7 @@ import {
   AccountTotal,
   CashShelf,
   EmailNudgeLine,
+  FeedbackPromptLine,
   PolicyNoticeLine,
   SocialNoticeLine,
   HoldingsList,
@@ -188,6 +189,8 @@ function SignedInHome() {
   };
   // Whether a higher-priority strip already holds the email nudge's slot.
   const waitingOrdersShowing = useWaitingOrdersShowing();
+  // The email strip says whether it shows, so the feedback ask waits behind it.
+  const [emailNudgeShowing, setEmailNudgeShowing] = useState(false);
   const unlinkedWalletShowing = useUnlinkedWalletShowing(accountOpen);
   const hasAccount = useAccountHeaders({ prompt: false }).key !== null;
   const [chatReturn, setChatReturn] = useState(false);
@@ -768,6 +771,7 @@ function SignedInHome() {
               <EmailNudgeLine
                 otherStripShowing={waitingOrdersShowing || unlinkedWalletShowing || pathShown}
                 onOpen={openAccountForEmail}
+                onShowingChange={setEmailNudgeShowing}
               />
               {/* Once per account (lib/server/notices): the policy's promise to say a change in the app. */}
               <SocialNoticeLine
@@ -776,6 +780,11 @@ function SignedInHome() {
               />
               {/* Once per account, after the social notice: the new terms and privacy policy. */}
               <PolicyNoticeLine hidden={waitingOrdersShowing || unlinkedWalletShowing || pathShown} />
+              {/* Once per account, a day after the first completed buy (lib/feedback feedbackPromptDue):
+                  last of the one-off strips, and only when none of them, nor the first stock card, is showing. */}
+              <FeedbackPromptLine
+                hidden={waitingOrdersShowing || unlinkedWalletShowing || pathShown || emailNudgeShowing || firstStock !== null}
+              />
               <NudgeLine
                 hide={pathShown || pathWaiting ? NUDGES_SAID_BY_PATH : stage ? NUDGES_SAID_BY_STEP[stage] : undefined}
                 onAddFunds={openAddMoney}

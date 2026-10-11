@@ -48,7 +48,11 @@ export type Copy = {
   /** The quiet "Beta" pill beside the wordmark; BERTH_BETA in lib/beta.ts hides it everywhere at once. */
   beta: {
     tag: string;
+    /** Beside the tag on the header pill, dropped on the narrowest phones. */
+    feedback: string;
+    /** What the pill reads out, whatever it shows. */
     openLabel: string;
+    /** The first line of the feedback sheet's intro. */
     body: string;
     contactLabel: string;
     contactHref: string;
@@ -465,6 +469,11 @@ export type Copy = {
   friendsHoldMore: (more: number) => string;
   /** The once per account notice of the two social counts (components/board/social-notice-line). */
   socialNotice: { text: string; action: string; dismiss: string };
+  /**
+   * The board's one ask, a day after the first completed buy (lib/feedback
+   * feedbackPromptDue). `xp` only while feedback_first is still to be had.
+   */
+  feedbackPrompt: { text: string; xp: (amount: number) => string; action: string; dismissLabel: string };
   /** The once per account notice of the new terms and privacy policy (POLICY_NOTICE_ID). */
   policyNotice: { text: string; terms: string; privacy: string; dismiss: string };
   /**
@@ -2068,8 +2077,8 @@ export type FeedbackCopy = {
   /** The first qualifying message's one time XP (lib/xp feedback_first). */
   thanksXp: (amount: number) => string;
   close: string;
-  /** In the Beta pill's popover. */
-  betaAction: string;
+  /** A small line under the form: the support address, for anyone who would rather write. */
+  writeTo: string;
   /** One quiet link under a failed or unclear order. */
   orderLink: string;
 };
@@ -3157,7 +3166,8 @@ export const COPY: Copy = {
 
   beta: {
     tag: "Beta",
-    openLabel: "About the beta label",
+    feedback: "Feedback",
+    openLabel: "Beta, send feedback",
     body: "Berth is new. We are still improving it, and your feedback helps.",
     contactLabel: "support@berthmarkets.com",
     contactHref: "mailto:support@berthmarkets.com",
@@ -3524,6 +3534,12 @@ export const COPY: Copy = {
     text: "New: each week, the board shows how many people bought each stock, never who. You can also let friends see which stocks and funds you hold. It is off unless you turn it on.",
     action: "See the switch",
     dismiss: "Got it",
+  },
+  feedbackPrompt: {
+    text: "How was your first buy? Tell us in a sentence.",
+    xp: (amount) => `+${amount} XP`,
+    action: "Tell us",
+    dismissLabel: "Close, and do not ask again",
   },
   termsSheet: {
     title: "Berth's terms",
@@ -5363,7 +5379,7 @@ export const COPY: Copy = {
     thanksBody: "We read every message.",
     thanksXp: (amount) => `+${amount} XP for your first message.`,
     close: "Close",
-    betaAction: "Tell us what you think",
+    writeTo: "Or write to us at",
     orderLink: "Something feel off? Tell us.",
   },
   social: {

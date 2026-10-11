@@ -11,7 +11,7 @@ import { HomeMore, SectionDrawer } from "@/components/home-more";
 import { NUDGES_SAID_BY_STEP, type HomeStage } from "@/lib/home-stage";
 import { AccountTotalView } from "@/components/board/account-total";
 import { CashShelfView } from "@/components/board/cash-shelf";
-import { EmailNudgeLineView, HoldingsView, ListingBoard, NewsFeed, NudgeLineView } from "@/components/board";
+import { EmailNudgeLineView, FeedbackPromptLineView, HoldingsView, ListingBoard, NewsFeed, NudgeLineView } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { AskCard, AskDock, DOCK_CLEARANCE } from "@/components/chat/ask-surfaces";
 import { RankChip } from "@/components/rewards-panel";
@@ -26,6 +26,8 @@ import type { Nudge } from "@/lib/nudge";
 import { cn } from "@/lib/utils";
 import { seededPortfolioClient } from "../account/portfolio-gallery";
 import { FirstStockCard } from "@/components/first-look";
+import { FeedbackSheet } from "@/components/feedback/feedback-sheet";
+import { XP_ACTIONS } from "@/lib/xp";
 import { FIRST_LOOK_FIXTURE_META, FIRST_LOOK_QUERY_KEY } from "@/hooks/use-first-look";
 import { FIRST_LOOK_SYMBOLS, type FirstLookResponse } from "@/lib/first-look";
 import { FIXTURE_STORIES } from "./first-look-fixture";
@@ -114,7 +116,10 @@ export function HomeGallery({
   proof = null,
   share = null,
   robinhood = null,
+  feedbackAsk = null,
 }: {
+  /** `&ask=1` on a scene: the feedback ask a day after the first buy (lib/feedback); `&ask=noxp` without its XP. Tell us opens the sheet. */
+  feedbackAsk?: string | null;
   /**
    * `&rh=1` on a held scene: a switched account whose first holding sits
    * wholly in its own wallet on Robinhood Chain (plan P1a); `&rh=split`
@@ -154,6 +159,8 @@ export function HomeGallery({
   );
   const robinhoodMap = new Map(rows.flatMap((row) => (row.robinhood ? [[row.listing.address, row.robinhood] as const] : [])));
   const [firstOpen, setFirstOpen] = useState(firstStock);
+  const [askShown, setAskShown] = useState(feedbackAsk === "1" || feedbackAsk === "noxp");
+  const [askSheet, setAskSheet] = useState(false);
   const nvidia = STOCK_LISTINGS.find((listing) => listing.symbol === "NVDA");
   const mounted = useMounted();
   const [nudge, setNudge] = useState<Nudge | null>(
@@ -233,7 +240,14 @@ export function HomeGallery({
           strips={
             <>
             {campaign && <CampaignLineView line={campaignLine(campaign)} />}
-            {firstOpen && nvidia ? (
+            {askShown ? (
+              <FeedbackPromptLineView
+                show
+                xp={feedbackAsk === "noxp" ? null : XP_ACTIONS.feedback_first.amount}
+                onOpen={() => setAskSheet(true)}
+                onDismiss={() => setAskShown(false)}
+              />
+            ) : firstOpen && nvidia ? (
               <FirstStockCard listing={nvidia} onAsk={noop} onReadNews={openNewsOn} onDismiss={() => setFirstOpen(false)} />
             ) : walletEmail ? (
               <EmailNudgeLineView show onOpen={noop} onDismiss={noop} />
@@ -258,6 +272,7 @@ export function HomeGallery({
           more={<HomeMore onBoard={() => setDrawer("board")} onNews={() => setDrawer("news")} onAi={noop} />}
         />
       </div>
+      {feedbackAsk && <FeedbackSheet open={askSheet} onOpenChange={setAskSheet} fixture={{ signedIn: true, hasEmail: true }} />}
       {/* The board and the news open as they do on the home: ?drawer=board or ?drawer=news. */}
       <SectionDrawer open={drawer === "board"} onOpenChange={(open) => setDrawer(open ? "board" : null)} title={copy.boardTitle} description={copy.calmHome.moreBoardSub}>
         <ListingBoard

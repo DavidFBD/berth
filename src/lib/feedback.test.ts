@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanBody, cleanPath, cleanUserAgent, cleanViewport, excerpt, qualifiesForXp, readFeedbackOrder, sanitizeContext, FEEDBACK_MAX_CHARS } from "./feedback";
+import { cleanBody, cleanPath, cleanUserAgent, cleanViewport, excerpt, feedbackPromptDue, qualifiesForXp, readFeedbackOrder, sanitizeContext, FEEDBACK_MAX_CHARS, FEEDBACK_PROMPT_DELAY_MS, FEEDBACK_PROMPT_ID } from "./feedback";
 
 describe("sanitizeContext", () => {
   it("keeps only the path, the viewport and the user agent, whatever else is sent", () => {
@@ -99,5 +99,37 @@ describe("the message", () => {
     expect(cut.endsWith("…")).toBe(true);
     expect(cut.length).toBeLessThanOrEqual(61);
     expect(long.startsWith(cut.slice(0, -1))).toBe(true);
+  });
+});
+
+describe("feedbackPromptDue", () => {
+  const now = Date.parse("2026-10-11T12:00:00Z");
+  const base = { closed: false, firstBuyAt: now - FEEDBACK_PROMPT_DELAY_MS, sentFeedback: false };
+
+  it("asks a day after the first completed buy", () => {
+    expect(feedbackPromptDue(base, now)).toBe(true);
+    expect(feedbackPromptDue({ ...base, firstBuyAt: now - 10 * FEEDBACK_PROMPT_DELAY_MS }, now)).toBe(true);
+  });
+
+  it("waits until the buy is a full day old", () => {
+    expect(feedbackPromptDue({ ...base, firstBuyAt: now - FEEDBACK_PROMPT_DELAY_MS + 1 }, now)).toBe(false);
+    expect(feedbackPromptDue({ ...base, firstBuyAt: now }, now)).toBe(false);
+  });
+
+  it("never asks without a completed buy", () => {
+    expect(feedbackPromptDue({ ...base, firstBuyAt: null }, now)).toBe(false);
+    expect(feedbackPromptDue({ ...base, firstBuyAt: Number.NaN }, now)).toBe(false);
+  });
+
+  it("never asks again once feedback is sent", () => {
+    expect(feedbackPromptDue({ ...base, sentFeedback: true }, now)).toBe(false);
+  });
+
+  it("never asks again once closed", () => {
+    expect(feedbackPromptDue({ ...base, closed: true }, now)).toBe(false);
+  });
+
+  it("is a fixed id the notices accept, never text", () => {
+    expect(FEEDBACK_PROMPT_ID).toMatch(/^[a-z0-9-]+$/);
   });
 });

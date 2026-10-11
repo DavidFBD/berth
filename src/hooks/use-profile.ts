@@ -32,7 +32,7 @@ import type { BenchmarkSymbol } from "@/lib/benchmarks";
 import type { FirstStockResponse } from "@/lib/first-stock";
 import type { LastKnownResponse } from "@/app/api/account/last-known/route";
 import type { FeedbackPostResponse } from "@/app/api/feedback/route";
-import type { FeedbackContextInput, FeedbackOrder, FeedbackRefusal } from "@/lib/feedback";
+import { FEEDBACK_PROMPT_ID, type FeedbackContextInput, type FeedbackOrder, type FeedbackRefusal } from "@/lib/feedback";
 import { shouldSave, type LastKnown, type LastKnownSnapshot } from "@/lib/last-known";
 import { withSkip, withoutSkip, type FirstPathResponse, type PathStep } from "@/lib/first-path";
 import type { CampaignProgress, CampaignResponse } from "@/lib/campaigns";
@@ -558,6 +558,8 @@ export function useSendFeedback() {
         toastRewards(data.rewards, data.xp);
         queryClient.setQueryData<Profile>(["profile", key], profileOf(data));
         if (data.feedback.awarded > 0) void queryClient.invalidateQueries({ queryKey: ["xp-history", key] });
+        // Sent: the board's feedback ask (lib/feedback FEEDBACK_PROMPT_ID) never comes back.
+        queryClient.setQueriesData<string[]>({ queryKey: ["social-notices"] }, (pending) => pending?.filter((id) => id !== FEEDBACK_PROMPT_ID));
         return { ok: true, awarded: data.feedback.awarded };
       }
       if (status === 0 || status === 401) return { ok: false, refusal: "signed_out" };

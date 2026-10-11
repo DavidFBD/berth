@@ -189,3 +189,33 @@ export type FeedbackResponse = {
 
 /** Why a send did not go, as the sheet words it. */
 export type FeedbackRefusal = "signed_out" | "too_many" | "too_long" | "empty" | "failed";
+
+/**
+ * The board's one gentle ask (components/board/feedback-prompt-line), said
+ * once per account through the notices (lib/server/notices): a fixed id,
+ * never text, so closing it writes one account_notices row like any other.
+ */
+export const FEEDBACK_PROMPT_ID = "feedback-first-buy";
+
+/** How long after the first completed buy the ask waits: a day, so it is about the buy, not the moment. */
+export const FEEDBACK_PROMPT_DELAY_MS = 24 * 60 * 60 * 1000;
+
+export type FeedbackPromptAccount = {
+  /** The ask was closed, on any device. */
+  closed: boolean;
+  /** When the first completed buy of a stock or fund completed, epoch ms; null without one. */
+  firstBuyAt: number | null;
+  /** The account has sent feedback, ever (a feedback row, or feedback_first already paid). */
+  sentFeedback: boolean;
+};
+
+/**
+ * Whether the board asks this account how its first buy went: a completed
+ * buy at least a day old, no feedback ever sent, and never closed. Once
+ * feedback is sent, or the ask closed, it never comes back.
+ */
+export function feedbackPromptDue(account: FeedbackPromptAccount, now = Date.now()): boolean {
+  if (account.closed || account.sentFeedback) return false;
+  if (account.firstBuyAt === null || !Number.isFinite(account.firstBuyAt)) return false;
+  return now - account.firstBuyAt >= FEEDBACK_PROMPT_DELAY_MS;
+}

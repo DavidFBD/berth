@@ -98,6 +98,9 @@ import {
  *                                       person's own wallet on Robinhood Chain
  *                                       (rh=split: half there, half in the
  *                                       Berth account) (plan P1a)
+ *   /dev/board?home=held&ask=1          the feedback ask in the strips slot,
+ *                                       a day after the first buy (ask=noxp
+ *                                       without its XP); Tell us opens the sheet
  *   /dev/board?stepper=approving        the working stepper on its own, held
  *                                       on one step (building, approving or
  *                                       signing) without a wallet; &approve=0
@@ -164,6 +167,7 @@ function Galleries() {
         proof={params.get("proof")}
         share={params.get("share")}
         robinhood={params.get("rh")}
+        feedbackAsk={params.get("ask")}
       />
     );
   }

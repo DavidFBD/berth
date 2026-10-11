@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { EnvelopeSimple } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
@@ -19,11 +20,17 @@ import { EASE_LIFT } from "@/lib/motion";
 export function EmailNudgeLine({
   otherStripShowing,
   onOpen,
+  onShowingChange,
 }: {
   otherStripShowing: boolean;
   onOpen: () => void;
+  /** Told whether the strip shows, so a lower strip (the feedback ask) can wait its turn. */
+  onShowingChange?: (showing: boolean) => void;
 }) {
   const { show, dismiss } = useEmailNudge(otherStripShowing);
+  useEffect(() => {
+    onShowingChange?.(show);
+  }, [show, onShowingChange]);
   return <EmailNudgeLineView show={show} onOpen={onOpen} onDismiss={dismiss} />;
 }
 
