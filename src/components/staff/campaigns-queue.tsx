@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { ArrowSquareOut, CaretRight } from "@phosphor-icons/react";
+import { QRCodeSVG } from "qrcode.react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { usePrivy } from "@privy-io/react-auth";
-import { activationGaps, campaignUsd, normalizeCampaignCode, REJECT_REASONS, suggestedAction } from "@/lib/campaigns";
+import { activationGaps, campaignLinkUrl, campaignUsd, normalizeCampaignCode, REJECT_REASONS, suggestedAction } from "@/lib/campaigns";
 import { cn, scrollIntoViewGently } from "@/lib/utils";
 import type { StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
 import type { CampaignMeter, QueueClaim } from "@/lib/server/campaigns/queue";
-import { judgePayoutAddress } from "@/lib/campaign-funding";
-import { FundingBlock, PayoutAddressField, PayoutAddressNote } from "@/components/staff/campaign-funding";
+import { formatUsdcRaw, judgePayoutAddress } from "@/lib/campaign-funding";
+import { campaignStats, campaignStatus, needsYou, type CampaignStats } from "@/lib/campaign-stats";
+import { CopyButton, FundingBlock, PayoutAddressField, PayoutAddressNote, useFundingBalance } from "@/components/staff/campaign-funding";
 
 /**
  * The staff review queue for campaigns (/staff/campaigns). A plain,
@@ -30,6 +34,7 @@ export type StaffAction =
   | { action: "pause"; campaignId: string }
   | { action: "announce"; campaignId: string; on: boolean }
   | { action: "delete"; campaignId: string; reason: string }
+  | { action: "rename"; campaignId: string; code: string; reason: string }
   | { action: "create"; campaign: Record<string, string> }
   | { action: "reveal"; claimId: string; field: "email" | "wallets" }
   | { action: "add_source"; campaignId: string; address: string; reason: string }
@@ -216,7 +221,7 @@ export function CampaignsQueueView({
       ))}
       <CreateCampaign key={createFormResetKey} busy={busy} onAction={onAction} prefill={createPrefill} />
       {(Object.keys(groups) as (keyof typeof groups)[]).map((group) => (
-        <div key={group} className="flex flex-col gap-3">
+        <div key={group} id={`claims-${group}`} className="flex scroll-mt-6 flex-col gap-3">
           <h2 className="text-sm font-medium text-foreground">
             {copy.sections[group]} <span className="text-muted-foreground">{groups[group].length}</span>
           </h2>
@@ -251,9 +256,10 @@ function CampaignCard({
   const [fundingChecked, setFundingChecked] = useState(false);
   const fundingCopy = useCopy().campaign.staff.funding;
   const wallet = campaign.payoutSources[0]?.address ?? null;
-  const reservedPct = Math.min(100, (campaign.reservedUsd / campaign.budgetUsd) * 100);
-  const paidPct = Math.min(100 - reservedPct, (campaign.paidUsd / campaign.budgetUsd) * 100);
   const gaps = activationGaps({ wallet, fundingChecked, reviewed });
+  const stats = campaignStats(campaign);
+  const status = campaignStatus(campaign);
+  const waiting = needsYou(stats);
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Bring the new campaign's own card to the person, rather than leaving
@@ -261,76 +267,62 @@ function CampaignCard({
     if (justCreated) scrollIntoViewGently(cardRef.current);
   }, [justCreated]);
   return (
-    <div ref={cardRef} data-testid="campaign-card" data-campaign-code={campaign.code}>
-      <Panel className="flex flex-col gap-3 p-4">
+    <div ref={cardRef} data-testid="campaign-card" data-campaign-code={campaign.code} data-status={status}>
+      <Panel className="flex flex-col gap-5 p-4 sm:p-5">
         {justCreated && (
           <p role="status" className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" data-testid="created-status">
             {copy.create.createdLine(campaign.title)}
           </p>
         )}
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-base text-foreground">{campaign.title}</p>
-            <p className="font-mono text-xs text-muted-foreground">
-              /c/{campaign.code} · {copy.span(when(campaign.startsAt), when(campaign.endsAt))}
-            </p>
-          </div>
-          <span
-            className={cn(
-              "rounded-full border px-2.5 py-0.5 text-xs",
-              campaign.active ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground",
-            )}
-          >
-            {campaign.active ? copy.active : copy.inactive}
-          </span>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {campaign.kind === "signup" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays) : copy.retired}
-        </p>
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
-          <div className="h-full bg-primary" style={{ width: `${paidPct}%` }} />
-          <div className="h-full bg-primary/40" style={{ width: `${reservedPct}%` }} />
-        </div>
-        <p className="text-sm text-foreground" data-testid="budget-meter">
-          {copy.meter(
-            campaignUsd(campaign.reservedUsd),
-            campaignUsd(campaign.paidUsd),
-            campaignUsd(campaign.budgetUsd),
-            campaign.slots,
-            campaign.maxClaims,
-          )}
-        </p>
-        <p className="text-xs text-muted-foreground">{copy.waiting(campaign.counts.attributed)}</p>
-        <FundingBlock
-          address={wallet}
-          amountUsd={campaign.amountUsd}
-          budgetUsd={campaign.budgetUsd}
-          paidUsd={campaign.paidUsd}
-          otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
-        />
-        <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
-        {campaign.kind === "signup" && (
-          <label className="flex items-start gap-2 text-sm text-foreground" data-testid="announce-on-x">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={campaign.announceOnX}
-              disabled={busy}
-              onChange={(event) => onAction({ action: "announce", campaignId: campaign.id, on: event.target.checked })}
-            />
-            <span>
-              {copy.announce}
-              <span className="mt-0.5 block text-xs text-muted-foreground">{copy.announceHint}</span>
+
+        {/* 1. Header: name, status, dates in the reader's own time. */}
+        <header className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 className="min-w-0 font-display text-lg leading-tight text-foreground">{campaign.title}</h2>
+            <span
+              data-testid="campaign-status"
+              className={cn(
+                "rounded-full border px-2.5 py-0.5 text-xs",
+                status === "live" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground",
+              )}
+            >
+              {copy.status[status]}
             </span>
-          </label>
-        )}
-        {campaign.kind !== "signup" ? null : campaign.active ? (
-          <div>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
-              {copy.deactivate}
-            </Button>
           </div>
-        ) : confirming ? (
+          <p className="text-sm text-muted-foreground" data-testid="campaign-dates">
+            {copy.spanLocal(when(campaign.startsAt), when(campaign.endsAt), zoneName(campaign.endsAt))}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {campaign.kind === "signup" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays) : copy.retired}
+          </p>
+        </header>
+
+        {/* 2. The share link: the card's main action. */}
+        <ShareLink campaign={campaign} busy={busy} onAction={onAction} />
+
+        {/* 3. The numbers at a glance. */}
+        <CampaignStatsRow stats={stats} />
+
+        {/* 4. Only when something waits on staff. */}
+        {waiting.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-lg border border-foreground/70 px-3 py-2.5" data-testid="needs-you">
+            {waiting.map((item, index) => (
+              <div key={item.kind} className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm text-foreground">{item.kind === "approve" ? copy.needsYou.approve(item.count) : copy.needsYou.pay(item.count)}</span>
+                <Button
+                  size="sm"
+                  variant={index === 0 ? "default" : "outline"}
+                  onClick={() => scrollIntoViewGently(document.getElementById(`claims-${item.kind === "approve" ? "qualified" : "approved"}`), { block: "start" })}
+                >
+                  {item.kind === "approve" ? copy.needsYou.review : copy.needsYou.pay_button}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Switching it on stays in view: for a draft or a paused campaign it is the next step. */}
+        {campaign.kind === "signup" && !campaign.active && confirming && (
           <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="activate-confirm">
             <p className="text-sm text-foreground">{copy.activateConfirm(campaign.title)}</p>
             <label className="flex items-start gap-2 text-sm text-foreground">
@@ -370,50 +362,316 @@ function CampaignCard({
             {gaps.includes("reviewed") && <p className="text-xs text-muted-foreground">{copy.activateNeedsReviewed}</p>}
             {gaps.includes("funding") && <p className="text-xs text-muted-foreground">{copy.activateNeedsFunding}</p>}
           </div>
-        ) : (
+        )}
+        {campaign.kind === "signup" && !campaign.active && !confirming && (
           <div>
             <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(true)}>
               {copy.activate}
             </Button>
           </div>
         )}
-        {campaign.deletable && !confirming && deleting && (
-          <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="delete-confirm">
-            <p className="text-sm text-foreground">{copy.deleteConfirm(campaign.title, campaign.code)}</p>
-            <Input
-              aria-label={copy.deleteReason}
-              placeholder={copy.deleteReason}
-              value={deleteReason}
-              onChange={(event) => setDeleteReason(event.target.value)}
-            />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={busy || !deleteReason.trim()}
-                onClick={() => {
-                  onAction({ action: "delete", campaignId: campaign.id, reason: deleteReason.trim() });
-                  setDeleting(false);
-                  setDeleteReason("");
-                }}
-              >
-                {copy.delete}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>
-                {copy.cancel}
-              </Button>
-            </div>
+
+        {/* 5. Funding, one line until opened; the full block unchanged inside. */}
+        <FundingRow campaign={campaign} wallet={wallet} />
+
+        {/* 6. Settings, folded: payout wallets, Announce on X, Pause, Delete. */}
+        <Fold testId="campaign-settings" summary={<span className="text-sm text-foreground">{copy.settings.heading}</span>} more={copy.settings.more} less={copy.settings.less}>
+          <div className="flex flex-col gap-4">
+            <p className="text-xs text-muted-foreground" data-testid="budget-meter">
+              {copy.meter(
+                campaignUsd(campaign.reservedUsd),
+                campaignUsd(campaign.paidUsd),
+                campaignUsd(campaign.budgetUsd),
+                campaign.slots,
+                campaign.maxClaims,
+              )}{" "}
+              {copy.waiting(campaign.counts.attributed)}
+            </p>
+            <PayoutSources campaign={campaign} busy={busy} onAction={onAction} />
+            {campaign.kind === "signup" && (
+              <label className="flex items-start gap-2 border-t border-border pt-3 text-sm text-foreground" data-testid="announce-on-x">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={campaign.announceOnX}
+                  disabled={busy}
+                  onChange={(event) => onAction({ action: "announce", campaignId: campaign.id, on: event.target.checked })}
+                />
+                <span>
+                  {copy.announce}
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{copy.announceHint}</span>
+                </span>
+              </label>
+            )}
+            {campaign.kind === "signup" && campaign.active && (
+              <div>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction({ action: "pause", campaignId: campaign.id })}>
+                  {copy.deactivate}
+                </Button>
+              </div>
+            )}
+            {campaign.deletable && !confirming && deleting && (
+              <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="delete-confirm">
+                <p className="text-sm text-foreground">{copy.deleteConfirm(campaign.title, campaign.code)}</p>
+                <Input
+                  aria-label={copy.deleteReason}
+                  placeholder={copy.deleteReason}
+                  value={deleteReason}
+                  onChange={(event) => setDeleteReason(event.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={busy || !deleteReason.trim()}
+                    onClick={() => {
+                      onAction({ action: "delete", campaignId: campaign.id, reason: deleteReason.trim() });
+                      setDeleting(false);
+                      setDeleteReason("");
+                    }}
+                  >
+                    {copy.delete}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>
+                    {copy.cancel}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {campaign.deletable && !confirming && !deleting && (
+              <div>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDeleting(true)}>
+                  {copy.delete}
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-        {campaign.deletable && !confirming && !deleting && (
-          <div>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDeleting(true)}>
-              {copy.delete}
-            </Button>
-          </div>
-        )}
+        </Fold>
       </Panel>
     </div>
+  );
+}
+
+/** The short name of the reader's own time zone on that day, "CEST", "GMT+2". */
+const zoneName = (iso: string) =>
+  new Intl.DateTimeFormat("en-GB", { timeZoneName: "short" }).formatToParts(new Date(iso)).find((part) => part.type === "timeZoneName")?.value ?? "";
+
+/** The campaign's link in full, to copy, open or scan, and to change. */
+function ShareLink({ campaign, busy, onAction }: { campaign: CampaignMeter; busy: boolean; onAction: (action: StaffAction) => void }) {
+  const copy = useCopy().campaign.staff.share;
+  const renameCopy = useCopy().campaign.staff.rename;
+  const url = campaignLinkUrl(campaign.code);
+  const [renaming, setRenaming] = useState(false);
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3" data-testid="share-link">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <span className="text-xs text-muted-foreground">{copy.heading}</span>
+          <span className="font-mono text-base break-all text-foreground sm:text-lg" data-testid="share-url">
+            {url}
+          </span>
+          <span className="flex flex-wrap items-center gap-2">
+            <CopyButton value={url} label={copy.copy} testId="share-copy" />
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className={buttonVariants({ size: "xs", variant: "outline" })}
+              data-testid="share-open"
+            >
+              <ArrowSquareOut className="size-3.5" weight="duotone" aria-hidden />
+              {copy.open}
+            </a>
+            {campaign.kind === "signup" && !renaming && (
+              <Button size="xs" variant="ghost" className="text-muted-foreground" disabled={busy} onClick={() => setRenaming(true)} data-testid="rename-open">
+                {renameCopy.change}
+              </Button>
+            )}
+          </span>
+          {campaign.aliases.length > 0 && (
+            <span className="text-xs text-muted-foreground" data-testid="share-aliases">
+              {copy.aliases(campaign.aliases.map((alias) => `/c/${alias}`).join(", "))}
+            </span>
+          )}
+        </div>
+        <div className="w-fit shrink-0 rounded-md border border-border bg-white p-1.5" role="img" aria-label={copy.qrLabel}>
+          <QRCodeSVG value={url} size={76} marginSize={0} />
+        </div>
+      </div>
+      {renaming && (
+        <RenameLink
+          campaign={campaign}
+          busy={busy}
+          onCancel={() => setRenaming(false)}
+          onSubmit={(code, reason) => {
+            onAction({ action: "rename", campaignId: campaign.id, code, reason });
+            setRenaming(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The new code, judged as it is typed with the create form's own rule, and a reason for the audit log. */
+function RenameLink({
+  campaign,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  campaign: CampaignMeter;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (code: string, reason: string) => void;
+}) {
+  const copy = useCopy().campaign.staff.rename;
+  const cancel = useCopy().campaign.staff.cancel;
+  const [raw, setRaw] = useState(campaign.code);
+  const [reason, setReason] = useState("");
+  const code = normalizeCampaignCode(raw);
+  const changed = code !== null && code !== campaign.code;
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-3" data-testid="rename-form">
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <span className="text-foreground">{copy.label}</span>
+        <Input value={raw} onChange={(event) => setRaw(event.target.value)} className="font-mono text-xs" spellCheck={false} autoComplete="off" aria-invalid={raw.trim() !== "" && !code} />
+        <span>{copy.hint}</span>
+      </label>
+      {changed && (
+        <p className="text-xs text-muted-foreground">
+          <span className="font-mono break-all text-foreground">{copy.preview(campaignLinkUrl(code))}</span>
+          <span className="mt-0.5 block">{copy.keepsWorking(`/c/${campaign.code}`)}</span>
+        </p>
+      )}
+      <Input aria-label={copy.reason} placeholder={copy.reason} value={reason} onChange={(event) => setReason(event.target.value)} />
+      <div className="flex gap-2">
+        <Button size="sm" disabled={busy || !changed || !reason.trim()} onClick={() => code && onSubmit(code, reason.trim())}>
+          {copy.submit}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          {cancel}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** The numbers at a glance: big, each with one tiny label, explained behind one (i). */
+function CampaignStatsRow({ stats }: { stats: CampaignStats }) {
+  const copy = useCopy().campaign.staff.stats;
+  const cells: [string, string, string][] = [
+    ["opens", copy.opens, String(stats.opens)],
+    ["signed-up", copy.signedUp, String(stats.signedUp)],
+    ["set-up", copy.setUp, String(stats.setUp)],
+    ["staying", copy.staying, String(stats.staying)],
+    ["qualified", copy.qualified, String(stats.qualified)],
+    ["paid", copy.paid, String(stats.paid)],
+    ["places-left", copy.placesLeft, String(stats.placesLeft)],
+    ["budget-left", copy.budgetLeft, campaignUsd(stats.budgetLeftUsd)],
+  ];
+  return (
+    <div className="relative" data-testid="campaign-stats">
+      <InfoTip label={copy.label} className="absolute top-0 right-0">
+        {copy.explain}
+      </InfoTip>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-4 pr-6 sm:grid-cols-4">
+        {cells.map(([key, label, value]) => (
+          <div key={key} className="flex min-w-0 flex-col-reverse gap-0.5" data-testid={`stat-${key}`}>
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="font-mono text-2xl leading-none text-foreground tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+/** A section folded to one line, opened with its own button. */
+function Fold({
+  summary,
+  actions,
+  more,
+  less,
+  testId,
+  children,
+}: {
+  summary: ReactNode;
+  actions?: ReactNode;
+  more: string;
+  less: string;
+  testId: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-3" data-testid={testId} data-open={open || undefined}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          aria-label={open ? less : more}
+          onClick={() => setOpen((value) => !value)}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <CaretRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform duration-150", open && "rotate-90")} weight="bold" aria-hidden />
+          <span className="min-w-0">{summary}</span>
+        </button>
+        {actions}
+      </div>
+      {open && <div id={bodyId}>{children}</div>}
+    </div>
+  );
+}
+
+/** Funding in one line (network, what the payout wallet holds, how many rewards that pays), the full block when opened. */
+function FundingRow({ campaign, wallet }: { campaign: CampaignMeter; wallet: string | null }) {
+  const copy = useCopy().campaign.staff;
+  const judged = wallet ? judgePayoutAddress(wallet) : null;
+  // A Berth address is never read as a payout wallet: the full block warns about it instead.
+  const readable = judged?.kind === "ok" && !judged.berth ? judged.address : null;
+  const { balance, read, cover } = useFundingBalance(readable, {
+    amountUsd: campaign.amountUsd,
+    budgetUsd: campaign.budgetUsd,
+    paidUsd: campaign.paidUsd,
+  });
+  const line = !wallet
+    ? campaign.kind === "signup"
+      ? copy.fundingLine.noWallet
+      : copy.fundingLine.noWalletRetired
+    : read !== null && cover
+      ? copy.fundingLine.line(formatUsdcRaw(read), copy.funding.enoughFor(cover.rewards))
+      : balance.isFetching
+        ? copy.fundingLine.reading
+        : copy.fundingLine.unreadable;
+  return (
+    <Fold
+      testId="funding-row"
+      more={copy.fundingLine.more}
+      less={copy.fundingLine.less}
+      summary={
+        <span className="text-sm text-foreground" data-testid="funding-line">
+          {line}
+        </span>
+      }
+      actions={
+        readable ? (
+          <Button size="xs" variant="outline" disabled={balance.isFetching} onClick={() => void balance.refetch()}>
+            {balance.isFetching ? copy.funding.reading : copy.funding.refresh}
+          </Button>
+        ) : null
+      }
+    >
+      <FundingBlock
+        address={wallet}
+        amountUsd={campaign.amountUsd}
+        budgetUsd={campaign.budgetUsd}
+        paidUsd={campaign.paidUsd}
+        otherWallets={Math.max(0, campaign.payoutSources.length - 1)}
+      />
+    </Fold>
   );
 }
 

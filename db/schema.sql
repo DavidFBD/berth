@@ -1614,6 +1614,33 @@ create table if not exists campaign_invitee_marks (
   created_at timestamptz not null default now()
 );
 
+-- How often a campaign's link was opened (lib/server/campaigns/link-opens),
+-- for the staff campaign card: one counter per campaign per UTC day, bumped
+-- when /c/<code> renders its landing for a campaign that exists. Nothing
+-- about the visitor is kept: no IP, no cookie, no account, no user agent.
+-- Link previewers and prefetches are not counted. Removed with its campaign.
+create table if not exists campaign_link_opens (
+  campaign_id uuid not null references campaigns(id) on delete cascade,
+  day date not null,
+  opens integer not null default 0 check (opens >= 0),
+  primary key (campaign_id, day)
+);
+
+-- A campaign's earlier codes, after staff changed its link
+-- (lib/server/campaigns/actions renameCampaignCode). /c/<old> answers with
+-- a permanent redirect to /c/<current>, and an account that pocketed the
+-- old code before the change is still counted for the same campaign. A
+-- code is either a campaign's current code or one alias, never both and
+-- never two campaigns' (the rename and the create both refuse a code taken
+-- either way). Removed with its campaign, which frees the code.
+create table if not exists campaign_code_aliases (
+  code text primary key check (code ~ '^[a-z0-9][a-z0-9-]{2,31}$'),
+  campaign_id uuid not null references campaigns(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists campaign_code_aliases_campaign_idx on campaign_code_aliases (campaign_id);
+
 
 -- The staff area (docs/adr/0008-staff-area.md, lib/server/staff-auth, app/staff).
 -- Who on staff did what, and why: every page view of a person, every

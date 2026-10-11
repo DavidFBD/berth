@@ -1,4 +1,4 @@
-import { campaignUsd } from "@/lib/campaigns";
+import { campaignLinkUrl, campaignUsd } from "@/lib/campaigns";
 import { COPY } from "@/lib/copy";
 import { TOKEN_LISTINGS } from "@/lib/listings";
 import { earlyCloses, marketHolidayNames, newYorkDate, nextOpen, sessionOn, shiftDate, type IsoDate } from "@/lib/market-calendar";
@@ -78,7 +78,7 @@ export type Draft = {
 };
 
 export function campaignUrl(code: string): string {
-  return `${SITE}/c/${encodeURIComponent(code)}`;
+  return campaignLinkUrl(code);
 }
 
 /* — length and the copy rules — */

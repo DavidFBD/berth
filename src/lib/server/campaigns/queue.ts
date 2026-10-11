@@ -10,6 +10,7 @@ import { foldEmail } from "@/lib/server/campaigns/fold-email";
 import { WEBMAIL_DOMAINS } from "@/lib/webmail";
 import { stillEligible, type GuardOutcome } from "@/lib/server/campaigns/eligibility";
 import { claimById } from "@/lib/server/campaigns/store";
+import { linkOpensByCampaign } from "@/lib/server/campaigns/link-opens";
 
 export { foldEmail };
 
@@ -101,6 +102,16 @@ export type CampaignMeter = {
   paidUsd: number;
   /** Claims holding a place, paid included. */
   slots: number;
+  /** Earlier codes of this campaign: /c/<alias> still opens its link (campaign_code_aliases). */
+  aliases: string[];
+  /** Times the campaign's link was opened (campaign_link_opens), every day summed. */
+  opens: number;
+  /**
+   * Claims whose account got as far as set up (verified email, username, an
+   * EVM home wallet, the terms): it took a place, waits in line for one, or
+   * was refused one for a wallet or an email that already counted.
+   */
+  setUp: number;
   /** The wallets a payout may come from (checksummed), active ones only. */
   payoutSources: { id: string; address: string; addedAt: string; reason: string }[];
 };
@@ -210,6 +221,14 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
          or exists (select 1 from campaign_invitee_marks m where m.claim_id = cl.id)`,
   )) as { campaign_id: string }[];
   const kept = new Set(keptRows.map((row) => String(row.campaign_id)));
+  const setUpRows = (await sql.query(
+    `select campaign_id, count(*)::int as set_up from campaign_claims
+      where onboarded_at is not null or waitlisted_at is not null or reject_reason in ('wallet_used', 'email_used')
+      group by campaign_id`,
+  )) as { campaign_id: string; set_up: number }[];
+  const setUpOf = new Map(setUpRows.map((row) => [String(row.campaign_id), Number(row.set_up)]));
+  const opensOf = await linkOpensByCampaign();
+  const aliasRows = (await sql.query(`select code, campaign_id from campaign_code_aliases order by created_at`)) as { code: string; campaign_id: string }[];
   const sourceRows = (await sql.query(
     `select id, campaign_id, address, added_at, added_reason from campaign_payout_sources where removed_at is null order by added_at`,
   )) as { id: string; campaign_id: string; address: string; added_at: string | Date; added_reason: string }[];
@@ -330,6 +349,9 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
         reservedUsd: reserved * campaign.amount_usd,
         paidUsd: record.paid * campaign.amount_usd,
         slots: SLOT_STATES.reduce((sum, state) => sum + record[state], 0),
+        aliases: aliasRows.filter((row) => String(row.campaign_id) === campaign.id).map((row) => row.code),
+        opens: opensOf.get(campaign.id) ?? 0,
+        setUp: setUpOf.get(campaign.id) ?? 0,
         payoutSources: sourceRows
           .filter((source) => source.campaign_id === campaign.id)
           .map((source) => ({ id: source.id, address: getAddress(source.address), addedAt: iso(source.added_at)!, reason: source.added_reason })),
@@ -349,6 +371,7 @@ export function formatQueue(queue: StaffQueue): string {
       `${campaign.code} (${campaign.title}) ${campaign.kind === "signup" ? "" : `RETIRED ${campaign.kind} campaign, `}${campaign.active ? "ACTIVE" : "inactive"}, ${day(campaign.startsAt)} to ${day(campaign.endsAt)}`,
       `  ${usd(campaign.amountUsd)} to each new account opened through the link, set up and still using Berth ${campaign.stayDays} days after setting up`,
       `  budget: ${usd(campaign.reservedUsd)} reserved, ${usd(campaign.paidUsd)} paid, of ${usd(campaign.budgetUsd)}; ${campaign.slots}/${campaign.maxClaims} places`,
+      `  link opened ${campaign.opens} times, ${campaign.setUp} set up`,
       `  ${Object.entries(campaign.counts)
         .map(([state, count]) => `${state} ${count}`)
         .join(", ")}`,

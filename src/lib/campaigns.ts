@@ -186,6 +186,11 @@ export type LandingCampaign = {
   taken: number;
 };
 
+/** A campaign's shareable link, always on production's own origin: the one staff hand out. */
+export function campaignLinkUrl(code: string): string {
+  return `https://www.berthmarkets.com/c/${encodeURIComponent(code)}`;
+}
+
 /** Places still free: the fewer of the places left and the rewards the budget still covers. Pure. */
 export function placesLeft(campaign: Pick<LandingCampaign, "amountUsd" | "budgetUsd" | "maxClaims" | "taken">): number {
   if (!(campaign.amountUsd > 0)) return 0;

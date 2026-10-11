@@ -47,6 +47,33 @@ const claim = (n: number, over: Partial<Claim>): Claim => ({
 export const QUEUE_FIXTURE: StaffCampaignsResponse = {
   campaigns: [
     {
+      // David's live launch campaign, as set up on 11 October 2026, a day in.
+      id: "00000000-0000-4000-8000-00000000c0aa",
+      code: "launch",
+      title: "Berth Launch Campaign",
+      kind: "signup",
+      active: true,
+      draft: false,
+      announceOnX: true,
+      deletable: false,
+      startsAt: iso(Date.UTC(2026, 9, 10, 22, 0)),
+      endsAt: iso(Date.UTC(2026, 9, 25, 21, 59)),
+      amountUsd: 5,
+      budgetUsd: 200,
+      maxClaims: 40,
+      stayDays: 14,
+      counts: { attributed: 9, buying: 0, holding: 4, qualified: 0, approved: 0, paid: 0, rejected: 1, expired: 0 },
+      reservedUsd: 20,
+      paidUsd: 0,
+      slots: 4,
+      aliases: [],
+      opens: 212,
+      setUp: 5,
+      payoutSources: [
+        { id: "00000000-0000-4000-8000-0000000000fa", address: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", addedAt: iso(now - DAY), reason: "Funding wallet, set when the campaign was created" },
+      ],
+    },
+    {
       id: C1,
       code: "autumn",
       title: "Autumn welcome",
@@ -62,6 +89,9 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       reservedUsd: 35,
       paidUsd: 10,
       slots: 9,
+      aliases: [],
+      opens: 64,
+      setUp: 10,
       payoutSources: [
         { id: "00000000-0000-4000-8000-0000000000f1", address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", addedAt: iso(now - 9 * DAY), reason: "The house wallet for October" },
       ],
@@ -82,6 +112,9 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       reservedUsd: 0,
       paidUsd: 0,
       slots: 0,
+      aliases: [],
+      opens: 0,
+      setUp: 0,
       payoutSources: [],
     },
     {
@@ -100,6 +133,9 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       reservedUsd: 0,
       paidUsd: 0,
       slots: 0,
+      aliases: [],
+      opens: 0,
+      setUp: 0,
       // A wallet is already here (as a sponsor's campaign might arrive), so its
       // confirm panel shows the funding check still unticked, not the no-wallet
       // message: /dev/campaigns?created=spring-invite shows both new hints.
@@ -122,6 +158,9 @@ export const QUEUE_FIXTURE: StaffCampaignsResponse = {
       reservedUsd: 0,
       paidUsd: 0,
       slots: 0,
+      aliases: [],
+      opens: 0,
+      setUp: 0,
       payoutSources: [],
     },
   ],
@@ -168,7 +207,7 @@ export const LINE_FIXTURES: Record<string, CampaignProgress> = {
 /** USDC on Base held by each fixture wallet, as the balance read answers (lowercase keys). */
 export const BALANCE_FIXTURE: Record<string, StaffBalanceResponse["balance"]> = {
   "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed": { outcome: "read", raw: "100000000" },
-  "0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359": { outcome: "read", raw: "42500000" },
+  "0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359": { outcome: "read", raw: "200000000" },
 };
 
 /** The create form as the gallery opens it: a campaign about to be funded by a sponsor. */

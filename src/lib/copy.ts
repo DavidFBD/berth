@@ -1746,6 +1746,49 @@ export type CampaignStaffCopy = {
   /** Shown beside the confirm panel's own checks when the check in question is still unticked. */
   activateNeedsReviewed: string;
   activateNeedsFunding: string;
+  /** The campaign card's pill (lib/campaign-stats campaignStatus). */
+  status: Record<"live" | "scheduled" | "ended" | "paused" | "draft" | "retired", string>;
+  /** The card's dates, in the reader's own time zone, which is named. */
+  spanLocal: (from: string, to: string, zone: string) => string;
+  /** The campaign's shareable link, the card's main action. */
+  share: { heading: string; copy: string; copied: string; open: string; qrLabel: string; aliases: (links: string) => string };
+  /** Changing a campaign's link, beside the share link. */
+  rename: {
+    change: string;
+    label: string;
+    hint: string;
+    reason: string;
+    preview: (url: string) => string;
+    keepsWorking: (oldUrl: string) => string;
+    submit: string;
+  };
+  /** The card's numbers at a glance (lib/campaign-stats), one tiny label each, explained behind one (i). */
+  stats: {
+    label: string;
+    explain: string;
+    opens: string;
+    signedUp: string;
+    setUp: string;
+    staying: string;
+    qualified: string;
+    paid: string;
+    placesLeft: string;
+    budgetLeft: string;
+  };
+  /** The strip shown only when something on this campaign waits on staff. */
+  needsYou: { approve: (count: number) => string; pay: (count: number) => string; review: string; pay_button: string };
+  /** The Funding row, collapsed to one line. */
+  fundingLine: {
+    line: (balance: string, enough: string) => string;
+    reading: string;
+    unreadable: string;
+    noWallet: string;
+    noWalletRetired: string;
+    more: string;
+    less: string;
+  };
+  /** The collapsed settings: payout wallets, Announce on X, Pause and Delete. */
+  settings: { heading: string; more: string; less: string };
   /** The Funding block (components/staff/campaign-funding): where a sponsor's USDC goes, on the create form and each campaign card. */
   funding: {
     heading: string;
@@ -1902,6 +1945,19 @@ export type OgCopy = {
   assistants: OgCard;
   privacy: OgCard;
   terms: OgCard;
+  /**
+   * A live campaign's link card (/c/<code>, lib/og/card ogCampaignElement):
+   * the campaign's own amount, big, read from its row, beside "in USDC".
+   * Only a live campaign gets it; any other state shows the home card.
+   */
+  campaign: {
+    eyebrow: string;
+    inUsdc: string;
+    fine: string;
+    title: (amount: string) => string;
+    description: string;
+    alt: (amount: string) => string;
+  };
 };
 
 /**
@@ -5323,6 +5379,14 @@ export const COPY: Copy = {
   },
   og: {
     domain: "berthmarkets.com",
+    campaign: {
+      eyebrow: "A Berth welcome offer",
+      inUsdc: "in USDC",
+      fine: "For a new account opened from this link. Rules apply.",
+      title: (amount) => `A Berth welcome offer, ${amount} in USDC`,
+      description: "For a new account opened from this link. Rules apply.",
+      alt: (amount) => `Berth. A Berth welcome offer: ${amount} in USDC, beside the USDC mark. For a new account opened from this link. Rules apply.`,
+    },
     home: {
       eyebrow: null,
       title: "Wall Street, in your wallet.",
@@ -5470,6 +5534,54 @@ export const COPY: Copy = {
       deleteReason: "Why it is deleted, kept in the audit log",
       delete: "Delete",
       deleted: (code) => `Deleted. The code ${code} is free again.`,
+      status: { live: "Live", scheduled: "Starts later", ended: "Ended", paused: "Paused", draft: "Draft", retired: "Retired" },
+      spanLocal: (from, to, zone) => `${from} to ${to}, ${zone}`,
+      share: {
+        heading: "Share link",
+        copy: "Copy link",
+        copied: "Copied",
+        open: "Open",
+        qrLabel: "QR code of the campaign link",
+        aliases: (links) => `Earlier links still open this one: ${links}.`,
+      },
+      rename: {
+        change: "Change link",
+        label: "New code",
+        hint: "Lowercase letters, numbers and hyphens, 3 to 32 of them. A code another campaign has, or had, is taken.",
+        reason: "Why it changes, kept in the audit log",
+        preview: (url) => `The new link: ${url}`,
+        keepsWorking: (oldUrl) => `${oldUrl} keeps working and opens the new link. Anyone who opened it before still counts for this campaign.`,
+        submit: "Change link",
+      },
+      stats: {
+        label: "What the numbers count",
+        explain:
+          "Link opens counts each time the campaign page was shown, per day, with nothing kept about who opened it. Apps drawing a preview of the link are left out. Signed up counts every new account opened through the link. Set up means a verified email, a username, a wallet and the terms accepted. Staying means holding a place and waiting out the days. Places and budget left are what is not yet reserved or paid.",
+        opens: "Link opens",
+        signedUp: "Signed up",
+        setUp: "Set up",
+        staying: "Staying",
+        qualified: "Qualified",
+        paid: "Paid",
+        placesLeft: "Places left",
+        budgetLeft: "Budget left",
+      },
+      needsYou: {
+        approve: (count) => `${count} qualified, ready to approve`,
+        pay: (count) => `${count} approved, waiting to be paid`,
+        review: "Review",
+        pay_button: "Pay",
+      },
+      fundingLine: {
+        line: (balance, enough) => `USDC on Base, ${balance} in the payout wallet. ${enough}`,
+        reading: "USDC on Base. Reading the payout wallet.",
+        unreadable: "USDC on Base. The payout wallet could not be read just now.",
+        noWallet: "No payout wallet yet. Add one in Settings before activating.",
+        noWalletRetired: "No payout wallet.",
+        more: "Show funding",
+        less: "Hide funding",
+      },
+      settings: { heading: "Settings", more: "Show settings", less: "Hide settings" },
       funding: {
         heading: "Funding",
         network: "Network",
@@ -5656,6 +5768,8 @@ export const COPY: Copy = {
         zero_address: "That is the zero address. Nothing sent there can ever be spent.",
         funding_check_required: "Confirm the address and the network first.",
         no_funding_wallet: "This campaign has no payout wallet. Add one on its card before activating.",
+        same_code: "That is already this campaign's link.",
+        no_rename_reason: "Write why the link changes.",
       },
       create: {
         heading: "New campaign",

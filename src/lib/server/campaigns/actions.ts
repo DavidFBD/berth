@@ -60,6 +60,8 @@ export type ActionRefusal =
   | "funding_check_required"
   | "no_funding_wallet"
   | "terms_not_accepted"
+  | "same_code"
+  | "no_rename_reason"
   | "error";
 
 /** Never a wallet: USDC sent there is gone. */
@@ -168,8 +170,10 @@ export async function createCampaign(staffUserId: string, input: CampaignInput):
   try {
     const rows = await auditedWrite<{ id: string }>(
       {
+        // A code another campaign answers to as an earlier link is taken too.
         text: `insert into campaigns (code, title, kind, amount_usd, budget_usd, max_claims, hold_days, starts_at, ends_at, active)
-               values ($1, $2, 'signup', $3, $4, $5, $6, $7, $8, false)
+               select $1, $2, 'signup', $3, $4, $5, $6, $7, $8, false
+                where not exists (select 1 from campaign_code_aliases a where a.code = $1)
                on conflict (code) do nothing returning id`,
         params: [code, title, amount, budget, maxClaims, stayDays, startsAt.toISOString(), endsAt.toISOString()],
       },
@@ -441,6 +445,64 @@ export async function deleteCampaign(staffUserId: string, campaignId: string, ra
   const refusal: ActionRefusal =
     outcome === "active" || outcome === "has_places" || outcome === "not_found" || outcome === "retired" ? outcome : "error";
   return refused(staffUserId, "campaign.delete", campaignId, refusal, { code: campaign.code, reason });
+}
+
+/**
+ * Changes a campaign's link, /c/<old> to /c/<new>. The new code follows
+ * the create rules (normalizeCampaignCode) and is taken if any campaign,
+ * retired ones included, has it now or answers to it as an earlier link.
+ * The old code becomes an alias of this campaign: /c/<old> redirects to the
+ * new link, and an account that pocketed the old code is still counted
+ * here. Changing back to one of its own earlier codes takes that code out
+ * of the aliases. Counts (link opens, claims) are by campaign, so they
+ * carry on. Berth's own X posts read the current code when they post.
+ * Audited with both codes and the reason, in the same statement.
+ */
+export async function renameCampaignCode(staffUserId: string, campaignId: string, rawCode: unknown, rawReason: unknown): Promise<ActionResult> {
+  const code = normalizeCampaignCode(rawCode);
+  const reason = reasonOf(rawReason);
+  const shown = { to: code ?? (typeof rawCode === "string" ? rawCode.slice(0, 40) : null) };
+  if (!code) return refused(staffUserId, "campaign.rename", campaignId, "bad_input", shown);
+  if (!reason) return refused(staffUserId, "campaign.rename", campaignId, "no_rename_reason", shown);
+  const campaign = await campaignById(campaignId);
+  if (!campaign) return refused(staffUserId, "campaign.rename", campaignId, "not_found", { ...shown, reason });
+  const detail = { from: campaign.code, to: code, reason };
+  if (campaign.kind !== "signup") return refused(staffUserId, "campaign.rename", campaignId, "retired", detail);
+  if (campaign.code === code) return refused(staffUserId, "campaign.rename", campaignId, "same_code", detail);
+  try {
+    const rows = (await getSql().query(
+      `with act as (
+         update campaigns set code = $2
+          where id = $1 and code = $3
+            and not exists (select 1 from campaigns x where x.code = $2)
+            and not exists (select 1 from campaign_code_aliases a where a.code = $2 and a.campaign_id <> $1)
+         returning id
+       ),
+       kept as (
+         insert into campaign_code_aliases (code, campaign_id)
+         select $3, act.id from act
+         on conflict (code) do update set campaign_id = excluded.campaign_id
+         returning 1
+       ),
+       freed as (
+         delete from campaign_code_aliases a using act where a.code = $2 and a.campaign_id = act.id
+         returning 1
+       ),
+       aud as (
+         insert into staff_audit (staff_user_id, action, target, detail)
+         select $4::uuid, 'campaign.rename', $1::text, $5::jsonb || jsonb_build_object('outcome', 'done')
+           from (select 1 from act limit 1) as touched
+         returning 1
+       )
+       select id from act`,
+      [campaignId, code, campaign.code, staffUserId, JSON.stringify(detail)],
+    )) as { id: string }[];
+    if (rows[0]) return { ok: true, detail: { from: campaign.code, code } };
+  } catch {
+    // The unique code raced another write: taken.
+  }
+  const now = await campaignById(campaignId);
+  return refused(staffUserId, "campaign.rename", campaignId, now && now.code !== campaign.code ? "wrong_state" : "code_taken", detail);
 }
 
 /**

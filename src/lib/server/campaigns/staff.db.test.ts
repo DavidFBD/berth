@@ -15,6 +15,8 @@ import { deriveSignals, foldEmail, formatQueue, revealClaim, staffQueue } from "
 import { TRANSFER_TOPIC, USDC_BASE, type Receipt } from "./usdc";
 import { advance, campaign as kitCampaign, heldWallet, joined, person as kitPerson, qualifiedClaim, username } from "./test-kit";
 import { attributeSignup } from "./store";
+import { recordLinkOpen } from "./link-opens";
+import { campaignStats } from "@/lib/campaign-stats";
 
 /**
  * The staff side against the real schema: the gate (STAFF_ADMIN_IDS, never
@@ -184,6 +186,10 @@ describe("requireStaff", () => {
     const draft = (await sql.query(
       `insert into campaigns (code, title, kind, starts_at, ends_at) values ('route-del', 'x', 'signup', now(), now() + interval '9 days') returning id`,
     )) as { id: string }[];
+    // So is changing a campaign's link.
+    const staleRename = await POST(request(cookie, { action: "rename", campaignId: draft[0].id, code: "route-del-two", reason: "Test" }));
+    expect(staleRename.status).toBe(401);
+    expect((await campaignById(draft[0].id))!.code).toBe("route-del");
     const staleDelete = await POST(request(cookie, { action: "delete", campaignId: draft[0].id, reason: "Test" }));
     expect(staleDelete.status).toBe(401);
     expect(await campaignById(draft[0].id)).toBeDefined();
@@ -553,6 +559,21 @@ describe("a claim from qualified to paid", () => {
     expect(claim.payout).toMatchObject({ chain: "Base", token: "USDC", amountUsd: 5 });
     const meter = queue.campaigns.find((campaign) => campaign.code === "evidence")!;
     expect(meter).toMatchObject({ slots: 1, reservedUsd: 5, paidUsd: 0, budgetUsd: 100, maxClaims: 20, deletable: false });
+  });
+
+  it("the meter counts the link's opens and the accounts that got as far as set up, waiting in line included", async () => {
+    await kitCampaign("funnel", { maxClaims: 1, budget: 5 });
+    for (let index = 0; index < 3; index += 1) await recordLinkOpen("funnel");
+    const first = await joined({ code: "funnel" });
+    await username(first.user);
+    expect(await advance(first.claimId)).toBe("holding");
+    const second = await joined({ code: "funnel" });
+    await username(second.user);
+    expect(await advance(second.claimId)).toBe("waitlisted");
+    await joined({ code: "funnel" });
+    const meter = (await staffQueue()).campaigns.find((campaign) => campaign.code === "funnel")!;
+    expect(meter).toMatchObject({ opens: 3, setUp: 2, slots: 1 });
+    expect(campaignStats(meter)).toMatchObject({ opens: 3, signedUp: 3, setUp: 2, staying: 1, qualified: 0, paid: 0, placesLeft: 0, budgetLeftUsd: 0 });
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  campaignLinkUrl,
   ACTIVE_WINDOW_DAYS,
   activationGaps,
   campaignDay,
@@ -313,5 +314,11 @@ describe("the queue's suggestion for a country that could not be told", () => {
     expect(suggestedAction({ state: "approved", signals: ["unknown_country"] })).toBeNull();
     expect(COPY.campaign.staff.suggestRejectUnknownCountry).toMatch(/^Suggested: reject, unless/);
     expect(COPY.campaign.staff.suggestRejectUnknownCountry).toMatch(/Nothing is rejected on its own/);
+  });
+});
+
+describe("campaignLinkUrl", () => {
+  it("is the full production link staff hand out", () => {
+    expect(campaignLinkUrl("launch")).toBe("https://www.berthmarkets.com/c/launch");
   });
 });

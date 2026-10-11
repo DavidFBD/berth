@@ -58,7 +58,7 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
   );
 }
 
-function CopyButton({ value }: { value: string }) {
+export function CopyButton({ value, label, testId }: { value: string; label?: string; testId?: string }) {
   const copy = useCopy().campaign.staff.funding;
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -70,6 +70,7 @@ function CopyButton({ value }: { value: string }) {
     <Button
       size="xs"
       variant="outline"
+      data-testid={testId}
       onClick={() => {
         void navigator.clipboard
           ?.writeText(value)
@@ -78,7 +79,7 @@ function CopyButton({ value }: { value: string }) {
       }}
     >
       {copied ? <Check className="size-3.5" weight="duotone" aria-hidden /> : <Copy className="size-3.5" weight="duotone" aria-hidden />}
-      {copied ? copy.copied : copy.copy}
+      {copied ? copy.copied : (label ?? copy.copy)}
     </Button>
   );
 }
@@ -173,17 +174,31 @@ export function FundingBlock({
   );
 }
 
-function FundingBalance({ address, amountUsd, budgetUsd, paidUsd }: { address: string; amountUsd: number; budgetUsd: number; paidUsd: number }) {
-  const copy = useCopy().campaign.staff.funding;
+/**
+ * The payout wallet's USDC on Base, read once and kept until Read again: one
+ * query per address, shared by the card's one line Funding summary and the
+ * full block, so opening the block never reads Base a second time.
+ */
+export function useFundingBalance(
+  address: string | null,
+  { amountUsd, budgetUsd, paidUsd = 0 }: { amountUsd: number; budgetUsd: number; paidUsd?: number },
+) {
   const reader = useContext(BalanceReaderContext);
   const balance = useQuery({
-    queryKey: ["staff-usdc-balance", address.toLowerCase()],
-    queryFn: () => reader(address),
+    queryKey: ["staff-usdc-balance", address?.toLowerCase() ?? ""],
+    queryFn: () => reader(address!),
+    enabled: address !== null,
     staleTime: Infinity,
     retry: false,
   });
   const read = balance.data?.outcome === "read" ? BigInt(balance.data.raw) : null;
   const cover = read !== null ? fundingCover({ balanceRaw: read, amountUsd, budgetUsd, paidUsd }) : null;
+  return { balance, read, cover };
+}
+
+function FundingBalance({ address, amountUsd, budgetUsd, paidUsd }: { address: string; amountUsd: number; budgetUsd: number; paidUsd: number }) {
+  const copy = useCopy().campaign.staff.funding;
+  const { balance, read, cover } = useFundingBalance(address, { amountUsd, budgetUsd, paidUsd });
   return (
     <div className="flex flex-col gap-1.5 border-t border-border pt-3" data-testid="funding-balance">
       <div className="flex flex-wrap items-center justify-between gap-2">

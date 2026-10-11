@@ -203,7 +203,8 @@ export async function attributeSignup(
      select c.id, u.id, 'attributed', $3
        from users u
        join campaigns c
-         on c.code = $2 and c.kind = 'signup' and c.active
+         on (c.code = $2 or c.id = (select a.campaign_id from campaign_code_aliases a where a.code = $2))
+        and c.kind = 'signup' and c.active
         and now() >= c.starts_at and now() <= c.ends_at
         and u.created_at >= c.starts_at and u.created_at <= c.ends_at
       where u.id = $1
@@ -215,6 +216,22 @@ export async function attributeSignup(
     [userId, code, countryUnknown],
   )) as { id: string }[];
   return rows[0]?.id ?? null;
+}
+
+/**
+ * The current code of the campaign that answers to `raw` as an earlier
+ * link, or null: null too when `raw` is a campaign's current code, or
+ * nobody's. /c/<old> redirects there.
+ */
+export async function renamedCampaignCode(raw: string): Promise<string | null> {
+  const code = normalizeCampaignCode(raw);
+  if (!code) return null;
+  const rows = (await getSql().query(
+    `select c.code from campaign_code_aliases a join campaigns c on c.id = a.campaign_id
+      where a.code = $1 and not exists (select 1 from campaigns x where x.code = $1)`,
+    [code],
+  )) as { code: string }[];
+  return rows[0]?.code ?? null;
 }
 
 /** Every account that is this person: the live account and every account merged into it. */

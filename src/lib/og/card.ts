@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createElement, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { ImageResponse } from "next/og";
 import { COPY, type OgCard } from "@/lib/copy";
+import { campaignUsd } from "@/lib/campaigns";
 import { OG_CONTENT_TYPE, OG_SIZE } from "@/lib/og/size";
 
 /**
@@ -339,4 +340,71 @@ export async function ogImage(kind: OgKind): Promise<ImageResponse> {
 
 export function ogAlt(kind: OgKind): string {
   return COPY.og[kind].alt;
+}
+
+/**
+ * The USDC mark, Circle's own drawing (the official usdc.svg, 2000 x 2000:
+ * the disc, the dollar sign, the two arcs), in ink on the canvas like every
+ * other third party mark Berth shows: never in its brand blue.
+ */
+const USDC_MARK = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000"><path fill="${C.ink}" d="M1000 2000c554.17 0 1000-445.83 1000-1000S1554.17 0 1000 0 0 445.83 0 1000s445.83 1000 1000 1000z"/><path fill="${C.canvas}" d="M1275 1158.33c0-145.83-87.5-195.83-262.5-216.66-125-16.67-150-50-150-108.34s41.67-95.83 125-95.83c75 0 116.67 25 137.5 87.5 4.17 12.5 16.67 20.83 29.17 20.83h66.66c16.67 0 29.17-12.5 29.17-29.16v-4.17c-16.67-91.67-91.67-162.5-187.5-170.83v-100c0-16.67-12.5-29.17-33.33-33.34h-62.5c-16.67 0-29.17 12.5-33.34 33.34v95.83c-125 16.67-204.16 100-204.16 204.17 0 137.5 83.33 191.66 258.33 212.5 116.67 20.83 154.17 45.83 154.17 112.5s-58.34 112.5-137.5 112.5c-108.34 0-145.84-45.84-158.34-108.34-4.16-16.66-16.66-25-29.16-25h-70.84c-16.66 0-29.16 12.5-29.16 29.17v4.17c16.66 104.16 83.33 179.16 220.83 200v100c0 16.66 12.5 29.16 33.33 33.33h62.5c16.67 0 29.17-12.5 33.34-33.33v-100c125-20.84 208.33-108.34 208.33-220.84z"/><path fill="${C.canvas}" d="M787.5 1595.83c-325-116.66-491.67-479.16-370.83-800 62.5-175 200-308.33 370.83-370.83 16.67-8.33 25-20.83 25-41.67V325c0-16.67-8.33-29.17-25-33.33-4.17 0-12.5 0-16.67 4.16-395.83 125-612.5 545.84-487.5 941.67 75 233.33 254.17 412.5 487.5 487.5 16.67 8.33 33.34 0 37.5-16.67 4.17-4.16 4.17-8.33 4.17-16.66v-58.34c0-12.5-12.5-29.16-25-37.5zM1229.17 295.83c-16.67-8.33-33.34 0-37.5 16.67-4.17 4.17-4.17 8.33-4.17 16.67v58.33c0 16.67 12.5 33.33 25 41.67 325 116.66 491.67 479.16 370.83 800-62.5 175-200 308.33-370.83 370.83-16.67 8.33-25 20.83-25 41.67V1700c0 16.67 8.33 29.17 25 33.33 4.17 0 12.5 0 16.67-4.16 395.83-125 612.5-545.84 487.5-941.67-75-237.5-258.34-416.67-487.5-491.67z"/></svg>`;
+
+const AMOUNT_SIZE = 200;
+/** The room the amount has: the card's 1040 less the mark and "in USDC". */
+const AMOUNT_WIDTH = 634;
+
+/**
+ * A live campaign's card: the lockup and the domain along the top as on
+ * every card, the calm callout, then the campaign's own amount, big, with
+ * the USDC mark before it and "in USDC" after, and the fine line under it.
+ * The amount is the one thing read from the database (by
+ * lib/server/og-campaign, for a live campaign only); it is formatted here,
+ * so $5, $10 and $12.50 all read cleanly. No accent: ink and muted only.
+ */
+export async function ogCampaignElement(amountUsd: number): Promise<ReactElement> {
+  const a = await loadAssets();
+  const words = COPY.og.campaign;
+  const amount = campaignUsd(amountUsd);
+  // Big, but never past the edge: a long amount ($999.99) is drawn a little smaller.
+  const size = Math.min(AMOUNT_SIZE, Math.floor(AMOUNT_WIDTH / (emWidth(amount) * 0.92)));
+  const mark = 136;
+  return box(
+    {
+      width: OG_SIZE.width,
+      height: OG_SIZE.height,
+      position: "relative",
+      flexDirection: "column",
+      background: C.canvas,
+      color: C.ink,
+      fontFamily: "Inter",
+    },
+    box(
+      { position: "absolute", left: 80, top: 64, right: 80, justifyContent: "space-between", alignItems: "center" },
+      createElement("img", { src: a.lockup, width: 166, height: 32, alt: "", style: { width: 166, height: 32 } }),
+      box({ fontFamily: "IBM Plex Mono", fontSize: 22, color: C.muted }, COPY.og.domain),
+    ),
+    box(
+      { position: "absolute", left: 80, top: 168, width: 1040, flexDirection: "column" },
+      box({ fontSize: 30, fontWeight: 500, color: C.muted }, words.eyebrow),
+      box(
+        { alignItems: "center", marginTop: 34 },
+        createElement("img", { src: svgUri(USDC_MARK), width: mark, height: mark, alt: "", style: { width: mark, height: mark, marginRight: 40 } }),
+        box(
+          { alignItems: "flex-end" },
+          box({ fontFamily: "Inter Tight", fontSize: size, lineHeight: 1, letterSpacing: -size * 0.04, color: C.ink }, amount),
+          box({ fontFamily: "Inter Tight", fontSize: 56, lineHeight: 1, color: C.ink, marginLeft: 28, marginBottom: 22 }, words.inUsdc),
+        ),
+      ),
+    ),
+    box(
+      { position: "absolute", left: 80, right: 80, bottom: 64, justifyContent: "space-between", alignItems: "flex-end" },
+      box({ fontSize: 26, color: C.muted }, words.fine),
+    ),
+  );
+}
+
+/** The PNG of a live campaign's card, 1200 x 630. */
+export async function ogCampaignImage(amountUsd: number, init: ResponseInit = {}): Promise<ImageResponse> {
+  const [element, a] = await Promise.all([ogCampaignElement(amountUsd), loadAssets()]);
+  return new ImageResponse(element, { ...OG_SIZE, fonts: a.fonts, ...init });
 }
