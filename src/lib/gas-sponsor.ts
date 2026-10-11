@@ -181,12 +181,16 @@ export type RpcTransaction = {
   gasPrice?: string;
 };
 
-/** What Privy's sponsored send takes: Privy re-estimates gas and fees itself, so only the call goes over. */
+/**
+ * What Privy's sponsored send takes: Privy re-estimates gas and fees itself, so only the call goes over.
+ * `value` is a bigint on purpose: react-auth's sponsored branch runs it through viem's `toHex`, which
+ * reads a hex string as text, so "0x10" would go out as the bytes of "0x10", an enormous amount.
+ */
 export type SponsoredTransaction = {
   from?: string;
   to?: string;
   data?: string;
-  value?: string;
+  value?: bigint;
   chainId: number;
 };
 
@@ -196,7 +200,7 @@ export function toSponsoredTransaction(tx: RpcTransaction, chainId: number): Spo
     ...(tx.from ? { from: tx.from } : {}),
     ...(tx.to ? { to: tx.to } : {}),
     ...(data && data !== "0x" ? { data } : {}),
-    ...(tx.value && BigInt(tx.value) !== 0n ? { value: tx.value } : {}),
+    ...(tx.value && BigInt(tx.value) !== 0n ? { value: BigInt(tx.value) } : {}),
     chainId,
   };
 }

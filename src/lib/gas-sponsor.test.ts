@@ -145,9 +145,15 @@ describe("toSponsoredTransaction", () => {
     expect(toSponsoredTransaction({ to: "0xb", input: "0xff", value: "0x10" }, 10)).toEqual({
       to: "0xb",
       data: "0xff",
-      value: "0x10",
+      value: 16n,
       chainId: 10,
     });
+  });
+
+  it("hands Privy a value that survives viem's toHex as the same amount", async () => {
+    const { toHex, hexToBigInt } = await import("viem");
+    const sent = toSponsoredTransaction({ to: "0xb", value: "0x6624e3c39383a" }, 42161);
+    expect(hexToBigInt(toHex(sent.value!))).toBe(0x6624e3c39383an);
   });
 });
 
