@@ -2,6 +2,7 @@ import { COPY } from "@/lib/copy";
 import type { WalletFamily } from "@/lib/identity/caip";
 import type { EmailKind } from "@/lib/email-kinds";
 import { shortenAddress } from "@/lib/format";
+import { DRAWER_LINK_PARAM, DRAWER_LINK_VIEW } from "@/lib/drawer-return";
 
 /**
  * What each notice says, as data: the layout (template.tsx) renders it as
@@ -209,7 +210,16 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
       const words = email.friendRequest;
       const username = plain(notice.username, 32);
       const body = words.body(username);
-      return { kind, subject: words.subject(username), preview: body, heading: words.heading, paragraphs: [body], button, why };
+      // Lands on the drawer's Friends screen, where the request waits (lib/drawer-return DRAWER_LINK_PARAM).
+      return {
+        kind,
+        subject: words.subject(username),
+        preview: body,
+        heading: words.heading,
+        paragraphs: [body],
+        button: { ...button, href: `${baseUrl}/?${DRAWER_LINK_PARAM}=${DRAWER_LINK_VIEW}` },
+        why,
+      };
     }
     case "payout_source_changed": {
       const words = email.payoutSource;

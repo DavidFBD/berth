@@ -74,6 +74,8 @@ export type Copy = {
   rankLevelLong: (level: number) => string;
   /** What the chip reads out in full: "Harbour Master, level 9". */
   rankAriaLabel: (name: string, level: number) => string;
+  /** The header pill's phrase when something waits in the drawer. */
+  accountWaitingAria: (requests: number) => string;
 
   /* — the account drawer: who you are, where to send funds, the way out — */
   accountSignedInAs: (email: string) => string;
@@ -3082,6 +3084,7 @@ export const COPY: Copy = {
   rankLevelShort: (level) => `Lv ${level}`,
   rankLevelLong: (level) => `Level ${level}`,
   rankAriaLabel: (name, level) => `${name}, level ${level}`,
+  accountWaitingAria: (requests) => (requests === 1 ? "1 friend request waiting" : `${requests} friend requests waiting`),
 
   accountSignedInAs: (email) => `Signed in as ${email}`,
   accountSignedInEmail: "Signed in via email",

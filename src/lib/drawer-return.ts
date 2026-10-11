@@ -24,6 +24,13 @@ export function isDrawerView(value: string | null | undefined): value is DrawerV
 
 /** The search parameter that reopens the drawer on a screen. */
 export const DRAWER_RETURN_PARAM = "account";
+/**
+ * An email's own way to the drawer: `?open=friends` opens it on Friends once
+ * signed in. Unlike `?account=`, it needs no mark, because the person comes
+ * from outside the app; opening a drawer shows them only their own account.
+ */
+export const DRAWER_LINK_PARAM = "open";
+export const DRAWER_LINK_VIEW: DrawerView = "friends";
 /** Where the mark lives, in sessionStorage (this tab only). */
 export const DRAWER_RETURN_KEY = "berth.drawer-return";
 /** On a page opened from the drawer: Back goes back to it, when the mark agrees. */
@@ -145,4 +152,18 @@ export function initialScreen({
   if (money) return { view: "money", scroll: null };
   if (focusEmail) return NO_RETURN;
   return pending;
+}
+
+/** What an email's `?open=` asks of the drawer: its screen, or nothing, and the parameter always leaves the address. */
+export function resolveLink(param: string | null): { open: DrawerView | null; strip: boolean } {
+  return { open: param === DRAWER_LINK_VIEW ? DRAWER_LINK_VIEW : null, strip: param !== null };
+}
+
+/**
+ * What waits for the person in the account drawer, as the header pill's dot
+ * says it: only what asks for their answer. Today that is friend requests;
+ * a count of friends or XP is news, not a need.
+ */
+export function waitingInDrawer({ requests }: { requests: number | null | undefined }): number {
+  return typeof requests === "number" && Number.isFinite(requests) && requests > 0 ? Math.floor(requests) : 0;
 }

@@ -6,7 +6,9 @@ import {
   initialScreen,
   isPlainClick,
   readMark,
+  resolveLink,
   resolveReturn,
+  waitingInDrawer,
   writeMark,
   type ReturnMark,
 } from "@/lib/drawer-return";
@@ -97,5 +99,28 @@ describe("initialScreen", () => {
 describe("Settings as a drawer screen", () => {
   it("is a screen a return can name", () => {
     expect(resolveReturn({ param: "settings", mark: mark({ view: "settings" }), signedIn: true }).open).toEqual({ view: "settings", scroll: 240 });
+  });
+});
+
+describe("resolveLink", () => {
+  it("opens Friends for an email's ?open=friends, and always strips the parameter", () => {
+    expect(resolveLink("friends")).toEqual({ open: "friends", strip: true });
+  });
+  it("opens nothing for another value, and strips whatever is there", () => {
+    expect(resolveLink("money")).toEqual({ open: null, strip: true });
+    expect(resolveLink(null)).toEqual({ open: null, strip: false });
+  });
+});
+
+describe("waitingInDrawer", () => {
+  it("counts friend requests and nothing else", () => {
+    expect(waitingInDrawer({ requests: 3 })).toBe(3);
+  });
+  it("is zero for none, a missing answer or nonsense", () => {
+    expect(waitingInDrawer({ requests: 0 })).toBe(0);
+    expect(waitingInDrawer({ requests: undefined })).toBe(0);
+    expect(waitingInDrawer({ requests: null })).toBe(0);
+    expect(waitingInDrawer({ requests: -2 })).toBe(0);
+    expect(waitingInDrawer({ requests: Number.NaN })).toBe(0);
   });
 });

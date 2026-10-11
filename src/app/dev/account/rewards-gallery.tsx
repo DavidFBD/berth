@@ -85,7 +85,7 @@ function Seeded({ level, children }: { level: number; children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-export function RewardsGallery({ level }: { level: number }) {
+export function RewardsGallery({ level, waiting = 0 }: { level: number; waiting?: number }) {
   const scene = SCENES[level];
   const rank = rankForXp(scene?.xp ?? RANKS[level - 1]?.xp ?? 0);
   return (
@@ -95,8 +95,8 @@ export function RewardsGallery({ level }: { level: number }) {
         <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
           <span className="font-wordmark text-base text-foreground">Berth</span>
           <div className="flex items-center gap-1.5">
-            <RankChip onClick={() => {}} />
-            <RankChip onClick={() => {}} presence placeholder="Account" />
+            <RankChip onClick={() => {}} waiting={waiting} />
+            <RankChip onClick={() => {}} presence placeholder="Account" waiting={waiting} />
           </div>
         </div>
         <RewardsPanel initialGridOpen initialLedgerOpen />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import type { AssistantId } from "@/lib/assistant-party";
 import { toast } from "@/lib/toast";
 import { useLinkInProgress } from "@/hooks/use-link-email";
@@ -34,6 +34,7 @@ import { useAvailability } from "@/components/availability/availability-context"
 import type { ArrivalView } from "@/lib/funding-handoff";
 import { useMounted } from "@/hooks/use-mounted";
 import { useAccountWallets, useProfile, useWalletSignIn } from "@/hooks/use-profile";
+import { useMySocial } from "@/hooks/use-social";
 import { headerAccountState } from "@/lib/header-account";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
@@ -42,7 +43,7 @@ import { SPRING_SHELF } from "@/lib/motion";
 import { useSignOut } from "@/hooks/use-wallet-restore";
 import { AccountDrawerScreens } from "@/components/account-drawer";
 import type { DrawerView } from "@/components/account-drawer-nav";
-import { DRAWER_RETURN_KEY, DRAWER_RETURN_PARAM, NO_RETURN, initialScreen, readMark, resolveReturn, type ReturnState } from "@/lib/drawer-return";
+import { DRAWER_LINK_PARAM, DRAWER_RETURN_KEY, DRAWER_RETURN_PARAM, NO_RETURN, initialScreen, readMark, resolveLink, resolveReturn, waitingInDrawer, type ReturnState } from "@/lib/drawer-return";
 
 /**
  * Header account entry point. Email login (Privy) is the default; the
@@ -107,7 +108,7 @@ export function AccountButton({
       {/* The one header pill for email users: the shared rank chip wearing
           the signed-in dot. The address book belongs inside the account
           drawer, where the email already reads in full. */}
-      <RankChip
+      <AccountChip
         onClick={() => setAccountOpen(true)}
         presence
         placeholder={copy.accountTotalLabel}
@@ -209,6 +210,16 @@ export function EmailDrawerBody({
 }
 
 /**
+ * The header pill with a dot when something waits in the drawer. It reads the
+ * very query the drawer's Friends row reads (useMySocial), so there is no
+ * second fetch, and accepting or declining refreshes both at once.
+ */
+function AccountChip(props: ComponentProps<typeof RankChip>) {
+  const social = useMySocial();
+  return <RankChip {...props} waiting={waitingInDrawer({ requests: social.data?.requests })} />;
+}
+
+/**
  * The way back from a page the drawer opened (lib/drawer-return), read once
  * on mount: with ?account=<screen> and a fresh mark for it in this tab, the
  * drawer opens there, at that scroll. The parameter leaves the address and
@@ -245,9 +256,16 @@ function useDrawerReturn(open: () => void, isOpen: boolean): ReturnState {
       url.searchParams.delete(DRAWER_RETURN_PARAM);
       window.history.replaceState(null, "", url);
     }
-    if (!result.open) return;
+    // An email's `?open=friends` (lib/drawer-return resolveLink): the drawer on Friends, the parameter gone.
+    const link = resolveLink(url.searchParams.get(DRAWER_LINK_PARAM));
+    if (link.strip) {
+      url.searchParams.delete(DRAWER_LINK_PARAM);
+      window.history.replaceState(null, "", url);
+    }
+    const opened = result.open ?? (link.open ? { view: link.open, scroll: null } : null);
+    if (!opened) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the address and the tab's storage are only readable after mount
-    setPending(result.open);
+    setPending(opened);
     openRef.current();
   }, []);
   const wasOpen = useRef(false);
@@ -431,7 +449,7 @@ function ExternalAccountEntry({
   return (
     <div data-wallet-pill className="flex min-w-0 items-center gap-1.5">
       {state === "account" ? (
-        <RankChip onClick={() => setServiceOpen(true)} />
+        <AccountChip onClick={() => setServiceOpen(true)} />
       ) : state === "sign-in" || state === "signing" ? (
         // Connected is not signed in (lib/header-account): the way in, from
         // a tap, so the wallet surfaces its signature request.

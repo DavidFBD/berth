@@ -129,7 +129,8 @@ function WalletsGallery({ scene }: { scene: string }) {
  *                                     established; see drawer-gallery.tsx)
  *   /dev/account?rewards=7            the rewards drawer at that rung, from
  *                                     seeded data (1, 3, 7 and 10 are set
- *                                     scenes; see rewards-gallery.tsx)
+ *                                     scenes; see rewards-gallery.tsx;
+ *                                     add &waiting=1 for the header pill's dot)
  *   /dev/account?portfolio=four-days  the top of "What you own" in one of
  *                                     its states, from fixtures (see
  *                                     portfolio-gallery.tsx)
@@ -230,7 +231,7 @@ function Inspector() {
   }
   const rewardsLevel = Number(params.get("rewards"));
   if (Number.isInteger(rewardsLevel) && rewardsLevel >= 1 && rewardsLevel <= 10) {
-    return <RewardsGallery level={rewardsLevel} />;
+    return <RewardsGallery level={rewardsLevel} waiting={Number(params.get("waiting")) || 0} />;
   }
   return <HubInspector />;
 }

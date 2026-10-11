@@ -1001,12 +1001,15 @@ export function RankChip({
   placeholder,
   ariaPrefix,
   ariaSuffix,
+  waiting = 0,
 }: {
   onClick?: () => void;
   presence?: boolean;
   placeholder?: string;
   ariaPrefix?: string;
   ariaSuffix?: string;
+  /** Friend requests waiting in the drawer: a dot, never a number (lib/drawer-return waitingInDrawer). */
+  waiting?: number;
 }) {
   const copy = useCopy();
   const profile = useProfile();
@@ -1040,6 +1043,14 @@ export function RankChip({
           <UserCircle aria-hidden className="size-5 text-muted-foreground" />
         )}
         {/* The signed-in dot lives on the avatar, presence-badge style. */}
+        {waiting > 0 && (
+          // Ink with the card's ring, as the Friends row's badge is ink: top right, the signed-in dot being bottom right.
+          <span
+            aria-hidden
+            data-waiting-dot
+            className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-foreground ring-2 ring-card"
+          />
+        )}
         {presence && (
           <span
             aria-hidden
@@ -1078,6 +1089,7 @@ export function RankChip({
         ariaPrefix ?? copy.rewardsChipLabel,
         rank ? copy.rankAriaLabel(rank.name, rank.level) : null,
         ariaSuffix,
+        waiting > 0 ? copy.accountWaitingAria(waiting) : null,
       ]
         .filter(Boolean)
         .join(", ")}
