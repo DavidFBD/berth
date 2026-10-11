@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { campaignStats, campaignStatus, needsYou } from "./campaign-stats";
+import { campaignStats, campaignStatus, claimGroups, needsYou } from "./campaign-stats";
 import type { ClaimState } from "./campaigns";
+import { COPY } from "./copy";
 
 /** The staff card's numbers, from the meter alone. */
 
@@ -83,5 +84,35 @@ describe("campaignStatus", () => {
     expect(campaignStatus({ ...base, active: false, draft: true }, at("2026-10-12T09:00:00Z"))).toBe("draft");
     expect(campaignStatus({ ...base, active: false }, at("2026-10-12T09:00:00Z"))).toBe("paused");
     expect(campaignStatus({ ...base, kind: "buy", active: false }, at("2026-10-12T09:00:00Z"))).toBe("retired");
+  });
+});
+
+describe("the stats explanation", () => {
+  it("says Signed up is every account that arrived, refused ones included, as campaignStats counts it", () => {
+    const explain = COPY.campaign.staff.stats.explain;
+    expect(explain).toContain("every account that arrived through the link");
+    expect(explain).not.toContain("every new account");
+    expect(explain).toContain("Link opens is approximate");
+    expect(campaignStats({ ...launch, counts: counts({ rejected: 2 }), reservedUsd: 0, paidUsd: 0, opens: 0, setUp: 0 }).signedUp).toBe(2);
+  });
+});
+
+describe("claimGroups", () => {
+  const claims = [
+    { id: "1", campaignId: "a", state: "qualified" as const },
+    { id: "2", campaignId: "b", state: "qualified" as const },
+    { id: "3", campaignId: "a", state: "approved" as const },
+    { id: "4", campaignId: "b", state: "expired" as const },
+  ];
+  it("sorts every campaign's claims into the sections", () => {
+    const groups = claimGroups(claims);
+    expect(groups.qualified.map((claim) => claim.id)).toEqual(["1", "2"]);
+    expect(groups.closed.map((claim) => claim.id)).toEqual(["4"]);
+  });
+  it("shows only one campaign's claims when a card asks", () => {
+    const groups = claimGroups(claims, "a");
+    expect(groups.qualified.map((claim) => claim.id)).toEqual(["1"]);
+    expect(groups.approved.map((claim) => claim.id)).toEqual(["3"]);
+    expect(groups.closed).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@ import type { SocialViewer } from "@/lib/server/social/people";
 import { COPY } from "@/lib/copy";
 import { ogImage, ogPersonalElement } from "@/lib/og/card";
 import { invitePerson, personalCardResponse, profilePerson } from "./og-people";
+import { personalImageRef } from "@/lib/og/metadata";
 import { generateMetadata as profileMetadata } from "@/app/u/[username]/page";
 import { generateMetadata as inviteMetadata } from "@/app/r/[code]/page";
 
@@ -135,6 +136,25 @@ describe("the profile card's answer", () => {
     expect(cache).toBe("public, max-age=0, s-maxage=300, stale-while-revalidate=300");
     // The caller's country plays no part: no Vary on it.
     expect(new Map(kitCard.headers).has("vary")).toBe(false);
+  }, 60_000);
+
+  it("draws a named card only at its own v: any other v, or none, is sent there; the anonymous card answers any v", async () => {
+    const person = (await profilePerson("harbour_kit"))!;
+    const own = personalImageRef("profile", "harbour_kit", person, "").og.url;
+    const v = new URLSearchParams(own.split("?")[1]).get("v");
+    for (const wrong of ["made-up", "", null]) {
+      const response = await personalCardResponse("profile", "HARBOUR_KIT", wrong);
+      expect(response.status).toBe(308);
+      expect(response.headers.get("location")).toBe(own);
+    }
+    expect((await personalCardResponse("profile", "harbour_kit", v)).status).toBe(200);
+    const invite = (await invitePerson("kaykaykt"))!;
+    const inviteOwn = personalImageRef("invite", "kaykaykt", invite, "").og.url;
+    const redirected = await personalCardResponse("invite", "kaykaykt", "nope");
+    expect(redirected.status).toBe(308);
+    expect(redirected.headers.get("location")).toBe(inviteOwn);
+    expect((await personalCardResponse("profile", "no_such_name", "anything")).status).toBe(200);
+    expect((await personalCardResponse("invite", "nocodehere", "anything")).status).toBe(200);
   }, 60_000);
 
   it("draws only the username, the rank name and the card's own words: no digits, no money", async () => {

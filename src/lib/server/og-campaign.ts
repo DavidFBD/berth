@@ -6,6 +6,7 @@ import { ogCampaignImage, ogImage } from "@/lib/og/card";
 import { OG_VERSION, ogImageRef } from "@/lib/og/metadata";
 import { OG_CONTENT_TYPE, OG_SIZE } from "@/lib/og/size";
 import { campaignLanding } from "@/lib/server/campaigns/store";
+import { canonicalRedirect } from "@/lib/server/og-people";
 import { overrideAllowed } from "@/lib/server/availability";
 
 /**
@@ -99,10 +100,20 @@ function fallbackBytes(): Promise<ArrayBuffer> {
   return fallback;
 }
 
-/** The whole answer of /og/c/<code>. */
-export async function campaignCardResponse(code: string, search?: URLSearchParams): Promise<Response> {
-  const amount = cardAmount(await cardLanding(code, search));
-  if (amount === null) return new Response(await fallbackBytes(), { status: 200, headers: { ...FALLBACK_CARD_HEADERS } });
+/**
+ * The whole answer of /og/c/<code>. A live card is drawn only at its own
+ * address, the `v` the page names: any other `v`, or none, is sent there
+ * (308), so a made up `v` cannot make the server draw it again and again
+ * past the edge cache. The fallback is the same cached bytes for any `v`.
+ */
+export async function campaignCardResponse(code: string, search: URLSearchParams = new URLSearchParams()): Promise<Response> {
+  const landing = await cardLanding(code, search);
+  const amount = cardAmount(landing);
+  if (amount === null || landing.state !== "live") return new Response(await fallbackBytes(), { status: 200, headers: { ...FALLBACK_CARD_HEADERS } });
+  // The dev previews (next dev only) draw whatever they are asked.
+  const preview = overrideAllowed() && search.has("preview");
+  const url = campaignImageUrl(landing.code, amount);
+  if (!preview && new URLSearchParams(url.split("?")[1]).get("v") !== search.get("v")) return canonicalRedirect(url);
   const bytes = await (await ogCampaignImage(amount)).arrayBuffer();
   return new Response(bytes, { status: 200, headers: { ...LIVE_CARD_HEADERS } });
 }

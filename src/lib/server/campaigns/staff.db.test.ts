@@ -571,9 +571,14 @@ describe("a claim from qualified to paid", () => {
     await username(second.user);
     expect(await advance(second.claimId)).toBe("waitlisted");
     await joined({ code: "funnel" });
+    // An email that already counted refuses this one before it is set up (rule 2): not counted as set up.
+    await kitPerson({ email: "taken.funnel@example.com" });
+    const early = await joined({ code: "funnel", email: "taken.funnel@example.com" });
+    await advance(early.claimId);
+    expect((await claimById(early.claimId))!).toMatchObject({ state: "rejected", reject_reason: "email_used" });
     const meter = (await staffQueue()).campaigns.find((campaign) => campaign.code === "funnel")!;
     expect(meter).toMatchObject({ opens: 3, setUp: 2, slots: 1 });
-    expect(campaignStats(meter)).toMatchObject({ opens: 3, signedUp: 3, setUp: 2, staying: 1, qualified: 0, paid: 0, placesLeft: 0, budgetLeftUsd: 0 });
+    expect(campaignStats(meter)).toMatchObject({ opens: 3, signedUp: 4, setUp: 2, staying: 1, qualified: 0, paid: 0, placesLeft: 0, budgetLeftUsd: 0 });
   });
 });
 

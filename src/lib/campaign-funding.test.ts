@@ -6,6 +6,7 @@ import {
   FUNDING_NETWORK,
   FUNDING_TOKEN,
   fundingCover,
+  fundingLineState,
   INTENTS_CONTRACT_ADDRESS,
   judgePayoutAddress,
 } from "./campaign-funding";
@@ -119,5 +120,23 @@ describe("fundingCover", () => {
   it("is calm about a half typed form", () => {
     expect(fundingCover({ balanceRaw: 100_000_000n, amountUsd: 0, budgetUsd: 0 })).toEqual({ rewards: 0, neededUsd: 0, neededRewards: 0, shortRaw: 0n });
     expect(fundingCover({ balanceRaw: -1n, amountUsd: 5, budgetUsd: 5 })).toMatchObject({ rewards: 0, shortRaw: 5_000_000n });
+  });
+});
+
+describe("fundingLineState", () => {
+  const ok = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+  const base = { retired: false, read: false, fetching: false };
+  it("says there is no wallet, for a live and a retired campaign alike", () => {
+    expect(fundingLineState({ ...base, address: null })).toBe("none");
+    expect(fundingLineState({ ...base, address: null, retired: true })).toBe("none_retired");
+  });
+  it("says a Berth address is one, and a stored value that is no wallet is none, instead of could not be read", () => {
+    expect(fundingLineState({ ...base, address: USDC_BASE })).toBe("berth");
+    expect(fundingLineState({ ...base, address: "not a wallet" })).toBe("not_a_wallet");
+  });
+  it("reads, is reading, or could not read a real wallet", () => {
+    expect(fundingLineState({ ...base, address: ok, read: true })).toBe("read");
+    expect(fundingLineState({ ...base, address: ok, fetching: true })).toBe("reading");
+    expect(fundingLineState({ ...base, address: ok })).toBe("unreadable");
   });
 });

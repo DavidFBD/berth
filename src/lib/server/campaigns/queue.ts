@@ -109,7 +109,10 @@ export type CampaignMeter = {
   /**
    * Claims whose account got as far as set up (verified email, username, an
    * EVM home wallet, the terms): it took a place, waits in line for one, or
-   * was refused one for a wallet or an email that already counted.
+   * was refused one for a wallet that already counted (only the reservation
+   * refuses for that). An email that already counted is left out: the same
+   * reason also refuses an account before it is set up, and the two cannot
+   * be told apart, so the count errs low rather than high.
    */
   setUp: number;
   /** The wallets a payout may come from (checksummed), active ones only. */
@@ -223,7 +226,7 @@ export async function staffQueue({ reveal = false }: { reveal?: boolean } = {}):
   const kept = new Set(keptRows.map((row) => String(row.campaign_id)));
   const setUpRows = (await sql.query(
     `select campaign_id, count(*)::int as set_up from campaign_claims
-      where onboarded_at is not null or waitlisted_at is not null or reject_reason in ('wallet_used', 'email_used')
+      where onboarded_at is not null or waitlisted_at is not null or reject_reason = 'wallet_used'
       group by campaign_id`,
   )) as { campaign_id: string; set_up: number }[];
   const setUpOf = new Map(setUpRows.map((row) => [String(row.campaign_id), Number(row.set_up)]));

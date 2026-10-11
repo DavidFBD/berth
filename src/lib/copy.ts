@@ -1727,8 +1727,6 @@ export type CampaignStaffCopy = {
   loading: string;
   failed: string;
   meter: (reservedUsd: string, paidUsd: string, budgetUsd: string, slots: number, maxClaims: number) => string;
-  active: string;
-  inactive: string;
   activate: string;
   deactivate: string;
   /** The confirmation before a campaign goes live: the staff member's own reading (no counsel yet, 2026-10-05). */
@@ -1748,8 +1746,6 @@ export type CampaignStaffCopy = {
   activateNeedsFunding: string;
   /** The campaign card's pill (lib/campaign-stats campaignStatus). */
   status: Record<"live" | "scheduled" | "ended" | "paused" | "draft" | "retired", string>;
-  /** The card's dates, in the reader's own time zone, which is named. */
-  spanLocal: (from: string, to: string, zone: string) => string;
   /** The campaign's shareable link, the card's main action. */
   share: { heading: string; copy: string; copied: string; open: string; qrLabel: string; aliases: (links: string) => string };
   /** Changing a campaign's link, beside the share link. */
@@ -1777,6 +1773,9 @@ export type CampaignStaffCopy = {
   };
   /** The strip shown only when something on this campaign waits on staff. */
   needsYou: { approve: (count: number) => string; pay: (count: number) => string; review: string; pay_button: string };
+  /** Above the claims after a card's Review or Pay: only that campaign's claims are shown. */
+  claimsOf: (title: string) => string;
+  showAllClaims: string;
   /** The Funding row, collapsed to one line. */
   fundingLine: {
     line: (balance: string, enough: string) => string;
@@ -1784,6 +1783,10 @@ export type CampaignStaffCopy = {
     unreadable: string;
     noWallet: string;
     noWalletRetired: string;
+    /** The payout wallet is one of Berth's own addresses: never read, never a payout wallet. */
+    berth: string;
+    /** The stored payout wallet does not read as a wallet address. */
+    notAWallet: string;
     more: string;
     less: string;
   };
@@ -5517,8 +5520,6 @@ export const COPY: Copy = {
       failed: "The queue could not be read.",
       meter: (reservedUsd, paidUsd, budgetUsd, slots, maxClaims) =>
         `${reservedUsd} reserved, ${paidUsd} paid, of ${budgetUsd}. ${slots} of ${maxClaims} places taken.`,
-      active: "Active",
-      inactive: "Inactive",
       activate: "Activate",
       deactivate: "Pause",
       activateConfirm: (title) =>
@@ -5535,7 +5536,6 @@ export const COPY: Copy = {
       delete: "Delete",
       deleted: (code) => `Deleted. The code ${code} is free again.`,
       status: { live: "Live", scheduled: "Starts later", ended: "Ended", paused: "Paused", draft: "Draft", retired: "Retired" },
-      spanLocal: (from, to, zone) => `${from} to ${to}, ${zone}`,
       share: {
         heading: "Share link",
         copy: "Copy link",
@@ -5556,7 +5556,7 @@ export const COPY: Copy = {
       stats: {
         label: "What the numbers count",
         explain:
-          "Link opens counts each time the campaign page was shown, per day, with nothing kept about who opened it. Apps drawing a preview of the link are left out. Signed up counts every new account opened through the link. Set up means a verified email, a username, a wallet and the terms accepted. Staying means holding a place and waiting out the days. Places and budget left are what is not yet reserved or paid.",
+          "Link opens is approximate: it counts each time the campaign page was shown, with nothing kept about who opened it. Apps drawing a preview of the link are left out, but staff opening it and mail scanners that check links may count. Signed up counts every account that arrived through the link, including any later found to be on Berth before. Set up means a verified email, a username, a wallet and the terms accepted. Staying means holding a place and waiting out the days. Places and budget left are what is not yet reserved or paid.",
         opens: "Link opens",
         signedUp: "Signed up",
         setUp: "Set up",
@@ -5572,12 +5572,16 @@ export const COPY: Copy = {
         review: "Review",
         pay_button: "Pay",
       },
+      claimsOf: (title) => `Showing the claims of ${title} only.`,
+      showAllClaims: "Show all claims",
       fundingLine: {
         line: (balance, enough) => `USDC on Base, ${balance} in the payout wallet. ${enough}`,
         reading: "USDC on Base. Reading the payout wallet.",
         unreadable: "USDC on Base. The payout wallet could not be read just now.",
         noWallet: "No payout wallet yet. Add one in Settings before activating.",
         noWalletRetired: "No payout wallet.",
+        berth: "The payout wallet is one of Berth's own addresses, not a wallet for payouts. Open for details.",
+        notAWallet: "The payout wallet does not read as a wallet address. Open for details.",
         more: "Show funding",
         less: "Hide funding",
       },

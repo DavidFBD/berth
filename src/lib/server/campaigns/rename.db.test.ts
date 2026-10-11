@@ -127,3 +127,41 @@ describe("changing a campaign's link", () => {
     expect(((await sql.query(`select 1 from campaign_code_aliases where code = 'short-lived'`)) as unknown[]).length).toBe(0);
   });
 });
+
+describe("the code lock", () => {
+  it("takes a lock per code, in order, before a create or a rename writes, in one ReadCommitted transaction", async () => {
+    const seen: { texts: string[]; params: unknown[][]; options: unknown }[] = [];
+    setSqlClient({
+      query: sql.query,
+      transaction: (statements, options) => {
+        seen.push({ texts: statements.map((statement) => statement.text), params: statements.map((statement) => statement.params ?? []), options });
+        return sql.transaction!(statements, options);
+      },
+    });
+    try {
+      const created = await createCampaign(staff, {
+        code: "locked-one",
+        title: "Locked",
+        amountUsd: 5,
+        budgetUsd: 100,
+        maxClaims: 20,
+        stayDays: 14,
+        startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+        endsAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+      });
+      expect(created.ok).toBe(true);
+      const id = String(created.detail?.id);
+      expect((await renameCampaignCode(staff, id, "a-locked-two", "lock test")).ok).toBe(true);
+      const [create, rename] = seen;
+      expect(create.options).toEqual({ isolationLevel: "ReadCommitted" });
+      expect(create.texts[0]).toMatch(/pg_advisory_xact_lock/);
+      expect(create.params[0]).toEqual(["locked-one"]);
+      expect(create.texts[1]).toMatch(/insert into campaigns/);
+      expect(rename.texts.slice(0, 2).every((text) => /pg_advisory_xact_lock/.test(text))).toBe(true);
+      expect(rename.params.slice(0, 2)).toEqual([["a-locked-two"], ["locked-one"]]);
+      expect(rename.texts[2]).toMatch(/update campaigns set code/);
+    } finally {
+      setSqlClient(sql);
+    }
+  });
+});

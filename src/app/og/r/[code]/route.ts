@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 
 type Params = { params: Promise<{ code: string }> };
 
-export async function GET(_request: Request, { params }: Params): Promise<Response> {
+export async function GET(request: Request, { params }: Params): Promise<Response> {
   const { code } = await params;
-  return personalCardResponse("invite", code);
+  return personalCardResponse("invite", code, new URL(request.url).searchParams.get("v"));
 }

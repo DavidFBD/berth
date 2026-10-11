@@ -4,13 +4,13 @@ import { permanentRedirect, redirect } from "next/navigation";
 import { CampaignLanding } from "@/components/campaign-landing";
 import { campaignLanding, renamedCampaignCode } from "@/lib/server/campaigns/store";
 import { overrideAllowed, requestAvailability } from "@/lib/server/availability";
-import { landingPreview } from "@/lib/campaigns";
+import { campaignPath, landingPreview } from "@/lib/campaigns";
 import { countLinkOpen } from "@/lib/server/campaigns/link-opens";
 import { campaignCardMetadata, cardLanding } from "@/lib/server/og-campaign";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: Promise<{ code: string }>; searchParams: Promise<{ preview?: string | string[] }> };
+type Params = { params: Promise<{ code: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 /**
  * The link preview: a live campaign's own card with its amount, anything
@@ -44,14 +44,16 @@ export async function generateMetadata({ params, searchParams }: Params): Promis
 
 export default async function CampaignPage({ params, searchParams }: Params) {
   const { code } = await params;
-  const { preview } = await searchParams;
+  const query = await searchParams;
+  const { preview } = query;
   const requestHeaders = await headers();
   if (!requestAvailability(requestHeaders).available) redirect("/");
   const fixture = overrideAllowed() ? landingPreview(code, typeof preview === "string" ? preview : null) : null;
   if (fixture) return <CampaignLanding landing={fixture} />;
   // A link staff changed since: the old one opens the new one (308), and is counted there.
   const renamed = await renamedCampaignCode(code).catch(() => null);
-  if (renamed) permanentRedirect(`/c/${renamed}`);
+  // The query goes along, so a link's UTM tags survive the change.
+  if (renamed) permanentRedirect(campaignPath(renamed, query));
   // One more open on the staff card's counter, after the response; no visitor data is kept.
   countLinkOpen(code, requestHeaders);
   return <CampaignLanding landing={await campaignLanding(code)} />;

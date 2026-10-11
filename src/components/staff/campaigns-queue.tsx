@@ -10,12 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { useCopy } from "@/components/settings-provider";
 import { usePrivy } from "@privy-io/react-auth";
-import { activationGaps, campaignLinkUrl, campaignUsd, normalizeCampaignCode, REJECT_REASONS, suggestedAction } from "@/lib/campaigns";
+import { activationGaps, campaignLinkUrl, campaignUsd, localDateTime, normalizeCampaignCode, REJECT_REASONS, suggestedAction } from "@/lib/campaigns";
 import { cn, scrollIntoViewGently } from "@/lib/utils";
 import type { StaffCampaignsResponse } from "@/app/api/staff/campaigns/route";
 import type { CampaignMeter, QueueClaim } from "@/lib/server/campaigns/queue";
-import { formatUsdcRaw, judgePayoutAddress } from "@/lib/campaign-funding";
-import { campaignStats, campaignStatus, needsYou, type CampaignStats } from "@/lib/campaign-stats";
+import { formatUsdcRaw, fundingLineState, judgePayoutAddress } from "@/lib/campaign-funding";
+import { campaignStats, campaignStatus, claimGroups, needsYou, type CampaignStats } from "@/lib/campaign-stats";
 import { CopyButton, FundingBlock, PayoutAddressField, PayoutAddressNote, useFundingBalance } from "@/components/staff/campaign-funding";
 
 /**
@@ -183,13 +183,15 @@ export function CampaignsQueueView({
     scrollIntoViewGently(messageRef.current);
     messageRef.current?.focus({ preventScroll: true });
   }, [message]);
-  const groups = {
-    qualified: queue.claims.filter((claim) => claim.state === "qualified"),
-    approved: queue.claims.filter((claim) => claim.state === "approved"),
-    holding: queue.claims.filter((claim) => claim.state === "holding"),
-    paid: queue.claims.filter((claim) => claim.state === "paid"),
-    closed: queue.claims.filter((claim) => claim.state === "rejected" || claim.state === "expired"),
-  };
+  // A card's Review or Pay narrows the claims below to that campaign, until Show all.
+  const [only, setOnly] = useState<{ campaignId: string; section: "qualified" | "approved" } | null>(null);
+  const onlyCampaign = only ? queue.campaigns.find((campaign) => campaign.id === only.campaignId) ?? null : null;
+  const groups = claimGroups(queue.claims, onlyCampaign?.id ?? null);
+  // The do-not-pay warning counts every campaign's approved claims, whatever is shown below.
+  const ineligibleApproved = queue.claims.filter((claim) => claim.state === "approved" && claim.staffIneligibleAt).length;
+  useEffect(() => {
+    if (only) scrollIntoViewGently(document.getElementById(`claims-${only.section}`), { block: "start" });
+  }, [only]);
   return (
     <section className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8" data-testid="staff-campaigns">
       <header>
@@ -211,15 +213,30 @@ export function CampaignsQueueView({
           )}
         </div>
       )}
-      {groups.approved.some((claim) => claim.staffIneligibleAt) && (
+      {ineligibleApproved > 0 && (
         <div role="alert" data-testid="ineligible-approved" className="rounded-lg border border-warn/50 bg-warn-soft px-4 py-3 text-sm text-foreground">
-          {copy.ineligibleApproved(groups.approved.filter((claim) => claim.staffIneligibleAt).length)}
+          {copy.ineligibleApproved(ineligibleApproved)}
         </div>
       )}
       {queue.campaigns.map((campaign) => (
-        <CampaignCard key={campaign.id} campaign={campaign} busy={busy} onAction={onAction} justCreated={campaign.id === justCreatedId} />
+        <CampaignCard
+          key={campaign.id}
+          campaign={campaign}
+          busy={busy}
+          onAction={onAction}
+          justCreated={campaign.id === justCreatedId}
+          onReview={(section) => setOnly({ campaignId: campaign.id, section })}
+        />
       ))}
       <CreateCampaign key={createFormResetKey} busy={busy} onAction={onAction} prefill={createPrefill} />
+      {onlyCampaign && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-foreground" data-testid="claims-only">
+          <span>{copy.claimsOf(onlyCampaign.title)}</span>
+          <Button size="xs" variant="outline" onClick={() => setOnly(null)}>
+            {copy.showAllClaims}
+          </Button>
+        </div>
+      )}
       {(Object.keys(groups) as (keyof typeof groups)[]).map((group) => (
         <div key={group} id={`claims-${group}`} className="flex scroll-mt-6 flex-col gap-3">
           <h2 className="text-sm font-medium text-foreground">
@@ -241,12 +258,15 @@ function CampaignCard({
   busy,
   onAction,
   justCreated = false,
+  onReview,
 }: {
   campaign: CampaignMeter;
   busy: boolean;
   onAction: (action: StaffAction) => void;
   /** This campaign is the one a create just made this session. */
   justCreated?: boolean;
+  /** Shows only this campaign's claims below, at that section. */
+  onReview: (section: "qualified" | "approved") => void;
 }) {
   const copy = useCopy().campaign.staff;
   const [confirming, setConfirming] = useState(false);
@@ -290,7 +310,7 @@ function CampaignCard({
             </span>
           </div>
           <p className="text-sm text-muted-foreground" data-testid="campaign-dates">
-            {copy.spanLocal(when(campaign.startsAt), when(campaign.endsAt), zoneName(campaign.endsAt))}
+            {copy.span(zonedWhen(campaign.startsAt), zonedWhen(campaign.endsAt))}
           </p>
           <p className="text-xs text-muted-foreground">
             {campaign.kind === "signup" ? copy.terms(campaignUsd(campaign.amountUsd), campaign.stayDays) : copy.retired}
@@ -312,7 +332,7 @@ function CampaignCard({
                 <Button
                   size="sm"
                   variant={index === 0 ? "default" : "outline"}
-                  onClick={() => scrollIntoViewGently(document.getElementById(`claims-${item.kind === "approve" ? "qualified" : "approved"}`), { block: "start" })}
+                  onClick={() => onReview(item.kind === "approve" ? "qualified" : "approved")}
                 >
                   {item.kind === "approve" ? copy.needsYou.review : copy.needsYou.pay_button}
                 </Button>
@@ -452,9 +472,8 @@ function CampaignCard({
   );
 }
 
-/** The short name of the reader's own time zone on that day, "CEST", "GMT+2". */
-const zoneName = (iso: string) =>
-  new Intl.DateTimeFormat("en-GB", { timeZoneName: "short" }).formatToParts(new Date(iso)).find((part) => part.type === "timeZoneName")?.value ?? "";
+/** "11 Oct at 00:00 CEST": each date with its own zone, since a summer time change can fall between the two. */
+const zonedWhen = (iso: string) => localDateTime(iso);
 
 /** The campaign's link in full, to copy, open or scan, and to change. */
 function ShareLink({ campaign, busy, onAction }: { campaign: CampaignMeter; busy: boolean; onAction: (action: StaffAction) => void }) {
@@ -637,15 +656,19 @@ function FundingRow({ campaign, wallet }: { campaign: CampaignMeter; wallet: str
     budgetUsd: campaign.budgetUsd,
     paidUsd: campaign.paidUsd,
   });
-  const line = !wallet
-    ? campaign.kind === "signup"
-      ? copy.fundingLine.noWallet
-      : copy.fundingLine.noWalletRetired
-    : read !== null && cover
+  const state = fundingLineState({ address: wallet, retired: campaign.kind !== "signup", read: read !== null && cover !== null, fetching: balance.isFetching });
+  const line =
+    state === "read" && read !== null && cover
       ? copy.fundingLine.line(formatUsdcRaw(read), copy.funding.enoughFor(cover.rewards))
-      : balance.isFetching
-        ? copy.fundingLine.reading
-        : copy.fundingLine.unreadable;
+      : {
+          none: copy.fundingLine.noWallet,
+          none_retired: copy.fundingLine.noWalletRetired,
+          berth: copy.fundingLine.berth,
+          not_a_wallet: copy.fundingLine.notAWallet,
+          read: copy.fundingLine.reading,
+          reading: copy.fundingLine.reading,
+          unreadable: copy.fundingLine.unreadable,
+        }[state];
   return (
     <Fold
       testId="funding-row"

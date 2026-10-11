@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   campaignLinkUrl,
+  localDateTime,
+  campaignPath,
   ACTIVE_WINDOW_DAYS,
   activationGaps,
   campaignDay,
@@ -320,5 +322,21 @@ describe("the queue's suggestion for a country that could not be told", () => {
 describe("campaignLinkUrl", () => {
   it("is the full production link staff hand out", () => {
     expect(campaignLinkUrl("launch")).toBe("https://www.berthmarkets.com/c/launch");
+  });
+});
+
+describe("campaignPath", () => {
+  it("carries the query over, so UTM tags survive a changed link", () => {
+    expect(campaignPath("launch-campaign")).toBe("/c/launch-campaign");
+    expect(campaignPath("launch-campaign", { utm_source: "x", utm_campaign: "launch week", tag: ["a", "b"], gone: undefined })).toBe(
+      "/c/launch-campaign?utm_source=x&utm_campaign=launch+week&tag=a&tag=b",
+    );
+  });
+});
+
+describe("localDateTime", () => {
+  it("names each date's own zone, so a summer time change between them reads right", () => {
+    expect(localDateTime("2026-10-10T22:00:00.000Z", "Europe/Amsterdam")).toBe("11 Oct at 00:00 CEST");
+    expect(localDateTime("2026-10-25T21:59:00.000Z", "Europe/Amsterdam")).toBe("25 Oct at 22:59 CET");
   });
 });

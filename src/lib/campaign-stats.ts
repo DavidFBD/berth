@@ -85,3 +85,18 @@ export function campaignStatus(
   if (campaign.active) return now.getTime() < new Date(campaign.startsAt).getTime() ? "scheduled" : "live";
   return campaign.draft ? "draft" : "paused";
 }
+
+/**
+ * The claims queue's sections, in order, for every campaign or for one
+ * (a card's Review or Pay shows only its own). Pure.
+ */
+export function claimGroups<T extends { state: ClaimState; campaignId: string }>(claims: readonly T[], campaignId: string | null = null) {
+  const shown = campaignId ? claims.filter((claim) => claim.campaignId === campaignId) : [...claims];
+  return {
+    qualified: shown.filter((claim) => claim.state === "qualified"),
+    approved: shown.filter((claim) => claim.state === "approved"),
+    holding: shown.filter((claim) => claim.state === "holding"),
+    paid: shown.filter((claim) => claim.state === "paid"),
+    closed: shown.filter((claim) => claim.state === "rejected" || claim.state === "expired"),
+  };
+}

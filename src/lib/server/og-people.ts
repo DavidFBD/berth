@@ -5,6 +5,7 @@ import { lookupKey } from "@/lib/handle";
 import { normalizeInviteCode } from "@/lib/invite-code";
 import { rankForXp } from "@/lib/xp";
 import { isFaceName, ogImage, ogPersonalImage, OG_CONTENT_TYPE, type OgPerson, type PersonalKind } from "@/lib/og/card";
+import { personalImageRef } from "@/lib/og/metadata";
 
 /**
  * Who a link preview card may name (lib/og/card OgPerson), and the one
@@ -117,9 +118,27 @@ function anonymousBytes(kind: PersonalKind): Promise<ArrayBuffer> {
   return anonymous[kind]!;
 }
 
-/** The whole answer of /og/u/<username> (kind "profile") and /og/r/<code> (kind "invite"). */
-export async function personalCardResponse(kind: PersonalKind, key: unknown): Promise<Response> {
+/** A short-lived answer pointing at the card's own versioned address. */
+export function canonicalRedirect(location: string): Response {
+  return new Response(null, { status: 308, headers: { Location: location, "Cache-Control": "public, max-age=0, s-maxage=300" } });
+}
+
+/**
+ * The whole answer of /og/u/<username> (kind "profile") and /og/r/<code>
+ * (kind "invite"). `v` is the request's own `?v=` (null when absent); the
+ * routes always pass it. A card that names someone is drawn only at its
+ * own address, the `v` the page names (lib/og/metadata personalImageRef):
+ * any other `v` is sent there (308), so a made up `v` cannot make the
+ * server draw the picture again and again past the edge cache. The
+ * anonymous card is the same cached bytes for any `v`.
+ */
+export async function personalCardResponse(kind: PersonalKind, key: unknown, v?: string | null): Promise<Response> {
   const person = await cardPerson(kind, key);
+  if (person && v !== undefined) {
+    const canonicalKey = kind === "profile" ? person.handle : (normalizeInviteCode(key) ?? "");
+    const url = personalImageRef(kind, canonicalKey, person, "").og.url;
+    if (new URLSearchParams(url.split("?")[1]).get("v") !== v) return canonicalRedirect(url);
+  }
   const bytes = person
     ? await (await ogPersonalImage(kind, person)).arrayBuffer()
     : await anonymousBytes(kind);

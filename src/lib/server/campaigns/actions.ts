@@ -1,5 +1,5 @@
 import { getAddress } from "viem";
-import { getSql } from "@/lib/server/db";
+import { getSql, inTransaction } from "@/lib/server/db";
 import { staffAdminIds, staffAudit } from "@/lib/server/staff-auth";
 import { sendNotice } from "@/lib/server/email/notify";
 import { normalizeCampaignCode, REJECT_REASONS, campaignUsd } from "@/lib/campaigns";
@@ -87,8 +87,23 @@ async function refused(
  * `also` is one more data modifying step in the same statement, reading
  * `act` and the write's own params.
  */
+/**
+ * Campaign codes are claimed under a lock per code (create and rename), so
+ * a create and a rename that touch the same code run one after the other:
+ * without it, a create could miss an alias the rename is writing at that
+ * moment and leave one code both a campaign's own and another's alias.
+ * Each later statement reads a fresh snapshot (ReadCommitted, db.ts).
+ */
+const codeLocks = (codes: readonly string[]) =>
+  [...new Set(codes)].sort().map((code) => ({ text: `select pg_advisory_xact_lock(hashtextextended('campaign-code|' || $1, 0))`, params: [code] }));
+
+async function underCodeLocks<T>(codes: readonly string[], statement: { text: string; params: unknown[] }): Promise<T[]> {
+  const results = await inTransaction([...codeLocks(codes), statement], { isolationLevel: "ReadCommitted" });
+  return results[results.length - 1] as T[];
+}
+
 async function auditedWrite<T>(
-  write: { text: string; params: unknown[]; also?: string },
+  write: { text: string; params: unknown[]; also?: string; lockCodes?: readonly string[] },
   audit: { staffUserId: string; action: string; target: string | null; detail?: Record<string, unknown> },
 ): Promise<T[]> {
   const n = write.params.length;
@@ -100,6 +115,12 @@ async function auditedWrite<T>(
       returning 1
     )
     select * from act`;
+  if (write.lockCodes?.length) {
+    return underCodeLocks<T>(write.lockCodes, {
+      text,
+      params: [...write.params, audit.staffUserId, audit.action, audit.target, JSON.stringify(audit.detail ?? {})],
+    });
+  }
   return (await getSql().query(text, [
     ...write.params,
     audit.staffUserId,
@@ -176,6 +197,7 @@ export async function createCampaign(staffUserId: string, input: CampaignInput):
                 where not exists (select 1 from campaign_code_aliases a where a.code = $1)
                on conflict (code) do nothing returning id`,
         params: [code, title, amount, budget, maxClaims, stayDays, startsAt.toISOString(), endsAt.toISOString()],
+        lockCodes: [code],
       },
       { staffUserId, action: "campaign.create", target: code, detail: shown },
     );
@@ -470,8 +492,9 @@ export async function renameCampaignCode(staffUserId: string, campaignId: string
   if (campaign.kind !== "signup") return refused(staffUserId, "campaign.rename", campaignId, "retired", detail);
   if (campaign.code === code) return refused(staffUserId, "campaign.rename", campaignId, "same_code", detail);
   try {
-    const rows = (await getSql().query(
-      `with act as (
+    // Both codes locked: the one taken, and the one becoming an alias.
+    const rows = await underCodeLocks<{ id: string }>([campaign.code, code], {
+      text: `with act as (
          update campaigns set code = $2
           where id = $1 and code = $3
             and not exists (select 1 from campaigns x where x.code = $2)
@@ -495,8 +518,8 @@ export async function renameCampaignCode(staffUserId: string, campaignId: string
          returning 1
        )
        select id from act`,
-      [campaignId, code, campaign.code, staffUserId, JSON.stringify(detail)],
-    )) as { id: string }[];
+      params: [campaignId, code, campaign.code, staffUserId, JSON.stringify(detail)],
+    });
     if (rows[0]) return { ok: true, detail: { from: campaign.code, code } };
   } catch {
     // The unique code raced another write: taken.

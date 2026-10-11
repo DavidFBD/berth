@@ -191,6 +191,36 @@ export function campaignLinkUrl(code: string): string {
   return `https://www.berthmarkets.com/c/${encodeURIComponent(code)}`;
 }
 
+/** /c/<code> with the request's query carried over as it came, repeated keys included. Pure. */
+export function campaignPath(code: string, query: Record<string, string | string[] | undefined> = {}): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    for (const one of Array.isArray(value) ? value : value === undefined ? [] : [value]) search.append(key, one);
+  }
+  const rest = search.toString();
+  return `/c/${encodeURIComponent(code)}${rest ? `?${rest}` : ""}`;
+}
+
+/**
+ * "11 Oct at 00:00 CEST": a moment in the reader's own time zone (or the
+ * one given), its zone named for that very date. Pure.
+ */
+export function localDateTime(iso: string, timeZone?: string): string {
+  // Built from parts, so every engine writes it the same way (Safari says "at", Node a comma).
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "short",
+    timeZone,
+  }).formatToParts(new Date(iso));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value ?? "";
+  const zone = part("timeZoneName");
+  return `${part("day")} ${part("month")} at ${part("hour")}:${part("minute")}${zone ? ` ${zone}` : ""}`;
+}
+
 /** Places still free: the fewer of the places left and the rewards the budget still covers. Pure. */
 export function placesLeft(campaign: Pick<LandingCampaign, "amountUsd" | "budgetUsd" | "maxClaims" | "taken">): number {
   if (!(campaign.amountUsd > 0)) return 0;

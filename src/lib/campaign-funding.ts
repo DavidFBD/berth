@@ -114,3 +114,30 @@ export function fundingCover({
     shortRaw: neededRaw > balance ? neededRaw - balance : 0n,
   };
 }
+
+/** What the card's one line Funding summary says (components/staff/campaigns-queue). */
+export type FundingLineState = "none" | "none_retired" | "berth" | "not_a_wallet" | "read" | "reading" | "unreadable";
+
+/**
+ * The Funding line's state. A Berth address or a stored value that is not a
+ * wallet is never read on Base, so it says what it is rather than "could
+ * not be read". Pure.
+ */
+export function fundingLineState({
+  address,
+  retired,
+  read,
+  fetching,
+}: {
+  address: string | null;
+  retired: boolean;
+  read: boolean;
+  fetching: boolean;
+}): FundingLineState {
+  if (!address) return retired ? "none_retired" : "none";
+  const judged = judgePayoutAddress(address);
+  if (judged.kind !== "ok") return "not_a_wallet";
+  if (judged.berth) return "berth";
+  if (read) return "read";
+  return fetching ? "reading" : "unreadable";
+}
