@@ -48,10 +48,10 @@ export type Copy = {
   /** The quiet "Beta" pill beside the wordmark; BERTH_BETA in lib/beta.ts hides it everywhere at once. */
   beta: {
     tag: string;
-    /** Beside the tag on the header pill, dropped on the narrowest phones. */
+    /** The Feedback button's word, dropped on the narrowest phones. */
     feedback: string;
-    /** What the pill reads out, whatever it shows. */
-    openLabel: string;
+    /** What the Feedback button reads out when only its glyph shows. */
+    feedbackShort: string;
     /** The first line of the feedback sheet's intro. */
     body: string;
     contactLabel: string;
@@ -3167,7 +3167,7 @@ export const COPY: Copy = {
   beta: {
     tag: "Beta",
     feedback: "Feedback",
-    openLabel: "Beta, send feedback",
+    feedbackShort: "Feedback",
     body: "Berth is new. We are still improving it, and your feedback helps.",
     contactLabel: "support@berthmarkets.com",
     contactHref: "mailto:support@berthmarkets.com",

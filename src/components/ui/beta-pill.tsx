@@ -7,14 +7,15 @@ import { useCopy } from "@/components/settings-provider";
 import { BERTH_BETA } from "@/lib/beta";
 
 /**
- * The quiet "Beta · Feedback" pill beside the wordmark: ink/muted with a
- * hairline border, never the accent. One tap opens the feedback sheet
- * (components/feedback), signed in or not: signed out, the sheet asks for
- * a sign in rather than taking words it could not keep. The sheet's intro
- * opens with the beta line, and its foot keeps the support address.
+ * Two quiet things beside the wordmark, never one merged pill. The Beta tag
+ * is a plain uppercase badge, ink/muted with a hairline border and no
+ * action. Feedback is its own ghost pill beside it, sentence case, which
+ * opens the feedback sheet (components/feedback), signed in or not: signed
+ * out, the sheet asks for a sign in rather than taking words it could not
+ * keep. Both are muted, never the accent.
  *
  * On the narrowest phones the word "Feedback" steps aside and the glyph
- * and "Beta" stay; the button always reads out "Send feedback".
+ * stays (named by aria-label); below 340px the Beta tag steps aside too.
  *
  * BERTH_BETA (lib/beta.ts) is the one switch: false hides this everywhere
  * it's rendered, with nothing else to change.
@@ -31,25 +32,26 @@ export function BetaPill({ className }: { className?: string }) {
 
   return (
     <>
-      <button
-        type="button"
-        aria-label={copy.beta.openLabel}
-        onClick={() => {
-          setOpened(true);
-          setSheet(true);
-        }}
-        className={cn(
-          "inline-flex shrink-0 items-center gap-1 self-center rounded-full border border-border py-[0.1875rem] pr-1.5 pl-1 text-[10px] font-medium uppercase leading-none tracking-wide text-muted-foreground outline-none transition-colors duration-150 ease-lift hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
-          sheet && "text-foreground",
-          className,
-        )}
-      >
-        <ChatCircleDots weight="duotone" aria-hidden className="size-3 shrink-0" />
-        <span aria-hidden>
+      <span className={cn("flex shrink-0 items-center gap-1.5 self-center", className)}>
+        <span className="inline-flex items-center rounded-full border border-border px-1.5 py-[0.1875rem] text-[10px] font-medium uppercase leading-none tracking-wide text-muted-foreground max-[339px]:hidden">
           {copy.beta.tag}
-          <span className="max-[359px]:hidden"> · {copy.beta.feedback}</span>
         </span>
-      </button>
+        <button
+          type="button"
+          aria-label={copy.beta.feedbackShort}
+          onClick={() => {
+            setOpened(true);
+            setSheet(true);
+          }}
+          className={cn(
+            "relative inline-flex h-6 items-center gap-1 rounded-full border border-border px-2 text-xs leading-none text-muted-foreground outline-none transition-colors duration-150 ease-lift before:absolute before:-inset-y-1 before:inset-x-0 before:content-[''] hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 max-[359px]:px-1.5",
+            sheet && "text-foreground",
+          )}
+        >
+          <ChatCircleDots weight="duotone" aria-hidden className="size-3.5 shrink-0" />
+          <span className="max-[359px]:hidden">{copy.beta.feedback}</span>
+        </button>
+      </span>
       {opened && (
         <Suspense fallback={null}>
           <FeedbackSheet open={sheet} onOpenChange={setSheet} />
