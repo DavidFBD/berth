@@ -62,6 +62,12 @@ export type Copy = {
   avatarChooseLabel: (face: string) => string;
   inviteCopyLabel: string;
   rewardsChipLabel: string;
+  /** The header's pill for a connected wallet not signed in yet (lib/header-account). */
+  walletSignInChip: string;
+  /** The same pill while the wallet is asked for its signature. */
+  walletSignInChipBusy: string;
+  /** What the pill reads out in full. */
+  walletSignInChipAria: string;
   /** The rank chip's compact form: "Lv 3". */
   rankLevelShort: (level: number) => string;
   /** The rank chip's desktop form, before the rank's name: "Level 3". */
@@ -2952,6 +2958,9 @@ export const COPY: Copy = {
   avatarChooseLabel: (face) => `Choose ${face}`,
   inviteCopyLabel: "Copy your invite link",
   rewardsChipLabel: "Your rewards",
+  walletSignInChip: "Sign in",
+  walletSignInChipBusy: "Check your wallet",
+  walletSignInChipAria: "Sign in with your wallet to open your account. Signing is free and moves nothing.",
   rankLevelShort: (level) => `Lv ${level}`,
   rankLevelLong: (level) => `Level ${level}`,
   rankAriaLabel: (name, level) => `${name}, level ${level}`,

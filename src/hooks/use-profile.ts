@@ -696,6 +696,17 @@ export function usePendingWallet(): string | null {
   return useIdentity().pending;
 }
 
+/**
+ * The wallet identity's sign in, for the header (lib/header-account): the
+ * address it speaks for, the one waiting on a choice, and whether a fresh
+ * session is pocketed for it. An email session counts as signed in.
+ */
+export function useWalletSignIn(): { wallet: string | null; pending: string | null; hasSession: boolean } {
+  const { authenticated, wallet, pending } = useIdentity();
+  if (authenticated) return { wallet: null, pending: null, hasSession: true };
+  return { wallet, pending, hasSession: wallet ? storedWalletSession(wallet) !== null : false };
+}
+
 export function useWaitingIdentity(): { pending: string | null; anchor: { address: string; token: string } | null } {
   const { pending, anchor } = useIdentity();
   return { pending, anchor };

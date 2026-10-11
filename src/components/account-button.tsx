@@ -33,7 +33,8 @@ import { ArrivalPanel, useAddMoney } from "@/components/funding-handoff";
 import { useAvailability } from "@/components/availability/availability-context";
 import type { ArrivalView } from "@/lib/funding-handoff";
 import { useMounted } from "@/hooks/use-mounted";
-import { useAccountWallets } from "@/hooks/use-profile";
+import { useAccountWallets, useProfile, useWalletSignIn } from "@/hooks/use-profile";
+import { headerAccountState } from "@/lib/header-account";
 import { PRIVY_ENABLED } from "@/components/privy-provider";
 import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import { shortenAddress } from "@/lib/format";
@@ -418,9 +419,32 @@ function ExternalAccountEntry({
   focusEmail: boolean;
 }) {
   const copy = useCopy();
+  const profile = useProfile();
+  const signIn = useWalletSignIn();
+  const state = headerAccountState({
+    hasProfile: Boolean(profile.data),
+    wallet: signIn.wallet,
+    pending: signIn.pending,
+    hasSession: signIn.hasSession,
+    fetching: profile.isFetching,
+  });
   return (
     <div data-wallet-pill className="flex min-w-0 items-center gap-1.5">
-      <RankChip onClick={() => setServiceOpen(true)} />
+      {state === "account" ? (
+        <RankChip onClick={() => setServiceOpen(true)} />
+      ) : state === "sign-in" || state === "signing" ? (
+        // Connected is not signed in (lib/header-account): the way in, from
+        // a tap, so the wallet surfaces its signature request.
+        <Button
+          size="sm"
+          className="h-8 shrink-0 rounded-full"
+          disabled={state === "signing"}
+          aria-label={copy.walletSignInChipAria}
+          onClick={() => void profile.refetch()}
+        >
+          {state === "signing" ? copy.walletSignInChipBusy : copy.walletSignInChip}
+        </Button>
+      ) : null}
       <ConnectButton />
       <Drawer open={serviceOpen} onOpenChange={setServiceOpen}>
         <DrawerContent>
