@@ -337,6 +337,11 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
   },
   { name: "campaign-paid", notice: { type: "campaign_paid", amount: "$5", chain: "Base" } },
   {
+    name: "feedback-new",
+    notice: { type: "feedback_new", excerpt: "The sell drawer kept the old amount after I switched stocks, so I had to clear it by hand.", fromOrder: false },
+  },
+  { name: "feedback-fixed", notice: { type: "feedback_fixed", excerpt: "The sell drawer kept the old amount after I switched stocks" } },
+  {
     name: "weekly-summary",
     notice: {
       type: "weekly",

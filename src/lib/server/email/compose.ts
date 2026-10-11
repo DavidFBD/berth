@@ -64,6 +64,24 @@ export type Notice =
       /** One failing pair and the solver's answer, cut short: "USDC on Base to NVDA: -4 No path was found". */
       example: string;
     }
+  | {
+      /**
+       * To staff admins only (lib/server/feedback): someone sent a message
+       * from the feedback sheet. Its first words, never who sent it.
+       */
+      type: "feedback_new";
+      excerpt: string;
+      /** Opened after an order that failed or whose outcome was unclear. */
+      fromOrder: boolean;
+    }
+  | {
+      /**
+       * To the person who wrote, once, when staff mark their message fixed
+       * and they said yes to a reply (lib/server/feedback markFeedback).
+       */
+      type: "feedback_fixed";
+      excerpt: string;
+    }
   | WeeklyNotice;
 
 /**
@@ -122,6 +140,11 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   budget_low: "security",
   staff_reveals: "security",
   quotes_down: "security",
+  // Staff only; under the day's volume guard like any account notice, and
+  // capped per day in lib/server/feedback, so it never crowds out security.
+  feedback_new: "account",
+  // The person asked for this reply in the sheet: sent whatever the switches say, once.
+  feedback_fixed: "account",
 };
 
 export type EmailContent = {
@@ -290,6 +313,34 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
         after: [words.after],
         button: { label: words.button, href: `${baseUrl}/staff/audit` },
         why: email.budgetLow.why,
+      };
+    }
+    case "feedback_new": {
+      const words = email.feedbackNew;
+      const body = words.body(notice.fromOrder);
+      const said = words.said(plain(notice.excerpt, 300));
+      return {
+        kind,
+        subject: words.subject(notice.fromOrder),
+        preview: said,
+        heading: words.heading,
+        paragraphs: [body, said],
+        after: [words.after, words.rate],
+        button: { label: words.button, href: `${baseUrl}/staff/feedback` },
+        why: words.why,
+      };
+    }
+    case "feedback_fixed": {
+      const words = email.feedbackFixed;
+      const said = words.body(plain(notice.excerpt, 160));
+      return {
+        kind,
+        subject: words.subject,
+        preview: said,
+        heading: words.heading,
+        paragraphs: [said, words.fixed],
+        button,
+        why: words.why,
       };
     }
     case "weekly":

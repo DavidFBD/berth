@@ -7,6 +7,7 @@ import {
   CaretRight,
   At,
   Bell,
+  ChatCircleText,
   GearSix,
   SignOut,
   Sparkle,
@@ -30,6 +31,7 @@ import { EmailSection } from "@/components/email-section";
 import { AssistantSection } from "@/components/assistant/assistant-section";
 import { SettingsBody } from "@/components/settings-drawer";
 import { StaffEntry } from "@/components/staff/entry";
+import { FeedbackForm } from "@/components/feedback/feedback-form";
 import {
   DRAWER_RETURN_KEY,
   DRAWER_RETURN_PARAM,
@@ -245,6 +247,7 @@ function MainScreen({
           <Row icon={Sparkle} title={words.rows.ai.title} sub={words.rows.ai.sub} onClick={() => nav.show("ai")} />
         )}
         {onOpenSettings && <Row icon={GearSix} title={copy.settingsTitle} sub={copy.settingsSub} onClick={() => nav.show("settings")} />}
+        <Row icon={ChatCircleText} title={words.rows.feedback.title} sub={words.rows.feedback.sub} onClick={() => nav.show("feedback")} />
       </Panel>
 
       {/* Only for an account on a staff list, by the server's word (components/staff/entry). */}
@@ -461,6 +464,17 @@ function SubContent({
         <Panel as="div" className="flex flex-col gap-3 p-3">
           <span className="text-sm font-medium text-foreground">{copy.settingsTitle}</span>
           <SettingsBody evmAddress={settingsAddress} />
+        </Panel>
+      );
+    case "feedback":
+      return (
+        <Panel as="div" className="flex flex-col gap-3 p-3">
+          <div className="flex flex-col gap-0.5">
+            <span className="font-heading text-[17px] leading-snug tracking-[-0.02em] text-foreground">{copy.feedback.title}</span>
+            <span className="text-sm text-muted-foreground">{copy.feedback.intro}</span>
+          </div>
+          {/* The drawer is only ever open to an account. */}
+          <FeedbackForm signedIn onClose={() => nav.show("main")} />
         </Panel>
       );
     case "ai":

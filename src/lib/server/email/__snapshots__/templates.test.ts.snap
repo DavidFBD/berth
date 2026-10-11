@@ -68,6 +68,39 @@ This is about money paid to your account. Berth sends these to every account wit
 Berth. Wall Street, in your wallet."
 `;
 
+exports[`notice templates > feedback-fixed renders HTML and text without personal data 1`] = `
+"Subject: What you told us is fixed
+
+We fixed what you told us about
+
+You told us: “The sell drawer kept the old amount after I switched stocks”
+It's fixed now. Thank you for telling us.
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because you asked us to reply when you sent us a message.
+
+Berth. Wall Street, in your wallet."
+`;
+
+exports[`notice templates > feedback-new renders HTML and text without personal data 1`] = `
+"Subject: New feedback on Berth
+
+Someone wrote to Berth
+
+A message came in from the feedback sheet.
+“The sell drawer kept the old amount after I switched stocks, so I had to clear it by hand.”
+
+Read it in full, with the screen and device it came from, on the Feedback page, and mark it read or fixed there.
+At most thirty of these emails go out a day. The Feedback page lists every message.
+
+Open Feedback: https://www.berthmarkets.com/staff/feedback
+
+You get this because you are a staff admin of Berth.
+
+Berth. Wall Street, in your wallet."
+`;
+
 exports[`notice templates > friend-request renders HTML and text without personal data 1`] = `
 "Subject: harbourmaster asked to be your friend on Berth
 

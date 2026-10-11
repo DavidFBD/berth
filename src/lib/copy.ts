@@ -1652,6 +1652,8 @@ export type Copy = {
   social: SocialCopy;
   /** The account drawer's first screen, its next step and its rows (components/account-drawer). */
   drawer: DrawerCopy;
+  /** The feedback sheet (components/feedback) and its ways in: the Beta pill, the account drawer, an order that went wrong. */
+  feedback: FeedbackCopy;
   og: OgCopy;
   /** The staff area, internal (STAFF_COPY). */
   staff: StaffCopy;
@@ -2044,6 +2046,34 @@ export type FirstPathCopy = {
   quietUsername: (amount: number) => string;
 };
 
+export type FeedbackCopy = {
+  title: string;
+  intro: string;
+  label: string;
+  placeholder: string;
+  /** Under the message, while it nears the cap. */
+  count: (used: number, max: number) => string;
+  mayReply: string;
+  /** What rides along, said plainly before it is sent (lib/feedback sanitizeContext). */
+  sentWith: string;
+  sentWithOrder: string;
+  send: string;
+  sending: string;
+  signedOut: string;
+  tooLong: (max: number) => string;
+  tooMany: string;
+  failed: string;
+  thanksTitle: string;
+  thanksBody: string;
+  /** The first qualifying message's one time XP (lib/xp feedback_first). */
+  thanksXp: (amount: number) => string;
+  close: string;
+  /** In the Beta pill's popover. */
+  betaAction: string;
+  /** One quiet link under a failed or unclear order. */
+  orderLink: string;
+};
+
 export type DrawerCopy = {
   /** Where a second screen of the drawer goes back to. */
   back: string;
@@ -2070,6 +2100,7 @@ export type DrawerCopy = {
     wallets: { title: string; sub: string };
     notifications: { title: string; sub: string };
     ai: { title: string; sub: string };
+    feedback: { title: string; sub: string };
   };
   /** The profile page's way back when it was opened from the drawer. */
   profileBack: string;
@@ -2341,6 +2372,26 @@ export type EmailCopy = {
     button: string;
     why: string;
   };
+  /** To staff admins only (lib/server/feedback): a new message from the feedback sheet. */
+  feedbackNew: {
+    subject: (fromOrder: boolean) => string;
+    heading: string;
+    body: (fromOrder: boolean) => string;
+    /** The message's first words, quoted. */
+    said: (excerpt: string) => string;
+    after: string;
+    rate: string;
+    button: string;
+    why: string;
+  };
+  /** To the person who wrote, once, when their message is marked fixed and they asked for a reply. */
+  feedbackFixed: {
+    subject: string;
+    heading: string;
+    body: (excerpt: string) => string;
+    fixed: string;
+    why: string;
+  };
   /** To staff admins only (lib/server/staff/budgets): a paid service is running low. */
   budgetLow: {
     service: Record<"openai" | "jev" | "x" | "resend", string>;
@@ -2476,9 +2527,48 @@ export const STAFF_COPY = {
     budgets: "Budgets",
     campaigns: "Campaigns",
     posts: "Posts",
+    feedback: "Feedback",
     audit: "Audit",
   },
   signOut: "Leave staff area",
+  /** /staff/feedback (lib/server/feedback): what people wrote from the feedback sheet. */
+  feedback: {
+    title: "Feedback",
+    sub: "What people wrote from the feedback sheet, newest first, with the context the sheet told them it sends.",
+    empty: "No messages yet.",
+    filters: { all: "All", new: "New", read: "Read", fixed: "Fixed" },
+    status: { new: "New", read: "Read", fixed: "Fixed" },
+    noUsername: "No username",
+    account: "Account",
+    path: "Screen",
+    viewport: "Viewport",
+    userAgent: "Browser",
+    build: "Build",
+    order: "Order",
+    orderKind: {
+      fill_failed: "Fill failed",
+      unsettled: "Outcome unclear, solver",
+      outcome_unknown: "Outcome unclear, wallet",
+      error: "Did not go",
+    },
+    orderNotFound: "not on this account's orders",
+    mayReply: "May reply by email",
+    mayReplyNo: "No reply asked",
+    noEmail: "no email on the account now",
+    replied: "Fixed email sent",
+    markRead: "Mark read",
+    markFixed: "Mark fixed",
+    noteLabel: "Note, optional",
+    noteHint: "What was fixed, in a few words. Kept here and in the audit log.",
+    fixedWillEmail: "They asked for a reply: marking it fixed emails them once.",
+    confirmFixed: "Mark fixed",
+    cancel: "Cancel",
+    working: "Saving",
+    failed: "That did not save. Nothing was changed.",
+    note: "Note",
+    strip: (count: number) => (count === 1 ? "1 new message from the feedback sheet." : `${count} new messages from the feedback sheet.`),
+    stripLink: "Read feedback",
+  },
   /** The account drawer's quiet entry, shown only to an account on a staff list (lib/staff/entry). */
   entry: {
     label: "Staff",
@@ -4356,6 +4446,26 @@ export const COPY: Copy = {
       button: "Open Health",
       why: "You get this because you are a staff admin of Berth.",
     },
+    feedbackNew: {
+      subject: (fromOrder) => (fromOrder ? "New feedback, after an order" : "New feedback on Berth"),
+      heading: "Someone wrote to Berth",
+      body: (fromOrder) =>
+        fromOrder
+          ? "A message came in from the feedback sheet, opened after an order that did not go as expected."
+          : "A message came in from the feedback sheet.",
+      said: (excerpt) => `\u201c${excerpt}\u201d`,
+      after: "Read it in full, with the screen and device it came from, on the Feedback page, and mark it read or fixed there.",
+      rate: "At most thirty of these emails go out a day. The Feedback page lists every message.",
+      button: "Open Feedback",
+      why: "You get this because you are a staff admin of Berth.",
+    },
+    feedbackFixed: {
+      subject: "What you told us is fixed",
+      heading: "We fixed what you told us about",
+      body: (excerpt) => `You told us: \u201c${excerpt}\u201d`,
+      fixed: "It's fixed now. Thank you for telling us.",
+      why: "You get this because you asked us to reply when you sent us a message.",
+    },
     budgetLow: {
       service: { openai: "the Assistant's OpenAI budget", jev: "the news model credit", x: "the X API credit", resend: "the Resend email quota" },
       subject: (service) => `Running low: ${service}`,
@@ -5230,8 +5340,31 @@ export const COPY: Copy = {
       wallets: { title: "Wallets", sub: "The wallets on this account" },
       notifications: { title: "Notifications", sub: "Which emails Berth sends you" },
       ai: { title: "Your AI", sub: "Bring Berth into Claude, ChatGPT or Grok" },
+      feedback: { title: "Send feedback", sub: "Tell us what works and what does not" },
     },
     profileBack: "Back",
+  },
+  feedback: {
+    title: "Tell us what you think",
+    intro: "What works, what does not, what you wish Berth did. A person reads every message.",
+    label: "Your message",
+    placeholder: "Write as much or as little as you like.",
+    count: (used, max) => `${used.toLocaleString("en-US")} of ${max.toLocaleString("en-US")} characters`,
+    mayReply: "You may reply to me by email",
+    sentWith: "Sent with this: the screen you were on, your device and browser.",
+    sentWithOrder: "Sent with this: the screen you were on, your device and browser, and which order it is about.",
+    send: "Send",
+    sending: "Sending",
+    signedOut: "Sign in to send us a message. Feedback needs an account, so we can read it with the right context.",
+    tooLong: (max) => `That is more than ${max.toLocaleString("en-US")} characters. Shorten it a little and send it again.`,
+    tooMany: "That is a lot of messages in a short time. Try again in an hour.",
+    failed: "That did not send. Try again in a moment.",
+    thanksTitle: "Thank you.",
+    thanksBody: "We read every message.",
+    thanksXp: (amount) => `+${amount} XP for your first message.`,
+    close: "Close",
+    betaAction: "Tell us what you think",
+    orderLink: "Something feel off? Tell us.",
   },
   social: {
     sectionTitle: "Your profile",

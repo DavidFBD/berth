@@ -21,6 +21,7 @@ export const STAFF_SECTIONS = [
   { id: "budgets", href: "/staff/budgets" },
   { id: "campaigns", href: "/staff/campaigns" },
   { id: "posts", href: "/staff/posts" },
+  { id: "feedback", href: "/staff/feedback" },
   { id: "audit", href: "/staff/audit" },
 ] as const;
 

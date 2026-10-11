@@ -2256,3 +2256,30 @@ create table if not exists quote_canary_runs (
 );
 
 create index if not exists quote_canary_runs_started_idx on quote_canary_runs (started_at desc);
+
+-- Feedback (lib/server/feedback, app/api/feedback, /staff/feedback): what a
+-- person wrote to Berth from the feedback sheet, in their own words, with
+-- the context the sheet says it sends: the screen (a path, never a query
+-- string or a name), the viewport, the browser's user agent, the build,
+-- and for a message opened from an order that went wrong, that order's
+-- internal id and how it went wrong. Never an amount, a balance, a wallet
+-- address, an email or a name (lib/feedback sanitizeContext). may_reply is
+-- the person's own yes to an email back, kept only for an account with an
+-- email. Staff walk it new, read, fixed; marking it fixed emails the person
+-- once when they said yes (email_sends' unique ref). At most five an hour
+-- and twenty a day per account, counted from these rows.
+create table if not exists feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 2000),
+  context jsonb not null default '{}'::jsonb,
+  may_reply boolean not null default false,
+  status text not null default 'new' check (status in ('new', 'read', 'fixed')),
+  created_at timestamptz not null default now(),
+  read_at timestamptz,
+  fixed_at timestamptz,
+  staff_note text check (staff_note is null or char_length(staff_note) <= 300)
+);
+
+create index if not exists feedback_created_idx on feedback (created_at desc);
+create index if not exists feedback_user_idx on feedback (user_id, created_at desc);

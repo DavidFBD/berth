@@ -73,6 +73,14 @@ export const XP_ACTIONS = {
    * one thing a berth is for; no daily streak will ever sit beside it.
    */
   held_30_days: { amount: 150, once: false },
+  /**
+   * The first message to Berth from the feedback sheet (lib/server/feedback)
+   * whose words, trimmed, run to at least FEEDBACK_XP_MIN_CHARS. Once per
+   * account, ever: the once per account index (xp_events_once_per_user)
+   * settles a double submit and two tabs racing alike. Later messages earn
+   * nothing; the thanks is that we read them.
+   */
+  feedback_first: { amount: 50, once: true },
 } as const;
 
 export type XpKind = keyof typeof XP_ACTIONS;
@@ -117,6 +125,7 @@ export const REWARD_REASONS: Record<XpKind, string> = {
   friend_stayed: "for a friend who set up and stayed",
   invite_accepted: "for joining on a friend's invite",
   held_30_days: "for holding thirty days",
+  feedback_first: "for your first message to us",
 };
 
 /**

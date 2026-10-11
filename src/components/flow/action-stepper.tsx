@@ -19,6 +19,7 @@ import type { Copy } from "@/lib/copy";
 import { stepMessage } from "@/lib/step-message";
 import { useOutcomeCheck, type OutcomeCheck } from "@/hooks/use-sponsor-refusals";
 import { outcomeNote } from "@/lib/outcome-note";
+import { OrderFeedbackLink } from "@/components/feedback/order-feedback-link";
 
 /* Step keys are the machine's; every label and message comes from useCopy.
    Failure copy shown here is presentation only — the REPORTED message stays
@@ -216,6 +217,7 @@ export function IntentTracking({
             </p>
           )}
         </div>
+        <OrderFeedbackLink kind="fill_failed" hubTxHash={hubTxHash} />
         <Button variant="outline" className="h-12 w-full text-base" onClick={onDone}>
           {copy.closeLabel}
         </Button>
@@ -303,6 +305,7 @@ export function IntentTracking({
             </p>
           )}
         </div>
+        <OrderFeedbackLink kind="unsettled" hubTxHash={hubTxHash} />
         <Button variant="outline" className="h-12 w-full text-base" onClick={onDone}>
           {copy.closeLabel}
         </Button>
@@ -410,6 +413,12 @@ export function ActionError({
               : null}
         </p>
       )}
+      {!cancelled && (
+        <OrderFeedbackLink
+          kind="error"
+          className="mt-1.5 block text-[12px] text-current underline underline-offset-2 opacity-75 transition-opacity duration-150 ease-lift hover:opacity-100"
+        />
+      )}
     </div>
   );
 }
@@ -445,6 +454,10 @@ export function OutcomeCheckNote({ fixture }: { fixture?: OutcomeCheck }) {
             {line}
           </p>
         ))}
+        <OrderFeedbackLink
+          kind="outcome_unknown"
+          className="self-start text-xs text-muted-foreground underline underline-offset-2 transition-colors duration-150 ease-lift hover:text-foreground"
+        />
       </div>
     </div>
   );

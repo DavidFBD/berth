@@ -5,6 +5,7 @@ import { COPY } from "@/lib/copy";
 import { staffGate } from "@/lib/server/staff-gate";
 import { readOverview } from "@/lib/server/staff/overview";
 import { readBudgets } from "@/lib/server/staff/budgets";
+import { unreadFeedbackCount } from "@/lib/server/feedback";
 import { count, day, listingName, percent, shortDay, usd } from "@/lib/staff/format";
 
 /** The PostHog project, for product analytics (lib/analytics); the EU app when no project is named. */
@@ -15,7 +16,7 @@ export default async function StaffOverviewPage() {
   const staff = await staffGate("page");
   const words = COPY.staff;
   const o = words.overview;
-  const [overview, budgets] = await Promise.all([readOverview(), readBudgets()]);
+  const [overview, budgets, unread] = await Promise.all([readOverview(), readBudgets(), unreadFeedbackCount().catch(() => 0)]);
   const low = budgets.filter((service) => service.low);
   const accounts = overview.stages.none + overview.stages.funded + overview.stages.owns;
   const daily = overview.signupsDaily;
@@ -41,6 +42,14 @@ export default async function StaffOverviewPage() {
           <span>{words.lowStrip(low.map((service) => words.budgets.service[service.id]).join(", "))}</span>
           <Link href="/staff/budgets" className="underline underline-offset-4">
             {words.lowStripLink}
+          </Link>
+        </div>
+      )}
+      {unread > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-card px-4 py-3 text-[14px] text-foreground">
+          <span>{words.feedback.strip(unread)}</span>
+          <Link href="/staff/feedback?status=new" className="underline underline-offset-4">
+            {words.feedback.stripLink}
           </Link>
         </div>
       )}

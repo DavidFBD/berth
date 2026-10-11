@@ -31,6 +31,8 @@ import type { WalletsResponse } from "@/app/api/account/wallets/route";
 import type { BenchmarkSymbol } from "@/lib/benchmarks";
 import type { FirstStockResponse } from "@/lib/first-stock";
 import type { LastKnownResponse } from "@/app/api/account/last-known/route";
+import type { FeedbackPostResponse } from "@/app/api/feedback/route";
+import type { FeedbackContextInput, FeedbackOrder, FeedbackRefusal } from "@/lib/feedback";
 import { shouldSave, type LastKnown, type LastKnownSnapshot } from "@/lib/last-known";
 import { withSkip, withoutSkip, type FirstPathResponse, type PathStep } from "@/lib/first-path";
 import type { CampaignProgress, CampaignResponse } from "@/lib/campaigns";
@@ -525,6 +527,43 @@ export function useEmailSettings(enabled: boolean) {
     staleTime: 60_000,
     // Not deployed yet: no address, so the section offers to add one.
     notFound: { address: null, deliverable: false, prefs: { orders: true, friends: true, weekly: false } },
+  });
+}
+
+/**
+ * Send one message from the feedback sheet (app/api/feedback). Answers what
+ * the sheet needs to say: sent, with the XP a first message earned, or why
+ * not. A first qualifying message is announced like every other reward and
+ * the cached profile takes the new total.
+ */
+export function useSendFeedback() {
+  const queryClient = useQueryClient();
+  const { key, callStatus } = useRewardsCall();
+  return useMutation({
+    mutationFn: async (vars: {
+      body: string;
+      mayReply: boolean;
+      context: FeedbackContextInput;
+      order: FeedbackOrder | null;
+    }): Promise<{ ok: true; awarded: number } | { ok: false; refusal: FeedbackRefusal }> => {
+      if (!key) return { ok: false, refusal: "signed_out" };
+      let answer: { status: number; data: FeedbackPostResponse | null };
+      try {
+        answer = await callStatus<FeedbackPostResponse>("/api/feedback", vars);
+      } catch {
+        return { ok: false, refusal: "failed" };
+      }
+      const { status, data } = answer;
+      if (data) {
+        toastRewards(data.rewards, data.xp);
+        queryClient.setQueryData<Profile>(["profile", key], profileOf(data));
+        if (data.feedback.awarded > 0) void queryClient.invalidateQueries({ queryKey: ["xp-history", key] });
+        return { ok: true, awarded: data.feedback.awarded };
+      }
+      if (status === 0 || status === 401) return { ok: false, refusal: "signed_out" };
+      if (status === 429) return { ok: false, refusal: "too_many" };
+      return { ok: false, refusal: "failed" };
+    },
   });
 }
 
