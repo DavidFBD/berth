@@ -299,7 +299,7 @@ export type Copy = {
     firstBuy: (name: string) => string;
     seeAll: (count: number) => string;
     buyAction: string;
-    compareShow: string;
+    compareShow: (withFriends: boolean) => string;
     compareHide: string;
     addMoneyTitle: string;
     addMoneySub: string;
@@ -405,7 +405,7 @@ export type Copy = {
 
   /* — account total: funds plus holdings plus cash, one figure — */
   accountTotalLabel: string;
-  accountTotalSub: string;
+  accountTotalInfo: string;
   /** Beside figures drawn from the last reading while the live one arrives (lib/last-known). */
   lastKnownUpdating: string;
   /** The (i)'s line while the figure is the last reading: when that was. */
@@ -544,7 +544,6 @@ export type Copy = {
   holdingBenchmark: string;
   holdingsMarketDays: (days: number) => string;
   /** Behind the (i): how the chart and the lines are made, and what they are not. */
-  holdingsBenchmarkNote: string;
   /**
    * The portfolio line at the top of "What you own" (lib/portfolio-history).
    * The headline reads "Since Sep 21, 4 market days. You +0.6%, the same
@@ -1077,7 +1076,6 @@ export type Copy = {
    * reader's own currency, and the (i) says so in full.
    */
   inUsDollars: string;
-  inUsDollarsNote: string;
   /** Collapsed, closed by default: the private key export lives here now. */
   advancedSectionLabel: string;
 
@@ -1092,6 +1090,7 @@ export type Copy = {
   infoFees: (feePct: string) => string;
   infoFineFills: string;
   infoFineCustody: string;
+  infoFineCompare: string;
 
   /* — rewards: ranks, avatars, invites, the ledger — */
   /** A wallet account's drawer, which holds the rewards and the assistant section. */
@@ -3113,7 +3112,8 @@ export const COPY: Copy = {
     firstBuy: (name) => `Buy ${name}`,
     seeAll: (count) => `All ${count} stocks and funds`,
     buyAction: "Buy",
-    compareShow: "How it compares",
+    compareShow: (withFriends) =>
+      withFriends ? "Compare with friends, gold or the S&P 500" : "Compare with gold, Bitcoin or the S&P 500",
     compareHide: "Hide the comparison",
     addMoneyTitle: "Add money",
     addMoneySub: "Choose how to pay. What you add lands in your account, ready to buy with.",
@@ -3263,7 +3263,8 @@ export const COPY: Copy = {
   },
 
   accountTotalLabel: "Your account",
-  accountTotalSub: "Funds, holdings and cash, in one figure.",
+  accountTotalInfo:
+    "Your total adds up your stocks, your cash and your funds. Each is read from your account and valued at the latest market price. Funds is money ready to spend.",
   lastKnownUpdating: "Updating",
   lastKnownAsOf: (when) => `Showing what we last read, ${when}, while the latest arrives.`,
   accountSplitHoldings: "Stocks",
@@ -3370,8 +3371,6 @@ export const COPY: Copy = {
   holdingsMarketDays: (days) => marketDays(days),
   moveInTheNews: (source) => `In the news: ${source}`,
   moveReadPost: (source) => `Read what ${source} posted, on X`,
-  holdingsBenchmarkNote:
-    "The line is the return on your money so far, each day at the close and today at the live price, beside the return of the same money put on the same days into what you compare it with. Both start at 0% together and count the same money on the same days, so the gap between them is the difference, your fee included. The return is time weighted: money you add or take out moves neither line, only prices do. Where a return cannot be told, the line shows your money in dollars instead and says why. Coins waiting in your wallets are not in the line; Treasury bills you hold are. Prices are one a day, so a few days mostly shows noise. Each day under the line is what your holdings made or lost that day, with buys and sells set aside, and the holding that moved most. A ringed dot on the line is a buy, a hollow ring a sell. The line under each holding sets that holding alone beside the S&P 500 ETF. It describes what happened, and says nothing about what to do.",
   portfolioSince: (date, days) => `Since ${date}, ${marketDays(days)}.`,
   portfolioYou: "Your portfolio",
   portfolioHolds: (names, more) => {
@@ -3728,8 +3727,6 @@ export const COPY: Copy = {
   moneyAboutAtTodaysRate: (amount) => `about ${amount} at today's rate`,
   moneyAboutAtRateOf: (amount, day) => `about ${amount} at the rate of ${day}`,
   inUsDollars: "Changes in US dollars",
-  inUsDollarsNote:
-    "The percentages here are the change in US dollars, the currency Berth's listings are priced in. Figures in your own currency use the latest rate for every day, so the line's shape is the dollar line's.",
 
   infoTitle: "How Berth works",
   infoSub: "Stocks by name, paid with the crypto you already hold.",
@@ -3743,6 +3740,8 @@ export const COPY: Copy = {
     "A Robinhood Stock Token is a debt security from Robinhood Assets in Jersey that tracks a share. It is not the share itself. It carries no voting rights, and you carry the issuer's credit risk.",
   infoFees: (feePct) => `Every order includes a ${feePct} fee, taken before it is filled. Berth charges nothing else.`,
   infoFineFills: "Orders are filled through SODAX, any day, weekends included.",
+  infoFineCompare:
+    "The comparison on Home describes what happened and says nothing about what to do. Returns are time weighted, in US dollars, and count your fee.",
   infoFineCustody:
     "Cash you park is a token tracking a fund of short US Treasury bills. It stays in your Berth account, as do limit orders and any buy where Robinhood Chain is not open to you. Berth never holds your funds.",
 

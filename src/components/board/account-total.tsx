@@ -17,6 +17,7 @@ import { TOKEN_LISTINGS } from "@/lib/listings";
 import { accountTotalWith, waitingUsd } from "@/lib/limit-orders";
 import { shownPart } from "@/lib/last-known";
 import { useLastKnown, useOrders } from "@/hooks/use-profile";
+import { useCompareFriends, useMySocial } from "@/hooks/use-social";
 import { ThinkingOrb } from "@/components/ui/thinking-orb";
 import { formatUnits } from "viem";
 
@@ -202,6 +203,9 @@ export function AccountTotalView({
   const copy = useCopy();
   const money = useMoney();
   const [compareOpen, toggleCompare, compareId] = useDisclosure("compare", compareOpenByDefault);
+  // Friends are named only when one has the week comparison on, as the chart's picker offers them.
+  const mine = useMySocial(figures.holdsAnything, { prompt: false });
+  const friendsToCompare = useCompareFriends(figures.holdsAnything && mine.data?.shareWeek === true).length > 0;
   const { holdings, cash, funds } = figures;
   const waiting = figures.waiting ?? 0;
   // What the person owns plus what waits in orders: the parts below always add up to it.
@@ -223,11 +227,7 @@ export function AccountTotalView({
         <span>{copy.accountTotalLabel}</span>
         {/* The one (i) for the figure and the chart under it. */}
         <InfoTip label={copy.accountTotalLabel}>
-          <p>{copy.accountTotalSub}</p>
-          {figures.holdsAnything && <p className="mt-1.5 text-muted-foreground">{copy.holdingsBenchmarkNote}</p>}
-          {figures.holdsAnything && money.converted && <p className="mt-1.5 text-muted-foreground">{copy.inUsDollarsNote}</p>}
-          {updating && when && <p className="mt-1.5 text-muted-foreground">{copy.lastKnownAsOf(when)}</p>}
-          {figures.robinhoodUnread && <p className="mt-1.5 text-muted-foreground">{copy.rhChain.totalUnread}</p>}
+          <p>{copy.accountTotalInfo}</p>
         </InfoTip>
         {/* A figure missing a part says so where it is read, not only in the list (rh-ux-sec m5). */}
         {figures.robinhoodUnread && !updating && (
@@ -286,7 +286,7 @@ export function AccountTotalView({
             className="mt-3 -mb-1 flex min-h-9 items-center gap-1.5 rounded-full text-[13px] text-muted-foreground outline-none transition-colors duration-150 ease-lift hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <ChartLineUp weight="duotone" aria-hidden className="size-4" />
-            {compareOpen ? copy.calmHome.compareHide : copy.calmHome.compareShow}
+            {compareOpen ? copy.calmHome.compareHide : copy.calmHome.compareShow(friendsToCompare)}
             <CaretDown
               weight="duotone"
               aria-hidden

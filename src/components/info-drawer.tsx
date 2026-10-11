@@ -42,7 +42,7 @@ export function InfoDrawer() {
     { icon: Trophy, text: copy.infoPoints.ranks },
     { icon: Wallet, text: copy.infoPoints.wallet },
   ];
-  const fine = [copy.infoFineOwn, copy.infoFees(FEE_PCT), copy.infoFineFills, copy.infoFineCustody];
+  const fine = [copy.infoFineOwn, copy.infoFees(FEE_PCT), copy.infoFineFills, copy.infoFineCustody, copy.infoFineCompare];
 
   return (
     <>
