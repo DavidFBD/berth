@@ -17,6 +17,11 @@ import {
   isSponsoredOutcomeUnknown,
   ENTRY_POINTS,
   OUTCOME_HOLD_MS,
+  MARK_MARGIN_BLOCKS,
+  MARK_WINDOW_MS,
+  OUTCOME_CHECK_EVERY_MS,
+  outcomeCheckPhase,
+  type ChainProbe,
   RATE_LIMIT_RETRY_MS,
   SponsoredCallFailed,
   sponsoredCallSucceeded,
@@ -30,6 +35,7 @@ import {
   SPONSORED_SEND_DEADLINE_MS,
   subscribeSponsoredStall,
   sponsorFallbackAllowed,
+  sponsorFailureFacts,
   sponsorRefusals,
   sponsoredSendsOut,
   sponsoredChainNames,
@@ -216,6 +222,52 @@ describe("classifySponsorError", () => {
     expect(classifySponsorError({ status: 500 })).toBe("unknown");
     expect(classifySponsorError({ status: 502, message: "Bad Gateway" })).toBe("unknown");
     expect(classifySponsorError(new Error("<html>cloudflare</html>", { cause: { status: 502 } }))).toBe("unknown");
+  });
+
+  it("decides by status alone: only an allowlist of pre-broadcast statuses is definite (review 2026-10-11)", () => {
+    // Refusals of the request's form.
+    for (const status of [405, 411, 413, 414, 415, 431]) expect(classifySponsorError(api(status, "Bad value"))).toBe("failed");
+    // The rest of the allowlist keeps its own meaning.
+    expect(classifySponsorError(api(400, "Invalid params"))).toBe("failed");
+    expect(classifySponsorError(api(422, "insufficient funds for gas * price + value"))).toBe("failed");
+    expect(classifySponsorError(api(401))).toBe("auth");
+    expect(classifySponsorError(api(404))).toBe("auth");
+    expect(classifySponsorError(api(402))).toBe("refused");
+    expect(classifySponsorError(api(403))).toBe("refused");
+    expect(classifySponsorError(api(429))).toBe("rate-limited");
+    // Broadcast words still hold an allowlisted form refusal.
+    expect(classifySponsorError(api(413, "Request timed out"))).toBe("unknown");
+  });
+
+  it("never lets words or a relayed code turn an ambiguous answer definite", () => {
+    for (const words of [
+      "insufficient funds for gas * price + value",
+      "Transfer amount exceeds balance",
+      "Invalid params",
+      "invalid argument 0: hex string has odd length",
+      "Validation failed: value",
+      "Cannot convert 0x30783636 to a BigInt",
+    ]) {
+      for (const status of [500, 502, 408, 409, 410, 412, 424, 425]) expect(classifySponsorError(api(status, words))).toBe("unknown");
+      expect(classifySponsorError(new Error(words))).toBe("unknown");
+      expect(classifySponsorError(new Error("Transaction failed", { cause: new Error(words) }))).toBe("unknown");
+      expect(classifySponsorError(Object.assign(new Error(words), { type: "api_error", status: null }))).toBe("unknown");
+      expect(sponsorFallbackAllowed(new Error(words))).toBe(false);
+    }
+    expect(classifySponsorError({ code: "insufficient_funds", message: "x" })).toBe("unknown");
+    expect(classifySponsorError({ privyErrorCode: "invalid_data", message: "x" })).toBe("unknown");
+    expect(classifySponsorError({ code: -32602, message: "x" })).toBe("unknown");
+    expect(classifySponsorError({ code: "some_new_code", message: "x" })).toBe("unknown");
+    expect(classifySponsorError(new Error("Unable to sign transaction"))).toBe("unknown");
+  });
+
+  it("names an unknown's raw status, code and error names, and nothing it said", () => {
+    const error = new SponsoredOutcomeUnknown(api(500, "insufficient funds for 0xAbCdEf0123456789aBcDeF0123456789AbCdEf01 me@example.com", "server_error"));
+    const facts = sponsorFailureFacts(error);
+    expect(facts).toBe("status=500 code=server_error names=SponsoredOutcomeUnknown>PrivyApiError");
+    expect(facts).not.toMatch(/0xAbCd|example|insufficient/);
+    expect(sponsorFailureFacts(Object.assign(new Error("fetch failed"), { status: null }))).toBe("status=null code=none names=Error");
+    expect(sponsorFailureFacts(undefined)).toBe("status=none code=none names=none");
   });
 
   it("reads status before the message", () => {
@@ -526,8 +578,27 @@ describe("an unknown outcome", () => {
       cause: new Error("INTENT_CREATION_FAILED", { cause: new SponsoredOutcomeUnknown(new Error("Unable to sign transaction")) }),
     });
     expect(friendlyError(wrapped, COPY.errOrderFailed)).toBe(COPY.errOutcomeUnknown);
-    expect(COPY.errOutcomeUnknown).toBe("This order may still go through. Check What you own in a minute before trying again.");
-    expect(COPY.errOutcomeUnknown).not.toMatch(/[\u2013\u2014]| - /);
+    expect(COPY.errOutcomeUnknown).toBe("Your wallet's answer didn't come back clearly.");
+    for (const line of [
+      COPY.errOutcomeUnknown,
+      COPY.outcomeCheck.checking,
+      COPY.outcomeCheck.holdCountdown(42),
+      COPY.outcomeCheck.waiting,
+      COPY.outcomeCheck.nothingSent,
+      COPY.outcomeCheck.sent,
+      COPY.outcomeCheck.unclear,
+    ]) {
+      expect(line).not.toMatch(/[\u2013\u2014]| - /);
+    }
+    expect(COPY.outcomeCheck.checking).toBe("Berth is checking the network for this order.");
+    expect(COPY.outcomeCheck.holdCountdown(42)).toContain("about 42 more seconds");
+    expect(COPY.outcomeCheck.holdCountdown(1)).toContain("about 1 more second,");
+    // Only a definite refusal may say nothing was sent; the end of the hold never does.
+    expect(COPY.outcomeCheck.unclear).toMatch(/couldn't confirm either way/);
+    expect(COPY.outcomeCheck.unclear).toContain("What you own");
+    expect(COPY.outcomeCheck.unclear).not.toMatch(/nothing was sent/i);
+    expect(COPY.outcomeCheck.checking).not.toMatch(/nothing was sent/i);
+    expect(COPY.outcomeCheck.nothingSent).toMatch(/turned this order down/);
   });
 
   it("holds the order buttons for a minute, and a refusal or success does not", async () => {
@@ -549,6 +620,147 @@ describe("an unknown outcome", () => {
       .request(args)
       .catch(() => null);
     expect(outcomeHoldUntil()).toBeGreaterThanOrEqual(before + OUTCOME_HOLD_MS);
+  });
+});
+
+describe("the chain check after an unclear answer", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    resetOutcomeHold();
+  });
+  const args = { method: "eth_sendTransaction", params: [{ to: "0xb" }] };
+  const unclear = async () => {
+    throw new Error("Unable to sign transaction");
+  };
+  const probe = (moved: () => Promise<boolean>): ChainProbe & { mark: ReturnType<typeof vi.fn> } => ({
+    mark: vi.fn(async () => ({ block: 100n, txCount: 0 })),
+    moved,
+  });
+  const send = (chainProbe?: ChainProbe, sendSponsored: () => Promise<{ hash: string }> = unclear) =>
+    withGasSponsor({ request: async () => "0xpaid" }, { chainId: 42161, address: "0xa", active: () => true, sendSponsored, chainProbe })
+      .request(args)
+      .catch((error: unknown) => error);
+
+  it("never lifts the hold on chain silence: it checks, and the minute runs out as before (review 2026-10-11)", async () => {
+    vi.useFakeTimers();
+    const moved = vi.fn(async () => false);
+    const error = await send(probe(moved));
+    expect(isSponsoredOutcomeUnknown(error)).toBe(true);
+    expect(outcomeCheckPhase()).toBe("checking");
+    const until = outcomeHoldUntil();
+    expect(until).toBeGreaterThanOrEqual(Date.now() + OUTCOME_HOLD_MS - 1);
+    await vi.advanceTimersByTimeAsync(OUTCOME_HOLD_MS - OUTCOME_CHECK_EVERY_MS);
+    expect(moved).toHaveBeenCalled();
+    expect(outcomeHoldUntil()).toBe(until);
+    expect(outcomeCheckPhase()).toBe("checking");
+    await vi.advanceTimersByTimeAsync(2 * OUTCOME_CHECK_EVERY_MS);
+    // Over, and nothing seen: unclear, never "nothing was sent".
+    expect(outcomeCheckPhase()).toBe("unclear");
+    // The mark is taken back a margin, so a lagging read cannot skip our operation.
+    expect(moved).toHaveBeenCalledWith({ block: 100n - MARK_MARGIN_BLOCKS, txCount: 0 });
+  });
+
+  it("says something reached the network when the chain moved, and keeps the hold to its minute", async () => {
+    vi.useFakeTimers();
+    await send(probe(async () => true));
+    await vi.advanceTimersByTimeAsync(OUTCOME_CHECK_EVERY_MS);
+    expect(outcomeCheckPhase()).toBe("sent");
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+  });
+
+  it("keeps checking through reads that fail, and ends unclear", async () => {
+    vi.useFakeTimers();
+    const moved = vi.fn(async () => {
+      throw new Error("rpc down");
+    });
+    await send(probe(moved));
+    await vi.advanceTimersByTimeAsync(OUTCOME_HOLD_MS + OUTCOME_CHECK_EVERY_MS);
+    expect(moved.mock.calls.length).toBeGreaterThan(5);
+    expect(outcomeCheckPhase()).toBe("unclear");
+  });
+
+  it("never trusts a mark that came back slowly, or after Privy answered", async () => {
+    vi.useFakeTimers();
+    const moved = vi.fn(async () => false);
+    let answer: (value: { hash: string }) => void = () => {};
+    // The mark comes back after MARK_WINDOW_MS, while Privy is still out.
+    const slow: ChainProbe = {
+      mark: () => new Promise((resolve) => setTimeout(() => resolve({ block: 100n, txCount: 0 }), MARK_WINDOW_MS + 500)),
+      moved,
+    };
+    const pending = send(slow, () => new Promise((resolve) => (answer = resolve)));
+    await vi.advanceTimersByTimeAsync(MARK_WINDOW_MS + 1_000);
+    answer({ hash: "no hash" });
+    await pending;
+    await vi.advanceTimersByTimeAsync(OUTCOME_HOLD_MS + OUTCOME_CHECK_EVERY_MS);
+    expect(moved).not.toHaveBeenCalled();
+    expect(outcomeCheckPhase()).toBe("unclear");
+  });
+
+  it("without a probe, holds its minute and checks nothing", async () => {
+    vi.useFakeTimers();
+    await send(undefined);
+    expect(outcomeCheckPhase()).toBe("unclear");
+    await vi.advanceTimersByTimeAsync(OUTCOME_HOLD_MS - OUTCOME_CHECK_EVERY_MS);
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
+  });
+
+  it("does not check at all after a definite answer", async () => {
+    const p = probe(async () => false);
+    await send(p, async () => {
+      throw Object.assign(new Error("Invalid params"), { status: 400 });
+    });
+    expect(outcomeCheckPhase()).toBe("idle");
+    expect(outcomeHoldUntil()).toBe(0);
+  });
+
+  it("says nothing was sent only when Privy refuses a stalled send definitely, and something went out on a late hash", async () => {
+    vi.useFakeTimers();
+    const late = (settle: (resolve: (v: { hash: string }) => void, reject: (e: unknown) => void) => void) =>
+      withGasSponsor({ request: async () => "0xpaid" }, {
+        chainId: 42161,
+        address: "0xa",
+        active: () => true,
+        sendDeadlineMs: 1_000,
+        sendSponsored: () => new Promise((resolve, reject) => setTimeout(() => settle(resolve, reject), 5_000)),
+      })
+        .request(args)
+        .catch((error: unknown) => error);
+
+    const refused = late((_, reject) => reject(Object.assign(new Error("Invalid params"), { status: 400 })));
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(outcomeCheckPhase()).toBe("checking");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(isSponsoredOutcomeUnknown(await refused)).toBe(true);
+    expect(outcomeCheckPhase()).toBe("nothing-sent");
+
+    resetOutcomeHold();
+    const landed = late((resolve) => resolve({ hash: HASH }));
+    await vi.advanceTimersByTimeAsync(6_500);
+    await landed;
+    expect(outcomeCheckPhase()).toBe("sent");
+  });
+
+  it("leaves a hold another tab set alone (send-hold-delta)", async () => {
+    vi.useFakeTimers();
+    holdAfterUnknownOutcome();
+    const theirs = outcomeHoldUntil();
+    await send(probe(async () => false));
+    await vi.advanceTimersByTimeAsync(OUTCOME_HOLD_MS / 2);
+    expect(outcomeHoldUntil()).toBeGreaterThanOrEqual(theirs);
+  });
+
+  it("keeps watching an earlier unclear order when a later sponsored send starts", async () => {
+    vi.useFakeTimers();
+    const moved = vi.fn(async () => false);
+    await send(probe(moved));
+    // A send the hold does not gate (a limit cancel) goes out and lands.
+    await send(probe(async () => false), async () => ({ hash: HASH }));
+    expect(outcomeCheckPhase()).toBe("checking");
+    const calls = moved.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(3 * OUTCOME_CHECK_EVERY_MS);
+    expect(moved.mock.calls.length).toBeGreaterThan(calls);
+    expect(outcomeHoldUntil()).toBeGreaterThan(Date.now());
   });
 });
 

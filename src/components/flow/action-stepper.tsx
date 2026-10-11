@@ -17,6 +17,8 @@ import type { VaultActionStep } from "@/hooks/use-vault-action";
 import { useCopy } from "@/components/settings-provider";
 import type { Copy } from "@/lib/copy";
 import { stepMessage } from "@/lib/step-message";
+import { useOutcomeCheck, type OutcomeCheck } from "@/hooks/use-sponsor-refusals";
+import { outcomeNote } from "@/lib/outcome-note";
 
 /* Step keys are the machine's; every label and message comes from useCopy.
    Failure copy shown here is presentation only — the REPORTED message stays
@@ -386,6 +388,8 @@ export function ActionError({
 }) {
   const copy = useCopy();
   const cancelled = message === CANCELLED_MESSAGE;
+  // An unclear sponsored answer is not a failure yet: say what Berth is doing about it.
+  if (message === copy.errOutcomeUnknown) return <OutcomeCheckNote />;
   return (
     <div
       role="alert"
@@ -406,6 +410,42 @@ export function ActionError({
               : null}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Under an unclear sponsored answer (lib/gas-sponsor watchOutcome): what
+ * happened, how long the buttons wait, and what Berth found on the
+ * network. The thinking orb shows only while it is still checking.
+ * `fixture` lets the dev gallery pin a state.
+ */
+export function OutcomeCheckNote({ fixture }: { fixture?: OutcomeCheck }) {
+  const copy = useCopy();
+  const live = useOutcomeCheck();
+  const state = fixture ?? live;
+  const { lines, orb } = outcomeNote(state, copy.outcomeCheck);
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-testid="outcome-check"
+      data-phase={state.phase}
+      className="flex gap-2.5 rounded-xl bg-muted/50 px-3 py-2.5 text-sm text-foreground"
+    >
+      {orb && (
+        <span className="-m-0.5 grid size-5 shrink-0 place-items-center">
+          <ThinkingOrb state="working" size={20} tone="ink" decorative />
+        </span>
+      )}
+      <div className="flex flex-col gap-1">
+        <p>{copy.errOutcomeUnknown}</p>
+        {lines.map((line) => (
+          <p key={line} className="text-muted-foreground">
+            {line}
+          </p>
+        ))}
+      </div>
     </div>
   );
 }

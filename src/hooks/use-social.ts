@@ -20,7 +20,7 @@ import type {
 } from "@/lib/social-types";
 import type { HandleRefusal } from "@/lib/handle";
 import { carryMore } from "@/lib/profile-more";
-import type { FriendsHolding, FriendsHoldingResponse } from "@/lib/social-proof";
+import { POLICY_NOTICE_ID, SOCIAL_NOTICE_ID, type FriendsHolding, type FriendsHoldingResponse } from "@/lib/social-proof";
 import type { CompareFriend, CompareFriendsResponse, FriendWeek, FriendWeekRange, FriendWeekResponse } from "@/lib/friend-week";
 
 /**
@@ -184,8 +184,10 @@ export function useSetShareHoldings() {
   const settle = useSettleSwitch();
   return useMutation({
     mutationFn: (on: boolean) => must(call<WithBonus>("share-holdings", { on })),
-    onSuccess: (data) => {
+    onSuccess: (data, on) => {
       settle(data);
+      // Sharing found the switch the social notice points to: it is closed (lib/server/notices).
+      if (on) dropNotice(queryClient, key, SOCIAL_NOTICE_ID);
       void queryClient.invalidateQueries({ queryKey: KEYS.holding(key) });
       void queryClient.invalidateQueries({ queryKey: ["social-card"] });
     },
@@ -224,6 +226,9 @@ export function useTurnOnAllFriends() {
     },
     onSuccess: ({ social, rewards, xp }) => {
       queryClient.setQueryData(KEYS.me(key), social);
+      // Every friend feature is on, holdings sharing among them: the social
+      // notice has nothing left to say (the server closed it too).
+      dropNotice(queryClient, key, SOCIAL_NOTICE_ID);
       if (rewards.length > 0 && xp !== null) {
         announceRewards(rewards, xp);
         queryClient.setQueryData<{ xp: number }>(["profile", key], (previous) => (previous ? { ...previous, xp } : previous));
@@ -372,6 +377,11 @@ export function useFriendsHolding(enabled = true): ReadonlyMap<string, FriendsHo
     },
   });
   return new Map((query.data ?? []).map((line) => [line.symbol, line]));
+}
+
+/** Takes a notice off this account's cached list at once; the server has closed it or no longer answers it. */
+function dropNotice(queryClient: ReturnType<typeof useQueryClient>, key: string | null, notice: string): void {
+  queryClient.setQueryData<string[]>(KEYS.notices(key), (pending) => pending?.filter((id) => id !== notice));
 }
 
 /**
@@ -534,7 +544,11 @@ export function useTermsAcceptance(): { state: TermsState; accept: () => Promise
   const accept = async () => {
     const { status, data } = await asking.call<{ accepted: boolean }>("terms-accept", { version: TERMS_VERSION });
     const accepted = status === 200 && Boolean(data?.accepted);
-    if (accepted) queryClient.setQueryData(queryKey, true);
+    if (accepted) {
+      queryClient.setQueryData(queryKey, true);
+      // The policy notice announces these terms: accepted, it has nothing left to say.
+      dropNotice(queryClient, quiet.key, POLICY_NOTICE_ID);
+    }
     return accepted;
   };
   return { state, accept, check };

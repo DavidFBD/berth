@@ -1035,6 +1035,23 @@ export type Copy = {
    */
   errOutcomeUnknown: string;
   /**
+   * Under errOutcomeUnknown, what Berth knows as it reads the chain
+   * (lib/gas-sponsor watchOutcome). `seconds` is what is left of the hold.
+   */
+  outcomeCheck: {
+    /** While the chain is read and nothing of this order has been seen there. */
+    checking: string;
+    /** Under any line while the hold runs: `seconds` is what is left of it. */
+    holdCountdown: (seconds: number) => string;
+    /** The send is still out past its deadline: no countdown, the hold lasts until the wallet answers. */
+    waiting: string;
+    /** Only after the wallet definitely refused the order. */
+    nothingSent: string;
+    sent: string;
+    /** The hold ended with nothing seen: never "nothing was sent". */
+    unclear: string;
+  };
+  /**
    * `shortfall` is already formatted with its symbol, e.g. "0.00024 ETH".
    * Said when the wallet cannot cover the network fee, where the generic
    * failure line would send the user round a loop that cannot succeed.
@@ -3074,7 +3091,7 @@ export const COPY: Copy = {
     "One address for Ethereum, Base, Arbitrum, Polygon, BNB and every other EVM network.",
   receiveEvmToast: "Works on every EVM network. Send crypto there to add money.",
   receiveSolanaTitle: "Solana",
-  receiveSolanaBody: "Only for Solana assets: SOL, JitoSOL, USDC on Solana.",
+  receiveSolanaBody: "Only for SOL or USDC on Solana.",
   receiveSolanaToast: "Only send Solana assets to this one.",
   receiveBitcoinTitle: "Bitcoin",
   receiveBitcoinBody: "Your linked Bitcoin wallet. Only send Bitcoin to it.",
@@ -3804,7 +3821,17 @@ export const COPY: Copy = {
   errAllowanceStillPending:
     "The approval is still confirming. Wait a few seconds and try again.",
   errOrderFailed: "The order did not go through. Try again.",
-  errOutcomeUnknown: "This order may still go through. Check What you own in a minute before trying again.",
+  errOutcomeUnknown: "Your wallet's answer didn't come back clearly.",
+  outcomeCheck: {
+    checking: "Berth is checking the network for this order.",
+    holdCountdown: (seconds) =>
+      `The buttons wait about ${seconds} more ${seconds === 1 ? "second" : "seconds"}, so this order is not sent again.`,
+    waiting:
+      "Berth is still waiting for your wallet's answer. The buttons wait a while, so this order is not sent again. Check What you own before trying again.",
+    nothingSent: "Your wallet turned this order down, so nothing was sent. You can try again.",
+    sent: "Something from your wallet reached the network. Check What you own before trying again.",
+    unclear: "Berth couldn't confirm either way whether this order went out. Check What you own before trying again.",
+  },
   errNeedsGas: (shortfall, network) =>
     `Not enough to cover the network fee. Add about ${shortfall} on ${network} and try again.`,
   errNeedsGasUnknown: (network) =>

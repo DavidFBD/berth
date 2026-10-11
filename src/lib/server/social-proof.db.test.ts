@@ -7,6 +7,7 @@ import { readCard } from "./social/cards";
 import { mySocial, setShareHoldings } from "./social/handles";
 import { runSocialOp } from "./social/ops";
 import { POLICY_NOTICE_ID, SOCIAL_NOTICE_ID, publishedWeek } from "@/lib/social-proof";
+import { TERMS_VERSION } from "@/lib/legal-version";
 
 /**
  * The two social counts against the real schema (PGlite): which orders
@@ -348,5 +349,13 @@ describe("the notices said once per account", () => {
     expect(await markNoticeSeen(id, "anything-else")).toBe(false);
     const viaRoute = await runSocialOp("notices", {}, { viewer: { id: await account(), email: null }, anonKey: "k" });
     expect(viaRoute.body).toEqual({ pending: [SOCIAL_NOTICE_ID, POLICY_NOTICE_ID] });
+  });
+
+  it("are never due to an account made after the change, or one that accepted the terms they announce (2026-10-11)", async () => {
+    expect(await pendingNotices(await account({ createdAt: "2026-10-11T14:40:55Z" }))).toEqual([]);
+    const accepted = await account();
+    await sql.query(`insert into terms_acceptances (user_id, version) values ($1, $2)`, [accepted, TERMS_VERSION]);
+    expect(await pendingNotices(accepted)).toEqual([SOCIAL_NOTICE_ID]);
+    expect(await pendingNotices("00000000-0000-0000-0000-000000000000")).toEqual([]);
   });
 });

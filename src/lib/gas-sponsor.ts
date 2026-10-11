@@ -263,7 +263,14 @@ function causeChain(error: unknown): Record<string, unknown>[] {
  *   RATE_LIMIT_RETRY_MS; a second 429 falls back for this order only and
  *   leaves the chain sponsored.
  * - `cancelled`: the person said no. Rethrown, never resent.
- * - `unknown`: everything else. A 5xx, a 408, no status, "Unable to sign
+ * - `failed` also covers the few other 4xx statuses that refuse the
+ *   request's form and cannot follow a submit (405, 411, 413, 414, 415,
+ *   431; DEFINITE_FORM_STATUSES). Statuses decide; an error's words or a
+ *   relayed RPC code never turn an ambiguous status into a definite one,
+ *   since Privy's one POST spans the bundler submit and inclusion and its
+ *   error may wrap any upstream answer (review 2026-10-11).
+ * - `unknown`: everything else. A 5xx, a 408, a 409, a 410, a 424, any
+ *   4xx not listed above, no status, an unrecognised code, "Unable to sign
  *   transaction" (Privy answered 2xx without a hash), a dropped
  *   connection, anything unrecognised. The operation may still land, so a
  *   second send could move the money twice. Rethrown as
@@ -309,6 +316,14 @@ const REVERT_WORDS = /revert|simulat|execution|slippage|stale|quote|transaction_
  * refused, so it is held and never sent again.
  */
 const AFTER_SUBMIT_WORDS = /broadcast|time[sd]? ?out|already known|nonce|mempool|underpriced|replacement|submitted|pending|in flight|in-flight/;
+
+/**
+ * Other 4xx statuses that refuse the request's form before Privy does
+ * anything with it: wrong method, no length, too large, URI too long,
+ * wrong media type, headers too large. Nothing past these can have been
+ * submitted. Every 4xx not listed here or above stays `unknown`.
+ */
+const DEFINITE_FORM_STATUSES = new Set([405, 411, 413, 414, 415, 431]);
 
 /** Error codes react-auth and js-sdk-core raise on the client before the API call. */
 const PRE_SEND_CODES = new Set(["unsupported_chain_id", "embedded_wallet_not_found"]);
@@ -384,7 +399,13 @@ export function classifySponsorError(error: unknown): SponsorErrorKind {
         return sponsorshipDeclined(chain) ? "refused" : "failed";
       }
       if (AUTH_STATUSES.has(node.status)) return "auth";
-      return REFUSED_STATUSES.has(node.status) ? "refused" : "unknown";
+      if (REFUSED_STATUSES.has(node.status)) return "refused";
+      // A refusal of the request's form. Broadcast words still hold it.
+      if (DEFINITE_FORM_STATUSES.has(node.status)) {
+        return AFTER_SUBMIT_WORDS.test(chainProse(chain)) ? "unknown" : "failed";
+      }
+      // A 5xx, 408, 409, 410, 424 or any other status: unknown, whatever it says.
+      return "unknown";
     }
     // react-auth's api_error with no response (a dropped connection) has
     // status null: the request may have reached Privy.
@@ -408,6 +429,33 @@ export function classifySponsorError(error: unknown): SponsorErrorKind {
     if (PRE_SEND_MESSAGES.some((pattern) => pattern.test(prose))) return "refused";
   }
   return "unknown";
+}
+
+/**
+ * The raw shape of a sponsored failure, with no words and nothing about the
+ * person: the first HTTP status and the first code down its causes, and the
+ * error names. Logged and reported for every `unknown`, so the allowlist
+ * above can widen later from Privy's real answers rather than guesses.
+ * Example: "status=500 code=none names=SponsoredOutcomeUnknown>PrivyApiError".
+ */
+export function sponsorFailureFacts(error: unknown): string {
+  const chain = causeChain(error);
+  const statusNode = chain.find((node) => typeof node.status === "number" || node.status === null);
+  const status = statusNode ? String(statusNode.status) : "none";
+  let code = "none";
+  for (const node of chain) {
+    const found = [node.code, node.privyErrorCode].find((value) => typeof value === "string" || typeof value === "number");
+    if (found !== undefined) {
+      // Codes are short identifiers; anything else is cut to a safe token.
+      code = String(found).replace(/[^\w.:-]/g, "").slice(0, 48) || "none";
+      break;
+    }
+  }
+  const names = chain
+    .map((node) => (typeof node.name === "string" ? node.name.replace(/[^\w]/g, "").slice(0, 40) : ""))
+    .filter(Boolean)
+    .join(">");
+  return `status=${status} code=${code} names=${names || "none"}`;
 }
 
 /** Whether a failed sponsored send may be sent again the ordinary way. */
@@ -527,6 +575,122 @@ export function subscribeOutcomeHold(listener: () => void): () => void {
   };
 }
 
+/**
+ * What Berth knows, during and after the hold, about a sponsored send whose
+ * answer did not come back clearly. Progress only: chain silence never
+ * lifts the hold, since it proves only that nothing was included yet, not
+ * that nothing waits in a bundler (review 2026-10-11). The hold lifts early
+ * only on Privy's own definite answer (sendSettled), as before.
+ * - `checking`: the chain is being read, or a send past its deadline is
+ *   still waiting on Privy.
+ * - `sent`: something from the wallet reached the network (its nonce moved,
+ *   a UserOperationEvent with it as sender landed, or a late hash came).
+ *   The hold keeps its minute.
+ * - `nothing-sent`: Privy answered a send past its deadline with a
+ *   definite refusal. The only case that may say nothing was sent.
+ * - `unclear`: an unclear outcome, with no check running now.
+ */
+export type OutcomeCheckPhase = "idle" | "checking" | "nothing-sent" | "sent" | "unclear";
+
+/** Where the wallet stood on chain just before a sponsored send: the block, and its pending nonce. */
+export type ChainMark = { block: bigint; txCount: number };
+
+/**
+ * How the wallet reads its own chain, cheaply: a mark before each
+ * sponsored send, and later whether anything moved since it (the nonce, or
+ * a UserOperationEvent with the wallet as sender). Either may throw.
+ */
+export type ChainProbe = {
+  mark: () => Promise<ChainMark>;
+  moved: (since: ChainMark) => Promise<boolean>;
+};
+
+/** How often the chain is read while the hold is on. */
+export const OUTCOME_CHECK_EVERY_MS = 5_000;
+/**
+ * A mark is kept only if it came back this soon after the send started:
+ * a slow read (viem retries for tens of seconds) could land after an L2
+ * inclusion and hide it.
+ */
+export const MARK_WINDOW_MS = 2_000;
+/** Blocks taken off the mark, so a lagging read cannot start the log range past our operation. */
+export const MARK_MARGIN_BLOCKS = 20n;
+
+/** Chain checks still reading. */
+let checksRunning = 0;
+let landed = false;
+let lateDeclined = false;
+let watched = false;
+/** Bumped only by the test seam: every watch of an earlier epoch stops. */
+let outcomeEpoch = 0;
+const outcomeListeners = new Set<() => void>();
+
+function notifyOutcome(): void {
+  for (const listener of outcomeListeners) listener();
+}
+
+/** The phase of unclear sponsored sends, as a snapshot for useSyncExternalStore. */
+export function outcomeCheckPhase(): OutcomeCheckPhase {
+  if (landed) return "sent";
+  if (checksRunning > 0 || lateSends > 0) return "checking";
+  if (lateDeclined) return "nothing-sent";
+  return watched ? "unclear" : "idle";
+}
+
+export function subscribeOutcomeCheck(listener: () => void): () => void {
+  outcomeListeners.add(listener);
+  return () => {
+    outcomeListeners.delete(listener);
+  };
+}
+
+/**
+ * A new send forgets what earlier unclear sends found, but only once none
+ * of them is still being checked, waited on or held: a later send never
+ * drops the watch on an earlier unclear order.
+ */
+function forgetSettledOutcomes(now = Date.now()): void {
+  if (checksRunning > 0 || lateSends > 0 || holdUntil > now) return;
+  if (!landed && !lateDeclined && !watched) return;
+  landed = false;
+  lateDeclined = false;
+  watched = false;
+  notifyOutcome();
+}
+
+/**
+ * After an unclear answer: reads the chain every OUTCOME_CHECK_EVERY_MS
+ * while the hold is on, to say whether anything from the wallet reached
+ * the network. Never lifts the hold. Without a probe or a trusted mark it
+ * reads nothing and the hold simply keeps its minute.
+ */
+function watchOutcome(probe: ChainProbe | undefined, mark: ChainMark | undefined): void {
+  const epoch = outcomeEpoch;
+  watched = true;
+  if (!probe || !mark) return notifyOutcome();
+  checksRunning += 1;
+  notifyOutcome();
+  const done = () => {
+    if (epoch !== outcomeEpoch) return;
+    checksRunning = Math.max(0, checksRunning - 1);
+    notifyOutcome();
+  };
+  const tick = async (): Promise<void> => {
+    if (epoch !== outcomeEpoch) return;
+    if (holdUntil <= Date.now() && sendsOut === 0 && lateSends === 0) return done();
+    try {
+      if (await probe.moved(mark)) {
+        if (epoch === outcomeEpoch) landed = true;
+        return done();
+      }
+    } catch {
+      // A read that fails proves nothing; look again.
+    }
+    setTimeout(() => void tick(), OUTCOME_CHECK_EVERY_MS);
+  };
+  setTimeout(() => void tick(), OUTCOME_CHECK_EVERY_MS);
+}
+
 /** Test seam. */
 export function resetOutcomeHold(): void {
   holdUntil = 0;
@@ -534,6 +698,11 @@ export function resetOutcomeHold(): void {
   lateSends = 0;
   sendsOut = 0;
   renewUntil = 0;
+  outcomeEpoch += 1;
+  checksRunning = 0;
+  landed = false;
+  lateDeclined = false;
+  watched = false;
   stopRenewing();
   try {
     window.localStorage.removeItem(HOLD_KEY);
@@ -697,6 +866,7 @@ function keepHolding(until: number, now = Date.now()): void {
 
 /** A sponsored send starts; awaitSponsored sets the hold as it goes out. */
 function sendStarted(): void {
+  forgetSettledOutcomes();
   sendsOut += 1;
 }
 
@@ -727,9 +897,11 @@ function holdUntilSettled(pending: Promise<unknown>, now = Date.now()): void {
     () => {
       lateSends -= 1;
       holdAfterUnknownOutcome();
+      notifyOutcome();
     },
     (error: unknown) => {
       lateSends -= 1;
+      notifyOutcome();
       // A late answer that does not prove nothing sailed (a timeout, a 5xx,
       // a nonce word) may still land: hold as before the deadline.
       if (classifySponsorError(error) === "unknown") holdAfterUnknownOutcome();
@@ -742,7 +914,7 @@ function holdUntilSettled(pending: Promise<unknown>, now = Date.now()): void {
  * deadline or after it. Past the deadline the stall is announced and the
  * hold kept until the answer; a late rejection is a SponsoredLateFailure.
  */
-async function awaitSponsored<T extends { hash: string }>(pending: Promise<T>, ms: number): Promise<T> {
+async function awaitSponsored<T extends { hash: string }>(pending: Promise<T>, ms: number, onStall?: () => void): Promise<T> {
   // Held from the start, renewed until the deadline (holdUntilSettled
   // carries it on past that): a reload mid-POST keeps the buttons off.
   keepHolding(Date.now() + ms);
@@ -758,6 +930,8 @@ async function awaitSponsored<T extends { hash: string }>(pending: Promise<T>, m
   }
   console.warn(`[gas-sponsor] ${new SponsoredSendTimedOut(ms).message} Holding orders until Privy answers.`);
   holdUntilSettled(pending);
+  onStall?.();
+  notifyOutcome();
   for (const listener of stallListeners) listener();
   try {
     const late = await pending;
@@ -807,6 +981,7 @@ export function withGasSponsor(
     refreshAuth,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     sendDeadlineMs = SPONSORED_SEND_DEADLINE_MS,
+    chainProbe,
   }: {
     chainId: number;
     /** The embedded wallet's address: the user operation's sender. */
@@ -841,6 +1016,11 @@ export function withGasSponsor(
     sleep?: (ms: number) => Promise<void>;
     /** Test seam for SPONSORED_SEND_DEADLINE_MS, per send. */
     sendDeadlineMs?: number;
+    /**
+     * Reads the wallet's own chain, so an unclear answer can be settled
+     * early (watchOutcome). Without it the hold keeps its minute.
+     */
+    chainProbe?: ChainProbe;
   },
 ): Eip1193 {
   return {
@@ -860,6 +1040,25 @@ export function withGasSponsor(
       if (!tx) return provider.request(args);
       const sponsoredTx = toSponsoredTransaction(tx, chainId);
       let hash: string;
+      // Where the wallet stands before the send, read alongside it. Kept
+      // only if it came back within MARK_WINDOW_MS and before Privy
+      // answered, and taken back MARK_MARGIN_BLOCKS: a mark read late could
+      // already include the send and hide it.
+      let answered = false;
+      let stalled = false;
+      let mark: ChainMark | undefined;
+      const markStarted = Date.now();
+      chainProbe?.mark().then(
+        (read) => {
+          if (answered || Date.now() - markStarted > MARK_WINDOW_MS) return;
+          mark = { block: read.block > MARK_MARGIN_BLOCKS ? read.block - MARK_MARGIN_BLOCKS : 0n, txCount: read.txCount };
+        },
+        () => {},
+      );
+      const unclear = (cause: unknown): SponsoredOutcomeUnknown => {
+        watchOutcome(chainProbe, mark);
+        return new SponsoredOutcomeUnknown(cause);
+      };
       // Held from here until the send settles (sendSettled), so a reload
       // while Privy's POST is out still shows the buttons held.
       sendStarted();
@@ -868,7 +1067,9 @@ export function withGasSponsor(
         let authRetried = false;
         for (;;) {
           try {
-            ({ hash } = await awaitSponsored(sendSponsored(sponsoredTx), sendDeadlineMs));
+            ({ hash } = await awaitSponsored(sendSponsored(sponsoredTx), sendDeadlineMs, () => {
+              stalled = true;
+            }));
             break;
           } catch (attempt) {
             if (attempt instanceof SponsoredLateFailure) throw attempt;
@@ -893,17 +1094,32 @@ export function withGasSponsor(
           }
         }
       } catch (error) {
+        answered = true;
         // Refused after the deadline: the kept hold lifts (a late failure
         // that may still land has set its own minute), and after that long
         // nothing is sent again, sponsored or paid.
         if (error instanceof SponsoredLateFailure) {
           sendSettled("definite");
-          throw new SponsoredOutcomeUnknown(error.cause);
+          // A definite late refusal is the one answer that proves nothing
+          // sailed; anything else is watched like any unclear outcome. This
+          // late, a refusal counts only when an HTTP status says so (or the
+          // person said no): a client-side code or message can't prove it.
+          const lateKind = classifySponsorError(error.cause);
+          const statusBacked = causeChain(error.cause).some((node) => typeof node.status === "number");
+          if (lateKind === "cancelled" || (lateKind !== "unknown" && statusBacked)) {
+            lateDeclined = true;
+            watched = true;
+            notifyOutcome();
+            throw new SponsoredOutcomeUnknown(error.cause);
+          }
+          console.warn(`[gas-sponsor] late unknown outcome: ${sponsorFailureFacts(error.cause)}`);
+          throw unclear(error.cause);
         }
         const kind = classifySponsorError(error);
         if (kind === "unknown") {
+          console.warn(`[gas-sponsor] unknown outcome: ${sponsorFailureFacts(error)}`);
           sendSettled("unknown");
-          throw new SponsoredOutcomeUnknown(error);
+          throw unclear(error);
         }
         // Every other kind is a definite answer before broadcast.
         sendSettled("definite");
@@ -918,11 +1134,18 @@ export function withGasSponsor(
       }
       // Privy answered without a hash: the operation was accepted and may
       // land, so a second send could pay twice.
+      answered = true;
       if (!TX_HASH.test(hash)) {
         sendSettled("unknown");
-        throw new SponsoredOutcomeUnknown(new Error(`no transaction hash: ${String(hash)}`));
+        throw unclear(new Error(`no transaction hash: ${String(hash)}`));
       }
-      // A hash: the order is out and the screen follows it from here.
+      // A hash: the order is out and the screen follows it from here. A
+      // screen already let go after the deadline hears that it went out.
+      if (stalled) {
+        landed = true;
+        watched = true;
+        notifyOutcome();
+      }
       sendSettled("definite");
       // Privy's client waits for inclusion before it answers, so the
       // receipt is normally there already.

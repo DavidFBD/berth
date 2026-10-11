@@ -23,9 +23,11 @@ export function SocialNoticeLine({ hidden, onOpen }: { hidden: boolean; onOpen: 
   // notice says its piece and offers only "Got it" (m-d).
   const me = useMySocial(due && !hidden, { prompt: false });
   const hasSwitch = Boolean(me.data?.handle);
+  // Already sharing: the switch it points to is on, so it says nothing.
+  const sharing = me.data?.shareHoldings === true;
   return (
     <SocialNoticeLineView
-      show={due && !hidden}
+      show={due && !hidden && !sharing}
       onOpen={
         hasSwitch
           ? () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { COPY } from "@/lib/copy";
+import { LEGAL_EFFECTIVE_DATE, TERMS_VERSION } from "@/lib/legal-version";
 import {
   FRIEND_FACES_SHOWN,
   FRIEND_HOLDINGS_MAX_AGE_DAYS,
@@ -20,6 +21,12 @@ import {
   shownCount,
   type AccountFact,
   type BuyFact,
+  dueNotices,
+  ACCOUNT_NOTICES,
+  ACCOUNT_NOTICE_RULES,
+  POLICY_NOTICE_ID,
+  SOCIAL_NOTICE_ID,
+  type NoticeAccount,
 } from "./social-proof";
 
 const LISTED = ["NVDA", "AAPL", "TSLA", "QQQ"];
@@ -349,3 +356,56 @@ const REVIEWED_CLAIMS: readonly string[] = [
   "Jev has not read the latest stories about what you own yet.",
   "Your change counts what your holdings did, not money you added or took out.",
 ];
+
+describe("which account notices are due", () => {
+  const old = (over: Partial<NoticeAccount> = {}): NoticeAccount => ({
+    createdAt: new Date("2026-08-01T00:00:00Z"),
+    seen: new Set(),
+    acceptedTerms: new Set(),
+    sharesHoldings: false,
+    ...over,
+  });
+
+  it("tells an older account each notice until it is closed", () => {
+    expect(dueNotices(old())).toEqual([SOCIAL_NOTICE_ID, POLICY_NOTICE_ID]);
+    expect(dueNotices(old({ seen: new Set([SOCIAL_NOTICE_ID]) }))).toEqual([POLICY_NOTICE_ID]);
+  });
+
+  it("never points to the holdings switch for an account already sharing its holdings", () => {
+    expect(dueNotices(old({ sharesHoldings: true }))).not.toContain(SOCIAL_NOTICE_ID);
+  });
+});
+
+describe("dated account notices (2026-10-11)", () => {
+  const account = (createdAt: string, over: Partial<NoticeAccount> = {}): NoticeAccount => ({
+    createdAt: new Date(createdAt),
+    seen: new Set(),
+    acceptedTerms: new Set(),
+    sharesHoldings: false,
+    ...over,
+  });
+
+  it("gives every notice a date", () => {
+    for (const notice of ACCOUNT_NOTICES) expect(ACCOUNT_NOTICE_RULES[notice]?.effectiveFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("never tells an account created on or after the terms' date that the terms are new", () => {
+    expect(ACCOUNT_NOTICE_RULES[POLICY_NOTICE_ID].effectiveFrom).toBe(TERMS_VERSION);
+    expect(COPY.policyNotice.text).toContain(LEGAL_EFFECTIVE_DATE);
+    // A fresh account made through /c/launch on 11 October.
+    expect(dueNotices(account("2026-10-11T14:40:55Z"))).toEqual([]);
+    expect(dueNotices(account(`${TERMS_VERSION}T00:00:00Z`))).not.toContain(POLICY_NOTICE_ID);
+    expect(dueNotices(account("2026-10-07T23:59:59Z"))).toContain(POLICY_NOTICE_ID);
+  });
+
+  it("never tells an account that accepted the current terms", () => {
+    expect(dueNotices(account("2026-09-20T00:00:00Z", { acceptedTerms: new Set([TERMS_VERSION]) }))).not.toContain(POLICY_NOTICE_ID);
+    // An older version accepted says nothing about this one.
+    expect(dueNotices(account("2026-09-20T00:00:00Z", { acceptedTerms: new Set(["2026-10-05"]) }))).toContain(POLICY_NOTICE_ID);
+  });
+
+  it("never calls the holdings switch new to an account that met it in onboarding", () => {
+    expect(dueNotices(account("2026-10-03T00:00:00Z"))).not.toContain(SOCIAL_NOTICE_ID);
+    expect(dueNotices(account("2026-10-02T12:00:00Z"))).toContain(SOCIAL_NOTICE_ID);
+  });
+});

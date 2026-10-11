@@ -40,8 +40,8 @@ function registerStandardWallet(wallet: unknown) {
  * Bridges Privy's embedded Solana wallet into the SODAX wallet layer:
  * (1) registers Privy's wallet-standard implementation so SODAX's Solana
  * adapter discovers it like any installed wallet, then (2) auto-connects it
- * once for signed-in email users, making Solana source chains (JitoSOL!)
- * work in email mode with zero extra taps. Renders nothing.
+ * once for signed-in email users, making SOL and USDC on Solana payable
+ * in email mode with zero extra taps. Renders nothing.
  */
 export function PrivySolanaBridge() {
   const privy = usePrivyEmbeddedWallet();

@@ -6,6 +6,8 @@ import { FRIEND_FEATURES } from "@/lib/friends-all";
 import { mySocial, payFriendsAllIfOn, setAllFriends, setHandle, setLinkFace, setShareHoldings, setShareWeek, setVisible } from "./handles";
 import type { SocialViewer } from "./people";
 import { runSocialOp } from "./ops";
+import { pendingNotices } from "@/lib/server/notices";
+import { SOCIAL_NOTICE_ID } from "@/lib/social-proof";
 
 /**
  * "Turn on all friend features" against the real schema (PGlite): every
@@ -32,10 +34,10 @@ const PAY = XP_ACTIONS.friends_all_on.amount;
 const ALL = [...FRIEND_FEATURES];
 let n = 0;
 
-async function named(): Promise<SocialViewer> {
+async function named(createdAt = new Date().toISOString()): Promise<SocialViewer> {
   n += 1;
   const email = `fa${n}@example.com`;
-  const rows = (await sql.query(`insert into users (privy_did, email) values ($1, $2) returning id`, [`did:privy:fa${n}`, email])) as { id: string }[];
+  const rows = (await sql.query(`insert into users (privy_did, email, created_at) values ($1, $2, $3::timestamptz) returning id`, [`did:privy:fa${n}`, email, createdAt])) as { id: string }[];
   const viewer = { id: rows[0].id, email };
   const saved = await setHandle(viewer, `harbour_${n}`);
   if (!saved.ok) throw new Error("no name");
@@ -52,6 +54,40 @@ async function ledger(userId: string): Promise<{ events: number; xp: number }> {
 }
 
 describe("setAllFriends", () => {
+  it("closes the social notice for good, since the switch it points to is now on (2026-10-11)", async () => {
+    const sailor = await named("2026-08-01T00:00:00Z");
+    expect(await pendingNotices(sailor.id)).toContain(SOCIAL_NOTICE_ID);
+    const result = await setAllFriends(sailor, ALL);
+    expect(result.ok).toBe(true);
+    expect(await pendingNotices(sailor.id)).not.toContain(SOCIAL_NOTICE_ID);
+    // Closed, not merely quiet: it stays closed if sharing is turned off again.
+    await setShareHoldings(sailor, false);
+    expect(await pendingNotices(sailor.id)).not.toContain(SOCIAL_NOTICE_ID);
+  });
+
+  it("still answers a toggle as done when the notice cannot be closed", async () => {
+    const sailor = await named("2026-08-01T00:00:00Z");
+    await sql.query(`alter table account_notices rename to account_notices_away`);
+    try {
+      const result = await setAllFriends(sailor, ALL);
+      expect(result.ok).toBe(true);
+      expect(await setShareHoldings(sailor, true)).not.toBeNull();
+    } finally {
+      await sql.query(`alter table account_notices_away rename to account_notices`);
+    }
+  });
+
+  it("says nothing of the switch to an account that already shares its holdings", async () => {
+    const sailor = await named("2026-08-01T00:00:00Z");
+    await sql.query(`update profiles set share_holdings = true where user_id = $1`, [sailor.id]);
+    expect(await pendingNotices(sailor.id)).not.toContain(SOCIAL_NOTICE_ID);
+    await sql.query(`update profiles set share_holdings = false where user_id = $1`, [sailor.id]);
+    expect(await pendingNotices(sailor.id)).toContain(SOCIAL_NOTICE_ID);
+    await setShareHoldings(sailor, true);
+    await setShareHoldings(sailor, false);
+    expect(await pendingNotices(sailor.id)).not.toContain(SOCIAL_NOTICE_ID);
+  });
+
   it("turns every friend feature on and pays the bonus once, saying so", async () => {
     const sailor = await named();
     await setVisible(sailor, false);

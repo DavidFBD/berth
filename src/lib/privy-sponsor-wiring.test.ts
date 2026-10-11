@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChainKeys } from "@sodax/sdk";
 import { InsufficientFundsForPaidSend } from "./gas-need";
-import { outcomeHoldUntil, resetOutcomeHold, resetSponsorRefusals, withGasSponsor } from "./gas-sponsor";
-import { privySponsorOptions } from "./privy-sponsor-wiring";
+import { ENTRY_POINTS, USER_OPERATION_EVENT, outcomeHoldUntil, resetOutcomeHold, resetSponsorRefusals, withGasSponsor } from "./gas-sponsor";
+import { privySponsorOptions, walletChainProbe } from "./privy-sponsor-wiring";
 
 const HASH = `0x${"cd".repeat(32)}`;
 const ADDRESS = "0x00000000000000000000000000000000000000aa";
@@ -137,5 +137,65 @@ describe("the Privy wallet's sponsor wiring", () => {
       await expect(provider.request(send({ gas: "0x5208", value: "0x2386f26fc10000" }))).rejects.toBeInstanceOf(InsufficientFundsForPaidSend);
       expect(inner.request).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("the chain check behind an unclear sponsored answer", () => {
+  const SENDER = "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01";
+  const make = (txCount: number[], logs: unknown[]) => {
+    const counts = [...txCount];
+    const request = vi.fn(async () => logs);
+    const client = {
+      getBalance: async () => 0n,
+      waitForTransactionReceipt: async () => ({ status: "success", logs: [] }),
+      // The mark reads 513850329; every later look sees the head 4 blocks on.
+      getBlockNumber: vi.fn().mockResolvedValueOnce(513850329n).mockResolvedValue(513850333n),
+      getTransactionCount: vi.fn(async () => counts.shift() ?? 0),
+      request,
+    };
+    return { client, request, probe: walletChainProbe(client, SENDER)! };
+  };
+
+  it("marks the block and pending nonce, then reads the nonce and our UserOperationEvents since", async () => {
+    const { probe, request, client } = make([0, 0], []);
+    const mark = await probe.mark();
+    expect(mark).toEqual({ block: 513850329n, txCount: 0 });
+    expect(client.getTransactionCount).toHaveBeenCalledWith({ address: SENDER, blockTag: "pending" });
+    expect(await probe.moved(mark)).toBe(false);
+    expect(request).toHaveBeenCalledWith({
+      method: "eth_getLogs",
+      params: [
+        {
+          address: [...ENTRY_POINTS],
+          fromBlock: "0x1ea0bbd9",
+          toBlock: "0x1ea0bbdd",
+          topics: [USER_OPERATION_EVENT, null, `0x000000000000000000000000${SENDER.slice(2).toLowerCase()}`],
+        },
+      ],
+    });
+  });
+
+  it("says the wallet moved on a new nonce or a user operation of ours", async () => {
+    const nonce = make([0, 1], []);
+    expect(await nonce.probe.moved(await nonce.probe.mark())).toBe(true);
+    const op = make([0, 0], [{ topics: [] }]);
+    expect(await op.probe.moved(await op.probe.mark())).toBe(true);
+  });
+
+  it("proves nothing when the node's head has not passed the mark", async () => {
+    const { probe, client, request } = make([0, 0], []);
+    const mark = await probe.mark();
+    client.getBlockNumber.mockResolvedValue(513850329n);
+    await expect(probe.moved(mark)).rejects.toThrow();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("proves nothing when the logs come back as something else", async () => {
+    const odd = make([0, 0], null as unknown as unknown[]);
+    await expect(odd.probe.moved(await odd.probe.mark())).rejects.toThrow();
+  });
+
+  it("is off when the client cannot read logs", () => {
+    expect(walletChainProbe({ getBalance: async () => 0n, waitForTransactionReceipt: async () => ({ status: "success", logs: [] }) }, SENDER)).toBeUndefined();
   });
 });

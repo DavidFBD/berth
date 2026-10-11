@@ -1,4 +1,5 @@
 import { DUST_USD } from "@/lib/dust";
+import { TERMS_VERSION } from "@/lib/legal-version";
 
 /**
  * Two plain facts about what people on Berth did, in place of any score
@@ -273,3 +274,47 @@ export const SOCIAL_NOTICE_ID = "social-proof-2026-10";
 export const POLICY_NOTICE_ID = "policy-2026-10-05";
 /** Every notice an account may be told once; the server answers only these. */
 export const ACCOUNT_NOTICES: readonly string[] = [SOCIAL_NOTICE_ID, POLICY_NOTICE_ID];
+
+/**
+ * When a notice has nothing to tell an account. Every notice in
+ * ACCOUNT_NOTICES announces a change from a date, so an account created on
+ * or after that date (UTC) met Berth as it is and is never told it is new.
+ */
+export type AccountNoticeRule = {
+  /** The day the change took effect, ISO, UTC. */
+  effectiveFrom: string;
+  /** A terms version whose acceptance means the account already read what the notice says. */
+  termsVersion?: string;
+  /** Says nothing to an account that already shares its holdings with friends. */
+  quietWhenSharingHoldings?: boolean;
+};
+
+export const ACCOUNT_NOTICE_RULES: Readonly<Record<string, AccountNoticeRule>> = {
+  // Most bought and the holdings switch shipped on 2 October 2026 (d46d5ab);
+  // from the 3rd every new account found the switch in onboarding.
+  [SOCIAL_NOTICE_ID]: { effectiveFrom: "2026-10-03", quietWhenSharingHoldings: true },
+  // The notice names LEGAL_EFFECTIVE_DATE, so it follows TERMS_VERSION.
+  [POLICY_NOTICE_ID]: { effectiveFrom: TERMS_VERSION, termsVersion: TERMS_VERSION },
+};
+
+export type NoticeAccount = {
+  createdAt: Date;
+  /** Notices already closed. */
+  seen: ReadonlySet<string>;
+  /** Terms versions this account accepted. */
+  acceptedTerms: ReadonlySet<string>;
+  sharesHoldings: boolean;
+};
+
+/** The notices still due for this account, in ACCOUNT_NOTICES order. */
+export function dueNotices(account: NoticeAccount, rules: Readonly<Record<string, AccountNoticeRule>> = ACCOUNT_NOTICE_RULES): string[] {
+  return ACCOUNT_NOTICES.filter((notice) => {
+    if (account.seen.has(notice)) return false;
+    const rule = rules[notice];
+    if (!rule) return true;
+    if (account.createdAt.getTime() >= Date.parse(`${rule.effectiveFrom}T00:00:00Z`)) return false;
+    if (rule.termsVersion && account.acceptedTerms.has(rule.termsVersion)) return false;
+    if (rule.quietWhenSharingHoldings && account.sharesHoldings) return false;
+    return true;
+  });
+}

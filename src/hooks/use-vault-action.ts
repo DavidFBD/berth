@@ -81,7 +81,7 @@ import {
   type NotifyOutcome,
   type RenotifyState,
 } from "@/lib/market-send";
-import { subscribeSponsoredStall } from "@/lib/gas-sponsor";
+import { sponsorFailureFacts, subscribeSponsoredStall } from "@/lib/gas-sponsor";
 import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
@@ -584,9 +584,16 @@ export function useVaultAction(options?: {
       // would be a reporting bug, not an order, so don't guess an attribution.
       const pour = pourRef.current;
       if (!pour || options?.report === false) return;
-      // A sponsored send that may still land is not a failure to file: if
-      // it filled, pnpm orders:recover brings it into the ledger.
-      if (message === COPY.errOutcomeUnknown) return;
+      // A sponsored send that may still land is filed only for its raw
+      // status and code (no words, nothing about the person), so the
+      // classifier's allowlist can widen from Privy's real answers. If it
+      // filled, pnpm orders:recover brings it into the ledger.
+      if (message === COPY.errOutcomeUnknown) {
+        const facts = sponsorFailureFacts(raw);
+        console.warn(`[vault-action] sponsored outcome unknown: ${facts}`);
+        report({ ...pour.context, friendlyMessage: message, errorCode: "SPONSORED_OUTCOME_UNKNOWN", rawMessage: facts });
+        return;
+      }
       report({
         ...pour.context,
         friendlyMessage: message,

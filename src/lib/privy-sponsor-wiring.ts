@@ -1,13 +1,23 @@
 import type { EvmChainKey } from "@sodax/sdk";
 import {
+  ENTRY_POINTS,
+  USER_OPERATION_EVENT,
   markSponsorRefused,
   sponsoredSendOptions,
+  type ChainProbe,
   type ReceiptLike,
   type withGasSponsor,
 } from "@/lib/gas-sponsor";
 import { InsufficientFundsForPaidSend, paidSendNeed, withinOrUnknown } from "@/lib/gas-need";
 
 type SponsorOptions = Parameters<typeof withGasSponsor>[1];
+
+type LogFilter = {
+  address: `0x${string}`[];
+  fromBlock: `0x${string}`;
+  toBlock: `0x${string}`;
+  topics: (`0x${string}` | null)[];
+};
 
 /**
  * How the Privy embedded wallet hands its sends to withGasSponsor
@@ -35,6 +45,10 @@ export function privySponsorOptions({
   client: {
     getBalance: (args: { address: `0x${string}` }) => Promise<bigint>;
     waitForTransactionReceipt: (args: { hash: `0x${string}`; timeout: number }) => Promise<ReceiptLike>;
+    /** For the chain check after an unclear answer (chainProbe); without them the hold keeps its minute. */
+    getBlockNumber?: () => Promise<bigint>;
+    getTransactionCount?: (args: { address: `0x${string}`; blockTag: "pending" }) => Promise<number>;
+    request?: (args: { method: "eth_getLogs"; params: [LogFilter] }) => Promise<unknown>;
   };
   /** The chain's fee per gas now, for a paid send that carries none. */
   readFeePerGas: (chainKey: EvmChainKey) => Promise<bigint>;
@@ -53,6 +67,7 @@ export function privySponsorOptions({
     chainId,
     address,
     active,
+    chainProbe: walletChainProbe(client, address),
     // The bundle's own success flag for our call (lib/gas-sponsor
     // sponsoredCallSucceeded). Short: Privy answers after inclusion.
     readReceipt: (hash) =>
@@ -91,6 +106,52 @@ export function privySponsorOptions({
         `[privy-wallet] gas sponsorship ${kind} on ${chainKey}; sending the ordinary way, paid by the wallet`,
         error,
       );
+    },
+  };
+}
+
+/**
+ * The cheap chain check behind an unclear sponsored answer
+ * (lib/gas-sponsor watchOutcome), progress only, never a reason to lift
+ * the hold: the wallet's pending nonce, and any UserOperationEvent from
+ * the canonical EntryPoints with the wallet as sender between the mark and
+ * the node's head. Three calls per look.
+ */
+export function walletChainProbe(
+  client: Parameters<typeof privySponsorOptions>[0]["client"],
+  address: string,
+): ChainProbe | undefined {
+  const { getBlockNumber, getTransactionCount, request } = client;
+  if (!getBlockNumber || !getTransactionCount || !request) return undefined;
+  const sender = address as `0x${string}`;
+  const senderTopic: `0x${string}` = `0x${"0".repeat(24)}${sender.slice(2).toLowerCase()}`;
+  const nonce = () => getTransactionCount.call(client, { address: sender, blockTag: "pending" });
+  return {
+    mark: async () => {
+      const [block, txCount] = await Promise.all([getBlockNumber.call(client), nonce()]);
+      return { block, txCount };
+    },
+    moved: async (since) => {
+      // The head first: a backend behind the mark would answer an empty
+      // list for a range it has not reached, so that read proves nothing.
+      const head = await getBlockNumber.call(client);
+      if (head <= since.block) throw new Error("the node's head is not past the mark yet");
+      const [txCount, logs] = await Promise.all([
+        nonce(),
+        request.call(client, {
+          method: "eth_getLogs",
+          params: [
+            {
+              address: [...ENTRY_POINTS] as `0x${string}`[],
+              fromBlock: `0x${since.block.toString(16)}`,
+              toBlock: `0x${head.toString(16)}`,
+              topics: [USER_OPERATION_EVENT as `0x${string}`, null, senderTopic],
+            },
+          ],
+        }),
+      ]);
+      if (!Array.isArray(logs)) throw new Error("eth_getLogs gave no list");
+      return txCount !== since.txCount || logs.length > 0;
     },
   };
 }

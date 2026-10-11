@@ -12,6 +12,8 @@ import { awardXp, flushUnannounced } from "@/lib/server/accounts";
 import { XP_ACTIONS } from "@/lib/xp";
 import { sameFriendFeatures } from "@/lib/friends-all";
 import { socialAudit } from "@/lib/server/social/audit";
+import { markNoticeSeen } from "@/lib/server/notices";
+import { SOCIAL_NOTICE_ID } from "@/lib/social-proof";
 import { hasVerifiedEmail, ownHandle, type SocialViewer } from "@/lib/server/social/people";
 
 /**
@@ -201,8 +203,24 @@ export async function setShareHoldings(viewer: SocialViewer, on: boolean, now = 
     [viewer.id, on, now.toISOString()],
   )) as { share_holdings: boolean }[];
   if (rows[0]) await socialAudit(viewer.id, on ? "share_holdings_on" : "share_holdings_off", viewer.id);
+  // The social notice points to this switch: someone who turned it on has found it.
+  if (on) await closeSocialNotice(viewer.id);
   const mine = await ownHandle(viewer.id);
   return mine ? mySocial(viewer, now) : null;
+}
+
+/**
+ * Closes the social notice ("See the switch") after its switch was turned
+ * on. A side effect only: the toggle has already been saved, so a failure
+ * here is logged and the toggle still answers as done. The notice also
+ * stays quiet while holdings are shared (lib/social-proof dueNotices).
+ */
+async function closeSocialNotice(userId: string): Promise<void> {
+  try {
+    await markNoticeSeen(userId, SOCIAL_NOTICE_ID);
+  } catch (error) {
+    console.warn("[social] could not close the social notice after a toggle", error);
+  }
 }
 
 /**
@@ -298,6 +316,9 @@ export async function setAllFriends(viewer: SocialViewer, shown: unknown, now = 
   if (!was.share_holdings) await socialAudit(viewer.id, "share_holdings_on", viewer.id);
   if (!was.share_week) await socialAudit(viewer.id, "share_week_on", viewer.id);
   await socialAudit(viewer.id, "friends_all_on", viewer.id, { xp: was.awarded ?? 0, shown: (shown as string[]).join(",") });
+  // Holdings sharing is on now, so the social notice ("See the switch") has
+  // nothing to tell this account: closed, as if it had been read.
+  await closeSocialNotice(viewer.id);
   let rewards: RewardList = [];
   let xp: number | null = null;
   if (was.awarded) {
