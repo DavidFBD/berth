@@ -234,8 +234,7 @@ describe("the words around it", () => {
 
   it("asks in plain words, off by default, reciprocal, never money", () => {
     const sub = COPY.social.shareWeekSub;
-    // The switch is named by the sentence the privacy policy uses; the title is its short form.
-    expect(COPY.social.shareWeekLabel).toBe("Let my friends compare their week with mine");
+    // The switch is named by its title, the same name the privacy policy uses.
     expect(COPY.social.shareWeek).toBe("Compare weeks with friends");
     // The layered notice keeps the inference risk in view, not only behind Details.
     expect(COPY.social.shareWeekShort).toBe("Percent only. With few holdings, friends may guess what you hold.");
@@ -248,14 +247,14 @@ describe("the words around it", () => {
     ]) {
       expect(sub).toContain(part);
     }
-    for (const text of [COPY.social.shareWeek, COPY.social.shareWeekLabel, COPY.social.shareWeekShort, sub, COPY.portfolioFriendFrom("Oct 2"), COPY.portfolioFriendNone("mara")]) {
+    for (const text of [COPY.social.shareWeek, COPY.social.shareWeekShort, sub, COPY.portfolioFriendFrom("Oct 2"), COPY.portfolioFriendNone("mara")]) {
       expect(text).not.toMatch(/ [-–—] |[–—]/);
       expect(text).not.toMatch(/beat|win|lead|rank/i);
     }
   });
 
   it("is in the privacy policy, with a line in what changed, and the terms version is not bumped", () => {
-    expect(policy).toContain("If you turn on Let my friends compare their week with mine");
+    expect(policy).toContain("If you turn on Compare weeks with friends");
     expect(policy).toContain("in percent, day by day");
     expect(policy).toContain("over the days their page shows, which are the last week, the last 14, 30 or 90 days, or since the later of your two first buys.");
     expect(policy).not.toMatch(/page shows:/);
@@ -263,9 +262,11 @@ describe("the words around it", () => {
     // Said where consent is given and in the policy in the same words (review M1).
     expect(policy).toContain("With only a few holdings, a friend may be able to tell from your line what you hold and in what share.");
     const changed = COPY.privacyPolicy.sections.find((section) => section.id === "what-changed")!;
-    expect(changed.list?.at(-2)).toContain("Compare with friends");
+    expect(changed.list?.at(-3)).toContain("Compare with friends");
     // The longer windows, a line of their own the same day.
-    expect(changed.list?.at(-1)).toContain("over the last 14, 30 or 90 days");
+    expect(changed.list?.at(-2)).toContain("over the last 14, 30 or 90 days");
+    // The switch names now match the app, dated today, effective date and terms version untouched.
+    expect(changed.list?.at(-1)).toContain("On 11 October 2026 the names of the privacy switches");
     expect(changed.body[0]).toContain("the last two on 10 October 2026");
     expect(TERMS_VERSION).toBe("2026-10-08");
   });

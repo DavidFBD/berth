@@ -5,6 +5,7 @@ import {
   RETURNED_LISTINGS,
   RETURNED_TOKENS,
   readReturned,
+  holdingSplitAmounts,
   readReturnedRaw,
   returnedOwners,
   returnedUnits,
@@ -72,5 +73,22 @@ describe("what a sell from Robinhood Chain left on Sonic (review M1, sell)", () 
     expect(byOwner.get(getAddress(OWNER))?.hubWallet).toBe(getAddress(HUB));
     expect(read.multicall).toHaveBeenCalledTimes(1);
     expect(sumReturnedRaw([new Map([["NVDA", 1n]]), new Map([["NVDA", 2n], ["TSLA", 5n]])])).toEqual(new Map([["NVDA", 3n], ["TSLA", 5n]]));
+  });
+});
+
+describe("holdingSplitAmounts", () => {
+  it("says nothing for a holding wholly in the Berth account or wholly in the own wallet", () => {
+    expect(holdingSplitAmounts(5n * ONE, undefined, undefined)).toBeNull();
+    expect(holdingSplitAmounts(5n * ONE, 0n, undefined)).toBeNull();
+    expect(holdingSplitAmounts(5n * ONE, 5n * ONE, undefined)).toBeNull();
+  });
+
+  it("says nothing when the rest of a holding is only what came back from an unfilled sell", () => {
+    expect(holdingSplitAmounts(5n * ONE, 3n * ONE, 2n * ONE)).toBeNull();
+  });
+
+  it("splits a holding sitting in both places, leaving the returned part out of the account side", () => {
+    expect(holdingSplitAmounts(5n * ONE, 2n * ONE, undefined)).toEqual({ inAccount: 3n * ONE, inWallet: 2n * ONE });
+    expect(holdingSplitAmounts(6n * ONE, 2n * ONE, 1n * ONE)).toEqual({ inAccount: 3n * ONE, inWallet: 2n * ONE });
   });
 });

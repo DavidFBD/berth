@@ -268,7 +268,6 @@ describe("the words", () => {
       COPY.social.cardShareNote,
       COPY.friendsHold(4, []),
       COPY.social.shareHoldings,
-      COPY.social.shareHoldingsLabel,
       COPY.social.shareHoldingsShort,
       COPY.social.shareHoldingsSub,
       COPY.social.acceptHoldingsNote,
@@ -280,20 +279,21 @@ describe("the words", () => {
   it("the drawer's privacy switches are a layered notice", () => {
     const policy = COPY.privacyPolicy.sections.flatMap((section) => [...section.body, ...(section.list ?? [])]).join("\n");
     const switches = [
-      { title: COPY.social.hide, label: COPY.social.hide, short: COPY.social.hideShort },
-      { title: COPY.social.linkFace, label: COPY.social.linkFaceLabel, short: COPY.social.linkFaceShort },
-      { title: COPY.social.shareHoldings, label: COPY.social.shareHoldingsLabel, short: COPY.social.shareHoldingsShort },
-      { title: COPY.social.shareWeek, label: COPY.social.shareWeekLabel, short: COPY.social.shareWeekShort },
+      { title: COPY.social.hide, short: COPY.social.hideShort },
+      { title: COPY.social.linkFace, short: COPY.social.linkFaceShort },
+      { title: COPY.social.shareHoldings, short: COPY.social.shareHoldingsShort },
+      { title: COPY.social.shareWeek, short: COPY.social.shareWeekShort },
     ];
     const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
-    for (const { title, label, short } of switches) {
+    for (const { title, short } of switches) {
       expect(words(title)).toBeGreaterThanOrEqual(2);
       expect(words(title)).toBeLessThanOrEqual(5);
       expect(words(short)).toBeLessThanOrEqual(12);
-      for (const text of [title, label, short]) expect(text).not.toMatch(/ [-–—] |[–—]/);
+      for (const text of [title, short]) expect(text).not.toMatch(/ [-–—] |[–—]/);
     }
-    // Each switch is still named by the sentence the privacy policy uses for it.
-    for (const label of [COPY.social.linkFaceLabel, COPY.social.shareHoldingsLabel, COPY.social.shareWeekLabel]) expect(policy).toContain(label);
+    // Each switch is named in the privacy policy by its title, the name on screen and to a screen reader.
+    for (const { title } of switches) expect(policy).toContain(title);
+    for (const old of ["Show my avatar, username and rank on links I share", "Let my friends see which stocks and funds I hold", "Let my friends compare their week with mine"]) expect(policy).not.toContain(old);
     // The essential facts stay in view, outside Details.
     expect(COPY.social.shareHoldingsShort).toMatch(/Names only, never amounts/);
     expect(COPY.social.shareHoldingsShort).toMatch(/Friends who share too/);

@@ -5,8 +5,7 @@ import { RANGE_DAYS, portfolioHistory, type PortfolioDay } from "@/lib/portfolio
 
 /**
  * "Compare with friends": a friend's line beside yours on the account card,
- * percent only. Off unless both turn on "Let my friends compare their week
- * with mine" (profiles.share_week, lib/server/social/compare), and only ever
+ * percent only. Off unless both turn on "Compare weeks with friends" (profiles.share_week, lib/server/social/compare), and only ever
  * over the window the card already shows: 1W, 14D, 30D or 90D, each from
  * its first close, or since first buy from the later of the two first buys.
  *

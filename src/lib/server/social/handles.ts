@@ -204,7 +204,7 @@ export async function setShareHoldings(viewer: SocialViewer, on: boolean, now = 
 }
 
 /**
- * "Let my friends compare their week with mine": one switch, off by
+ * "Compare weeks with friends": one switch, off by
  * default. It decides whether a friend who turned it on too may draw this
  * account's return, percent only, beside their own on the account card,
  * and, by the same switch, whether this account may draw theirs

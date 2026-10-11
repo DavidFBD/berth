@@ -122,3 +122,19 @@ export async function readReturned(
   wanted.forEach((owner, index) => byOwner.set(owner, { hubWallet: hubWallets[index], raw: raws[index] }));
   return { total: sumReturnedRaw(raws), byOwner };
 }
+
+/**
+ * The amounts for the one line a holding row says about where it sits: only
+ * when it is split between the Berth account and the person's own wallet on
+ * Robinhood Chain. A holding wholly in one place says nothing (null).
+ * `returned` is counted in `balance` but is neither of the two places.
+ */
+export function holdingSplitAmounts(
+  balance: bigint,
+  robinhood: bigint | undefined,
+  returned: bigint | undefined,
+): { inAccount: bigint; inWallet: bigint } | null {
+  if (robinhood === undefined || robinhood <= 0n) return null;
+  const inAccount = balance - robinhood - (returned ?? 0n);
+  return inAccount > 0n ? { inAccount, inWallet: robinhood } : null;
+}

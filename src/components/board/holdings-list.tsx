@@ -17,6 +17,7 @@ import { useLastKnown, useOrders, useProfile } from "@/hooks/use-profile";
 import { ShareHoldingsOnX } from "@/components/share-holdings-on-x";
 import { compareHolding, type HoldingComparison } from "@/lib/benchmark";
 import { formatTokenAmount } from "@/lib/format";
+import { holdingSplitAmounts } from "@/lib/robinhood-returned";
 import { LISTING_MARK_BY_SYMBOL, TOKEN_LISTINGS, rowName, type TokenListing } from "@/lib/listings";
 import { CompanyMark } from "@/components/company-marks";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
@@ -302,7 +303,9 @@ export function HoldingsView({
       ) : (
         <>
           <ul id={listId} className="divide-y divide-border border-t border-border">
-            {shown.map(({ listing, balance, worth, move, comparison, robinhood, returned }) => (
+            {shown.map(({ listing, balance, worth, move, comparison, robinhood, returned }) => {
+              const split = holdingSplitAmounts(balance, robinhood, returned);
+              return (
               <li
                 key={listing.address}
                 data-last-known={updating ? "" : undefined}
@@ -314,16 +317,16 @@ export function HoldingsView({
                   <div className="money truncate text-xs text-muted-foreground">
                     {formatTokenAmount(balance, listing.decimals, 6)} {listing.symbol}
                   </div>
-                  {/* Where a holding sits, said only when part of it is in
-                      the person's own wallet on Robinhood Chain. */}
-                  {robinhood !== undefined && robinhood > 0n && (
+                  {/* Where a holding sits is said only when it is split
+                      between the Berth account and the person's own wallet
+                      on Robinhood Chain. A holding wholly in one place says
+                      nothing. */}
+                  {split && (
                     <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                      {robinhood >= balance - (returned ?? 0n)
-                        ? copy.rhChain.holdingInWallet
-                        : copy.rhChain.holdingSplit(
-                            formatTokenAmount(balance - robinhood - (returned ?? 0n), listing.decimals, 6),
-                            formatTokenAmount(robinhood, listing.decimals, 6),
-                          )}
+                      {copy.rhChain.holdingSplit(
+                        formatTokenAmount(split.inAccount, listing.decimals, 6),
+                        formatTokenAmount(split.inWallet, listing.decimals, 6),
+                      )}
                     </div>
                   )}
                   {/* Back on Sonic from a sell from Robinhood Chain that did
@@ -372,7 +375,8 @@ export function HoldingsView({
                   </Button>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
           {robinhoodUnread && (
             <p className="border-t border-border px-[18px] py-2.5 text-[11px] text-muted-foreground lg:px-6">

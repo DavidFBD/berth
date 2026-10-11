@@ -115,7 +115,7 @@ export type MySocial = {
   linkFace: boolean;
   /** "Let my friends see which stocks and funds I hold": off by default (lib/server/social-proof). */
   shareHoldings: boolean;
-  /** "Let my friends compare their week with mine": off by default (lib/server/social/compare). */
+  /** "Compare weeks with friends": off by default (lib/server/social/compare). */
   shareWeek: boolean;
   /** When the username may change again; null when it may now. */
   nextChangeAt: string | null;

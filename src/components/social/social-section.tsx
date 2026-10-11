@@ -179,7 +179,6 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
 
       <PrivacySwitch
         title={copy.hide}
-        label={copy.hide}
         short={copy.hideShort}
         details={copy.hideSub}
         detailsOpen={details === "hide"}
@@ -194,7 +193,6 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
 
       <PrivacySwitch
         title={copy.linkFace}
-        label={copy.linkFaceLabel}
         short={copy.linkFaceShort}
         details={copy.linkFaceSub}
         detailsOpen={details === "linkFace"}
@@ -215,7 +213,6 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
 
       <PrivacySwitch
         title={copy.shareHoldings}
-        label={copy.shareHoldingsLabel}
         short={copy.shareHoldingsShort}
         details={copy.shareHoldingsSub}
         detailsOpen={details === "shareHoldings"}
@@ -230,7 +227,6 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
 
       <PrivacySwitch
         title={copy.shareWeek}
-        label={copy.shareWeekLabel}
         short={copy.shareWeekShort}
         details={copy.shareWeekSub}
         detailsOpen={details === "shareWeek"}
@@ -543,12 +539,11 @@ function Fold({ open, onToggle, title, count, children }: { open: boolean; onTog
 /**
  * One privacy switch as a layered notice: the short title and one muted line
  * with the essential fact stay in view; the full consent text, word for word,
- * opens under a small Details. The switch is named by `label` (the full
- * sentence the privacy policy uses) and described by the short line.
+ * opens under a small Details. The switch is named by its title (the name the
+ * privacy policy uses) and described by the short line.
  */
 function PrivacySwitch({
   title,
-  label,
   short,
   details,
   detailsOpen,
@@ -558,7 +553,6 @@ function PrivacySwitch({
   onChange,
 }: {
   title: string;
-  label: string;
   short: string;
   details: string;
   detailsOpen: boolean;
@@ -580,7 +574,7 @@ function PrivacySwitch({
             {short}
           </span>
         </span>
-        <Toggle label={label} describedBy={shortId} on={on} disabled={disabled} onChange={onChange} />
+        <Toggle label={title} describedBy={shortId} on={on} disabled={disabled} onChange={onChange} />
       </div>
       <button
         type="button"

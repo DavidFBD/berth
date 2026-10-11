@@ -204,8 +204,6 @@ export type Copy = {
    * the Berth account keeps its own wording.
    */
   rhChain: {
-    /** Under a holding wholly on Robinhood Chain. */
-    holdingInWallet: string;
     /** What you own's (i), once anything is held on Robinhood Chain: holdingsHint, saying a sell spends one place at a time. */
     holdingsHint: string;
     /** The first stock's line when it was delivered to Robinhood Chain: firstLook.firstStockLine without the Berth account. */
@@ -2017,7 +2015,6 @@ export type SocialCopy = {
   hideSub: string;
   /** The opt-in for a personal link preview card on /u/<username> (lib/og/people). */
   linkFace: string;
-  linkFaceLabel: string;
   linkFaceShort: string;
   linkFaceSub: string;
   /** The small disclosure under a privacy switch that opens its full text. */
@@ -2059,12 +2056,10 @@ export type SocialCopy = {
   youAreFriends: (handle: string) => string;
   /** The opt-in for friends to see which listings you hold (lib/server/social-proof), off by default. */
   shareHoldings: string;
-  shareHoldingsLabel: string;
   shareHoldingsShort: string;
   shareHoldingsSub: string;
   /** The opt-in to compare weeks with friends (lib/server/social/compare), off by default. */
   shareWeek: string;
-  shareWeekLabel: string;
   shareWeekShort: string;
   shareWeekSub: string;
   /** Beside friend requests: what accepting does and does not share. */
@@ -3053,7 +3048,6 @@ export const COPY: Copy = {
     dismiss: "Got it",
   },
   rhChain: {
-    holdingInWallet: "In your own wallet on Robinhood Chain",
     holdingsHint:
       "Held in your Berth account or in your own wallet on Robinhood Chain. A sell takes from one of them at a time: your Berth account with one signature, or your own wallet with a signature on Robinhood Chain, which costs a small network fee there in ETH. Until you sell, what is in your wallet stays there, yours to keep or move.",
     firstStockLine: (name) =>
@@ -4476,11 +4470,11 @@ export const COPY: Copy = {
         id: "profiles",
         heading: "Your profile and friends",
         body: [
-          "A profile exists only if you pick a username, and you can hide it at any time. Anyone who knows your username can see your avatar, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets or your money, and what you own only to friends, as below. Your friends also see the day you became friends, the days you reached each rank and the Salutes between the two of you, including whether you saluted them.",
-          "The preview of a link to your profile or of your invite link, its picture, title and description, names no one unless you turn on Show my avatar, username and rank on links I share. Then a profile link's preview shows your username, your avatar (or your rank mark if you have not picked one) and your rank name, and an invite link's preview shows your username and your avatar or rank mark, to anyone who opens or previews the link, or guesses your username. Never your email, your wallets, your money or what you own. It is off unless you turn it on, and it shows no one while your profile is hidden. When you turn it off or hide your profile, Berth stops serving your preview within ten minutes. Apps where a link was already shared may keep their own copy of its preview for longer, and we cannot remove it from them.",
+          "A profile exists only if you pick a username, and you can hide it at any time with Hide my profile. Anyone who knows your username can see your avatar, rank, XP, the month you joined and how many Salutes you have. Never your email, your wallets or your money, and what you own only to friends, as below. Your friends also see the day you became friends, the days you reached each rank and the Salutes between the two of you, including whether you saluted them.",
+          "The preview of a link to your profile or of your invite link, its picture, title and description, names no one unless you turn on Show me on shared links. Then a profile link's preview shows your username, your avatar (or your rank mark if you have not picked one) and your rank name, and an invite link's preview shows your username and your avatar or rank mark, to anyone who opens or previews the link, or guesses your username. Never your email, your wallets, your money or what you own. It is off unless you turn it on, and it shows no one while your profile is hidden. When you turn it off or hide your profile, Berth stops serving your preview within ten minutes. Apps where a link was already shared may keep their own copy of its preview for longer, and we cannot remove it from them.",
           "We keep who you salute, your friend requests and friends, who you block and any report you make, with a record of each change for moderation. A friend can see whether you saluted them. Nobody else can see who you block. A friend who opens your profile sees which of their own friends are also yours, by username and avatar, unless that person's profile is hidden. The record of changes is kept for a year.",
-          "If you turn on Let my friends see which stocks and funds I hold, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username and avatar, for up to four of the friends who hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
-          "If you turn on Let my friends compare their week with mine, your friends who turned it on too can draw a line of your return beside their own on their account page, with your username, avatar and rank: how your portfolio moved, in percent, day by day, over the days their page shows, which are the last week, the last 14, 30 or 90 days, or since the later of your two first buys. Money you add or take out does not move it. They never see how much money you have, what you paid or what it is worth, and it shows no ranking. With only a few holdings, a friend may be able to tell from your line what you hold and in what share. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your daily values and not shown once the last is more than three days old. While your profile is hidden you are not shown.",
+          "If you turn on Share my holdings with friends, your friends who turned it on too can see which stocks and funds you hold: in their list of what friends hold, with your username and avatar, for up to four of the friends who hold a listing, and on your profile. They never see how much you hold, what you paid or what it is worth. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your last daily value and not shown once that is more than three days old. While your profile is hidden you are not shown.",
+          "If you turn on Compare weeks with friends, your friends who turned it on too can draw a line of your return beside their own on their account page, with your username, avatar and rank: how your portfolio moved, in percent, day by day, over the days their page shows, which are the last week, the last 14, 30 or 90 days, or since the later of your two first buys. Money you add or take out does not move it. They never see how much money you have, what you paid or what it is worth, and it shows no ranking. With only a few holdings, a friend may be able to tell from your line what you hold and in what share. It is off unless you turn it on, you see theirs only while yours is on, and you can turn it off at any time. It is read from your daily values and not shown once the last is more than three days old. While your profile is hidden you are not shown.",
           "Most bought on Berth is public: anyone who opens the board sees it. It counts how many people bought each listing in one week, Monday to Sunday in UTC, from the orders we keep. Each week is counted once, after it ends, and kept as it was published; the first week counted begins on 5 October 2026. It names no one and shows no amount. Two accounts merged into one count as one person. Only buys of at least $10, from accounts at least a week old with a verified email, are counted, and staff accounts and buys that earn no XP are not. A listing bought by fewer than five people is left out, counts above ten are rounded down to a multiple of five, and the list is not shown at all in a week when fewer than ten people bought.",
           "Most held on Berth is public too. Once a week, published on Tuesday for the week before, Monday to Sunday in UTC, the board shows for each stock or fund a rounded share, such as 1 in 4, of the people who own a stock or fund on Berth who hold that one. It is never a count of people and never an amount, and never anything about one person. The people counted are those with a verified email whose account is at least 7 days old and held at least $10 of stocks and funds at its last daily value of the week; staff accounts are not counted. A listing is shown only when at least 20 people hold it, and nothing is shown in a week when fewer than 50 people hold a stock or fund. Each week is counted once, after it ends, and kept as published. The first week counted is the week of 19 October 2026, published on 27 October 2026.",
         ],
@@ -4631,7 +4625,7 @@ export const COPY: Copy = {
       {
         id: "what-changed",
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
-        body: ["The first three changes below are new on 8 October 2026, the third to last on 9 October 2026 and the last two on 10 October 2026. The others came on 6 October 2026."],
+        body: ["The first three changes below are new on 8 October 2026, the third to last on 9 October 2026 and the last two on 10 October 2026. The others came on 6 October 2026. The last line below is new on 11 October 2026."],
         list: [
           "For a sign up through a campaign's link, we keep only whether the country your connection came from could not be told, as a signal for the reviewer. Never the country itself.",
           "A note that a campaign reward was paid to your account is an account notice, sent whatever your email settings say.",
@@ -4646,6 +4640,7 @@ export const COPY: Copy = {
           "A friend who opens your profile now sees the friends you have in common, the day you became friends, the days you reached each rank and the Salutes between the two of you, including whether you saluted them.",
           "Compare with friends: if you and a friend both turn it on, each of you can see the other's return, in percent only, beside your own.",
           "Compare with friends can now draw a friend's line over the last 14, 30 or 90 days as well as the last week and since your first buys, and only over a span your own record already covers.",
+          "On 11 October 2026 the names of the privacy switches in this policy were made to match the app: Hide my profile, Show me on shared links, Share my holdings with friends and Compare weeks with friends. What each one does has not changed.",
         ],
       },
       {
@@ -5123,7 +5118,6 @@ export const COPY: Copy = {
     hideShort: "While hidden, your username finds no one.",
     hideSub: "While hidden, your username finds no one, and friends do not see what you hold.",
     linkFace: "Show me on shared links",
-    linkFaceLabel: "Show my avatar, username and rank on links I share",
     linkFaceShort: "Your username, avatar and rank, to anyone who opens them.",
     linkFaceSub: "Links to your profile and your invite link then show your username, your avatar or rank mark, and your rank name to anyone who opens or previews them, or guesses your username. Off, they show no one.",
     details: "Details",
@@ -5166,11 +5160,9 @@ export const COPY: Copy = {
     needHandle: "Pick a username to add friends.",
     youAreFriends: (handle) => `You and ${handle} are friends.`,
     shareHoldings: "Share my holdings with friends",
-    shareHoldingsLabel: "Let my friends see which stocks and funds I hold",
     shareHoldingsShort: "Names only, never amounts. Friends who share too.",
     shareHoldingsSub: "Only the names, never how much, to every friend who shares too, including friends you add later. You see theirs only while yours is on. Off unless you turn it on.",
     shareWeek: "Compare weeks with friends",
-    shareWeekLabel: "Let my friends compare their week with mine",
     shareWeekShort: "Percent only. With few holdings, friends may guess what you hold.",
     shareWeekSub: "Friends who turn it on too can see how your portfolio moved, in percent only, beside their own over the same days. With only a few holdings, a friend may be able to tell from your line what you hold and in what share. Never how much money. You see theirs only while yours is on. Off unless you turn it on.",
     acceptHoldingsNote: "Friends never see your money. Which stocks and funds you hold is shared only if you both turn it on.",
