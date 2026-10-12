@@ -11,7 +11,7 @@ import { loadListingNews } from "@/lib/server/listing-news";
 import { loadListingX } from "@/lib/server/listing-x";
 import { gatherPosts } from "@/lib/server/x-column";
 import { loadMoves } from "@/lib/server/moves";
-import { loadFilings } from "@/lib/server/news-read";
+import { loadFilings, loadNewsColumn } from "@/lib/server/news-read";
 import { SCOPE_DRAFT, SCOPE_READ } from "@/lib/server/oauth/config";
 import { loadOrderLog } from "@/lib/server/order-marks";
 import { limitOrdersOn } from "@/lib/server/limit-orders";
@@ -279,6 +279,33 @@ const getMarketFeed = defineTool({
     for (const post of feed.items) {
       out.push(
         `About ${post.name}: ${said(ctx, "x", post.author.name)} (@${said(ctx, "x", post.author.username)}), ${ago(post.publishedAt)}${readAs(post.verdict)}${alsoBy(ctx, post.alsoBy)}. ${said(ctx, "x", clip(post.text))} ${said(ctx, "x", post.url)}`,
+      );
+    }
+    return ok(out.join("\n"));
+  },
+});
+
+/** How many of the column's stories the assistant reads: enough for the top of the day, few enough to retell. */
+const HEADLINES_LIMIT = 8;
+
+const getHeadlines = defineTool({
+  name: "get_headlines",
+  title: "The headlines",
+  description:
+    "Today's top market news on Berth: the stories Berth's own news column shows across every listing, in the order it ranks them, each kept only if it reports something about a listing. Use it for the headlines or the news in general; get_listing has one listing's own.",
+  input: z.object({}),
+  annotations: { title: "The headlines", ...READ_ONLY, openWorldHint: true },
+  scope: null,
+  run: async (_args, ctx) => {
+    // The same read as the column (app/api/news), so the assistant retells what the person can see.
+    const column = await loadNewsColumn();
+    if (column.reason) return no("Berth's news could not be read just now.");
+    if (column.stories.length === 0) return ok("No news about the listings has been kept in the last few days.");
+    const out = [column.updatedAt ? `Berth's news column, last updated ${ago(column.updatedAt)}, top stories first:` : "Berth's news column, top stories first:"];
+    for (const card of column.stories.slice(0, HEADLINES_LIMIT)) {
+      const source = card.kind === "post" ? "x" : "news";
+      out.push(
+        `About ${named(card)}: ${said(ctx, source, clip(card.title))} (${said(ctx, source, card.publisher)}, ${ago(card.publishedAt)}${readAs(card.verdict)}) ${said(ctx, source, card.url)}`,
       );
     }
     return ok(out.join("\n"));
@@ -668,12 +695,13 @@ const draftOrderTool = defineTool({
   },
 });
 
-/** The eleven tools, in the order both doors list them. */
+/** The twelve tools, in the order both doors list them. */
 export const BERTH_TOOLS = [
   listListings,
   getListing,
   getMoves,
   getMarketFeed,
+  getHeadlines,
   getAccount,
   getHoldings,
   getPerformance,

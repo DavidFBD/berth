@@ -7,8 +7,8 @@ import { MockLanguageModelV4 } from "ai/test";
  * end, real route, real tools, real stream, without a key or a cent.
  *
  * It reads the person's latest words and calls one tool that fits (a buy
- * or sell drafts, "hold" reads the holdings, "moved" reads the moves,
- * anything else reads the board), then answers from the tool's text,
+ * or sell drafts, "hold" reads the holdings, "headlines" reads the news,
+ * "moved" reads the moves, anything else reads the board), then answers from the tool's text,
  * streamed a few words at a time.
  */
 
@@ -46,6 +46,7 @@ export function scriptedCall(words: string): { toolName: string; input: Record<s
   if (/\b(buy|draft)\b/.test(text)) return { toolName: "draft_order", input: { listing: named, side: "buy", usd_amount: dollars } };
   if (/\b(hold|own|holdings)\b/.test(text)) return { toolName: "get_holdings", input: {} };
   if (/\b(s&p|doing|performance|better|gold|bitcoin)\b/.test(text)) return { toolName: "get_performance", input: {} };
+  if (/\b(headlines?|news)\b/.test(text)) return { toolName: "get_headlines", input: {} };
   if (/\b(moved|today|move)\b/.test(text)) return { toolName: "get_moves", input: {} };
   return { toolName: "list_listings", input: {} };
 }

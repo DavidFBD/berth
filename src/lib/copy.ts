@@ -501,7 +501,10 @@ export type Copy = {
   /** The Ask card's fake field and the phone's docked one. */
   askPlaceholder: string;
   askFine: string;
-  /** Tapped, each opens Ask and sends itself. */
+  /**
+   * Tapped, each opens Ask and sends itself. The buy stays last: where limit
+   * orders are on, the Ask card swaps the last one for askSuggestionLimit.
+   */
   askSuggestions: readonly string[];
   /** The short card on the board that leads to the account drawer's section. */
   assistantCardBody: string;
@@ -3570,7 +3573,7 @@ export const COPY: Copy = {
   newsMoreStories: "More stories",
   askPlaceholder: "Ask about your account",
   askFine: "Facts, not advice. You sign every order.",
-  askSuggestions: ["What moved today?", "Am I ahead of Gold?", "Buy $5 of NVIDIA"],
+  askSuggestions: ["What moved today?", "Am I ahead of Gold?", "What are the headlines?", "Buy $5 of NVIDIA"],
   assistantCardBody: "Let Claude, ChatGPT or Grok read your account and draft orders you sign here.",
   moneyRowName: (name, amount) => `${name}, ${amount}`,
   fundsReadyLine: (assetCount) =>
@@ -4311,6 +4314,7 @@ export const COPY: Copy = {
     get_listing: { doing: "Looking at a listing", done: "Looked at a listing" },
     get_moves: { doing: "Reading what moved", done: "Read what moved" },
     get_market_feed: { doing: "Reading what is being said", done: "Read what is being said" },
+    get_headlines: { doing: "Reading the headlines", done: "Read the headlines" },
     get_account: { doing: "Reading your account", done: "Read your account" },
     get_holdings: { doing: "Reading your holdings", done: "Read your holdings" },
     get_performance: { doing: "Measuring how your money did", done: "Measured how your money did" },
