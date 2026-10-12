@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { setSqlClient, type SqlClient } from "@/lib/server/db";
 import { makeTestDb } from "@/lib/server/pglite-test-db";
 import { compareFriends, friendWeek } from "./compare";
@@ -188,7 +188,12 @@ describe("compare with friends", () => {
     await befriend(me, friend);
     await record(me, WEEK);
     await record(friend, WEEK, 37);
-    const result = await runSocialOp("compare-week", { handle: "cmp_private_friend", range: "1w", from: "2026-10-02" }, { viewer: as(me), anonKey: "k" });
+    // The route reads the wall clock, so pin it to NOW (only Date, so PGlite's timers run as usual).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    const result = await runSocialOp("compare-week", { handle: "cmp_private_friend", range: "1w", from: "2026-10-02" }, { viewer: as(me), anonKey: "k" }).finally(
+      () => vi.useRealTimers(),
+    );
     expect(result.status).toBe(200);
     const body = result.body as { week: { from: string; days: { day: string; pct: number }[] } };
     expect(Object.keys(body)).toEqual(["week"]);
