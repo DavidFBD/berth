@@ -25,6 +25,7 @@ type ToolLine = { id: string; name: string; state: "running" | "done" | "failed"
 export function orbStateForTool(name: string): OrbState {
   switch (name) {
     case "get_market_feed":
+    case "get_headlines":
     case "get_listing":
       return "searching";
     case "get_performance":

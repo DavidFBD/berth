@@ -20,7 +20,7 @@ export function GET(request: Request): Response {
 
 ## Tools
 
-- list_listings, get_listing, get_moves, get_market_feed: the board, prices, moves and news.
+- list_listings, get_listing, get_moves, get_market_feed, get_headlines: the board, prices, moves and news.
 - get_account, get_holdings, get_performance, get_orders: the signed in account.
 - get_my_profile, get_friends_board: the signed in person's own card and friends board. Never anyone else's.
 - draft_order: a buy or sell for the person to approve and sign in Berth.

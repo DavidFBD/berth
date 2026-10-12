@@ -94,7 +94,7 @@ a round that changes behaviour.
   nothing happens until the person signs. Grants are listed and revoked
   under "Your assistant" in the account drawer.
 - **Ask** — the assistant inside Berth (`components/chat`, `app/api/chat`):
-  GPT-6 Luna reading the same eleven tools as the MCP server
+  GPT-6 Luna reading the same twelve tools as the MCP server
   (`lib/server/berth-tools/registry`, one definition for both doors) and
   drafting orders as cards that open the order drawer. Opens at Slip
   (`CHAT_UNLOCK_LEVEL`); capped per person per day and by a house budget;
