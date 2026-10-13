@@ -1,5 +1,6 @@
 import { getSql } from "@/lib/server/db";
 import { SHOWN_SQL, type SocialViewer } from "@/lib/server/social/people";
+import { activeFounderId } from "@/lib/server/social/founder";
 import { loadListingOrders, loadPortfolioDays } from "@/lib/server/portfolio";
 import { readMarks } from "@/lib/server/marks";
 import { lookupKey } from "@/lib/handle";
@@ -87,13 +88,14 @@ async function comparingFriends(viewerId: string, now: Date, norm?: string): Pro
 /** The friends the picker offers: username, avatar and rank level, as their card shows them. */
 export async function compareFriends(viewer: SocialViewer, now = new Date()): Promise<CompareFriendsResponse> {
   if (!(await viewerSharesWeek(viewer.id, now))) return { friends: [] };
-  const rows = await comparingFriends(viewer.id, now);
+  const [rows, founder] = await Promise.all([comparingFriends(viewer.id, now), activeFounderId()]);
   return {
     friends: rows.map((row) => ({
       handle: row.handle,
       avatarId: row.avatar_id ?? null,
       // XP is read only to find the level and goes no further.
       level: rankForXp(Number(row.xp) || 0).level,
+      ...(founder !== null && row.user_id === founder ? { founder: true as const } : {}),
     })),
   };
 }

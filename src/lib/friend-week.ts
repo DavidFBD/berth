@@ -56,7 +56,13 @@ export type FriendWeek = { from: IsoDay; days: FriendWeekPoint[] };
 export type FriendWeekResponse = { week: FriendWeek | null };
 
 /** A friend who compares, as the picker shows them: their card's face. Never XP, never an amount. */
-export type CompareFriend = { handle: string; avatarId: string | null; level: number };
+export type CompareFriend = {
+  handle: string;
+  avatarId: string | null;
+  level: number;
+  /** The founder (lib/server/social/founder): his line is said to be for comparison, not advice. */
+  founder?: true;
+};
 
 export type CompareFriendsResponse = { friends: CompareFriend[] };
 

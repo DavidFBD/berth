@@ -40,9 +40,20 @@ export function isFounder(userId: string | null | undefined, env: Record<string,
 export async function activeFounderId(env: Record<string, string | undefined> = process.env): Promise<string | null> {
   const id = founderId(env);
   if (!id) return null;
-  const rows = (await getSql().query(`select 1 from profiles where user_id = $1::uuid and friends_uncapped`, [id])) as unknown[];
-  return rows.length > 0 ? id : null;
+  try {
+    const rows = (await getSql().query(`select 1 from profiles where user_id = $1::uuid and friends_uncapped`, [id])) as unknown[];
+    return rows.length > 0 ? id : null;
+  } catch (error) {
+    // The env var set before the column exists, or any read failure: off, said once.
+    if (!warned) {
+      warned = true;
+      console.warn("[social] founder flag unreadable, feature off:", error instanceof Error ? error.message : error);
+    }
+    return null;
+  }
 }
+
+let warned = false;
 
 /** What the offer rule reads about the viewer and the founder. */
 export type FirstFriendFacts = {

@@ -71,7 +71,7 @@ export async function readFirstPath(userId: string): Promise<FirstPathResponse |
                      where o.user_id = u.id and o.direction = 'buy' and o.listing_symbol <> $2
                        and (o.fill_tx is not null or o.filled_at is not null)) as first_buy,
             (exists (select 1 from users r where r.referred_by = u.id)
-              or exists (select 1 from friend_requests q where q.from_id = u.id)
+              or exists (select 1 from friend_requests q where q.from_id = u.id and ($3::uuid is null or q.to_id <> $3::uuid))
               or exists (select 1 from friends f
                           where (f.a_id = u.id or f.b_id = u.id)
                             and (u.referred_by is null

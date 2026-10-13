@@ -51,7 +51,10 @@ person's own friend link. Adding David pays nothing, and his card in the compare
 5. Privacy: the suggestion is offered only while David's card is visible to this viewer (`VISIBLE_SQL`: switch on,
    email verified, no block either way, not staff hidden). Hide the card, and the strip and the row vanish on the
    next read. Existing friendships stay as any friend's do (hidden name only, per `peopleSql`). His holdings show only
-   through the existing both-share rule, names only.
+   through the existing both-share rule, names only. The other way round, the founder's own "Your friends hold"
+   aggregates across everyone who shares with him, which with many friends is a wide sample of Berth: counts and
+   names under the usual rule only, never amounts. Accepted (review of cc256e9), as it is what any friend sees of
+   their own friends.
 
 ## Who sees it, and when
 

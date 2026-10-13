@@ -164,6 +164,12 @@ export async function befriendOnReferral(
  */
 async function befriendFounder(viewer: SocialViewer, founder: string, via: "handle" | "link"): Promise<boolean> {
   if (await full(viewer.id, founder)) return false;
+  // The same daily limit as any request: an add and remove loop runs out.
+  const today = (await getSql().query(
+    `select count(*)::int as n from social_audit where actor_id = $1 and action = 'friend_founder' and created_at > now() - interval '1 day'`,
+    [viewer.id],
+  )) as { n: number }[];
+  if ((today[0]?.n ?? 0) >= DAILY_REQUEST_MAX) return false;
   let rows: { n: number }[];
   try {
     rows = (await getSql().query(

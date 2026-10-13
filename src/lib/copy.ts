@@ -3561,7 +3561,7 @@ export const COPY: Copy = {
     title: "Add your first friend",
     text: "Friends see each other's rank and, if both of you choose, which stocks and funds you hold. Never amounts.",
     founderName: "David, who builds Berth",
-    founderSub: "Accepts every request.",
+    founderSub: "Adds you at once, no request to wait on.",
     add: "Add David",
     added: "You and David are friends.",
     shareLink: "Share your link",

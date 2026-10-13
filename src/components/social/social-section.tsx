@@ -363,6 +363,7 @@ function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; de
               first.add({
                 onDone: (done) => {
                   if (done) toast.success(firstCopy.added);
+                  else toast.error(copy.actionFailed);
                 },
                 onError: () => toast.error(copy.actionFailed),
               });

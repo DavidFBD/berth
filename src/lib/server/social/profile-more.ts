@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/server/db";
+import { activeFounderId } from "@/lib/server/social/founder";
 import type { Face, Moment, ProfileMore, Relation } from "@/lib/social-types";
 import { SHOWN_SQL, type SocialViewer } from "@/lib/server/social/people";
 import { ownHolds } from "@/lib/server/social-proof";
@@ -86,7 +87,11 @@ async function pairDays(viewerId: string, targetId: string): Promise<Moment[]> {
   return moments;
 }
 
-/** Friends of both, as their own cards show them, that the viewer may open. */
+/**
+ * Friends of both, as their own cards show them, that the viewer may open.
+ * The founder is never one (lib/server/social/founder): a ready-made friend
+ * of many says nothing about two people.
+ */
 async function mutualFriends(viewerId: string, targetId: string): Promise<{ faces: Face[]; more: number }> {
   const rows = (await getSql().query(
     `with mine as (
@@ -100,13 +105,14 @@ async function mutualFriends(viewerId: string, targetId: string): Promise<{ face
      join users u on u.id = mine.id and u.retired_into is null
      join handles h on h.user_id = mine.id
      where mine.id <> $1::uuid and mine.id <> $2::uuid
+       and ($3::uuid is null or mine.id <> $3::uuid)
        and ${SHOWN_SQL("mine.id")}
        and not exists (
          select 1 from blocks b
          where (b.blocker_id = $1::uuid and b.blocked_id = mine.id) or (b.blocker_id = mine.id and b.blocked_id = $1::uuid)
        )
      order by lower(h.handle)`,
-    [viewerId, targetId],
+    [viewerId, targetId, await activeFounderId()],
   )) as { handle: string; avatar_id: string | null; xp: number | string }[];
   const faces = rows.slice(0, MUTUAL_FACES).map((row) => ({
     handle: row.handle,

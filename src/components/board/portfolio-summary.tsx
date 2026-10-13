@@ -819,6 +819,12 @@ export function PortfolioSummary({ holdsAnything }: { holdsAnything: boolean }) 
       </div>
       {/* Why the benchmark's line is missing or starts late, when it is. */}
       {reason && <p className="mt-1 text-xs leading-5 text-muted-foreground">{reason}</p>}
+      {/* Beside the founder's line (lib/server/social/founder): one line, never a call to buy. */}
+      {friend?.founder && (
+        <p data-founder-note className="mt-1 text-xs leading-5 text-muted-foreground">
+          {copy.social.founderHoldsNote}
+        </p>
+      )}
       <div className="mt-2">
         <PortfolioChart
           days={chart}

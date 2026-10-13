@@ -15,7 +15,8 @@ vi.mock("@/lib/server/email/notify", () => ({
 const { setBlock } = await import("./blocks");
 const { friendsBoard } = await import("./board");
 const { readCardOf } = await import("./cards");
-const { FRIENDS_MAX, friendAction, listFriends } = await import("./friends");
+const { befriendOnReferral, DAILY_REQUEST_MAX, FRIENDS_MAX, friendAction, listFriends } = await import("./friends");
+const { profileMore } = await import("./profile-more");
 const { activeFounderId, firstFriendOffer } = await import("./founder");
 const { setHandle, setShareHoldings, setVisible } = await import("./handles");
 const { runSocialOp } = await import("./ops");
@@ -81,6 +82,29 @@ async function pair(a: string, b: string) {
 }
 
 describe("the founder", () => {
+  it("fails closed when his flag cannot be read, and referrals still bind", async () => {
+    // The env var set before the column exists: the flag read throws.
+    setSqlClient({
+      ...sql,
+      query: (text: string, params?: unknown[]) =>
+        /select 1 from profiles where user_id = \$1::uuid and friends_uncapped/.test(text)
+          ? Promise.reject(new Error('column "friends_uncapped" does not exist'))
+          : sql.query(text, params),
+    } as SqlClient);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await activeFounderId()).toBeNull();
+      const sailor = await person("closed_sailor");
+      expect((await firstFriendOffer(sailor)).offer).toBeNull();
+      const referrer = await person("referring_sailor");
+      expect(await befriendOnReferral(sailor.id, referrer.id, "code")).toBe(true);
+      expect((await listFriends(sailor)).friends.map((friend) => friend.handle)).toEqual(["referring_sailor"]);
+    } finally {
+      warn.mockRestore();
+      setSqlClient(sql);
+    }
+  });
+
   it("is off while the env var is unset, or his profile is not uncapped", async () => {
     vi.stubEnv("BERTH_FOUNDER_USER_ID", "");
     expect(await activeFounderId()).toBeNull();
@@ -140,6 +164,19 @@ describe("the founder", () => {
     expect((await listFriends(declined)).friends).toHaveLength(0);
   });
 
+  it("is held to the daily request limit, add and remove as one may", async () => {
+    const sailor = await person("looping_sailor");
+    await sql.query(
+      `insert into social_audit (actor_id, action, target_id) select $1, 'friend_founder', $2 from generate_series(1, $3::int)`,
+      [sailor.id, founder.id, DAILY_REQUEST_MAX],
+    );
+    expect((await addFounder(sailor)).done).toBe(false);
+    expect((await listFriends(sailor)).friends).toHaveLength(0);
+    // A day later the limit has room again.
+    await sql.query(`update social_audit set created_at = now() - interval '25 hours' where actor_id = $1`, [sailor.id]);
+    expect((await addFounder(sailor)).done).toBe(true);
+  });
+
   it("takes friends past the cap, while the asker's own cap still holds", async () => {
     for (let i = 0; i < FRIENDS_MAX; i++) await pair(founder.id, (await person()).id);
     const late = await person("late_sailor");
@@ -151,6 +188,10 @@ describe("the founder", () => {
     expect((await addFounder(full)).done).toBe(false);
     // The database says the same, past the app's own count.
     await expect(pair(full.id, founder.id)).rejects.toThrow(/friends cap reached/);
+    // And for two ordinary people, either side full stops the pair.
+    const plain = await person("plain_mate");
+    await expect(pair(plain.id, full.id)).rejects.toThrow(/friends cap reached/);
+    await expect(pair(full.id, (await person()).id)).rejects.toThrow(/friends cap reached/);
   });
 
   it("pays nothing: no XP, no campaign claim, no referral, and the invite step stays open", async () => {
@@ -160,6 +201,12 @@ describe("the founder", () => {
     expect(await sql.query(`select 1 from campaign_claims where user_id = any($1::uuid[])`, [[sailor.id, founder.id]])).toHaveLength(0);
     expect(await sql.query(`select referred_by from users where id = $1`, [sailor.id])).toEqual([{ referred_by: null }]);
     expect((await readFirstPath(sailor.id))?.facts.inviteSent).toBe(false);
+    // Nor does a request to him from before the feature, still waiting.
+    vi.stubEnv("BERTH_FOUNDER_USER_ID", "");
+    const early = await person("waiting_sailor");
+    await addFounder(early);
+    vi.stubEnv("BERTH_FOUNDER_USER_ID", founder.id);
+    expect((await readFirstPath(early.id))?.facts.inviteSent).toBe(false);
     // Any other friend does close the step.
     const other = await person("other_sailor");
     await pair(sailor.id, other.id);
@@ -173,6 +220,20 @@ describe("the founder", () => {
     await pair(sailor.id, mate.id);
     expect((await friendsBoard(sailor)).rows.map((row) => row.handle).sort()).toEqual(["board_mate", "board_sailor"]);
     expect((await friendsBoard(founder)).rows.map((row) => row.handle)).toContain("board_sailor");
+  });
+
+  it("is never a friend in common", async () => {
+    const sailor = await person("common_sailor");
+    const mate = await person("common_mate");
+    const third = await person("common_third");
+    await addFounder(sailor);
+    await addFounder(mate);
+    await pair(sailor.id, mate.id);
+    await pair(sailor.id, third.id);
+    await pair(mate.id, third.id);
+    const more = await profileMore({ viewer: sailor, targetId: mate.id, relation: "friends", targetXp: 0, memberSince: "2026-10", holds: Promise.resolve(null), viewerShares: false, now: new Date() });
+    expect(JSON.stringify(more)).toContain("common_third");
+    expect(JSON.stringify(more)).not.toContain(founder.name);
   });
 
   it("says on his card and in Your friends hold that his holdings are not advice", async () => {

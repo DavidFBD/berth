@@ -23,6 +23,7 @@ import { rankForXp } from "@/lib/xp";
  */
 export function FirstFriendLine({ hidden, onShareLink }: { hidden: boolean; onShareLink: () => void }) {
   const copy = useCopy().firstFriend;
+  const failed = useCopy().social.actionFailed;
   const social = useAccountNotice(SOCIAL_NOTICE_ID);
   const policy = useAccountNotice(POLICY_NOTICE_ID);
   const feedback = useAccountNotice(FEEDBACK_PROMPT_ID);
@@ -36,7 +37,9 @@ export function FirstFriendLine({ hidden, onShareLink }: { hidden: boolean; onSh
         add({
           onDone: (done) => {
             if (done) toast.success(copy.added);
+            else toast.error(failed);
           },
+          onError: () => toast.error(failed),
         })
       }
       onShareLink={onShareLink}
