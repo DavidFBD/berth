@@ -28,6 +28,8 @@ export type SocialAction =
   | "friend_decline"
   | "friend_remove"
   | "friend_referral"
+  /** A request to the founder, made at once (lib/server/social/founder). */
+  | "friend_founder"
   | "link_new"
   | "block"
   | "unblock"

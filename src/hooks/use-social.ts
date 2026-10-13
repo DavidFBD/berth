@@ -11,6 +11,7 @@ import { usePrivyEmbeddedWallet } from "@/hooks/use-privy-evm-wallet";
 import type {
   BlockedName,
   CardAnswer,
+  FirstFriendAnswer,
   FriendAction,
   FriendsBoard,
   FriendsList,
@@ -20,7 +21,7 @@ import type {
 } from "@/lib/social-types";
 import type { HandleRefusal } from "@/lib/handle";
 import { carryMore } from "@/lib/profile-more";
-import { POLICY_NOTICE_ID, SOCIAL_NOTICE_ID, type FriendsHolding, type FriendsHoldingResponse } from "@/lib/social-proof";
+import { FIRST_FRIEND_NOTICE_ID, POLICY_NOTICE_ID, SOCIAL_NOTICE_ID, type FriendsHolding, type FriendsHoldingResponse } from "@/lib/social-proof";
 import type { CompareFriend, CompareFriendsResponse, FriendWeek, FriendWeekRange, FriendWeekResponse } from "@/lib/friend-week";
 
 /**
@@ -66,6 +67,7 @@ const KEYS = {
   compareWeek: (key: string | null, handle: string, range: string, from: string) =>
     ["social-compare-week", key, handle, range, from] as const,
   notices: (key: string | null) => ["social-notices", key] as const,
+  firstFriend: (key: string | null) => ["social-first-friend", key] as const,
   card: (key: string | null, handle: string) => ["social-card", key, handle.toLowerCase()] as const,
 };
 
@@ -410,6 +412,56 @@ export function useAccountNotice(notice: string): { due: boolean; close: () => v
 }
 
 /**
+ * The founder as a first friend (lib/server/social/founder): the offer, or
+ * null, read quietly (never asks a wallet to sign). `add` asks him as any
+ * request does, which makes friends at once; `dismiss` closes the offer for
+ * good on every device. Either hides it at once.
+ */
+export function useFirstFriend(enabled = true): {
+  offer: FirstFriendAnswer["offer"];
+  add: (handlers?: { onDone?: (done: boolean) => void; onError?: () => void }) => void;
+  adding: boolean;
+  dismiss: () => void;
+} {
+  const queryClient = useQueryClient();
+  const { key, call } = useSocialCall({ prompt: false });
+  const action = useSocialAction();
+  const query = useQuery({
+    queryKey: KEYS.firstFriend(key),
+    enabled: enabled && key !== null,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: async (): Promise<FirstFriendAnswer> => {
+      const { status, data } = await call<FirstFriendAnswer>("first-friend");
+      return status === 200 && data ? data : { offer: null };
+    },
+  });
+  const offer = query.data?.offer ?? null;
+  const hide = () => queryClient.setQueryData<FirstFriendAnswer>(KEYS.firstFriend(key), { offer: null });
+  return {
+    offer,
+    adding: action.isPending,
+    add: (handlers) => {
+      if (!offer) return;
+      action.mutate(
+        { kind: "friend", handle: offer.handle, action: "request" },
+        {
+          onSuccess: (result) => {
+            if (result.done) hide();
+            handlers?.onDone?.(result.done);
+          },
+          onError: () => handlers?.onError?.(),
+        },
+      );
+    },
+    dismiss: () => {
+      hide();
+      void call("notice-seen", { notice: FIRST_FRIEND_NOTICE_ID });
+    },
+  };
+}
+
+/**
  * A profile, by username or by a friend link's token. Keyed on the viewer
  * too, so a card fetched signed out is never shown as the signed in view.
  */
@@ -497,6 +549,7 @@ export function useSocialAction() {
         void queryClient.invalidateQueries({ queryKey: KEYS.board(key) });
         void queryClient.invalidateQueries({ queryKey: KEYS.holding(key) });
         void queryClient.invalidateQueries({ queryKey: KEYS.blocked(key) });
+        void queryClient.invalidateQueries({ queryKey: KEYS.firstFriend(key) });
         // A block, an unfriend or a removal drops a friend's line at once:
         // reset, not just marked stale, so the old line is never drawn again.
         void queryClient.resetQueries({ queryKey: KEYS.compareFriends(key) });

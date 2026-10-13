@@ -201,6 +201,8 @@ export type FriendHoldingsFact = {
   handle: string;
   avatarId?: string | null;
   level?: number;
+  /** The founder (lib/server/social/founder): his lines carry `founder` so the fold says his holdings are not advice. */
+  founder?: boolean;
   holdings: readonly { symbol: string; quantity: number; price?: number | null }[];
 };
 
@@ -215,7 +217,14 @@ export type FriendFace = { handle: string; avatarId: string | null; level: numbe
  * One listing's line: how many friends hold it, their usernames when there
  * are few, and up to FRIEND_FACES_SHOWN of their faces, sorted by username.
  */
-export type FriendsHolding = { symbol: string; count: number; names: string[]; faces: FriendFace[] };
+export type FriendsHolding = {
+  symbol: string;
+  count: number;
+  names: string[];
+  faces: FriendFace[];
+  /** The founder is among the friends counted on this line. */
+  founder?: true;
+};
 
 export type FriendsHoldingResponse = { holding: FriendsHolding[] };
 
@@ -240,11 +249,13 @@ export function holdsSomething(holding: { quantity: number; price?: number | nul
 export function friendsHoldingByListing(friends: readonly FriendHoldingsFact[], listed: readonly string[]): FriendsHolding[] {
   const allowed = new Set(listed);
   const bySymbol = new Map<string, Map<string, FriendFace>>();
+  const founderHolds = new Set<string>();
   for (const friend of friends) {
     for (const holding of friend.holdings) {
       if (!allowed.has(holding.symbol) || !holdsSomething(holding)) continue;
       const people = bySymbol.get(holding.symbol) ?? new Map<string, FriendFace>();
       people.set(friend.handle, { handle: friend.handle, avatarId: friend.avatarId ?? null, level: friend.level ?? 1 });
+      if (friend.founder) founderHolds.add(holding.symbol);
       bySymbol.set(holding.symbol, people);
     }
   }
@@ -258,6 +269,7 @@ export function friendsHoldingByListing(friends: readonly FriendHoldingsFact[], 
         count: names.length,
         names: names.length <= FRIEND_NAMES_SHOWN ? names : [],
         faces: people.slice(0, FRIEND_FACES_SHOWN).map(({ handle, avatarId, level }) => ({ handle, avatarId, level })),
+        ...(founderHolds.has(symbol) ? { founder: true as const } : {}),
       };
     });
 }
@@ -272,6 +284,13 @@ export function holdsListings(holdings: FriendHoldingsFact["holdings"], listed: 
 export const SOCIAL_NOTICE_ID = "social-proof-2026-10";
 /** The once per account in-app notice of the terms and privacy policy effective 5 October 2026, Most held included. */
 export const POLICY_NOTICE_ID = "policy-2026-10-05";
+/**
+ * The first friend offer (lib/server/social/founder), closed for good by
+ * "Not now" or by any first friend. Not in ACCOUNT_NOTICES: it has its own
+ * rule (firstFriendOffer), so the notices list never names it, but closing
+ * it is the same one row in account_notices.
+ */
+export const FIRST_FRIEND_NOTICE_ID = "first-friend";
 /** Every notice an account may be told once; the server answers only these. */
 export const ACCOUNT_NOTICES: readonly string[] = [SOCIAL_NOTICE_ID, POLICY_NOTICE_ID];
 

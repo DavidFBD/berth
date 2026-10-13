@@ -15,6 +15,7 @@ import {
   CashShelf,
   EmailNudgeLine,
   FeedbackPromptLine,
+  FirstFriendLine,
   PolicyNoticeLine,
   SocialNoticeLine,
   HoldingsList,
@@ -780,6 +781,12 @@ function SignedInHome() {
               />
               {/* Once per account, after the social notice: the new terms and privacy policy. */}
               <PolicyNoticeLine hidden={waitingOrdersShowing || unlinkedWalletShowing || pathShown} />
+              {/* Any account with no friends (lib/server/social/founder): the founder as a first friend, beside
+                  the person's own link. Waits for the notices above and the feedback ask; "Not now" closes it for good. */}
+              <FirstFriendLine
+                hidden={waitingOrdersShowing || unlinkedWalletShowing || pathShown || emailNudgeShowing}
+                onShareLink={openAccountForFriends}
+              />
               {/* Once per account, a day after the first completed buy (lib/feedback feedbackPromptDue):
                   last of the one-off strips, and only when none of them, nor the first stock card, is showing. */}
               <FeedbackPromptLine

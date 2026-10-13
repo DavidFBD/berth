@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
  * viewer's side of it. Nothing else: no money, no wallets, no friends and
  * no friend count. Holdings only between friends who both share them,
  * and then only which listings, by name, never how much (answer.holds).
+ * The founder's card (card.founder) adds one line under them: for
+ * comparison, not advice. No card ever carries a buy.
  *
  * Presentational: the page (profile-page) and the dev gallery hand it an
  * answer and callbacks. The accent goes to one thing only, the next friend
@@ -105,6 +107,18 @@ export function ProfileCardView({
               return listing ? [rowName(listing)] : [];
             }),
           )}
+        </p>
+      )}
+
+      {/* The founder's card (lib/server/social/founder): one line, never a call to buy. */}
+      {card.founder && answer.holds && answer.holds.length > 0 && (
+        <p data-founder-note className="-mt-2 text-center text-xs text-muted-foreground">
+          {copy.founderHoldsNote}
+        </p>
+      )}
+      {card.founder && viewer.relation === "friends" && !viewer.sharesHoldings && (
+        <p data-founder-share-hint className="text-center text-xs text-muted-foreground">
+          {copy.founderShareHint}
         </p>
       )}
 

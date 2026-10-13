@@ -12,6 +12,7 @@ import { SocialSection, type SocialDemo } from "@/components/social/social-secti
 import { FindFriend } from "@/components/social/find-friend";
 import type { CardAnswer, FriendsBoard, ProfileMore, Relation, Viewer } from "@/lib/social-types";
 import { PolicyNoticeLineView, SocialNoticeLineView } from "@/components/board/social-notice-line";
+import { FirstFriendLineView } from "@/components/board/first-friend-line";
 import { TermsSheet } from "@/components/terms-sheet";
 import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
 
@@ -48,6 +49,11 @@ import { FRIENDS_HOLDING_FIXTURE } from "../board/social-proof-fixtures";
  *   /dev/social?state=section-full       sharing on, friends holding and two blocked: both folds offered
  *   /dev/social?state=notice             the once per account notice strip
  *   /dev/social?state=policy-notice      the once per account notice of the new terms and policy
+ *   /dev/social?state=first-friend       the first friend strip: the founder beside your own link
+ *   /dev/social?state=section-first-friend  the drawer section with no friends yet: the founder, then your link
+ *   /dev/social?state=profile-founder    the founder's card to a friend, both sharing: his holdings, not advice
+ *   /dev/social?state=profile-founder-off  the same, the viewer's switch off: the hint to turn it on
+ *   /dev/social?state=section-holding-founder  Your friends hold, the founder among them
  *   /dev/social?state=terms-sheet        the terms sheet before a buy (terms-sheet-sell: before a sell; terms-sheet-pending: while the answer loads)
  *   /dev/social?state=profile-received-sharing  Accept on a card while the viewer shares what they hold
  */
@@ -88,6 +94,9 @@ const MORE_FRIENDS: ProfileMore = {
 const MORE_FRIENDS_HOLDS: ProfileMore = { ...MORE_FRIENDS, bothHold: ["NVDA", "AAPL"] };
 /** A stranger's page: only the viewer's own XP, for the ladder's comparison line. */
 const MORE_STRANGER: ProfileMore = { yourXp: 1360 };
+
+const FOUNDER_CARD = { handle: "david", avatarId: "buoy", xp: 2000, memberSince: "2026-09", salutes: 9 };
+const FIRST_FRIEND_OFFER = { handle: FOUNDER_CARD.handle, avatarId: FOUNDER_CARD.avatarId, xp: FOUNDER_CARD.xp };
 const MORE_SELF: ProfileMore = { moments: [{ kind: "rank", level: 2, on: "2026-09-12" }, { kind: "joined", month: "2026-07" }] };
 
 const PROFILES: Record<string, CardAnswer> = {
@@ -98,6 +107,14 @@ const PROFILES: Record<string, CardAnswer> = {
   "profile-none": { found: true, card: CARD, viewer: viewer("none"), more: MORE_STRANGER },
   "profile-sent": { found: true, card: CARD, viewer: viewer("sent"), more: MORE_STRANGER },
   "profile-noemail": { found: true, card: CARD, viewer: viewer("none", { hasEmail: false, hasHandle: false }), more: MORE_STRANGER },
+  "profile-founder": {
+    found: true,
+    card: { ...FOUNDER_CARD, founder: true },
+    viewer: viewer("friends", { sharesHoldings: true }),
+    holds: ["NVDA", "AAPL", "QQQ"],
+    more: MORE_FRIENDS_HOLDS,
+  },
+  "profile-founder-off": { found: true, card: { ...FOUNDER_CARD, founder: true }, viewer: viewer("friends"), more: MORE_FRIENDS },
   "profile-self": { found: true, card: { ...CARD, handle: "old_salt", avatarId: null, xp: 180, salutes: 2 }, viewer: viewer("self"), more: MORE_SELF },
 };
 
@@ -182,6 +199,29 @@ function Gallery() {
     );
   if (state === "notice") return <SocialNoticeLineView show onOpen={() => {}} onDismiss={() => {}} />;
   if (state === "policy-notice") return <PolicyNoticeLineView show onDismiss={() => {}} />;
+  if (state === "first-friend")
+    return <FirstFriendLineView offer={FIRST_FRIEND_OFFER} onAdd={() => {}} onShareLink={() => {}} onDismiss={() => {}} />;
+  if (state === "section-first-friend")
+    return (
+      <Panel>
+        <SocialSection
+          demo={{ ...SECTION, me: { ...SECTION.me, requests: 0 }, friends: { friends: [], incoming: [], outgoing: [] }, firstFriend: FIRST_FRIEND_OFFER }}
+        />
+      </Panel>
+    );
+  if (state === "section-holding-founder")
+    return (
+      <Panel>
+        <SocialSection
+          demo={{
+            ...SECTION,
+            me: { ...SECTION.me, shareHoldings: true },
+            open: "holding",
+            holding: FRIENDS_HOLDING_FIXTURE.map((line, index) => (index === 0 ? { ...line, founder: true as const } : line)),
+          }}
+        />
+      </Panel>
+    );
   if (state === "terms-sheet" || state === "terms-sheet-sell" || state === "terms-sheet-pending")
     return (
       <TermsSheet open purpose={state === "terms-sheet-sell" ? "sell" : "buy"} pending={state === "terms-sheet-pending"} onAccept={async () => true} onLeave={() => {}} />

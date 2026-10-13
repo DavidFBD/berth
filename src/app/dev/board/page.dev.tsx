@@ -70,7 +70,9 @@ import {
  *                                       nothing, &dock=0
  *                                       without the docked Ask; &share=1 the
  *                                       "Share what you hold on X" link,
- *                                       &share=open with its sheet open
+ *                                       &share=open with its sheet open;
+ *                                       &friend=1 the first friend strip
+ *                                       (the founder beside your own link)
  *   /dev/board?home=path                the guided first path, walked live from
  *                                       fixtures (path-gallery.tsx: &account=wallet,
  *                                       &at=, &skipped=, &drawer=1, &done=,
@@ -168,6 +170,7 @@ function Galleries() {
         share={params.get("share")}
         robinhood={params.get("rh")}
         feedbackAsk={params.get("ask")}
+        firstFriend={params.get("friend") === "1"}
       />
     );
   }

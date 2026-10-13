@@ -6,6 +6,7 @@ import { socialAudit } from "@/lib/server/social/audit";
 import { sendNotice } from "@/lib/server/email/notify";
 import { NOT_FOUND, readCardOf, relationTo, SIGN_IN, type CardOptions } from "@/lib/server/social/cards";
 import { anyTarget, hasVerifiedEmail, SHOWN_SQL, visibleTarget, type SocialViewer } from "@/lib/server/social/people";
+import { activeFounderId, closeFirstFriend } from "@/lib/server/social/founder";
 
 /**
  * Friends: mutual, by request (docs/plans/social.md, "Crew is the
@@ -45,13 +46,23 @@ async function friendCount(userId: string): Promise<number> {
 }
 
 /**
+ * Whether `userId` has no room for another friend. The founder
+ * (lib/server/social/founder) always has room; the cap still holds for the
+ * other side.
+ */
+async function full(userId: string, founder: string | null): Promise<boolean> {
+  return userId !== founder && (await friendCount(userId)) >= FRIENDS_MAX;
+}
+
+/**
  * Makes the pair friends from `from`'s live request to `to`, if there is
  * one. The counts here are a quick no; the cap itself is the database's
  * (the friends_cap trigger in db/schema.sql), which holds under a race and
  * undoes the whole statement, the request's acceptance included.
  */
 async function acceptFrom(from: string, to: string, statuses: string[]): Promise<boolean> {
-  if ((await friendCount(from)) >= FRIENDS_MAX || (await friendCount(to)) >= FRIENDS_MAX) return false;
+  const founder = await activeFounderId();
+  if ((await full(from, founder)) || (await full(to, founder))) return false;
   let rows: { n: number }[];
   try {
     rows = await acceptStatement(from, to, statuses);
@@ -59,7 +70,9 @@ async function acceptFrom(from: string, to: string, statuses: string[]): Promise
     if (/friends cap reached/.test(error instanceof Error ? error.message : String(error))) return false;
     throw error;
   }
-  return (rows[0]?.n ?? 0) > 0;
+  const made = (rows[0]?.n ?? 0) > 0;
+  if (made) await closeFirstFriend([from, to]);
+  return made;
 }
 
 async function acceptStatement(from: string, to: string, statuses: string[]): Promise<{ n: number }[]> {
@@ -99,7 +112,8 @@ export async function befriendOnReferral(
 ): Promise<boolean> {
   if (referredId === referrerId) return false;
   try {
-    if ((await friendCount(referredId)) >= FRIENDS_MAX || (await friendCount(referrerId)) >= FRIENDS_MAX) return false;
+    const founder = await activeFounderId();
+    if ((await full(referredId, founder)) || (await full(referrerId, founder))) return false;
     const rows = (await getSql().query(
       `with walled as (
          select 1 from blocks
@@ -127,7 +141,10 @@ export async function befriendOnReferral(
       [referredId, referrerId],
     )) as { n: number }[];
     const made = (rows[0]?.n ?? 0) > 0;
-    if (made) await socialAudit(referredId, "friend_referral", referrerId, { via });
+    if (made) {
+      await socialAudit(referredId, "friend_referral", referrerId, { via });
+      await closeFirstFriend([referredId, referrerId]);
+    }
     return made;
   } catch (error) {
     // The cap trigger lost a race, or anything else: the referral stands.
@@ -136,11 +153,62 @@ export async function befriendOnReferral(
   }
 }
 
+/**
+ * A request to the founder (lib/server/social/founder) needs no approval:
+ * the pair is made at once, as a binding referral makes one, with no
+ * friend_requests row, so no request email and no queue for him. It never
+ * touches `referred_by`, so no invite XP and no campaign credit follow. A
+ * block either way stops it, so does his earlier decline of this account;
+ * the asker's own cap still holds, his is lifted. Any live request between
+ * the two is settled as accepted. One audit row, `friend_founder`.
+ */
+async function befriendFounder(viewer: SocialViewer, founder: string, via: "handle" | "link"): Promise<boolean> {
+  if (await full(viewer.id, founder)) return false;
+  let rows: { n: number }[];
+  try {
+    rows = (await getSql().query(
+      `with walled as (
+         select 1 from blocks
+         where blocked_id is not null
+           and ((blocker_id = $1 and blocked_id = $2) or (blocker_id = $2 and blocked_id = $1))
+         union all
+         select 1 from friend_requests
+         where from_id = $1 and to_id = $2
+           and (status = 'declined' or (status = 'withdrawn' and responded_at is not null))
+       ),
+       made as (
+         insert into friends (a_id, b_id) select ${pair} where not exists (select 1 from walled)
+         on conflict do nothing
+         returning 1
+       ),
+       settled as (
+         update friend_requests set status = 'accepted', responded_at = now()
+         where ((from_id = $1 and to_id = $2) or (from_id = $2 and to_id = $1))
+           and status in ('pending', 'declined') and exists (select 1 from made)
+       )
+       select count(*)::int as n from made`,
+      [viewer.id, founder],
+    )) as { n: number }[];
+  } catch (error) {
+    if (/friends cap reached/.test(error instanceof Error ? error.message : String(error))) return false;
+    throw error;
+  }
+  const made = (rows[0]?.n ?? 0) > 0;
+  if (made) {
+    await socialAudit(viewer.id, "friend_founder", founder, { via });
+    await closeFirstFriend([viewer.id, founder]);
+  }
+  return made;
+}
+
 async function request(viewer: SocialViewer, target: string, via: "handle" | "link"): Promise<boolean> {
   if (!hasVerifiedEmail(viewer) || target === viewer.id) return false;
   if (!(await hasHandle(viewer.id))) return false;
   const relation = await relationTo(viewer.id, target);
-  if (relation === "friends" || relation === "sent") return false;
+  if (relation === "friends") return false;
+  const founder = await activeFounderId();
+  if (founder !== null && target === founder) return befriendFounder(viewer, founder, via);
+  if (relation === "sent") return false;
   // They asked first (or asked and were declined by you): this is yes.
   const theirs = (await getSql().query(
     `select 1 from friend_requests where from_id = $1 and to_id = $2 and status in ('pending', 'declined')`,
@@ -156,7 +224,7 @@ async function request(viewer: SocialViewer, target: string, via: "handle" | "li
     [viewer.id],
   )) as { n: number }[];
   if ((open[0]?.n ?? 0) >= OUTGOING_MAX) return false;
-  if ((await friendCount(viewer.id)) >= FRIENDS_MAX) return false;
+  if (await full(viewer.id, founder)) return false;
   const rows = (await getSql().query(
     `with quiet as (
        select exists (

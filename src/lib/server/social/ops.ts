@@ -7,6 +7,7 @@ import { markNoticeSeen, pendingNotices } from "@/lib/server/notices";
 import { acceptTerms, termsStatus } from "@/lib/server/terms-acceptance";
 import { NOT_FOUND, readCard, SIGN_IN } from "@/lib/server/social/cards";
 import { friendAction, friendLink, listFriends, readLinkCard } from "@/lib/server/social/friends";
+import { firstFriendOffer } from "@/lib/server/social/founder";
 import { checkHandle, mySocial, payFriendsAllIfOn, setAllFriends, setHandle, setLinkFace, setShareHoldings, setShareWeek, setVisible } from "@/lib/server/social/handles";
 import { compareFriends, friendWeek } from "@/lib/server/social/compare";
 import { takeSocialPlace, type SocialBucket } from "@/lib/server/social/limits";
@@ -147,6 +148,10 @@ export async function runSocialOp(
     }
     case "friends":
       return ok(await listFriends(viewer));
+    // The founder as a first friend (lib/server/social/founder), or null.
+    // "Not now" is the notice-seen op with FIRST_FRIEND_NOTICE_ID.
+    case "first-friend":
+      return ok(await firstFriendOffer(viewer));
     case "link": {
       if (body.fresh === true && !(await take("settings"))) return slow;
       const token = await friendLink(viewer, body.fresh === true);

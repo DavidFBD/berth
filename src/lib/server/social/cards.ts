@@ -1,9 +1,10 @@
 import { getSql } from "@/lib/server/db";
 import { lookupKey } from "@/lib/handle";
-import type { CardAnswer, Relation } from "@/lib/social-types";
+import type { Card, CardAnswer, Relation } from "@/lib/social-types";
 import { hasVerifiedEmail, VISIBLE_SQL, type SocialViewer } from "@/lib/server/social/people";
 import { friendHolds, SHARES_HOLDINGS_SQL } from "@/lib/server/social-proof";
 import { profileMore } from "@/lib/server/social/profile-more";
+import { activeFounderId } from "@/lib/server/social/founder";
 
 /** `more`: the profile page's own read, which adds lib/server/social/profile-more. */
 export type CardOptions = { more?: boolean };
@@ -65,14 +66,14 @@ export async function relationTo(viewerId: string, targetId: string): Promise<Re
 async function answer(viewer: SocialViewer, row: CardRow | null, now: Date, options: CardOptions = {}): Promise<CardAnswer> {
   if (!row) return NOT_FOUND;
   const created = new Date(row.created_at);
-  const card = {
+  const card: Card = {
     handle: row.handle,
     avatarId: row.avatar_id,
     xp: row.xp,
     memberSince: `${created.getUTCFullYear()}-${String(created.getUTCMonth() + 1).padStart(2, "0")}`,
     salutes: row.salutes,
   };
-  const [relation, saluted, hasHandle, sharing] = await Promise.all([
+  const [relation, saluted, hasHandle, sharing, founder] = await Promise.all([
     relationTo(viewer.id, row.user_id),
     viewer.id === row.user_id
       ? Promise.resolve(false)
@@ -89,7 +90,10 @@ async function answer(viewer: SocialViewer, row: CardRow | null, now: Date, opti
         [viewer.id],
       )
       .then((rows) => (rows as { switch_on: boolean; shares: boolean }[])[0] ?? { switch_on: false, shares: false }),
+    activeFounderId(),
   ]);
+  // The founder's card says, to anyone else, that his holdings are not advice.
+  if (founder !== null && row.user_id === founder && viewer.id !== founder) card.founder = true;
   const sharesHoldings = sharing.switch_on === true;
   const holdsRead = relation === "friends" && sharing.shares ? friendHolds(viewer, row.user_id, now, true) : Promise.resolve(null);
   const [holds, more] = await Promise.all([

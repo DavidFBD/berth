@@ -9,6 +9,7 @@ export { NewsFeed } from "./news-feed";
 export { NudgeLine, NudgeLineView } from "./nudge-line";
 export { PolicyNoticeLine, PolicyNoticeLineView, SocialNoticeLine, SocialNoticeLineView } from "./social-notice-line";
 export { FeedbackPromptLine, FeedbackPromptLineView } from "./feedback-prompt-line";
+export { FirstFriendLine, FirstFriendLineView, FirstFriendRow } from "./first-friend-line";
 export { Sparkline } from "./sparkline";
 export {
   WaitingOrders,

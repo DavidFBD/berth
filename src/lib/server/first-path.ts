@@ -4,6 +4,7 @@ export type { FirstPathResponse } from "@/lib/first-path";
 import { CASH_SYMBOL } from "@/lib/nudge";
 import { getSql } from "@/lib/server/db";
 import { takeRatePlace } from "@/lib/server/oauth/rate-limit";
+import { activeFounderId } from "@/lib/server/social/founder";
 
 /**
  * Writes per account per hour. A person skips, unskips and finishes a
@@ -74,7 +75,9 @@ export async function readFirstPath(userId: string): Promise<FirstPathResponse |
               or exists (select 1 from friends f
                           where (f.a_id = u.id or f.b_id = u.id)
                             and (u.referred_by is null
-                                 or (case when f.a_id = u.id then f.b_id else f.a_id end) <> u.referred_by))) as friend_made,
+                                 or (case when f.a_id = u.id then f.b_id else f.a_id end) <> u.referred_by)
+                            and ($3::uuid is null
+                                 or (case when f.a_id = u.id then f.b_id else f.a_id end) <> $3::uuid))) as friend_made,
             (exists (select 1 from xp_events x where x.user_id = u.id and x.kind = 'friends_all_on')
               or exists (select 1 from profiles pr
                           where pr.user_id = u.id and pr.link_face and pr.share_holdings and pr.share_week
@@ -82,7 +85,7 @@ export async function readFirstPath(userId: string): Promise<FirstPathResponse |
             p.skipped, p.funded_at, p.invite_shared_at, p.finished_at
        from users u left join first_paths p on p.user_id = u.id
       where u.id = $1`,
-    [userId, CASH_SYMBOL],
+    [userId, CASH_SYMBOL, await activeFounderId()],
   )) as Row[];
   const row = rows[0];
   if (!row) return null;
@@ -97,8 +100,10 @@ export async function readFirstPath(userId: string): Promise<FirstPathResponse |
       hasEmail: row.has_email,
       funded: row.funded_at !== null,
       firstBuy: row.first_buy,
-      // A friend made other than the one who invited this account, a request
-      // sent, someone who joined on this account's code, or a link shared.
+      // A friend made other than the one who invited this account (and other
+      // than the founder, lib/server/social/founder, who is a ready-made
+      // friend and no invitation), a request sent, someone who joined on
+      // this account's code, or a link shared.
       inviteSent: row.friend_made || row.invite_shared_at !== null,
       friendsOn: row.friends_on,
     },

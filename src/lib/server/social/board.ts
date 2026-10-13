@@ -1,6 +1,7 @@
 import { getSql } from "@/lib/server/db";
 import type { BoardRow, FriendsBoard } from "@/lib/social-types";
 import { SHOWN_SQL, type SocialViewer } from "@/lib/server/social/people";
+import { activeFounderId } from "@/lib/server/social/founder";
 
 /**
  * The friends board (ADR-0005): the viewer and their friends, ranked on
@@ -16,7 +17,9 @@ import { SHOWN_SQL, type SocialViewer } from "@/lib/server/social/people";
  * often someone trades. Referral XP is `friend_poured` (retired),
  * `friend_stayed` and `invite_accepted`, capped so the board cannot rank
  * how many people someone signed up. A friend whose card is hidden drops off; the viewer
- * is always on it. Blocks already ended any friendship they touched.
+ * is always on it. Blocks already ended any friendship they touched. The
+ * founder (lib/server/social/founder) is never on anyone else's board, so a
+ * ready-made first friend cannot crowd it; his own board is as anyone's.
  */
 
 export const ORDER_XP_CAP = 300;
@@ -69,6 +72,7 @@ export async function friendsBoard(viewer: SocialViewer, now = new Date()): Prom
        from friends f
        where (f.a_id = $1 or f.b_id = $1)
          and ${SHOWN_SQL("case when f.a_id = $1 then f.b_id else f.a_id end")}
+         and ($6::uuid is null or (case when f.a_id = $1 then f.b_id else f.a_id end) <> $6::uuid)
      ),
      xp as (
        select e.user_id,
@@ -93,7 +97,7 @@ export async function friendsBoard(viewer: SocialViewer, now = new Date()): Prom
      left join handles h on h.user_id = m.id
      left join xp on xp.user_id = m.id
      left join sal on sal.recipient_id = m.id`,
-    [viewer.id, month.start, month.end, ORDER_KINDS, REFERRAL_KINDS],
+    [viewer.id, month.start, month.end, ORDER_KINDS, REFERRAL_KINDS, await activeFounderId()],
   )) as Row[];
   const scored = rows
     .map((row) => ({

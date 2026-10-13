@@ -342,6 +342,8 @@ describe("the words", () => {
 
 /** Absolute claims about holdings that were checked against the code (2026-10-02). */
 const REVIEWED_CLAIMS: readonly string[] = [
+  // Not a privacy claim: the founder's holdings, shown only through the both-share rule, are not advice.
+  "David's holdings, shared for comparison, not advice.",
   // Qualified: holdings only to friends, only if switched on.
   "Your profile never shows money, and shows what you hold only to friends if you turn it on.",
   "Never your email, your wallets or your money, and what you own only to friends, as below.",

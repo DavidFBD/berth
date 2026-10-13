@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/server/db";
 import { FEEDBACK_PROMPT_ID, feedbackPromptDue } from "@/lib/feedback";
-import { ACCOUNT_NOTICES, dueNotices } from "@/lib/social-proof";
+import { ACCOUNT_NOTICES, dueNotices, FIRST_FRIEND_NOTICE_ID } from "@/lib/social-proof";
 
 /**
  * In-app notices said once per account (account_notices): the policy
@@ -62,9 +62,9 @@ export async function pendingNotices(userId: string, now = Date.now()): Promise<
   return ask ? [...due, FEEDBACK_PROMPT_ID] : due;
 }
 
-/** Close a notice for this account. False for an id that is not a notice. */
+/** Close a notice for this account (the first friend offer included). False for an id that is not a notice. */
 export async function markNoticeSeen(userId: string, notice: unknown): Promise<boolean> {
-  if (typeof notice !== "string" || !(ACCOUNT_NOTICES.includes(notice) || notice === FEEDBACK_PROMPT_ID)) return false;
+  if (typeof notice !== "string" || !(ACCOUNT_NOTICES.includes(notice) || notice === FEEDBACK_PROMPT_ID || notice === FIRST_FRIEND_NOTICE_ID)) return false;
   await getSql().query(
     `insert into account_notices (user_id, notice) values ($1::uuid, $2) on conflict (user_id, notice) do nothing`,
     [userId, notice],

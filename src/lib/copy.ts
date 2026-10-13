@@ -470,6 +470,21 @@ export type Copy = {
   /** The once per account notice of the two social counts (components/board/social-notice-line). */
   socialNotice: { text: string; action: string; dismiss: string };
   /**
+   * The first friend offer (components/board/first-friend-line, and the
+   * empty friends list): the founder as a ready-made first friend beside the
+   * person's own friend link. Adding him pays nothing.
+   */
+  firstFriend: {
+    title: string;
+    text: string;
+    founderName: string;
+    founderSub: string;
+    add: string;
+    added: string;
+    shareLink: string;
+    dismiss: string;
+  };
+  /**
    * The board's one ask, a day after the first completed buy (lib/feedback
    * feedbackPromptDue). `xp` only while feedback_first is still to be had.
    */
@@ -2238,6 +2253,10 @@ export type SocialCopy = {
   holdingTitle: string;
   /** On a friend's card, when both share: which listings they hold, by name. */
   cardHolds: (names: readonly string[]) => string;
+  /** Under the founder's holdings, on his card and in "Your friends hold": never a call to buy. */
+  founderHoldsNote: string;
+  /** On the founder's card, to a friend whose own holdings switch is off. */
+  founderShareHint: string;
   requestSent: string;
   selfNote: string;
   signInLine: string;
@@ -3537,6 +3556,16 @@ export const COPY: Copy = {
     text: "New: each week, the board shows how many people bought each stock, never who. You can also let friends see which stocks and funds you hold. It is off unless you turn it on.",
     action: "See the switch",
     dismiss: "Got it",
+  },
+  firstFriend: {
+    title: "Add your first friend",
+    text: "Friends see each other's rank and, if both of you choose, which stocks and funds you hold. Never amounts.",
+    founderName: "David, who builds Berth",
+    founderSub: "Accepts every request.",
+    add: "Add David",
+    added: "You and David are friends.",
+    shareLink: "Share your link",
+    dismiss: "Not now",
   },
   feedbackPrompt: {
     text: "How was your first buy? Tell us in a sentence.",
@@ -5494,6 +5523,8 @@ export const COPY: Copy = {
     holdingTitle: "Your friends hold",
     cardHolds: (names) =>
       names.length === 1 ? `Holds ${names[0]}.` : `Holds ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}.`,
+    founderHoldsNote: "David's holdings, shared for comparison, not advice.",
+    founderShareHint: "Turn on your switch to compare holdings with David.",
     requestSent: "Request sent.",
     selfNote: "This is you.",
     signInLine: "Sign in to see this profile.",

@@ -17,7 +17,19 @@ export type Card = {
   /** The month the account opened, "2026-09". */
   memberSince: string;
   salutes: number;
+  /**
+   * The founder's card (lib/server/social/founder), to anyone but himself:
+   * his holdings, where shared, are said to be for comparison, not advice.
+   */
+  founder?: true;
 };
+
+/**
+ * The first friend offer (op `first-friend`): the founder's face, name and
+ * XP as his card shows them to this viewer, or null when there is nothing
+ * to offer.
+ */
+export type FirstFriendAnswer = { offer: { handle: string; avatarId: string | null; xp: number } | null };
 
 /** The viewer's side of a card, when someone is signed in. */
 export type Viewer = {

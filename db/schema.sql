@@ -723,8 +723,13 @@ create index if not exists friends_b_idx on friends (b_id);
 -- account merge (merge_accounts, below) sets berth.merging for its own
 -- transaction and skips the cap: two people's friends become one person's
 -- and none is dropped to fit; the cap then only stops new ones.
+-- A side whose profile has `friends_uncapped` (the founder only, set by
+-- hand, lib/server/social/founder) is never counted against the cap; the
+-- other side still is.
+alter table profiles add column if not exists friends_uncapped boolean not null default false;
+
 create or replace function friends_cap() returns trigger language plpgsql as $$
-begin if coalesce(current_setting('berth.merging', true), '') = 'on' then return null; end if; perform pg_advisory_xact_lock(hashtextextended('friends:' || new.a_id::text, 0)); perform pg_advisory_xact_lock(hashtextextended('friends:' || new.b_id::text, 0)); if (select count(*) from friends where a_id = new.a_id or b_id = new.a_id) > 50 or (select count(*) from friends where a_id = new.b_id or b_id = new.b_id) > 50 then raise exception 'friends cap reached' using errcode = 'check_violation'; end if; return null; end $$;
+begin if coalesce(current_setting('berth.merging', true), '') = 'on' then return null; end if; perform pg_advisory_xact_lock(hashtextextended('friends:' || new.a_id::text, 0)); perform pg_advisory_xact_lock(hashtextextended('friends:' || new.b_id::text, 0)); if ((select count(*) from friends where a_id = new.a_id or b_id = new.a_id) > 50 and not exists (select 1 from profiles where user_id = new.a_id and friends_uncapped)) or ((select count(*) from friends where a_id = new.b_id or b_id = new.b_id) > 50 and not exists (select 1 from profiles where user_id = new.b_id and friends_uncapped)) then raise exception 'friends cap reached' using errcode = 'check_violation'; end if; return null; end $$;
 
 drop trigger if exists friends_cap on friends;
 

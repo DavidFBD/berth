@@ -114,6 +114,11 @@ a round that changes behaviour.
   `friends`; the plan called it crew). Only you see your friends. A friend
   link (`friend_links`) is its own token, not the referral code. A referral
   that binds makes the pair friends at once, no request (ADR-0006).
+  The founder (`lib/server/social/founder`, env `BERTH_FOUNDER_USER_ID`
+  plus `profiles.friends_uncapped`; off unless both) is offered as a first
+  friend to any account with none: no approval, no cap on his side, no XP
+  or campaign credit, off other people's friends boards, his holdings
+  marked as not advice.
 - **Friends board** — you and your friends ranked on board points
   (ADR-0005), this calendar month.
 - **Recurring buy** — retired 2026-10-04 (ADR-0007, superseded): plans

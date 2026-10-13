@@ -11,7 +11,7 @@ import { HomeMore, SectionDrawer } from "@/components/home-more";
 import { NUDGES_SAID_BY_STEP, type HomeStage } from "@/lib/home-stage";
 import { AccountTotalView } from "@/components/board/account-total";
 import { CashShelfView } from "@/components/board/cash-shelf";
-import { EmailNudgeLineView, FeedbackPromptLineView, HoldingsView, ListingBoard, NewsFeed, NudgeLineView } from "@/components/board";
+import { EmailNudgeLineView, FeedbackPromptLineView, FirstFriendLineView, HoldingsView, ListingBoard, NewsFeed, NudgeLineView } from "@/components/board";
 import { FundsModule } from "@/components/funds-module";
 import { AskCard, AskDock, DOCK_CLEARANCE } from "@/components/chat/ask-surfaces";
 import { RankChip } from "@/components/rewards-panel";
@@ -117,7 +117,10 @@ export function HomeGallery({
   share = null,
   robinhood = null,
   feedbackAsk = null,
+  firstFriend = false,
 }: {
+  /** `&friend=1`: the first friend strip (lib/server/social/founder), "Not now" closes it. */
+  firstFriend?: boolean;
   /** `&ask=1` on a scene: the feedback ask a day after the first buy (lib/feedback); `&ask=noxp` without its XP. Tell us opens the sheet. */
   feedbackAsk?: string | null;
   /**
@@ -160,6 +163,7 @@ export function HomeGallery({
   const robinhoodMap = new Map(rows.flatMap((row) => (row.robinhood ? [[row.listing.address, row.robinhood] as const] : [])));
   const [firstOpen, setFirstOpen] = useState(firstStock);
   const [askShown, setAskShown] = useState(feedbackAsk === "1" || feedbackAsk === "noxp");
+  const [friendShown, setFriendShown] = useState(true);
   const [askSheet, setAskSheet] = useState(false);
   const nvidia = STOCK_LISTINGS.find((listing) => listing.symbol === "NVDA");
   const mounted = useMounted();
@@ -240,6 +244,12 @@ export function HomeGallery({
           strips={
             <>
             {campaign && <CampaignLineView line={campaignLine(campaign)} />}
+            <FirstFriendLineView
+              offer={firstFriend && friendShown ? { handle: "david", avatarId: "buoy", xp: 2000 } : null}
+              onAdd={() => setFriendShown(false)}
+              onShareLink={noop}
+              onDismiss={() => setFriendShown(false)}
+            />
             {askShown ? (
               <FeedbackPromptLineView
                 show

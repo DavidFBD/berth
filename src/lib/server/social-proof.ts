@@ -1,6 +1,7 @@
 import { getSql } from "@/lib/server/db";
 import { isStaff } from "@/lib/server/social/handles";
 import { SHOWN_SQL, type SocialViewer } from "@/lib/server/social/people";
+import { activeFounderId } from "@/lib/server/social/founder";
 import { staffRoleFor } from "@/lib/server/staff-session";
 import { CASH_LISTING, STOCK_LISTINGS } from "@/lib/listings";
 import { rankForXp } from "@/lib/xp";
@@ -211,11 +212,13 @@ async function sharingFriendDays(viewerId: string, now: Date, onlyId?: string): 
  */
 export async function friendsHolding(viewer: SocialViewer, now = new Date()): Promise<FriendsHoldingResponse> {
   if (!(await viewerShares(viewer.id))) return { holding: [] };
-  const rows = await sharingFriendDays(viewer.id, now);
+  const [rows, founder] = await Promise.all([sharingFriendDays(viewer.id, now), activeFounderId()]);
   const friends: FriendHoldingsFact[] = rows.map((row) => ({
     handle: row.handle,
     avatarId: row.avatar_id ?? null,
     level: rankForXp(Number(row.xp) || 0).level,
+    // The founder's lines say his holdings are for comparison, not advice.
+    ...(founder !== null && row.user_id === founder ? { founder: true } : {}),
     holdings: parseHoldings(row.holdings),
   }));
   return { holding: friendsHoldingByListing(friends, COUNTED_SYMBOLS) };

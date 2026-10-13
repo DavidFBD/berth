@@ -16,6 +16,7 @@ import { friendsAllState } from "@/lib/friends-all";
 import { FindFriend, type FindResult } from "@/components/social/find-friend";
 import {
   useBlocked,
+  useFirstFriend,
   useFriendLink,
   useFriendsHolding,
   useFriendsList,
@@ -29,7 +30,8 @@ import {
 import { TickerTile } from "@/components/board/holdings-list";
 import { STOCK_LISTINGS, rowName } from "@/lib/listings";
 import { FRIEND_FACES_SHOWN, type FriendFace, type FriendsHolding } from "@/lib/social-proof";
-import type { BlockedName, FriendsList, MySocial, Person } from "@/lib/social-types";
+import type { BlockedName, FirstFriendAnswer, FriendsList, MySocial, Person } from "@/lib/social-types";
+import { FirstFriendRow } from "@/components/board/first-friend-line";
 import { SPRING_SHELF } from "@/lib/motion";
 import { rankForXp } from "@/lib/xp";
 import { cn } from "@/lib/utils";
@@ -71,6 +73,8 @@ export type SocialDemo = {
   details?: PrivacySwitchId;
   /** "Turn on all friend features" with its Details open. */
   allDetails?: boolean;
+  /** Stands in for the "first-friend" op's offer. */
+  firstFriend?: FirstFriendAnswer["offer"];
 };
 
 /** Where the rewards panel's add email row lives, so the no-email row can bring it into view. */
@@ -338,13 +342,35 @@ export function useShareFriendLink(handle: string, demoToken?: string) {
 
 function FriendsFold({ list, demo, handle }: { list: FriendsList | undefined; demo?: SocialDemo; handle: string }) {
   const copy = useCopy().social;
+  const firstCopy = useCopy().firstFriend;
   const { token, share, fresh } = useShareFriendLink(handle, demo?.token);
+  // With no friends yet, the founder first (lib/server/social/founder), then the person's own link below.
+  const empty = list !== undefined && list.friends.length === 0;
+  const first = useFirstFriend(!demo && empty);
+  const offer = demo ? (demo.firstFriend ?? null) : first.offer;
   return (
     <div className="flex flex-col gap-2 pb-2.5">
       <div className="px-3 pt-0.5 pb-1.5">
         <FindFriend demo={demo ? (demo.find ?? { value: "", result: null }) : undefined} />
       </div>
-      {list && list.friends.length === 0 && <p className="px-3 text-xs text-muted-foreground">{copy.friendsNone}</p>}
+      {empty && offer && (
+        <div className="px-3">
+          <FirstFriendRow
+            offer={offer}
+            adding={first.adding}
+            onAdd={() => {
+              if (demo) return;
+              first.add({
+                onDone: (done) => {
+                  if (done) toast.success(firstCopy.added);
+                },
+                onError: () => toast.error(copy.actionFailed),
+              });
+            }}
+          />
+        </div>
+      )}
+      {empty && !offer && <p className="px-3 text-xs text-muted-foreground">{copy.friendsNone}</p>}
       {list && list.friends.length > 0 && (
         <ul data-ph-block className="flex flex-col px-3">
           {list.friends.map((person) => (
@@ -407,19 +433,28 @@ function holdingRows(lines: readonly FriendsHolding[]): HoldingRow[] {
  */
 function HoldingFold({ rows }: { rows: readonly HoldingRow[] }) {
   const copy = useCopy();
+  // The founder among them: one line says his holdings are for comparison, not advice.
+  const founder = rows.some(({ line }) => line.founder);
   return (
-    <ul data-friends-hold data-ph-mask className="flex flex-col px-3 pb-2.5">
-      {rows.map(({ listing, line }) => (
-        <li key={listing.address} className="flex min-h-12 items-center gap-2.5 py-1">
-          <TickerTile symbol={listing.symbol} />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-sm text-foreground">{rowName(listing)}</span>
-            <span className="truncate text-xs text-muted-foreground">{copy.friendsHold(line.count, line.names)}</span>
-            <FriendFaces faces={line.faces ?? []} count={line.count} />
-          </span>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul data-friends-hold data-ph-mask className="flex flex-col px-3 pb-2.5">
+        {rows.map(({ listing, line }) => (
+          <li key={listing.address} className="flex min-h-12 items-center gap-2.5 py-1">
+            <TickerTile symbol={listing.symbol} />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-sm text-foreground">{rowName(listing)}</span>
+              <span className="truncate text-xs text-muted-foreground">{copy.friendsHold(line.count, line.names)}</span>
+              <FriendFaces faces={line.faces ?? []} count={line.count} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      {founder && (
+        <p data-founder-note className="px-3 pb-2.5 text-xs text-muted-foreground">
+          {copy.social.founderHoldsNote}
+        </p>
+      )}
+    </>
   );
 }
 
