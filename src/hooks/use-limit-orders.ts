@@ -36,8 +36,10 @@ import { useGasPreflight } from "@/hooks/use-gas-gate";
  *
  * Asked only in an email session: the switch is a list of accounts, and a
  * wallet-only browser must never be asked for a signature by a feature it
- * cannot see. While the page is open the list polls every half minute;
- * the evening cron catches what happens while it is closed.
+ * cannot see. While an order waits (or one placed here is not saved yet)
+ * the list polls every half minute, and only while the tab is visible;
+ * otherwise it is asked on mount, on focus, and after a place or cancel.
+ * The evening cron catches what happens while the page is closed.
  */
 
 export const LIMIT_ORDERS_QUERY_KEY = ["limit-orders"] as const;
@@ -71,7 +73,10 @@ export function useLimitOrders({ poll = true }: { poll?: boolean } = {}) {
     enabled,
     // Someone the switch leaves off is asked once per visit, never polled.
     staleTime: (current) => (current.state.data?.enabled === false && current.state.data.orders.length === 0 ? Infinity : 15_000),
-    refetchInterval: (current) => (poll && (current.state.data?.enabled || (current.state.data?.orders.length ?? 0) > 0) ? POLL_MS : false),
+    // Polled only while something can change on its own: an order resting
+    // or partly filled, or one this browser placed but could not save yet.
+    refetchInterval: (current) =>
+      poll && ((current.state.data?.orders ?? []).some((order) => isWaiting(order.status)) || readPending().length > 0) ? POLL_MS : false,
     refetchIntervalInBackground: false,
     retry: 1,
     queryFn: async (): Promise<LimitOrdersResponse> => {

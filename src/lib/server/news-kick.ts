@@ -1,6 +1,7 @@
 /**
  * Starts the news store's cron run in its own function (app/api/cron/news)
- * from inside the morning or evening cron.
+ * from inside the morning cron, the one cron that gathers news (once a day,
+ * to keep function time down; readers' slots fill the rest of the day).
  *
  * Always on the production domain, never on the request's own host: Vercel
  * calls a cron on the deployment's own URL, which sits behind Vercel

@@ -2,8 +2,8 @@
  * The news store's limits, as pure functions of the environment so they can
  * be tested without one. lib/server/news-ingest obeys them.
  *
- * When it runs: inside the two crons Hobby allows (morning and evening,
- * each chaining to /api/cron/news so their own budgets are untouched), and
+ * When it runs: inside the morning cron (chaining to /api/cron/news so its
+ * own budget is untouched; the evening cron no longer gathers news), and
  * once per New York slot of lib/x-schedule on demand, claimed in the
  * database by the first reader of the slot, plus one refresh per slot from
  * the column's button. Never more often, whatever the traffic.

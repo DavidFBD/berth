@@ -107,7 +107,7 @@ describe("the staff gate covers every door", () => {
     const { config } = await import("@/proxy");
     const { STAFF_SOURCES, NOWHERE_PATH } = await import("@/lib/nowhere");
     expect(config.matcher).toEqual([...STAFF_SOURCES]);
-    const next = (await import("../../../next.config")).default;
+    const next = (await import("../../../next.config")).default((await import("next/constants")).PHASE_PRODUCTION_BUILD);
     const rewrites = (await next.rewrites!()) as { beforeFiles: { source: string; missing: unknown[]; destination: string }[]; fallback: { destination: string }[] };
     // One rule per source for a request the proxy refused (marked), one for a request with no credential at all.
     expect(rewrites.beforeFiles.map((rule) => rule.source)).toEqual([...STAFF_SOURCES, ...STAFF_SOURCES]);

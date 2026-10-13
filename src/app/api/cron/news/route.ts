@@ -9,7 +9,7 @@ export const maxDuration = 60;
 
 /**
  * The news store's cron run, in a function of its own. Not a third cron
- * (Hobby allows two): the morning and evening crons call this first
+ * (Hobby allows two): the morning cron calls this first
  * (lib/server/news-kick) and go on with their own work, so their budgets
  * are untouched. 202 at once, then the run in `after()` inside this
  * function's own sixty seconds. One run per phase per UTC day, claimed.
