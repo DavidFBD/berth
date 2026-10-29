@@ -30,7 +30,7 @@ export function InfoTip({
         delay={120}
         aria-label={label}
         className={cn(
-          "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-lift outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:text-foreground",
+          "hit inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-lift outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:text-foreground",
           className,
         )}
       >

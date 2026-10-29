@@ -112,7 +112,7 @@ export function FriendsAllOffer({
           aria-controls={details ? detailsId : undefined}
           aria-label={copy.detailsLabel}
           onClick={() => setDetails((open) => !open)}
-          className="-mx-1 inline-flex min-h-7 w-fit items-center gap-1 rounded-md px-1 text-xs text-muted-foreground underline-offset-2 transition-colors duration-150 ease-lift hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="hit-y -mx-1 inline-flex min-h-7 w-fit items-center gap-1 rounded-md px-1 text-xs text-muted-foreground underline-offset-2 transition-colors duration-150 ease-lift hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           {all.social.details}
           <CaretDown className={cn("size-3 transition-transform", details && "rotate-180")} aria-hidden />

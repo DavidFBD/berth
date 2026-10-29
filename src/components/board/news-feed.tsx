@@ -502,7 +502,7 @@ function ArticleCard({ story, now, isNew, movement, verdictChip }: CardProps) {
               aria-expanded={others}
               aria-controls={othersId}
               onClick={() => setOthers((value) => !value)}
-              className="inline-flex items-center gap-0.5 hover:text-foreground"
+              className="hit-y inline-flex items-center gap-0.5 hover:text-foreground"
             >
               {copy.alsoReportedBy(story.alsoReportedBy.length)}
               <CaretDown className={`size-3 transition-transform duration-150 ${others ? "rotate-180" : ""}`} aria-hidden />

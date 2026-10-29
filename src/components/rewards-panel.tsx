@@ -847,7 +847,7 @@ function ProgressRow({
             <button
               type="button"
               onClick={nudge}
-              className="shrink-0 text-xs font-medium text-primary underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary"
+              className="hit-y shrink-0 text-xs font-medium text-primary underline decoration-primary/40 underline-offset-2 transition-colors hover:decoration-primary"
             >
               {copy.copyNudge}
             </button>
