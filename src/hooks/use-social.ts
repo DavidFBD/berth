@@ -586,10 +586,6 @@ export function useSocialAction() {
     },
     // The toasts live here, not in per-call callbacks: answering the last
     // request unmounts the list that called mutate, and v5 drops those.
-    onSuccess: (result: { done: boolean; card: CardAnswer | null }, vars: CardActionVars) => {
-      const byName = vars.kind === "friend" && !vars.token;
-      if (byName && vars.action === "accept" && result.done) toast.success(COPY.social.youAreFriends(vars.handle));
-    },
     onError: (_error: unknown, vars: CardActionVars, context: { previous: FriendsList | undefined } | undefined) => {
       if (context?.previous) queryClient.setQueryData(KEYS.friends(key), context.previous);
       if (vars.kind === "friend" && !vars.token && (vars.action === "accept" || vars.action === "decline")) toast.error(COPY.social.actionFailed);
@@ -611,6 +607,7 @@ export function useSocialAction() {
       return { done: true, card: null };
     },
     onSuccess: (result, vars) => {
+      if (vars.kind === "friend" && !vars.token && vars.action === "accept" && result.done) toast.success(COPY.social.youAreFriends(vars.handle));
       if (result.card) {
         const next = result.card;
         queryClient.setQueryData<CardAnswer>(KEYS.card(key, vars.handle), (previous) => carryMore(previous, next));
