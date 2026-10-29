@@ -945,6 +945,8 @@ export type Copy = {
   sellDefaultDestination: string;
   /** The text button beside it that opens the picker. */
   sellChangeDestination: string;
+  /** Its accessible name. */
+  sellChangeDestinationLabel: string;
   /** `amount` arrives pre-formatted: "≈ €1.93 (0.0089 NVDA)". */
   youHold: (amount: string) => string;
   sellSignOnce: (chainName: string) => string;
@@ -3857,8 +3859,9 @@ export const COPY: Copy = {
   sell: "Sell",
   sellTitle: (name) => `Sell ${name}`,
   sellSub: "One signature, and it is on its way.",
-  sellDefaultDestination: "Arrives as USDC in your Berth account.",
+  sellDefaultDestination: "Arrives as USDC on Base, in your own wallet under Funds.",
   sellChangeDestination: "Change",
+  sellChangeDestinationLabel: "Change where it arrives",
   youHold: (amount) => `You hold ${amount}`,
   sellSignOnce: (chainName) =>
     `You sign once on ${chainName}. Your account does the rest.`,

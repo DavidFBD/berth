@@ -446,7 +446,8 @@ export function WithdrawDrawer({
     side: "sell",
     open,
     listing,
-    chainKey: outputToken ? dstChainKey : null,
+    // A default destination is not a choice: the funnel counts only a pick.
+    chainKey: outputToken && !usingDefaultDest ? dstChainKey : null,
     usd: buildAmount ? sharesWorthUsd(buildAmount) : undefined,
     quoted: !limit.active && quote.quoted !== undefined,
     limitActive: limit.active,
@@ -1057,7 +1058,8 @@ export function WithdrawDrawer({
                     <button
                       type="button"
                       onClick={() => setPickerOpen(true)}
-                      className="py-1 text-xs font-bold text-muted-foreground transition-[transform,color] duration-150 ease-lift hover:text-foreground active:scale-[0.97]"
+                      aria-label={copy.sellChangeDestinationLabel}
+                      className="min-h-11 shrink-0 px-2 text-xs font-bold text-muted-foreground transition-[transform,color] duration-150 ease-lift hover:text-foreground active:scale-[0.97]"
                     >
                       {copy.sellChangeDestination}
                     </button>
@@ -1097,7 +1099,7 @@ export function WithdrawDrawer({
 
                 {/* Cash-out path: send to a different address (e.g. an
                     exchange deposit address) instead of your own wallet. */}
-                {dstChainKey && outputToken && !usingDefaultDest && (
+                {dstChainKey && outputToken && (
                   <div data-ph-block className="flex flex-col gap-1.5">
                     {usingCustom ? (
                       <>
