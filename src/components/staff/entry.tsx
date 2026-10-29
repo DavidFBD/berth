@@ -171,8 +171,9 @@ function StaffEmailFirst() {
             name="code"
             inputMode="numeric"
             autoComplete="one-time-code"
-            pattern="[0-9]*"
-            maxLength={6}
+            onChange={(event) => {
+              event.currentTarget.value = event.currentTarget.value.replace(/\D/g, "").slice(0, 6);
+            }}
             placeholder={copy.addEmailCodePlaceholder}
             aria-label={copy.addEmailCodePlaceholder}
             disabled={busy}
