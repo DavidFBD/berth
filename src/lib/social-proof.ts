@@ -282,8 +282,13 @@ export function holdsListings(holdings: FriendHoldingsFact["holdings"], listed: 
 
 /** The once per account in-app notice of the two counts and the new switch (lib/server/notices). */
 export const SOCIAL_NOTICE_ID = "social-proof-2026-10";
-/** The once per account in-app notice of the terms and privacy policy effective 5 October 2026, Most held included. */
-export const POLICY_NOTICE_ID = "policy-2026-10-05";
+/**
+ * The once per account in-app notice of the terms and privacy policy
+ * effective 30 October 2026: no term changed, the privacy policy now tells of
+ * the New stocks email. A new id each time the notice says something new, so
+ * people who closed the 5 October one see this once.
+ */
+export const POLICY_NOTICE_ID = "policy-2026-10-30";
 /**
  * The first friend offer (lib/server/social/founder), closed for good by
  * "Not now" or by any first friend. Not in ACCOUNT_NOTICES: it has its own

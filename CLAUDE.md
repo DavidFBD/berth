@@ -89,7 +89,12 @@ running when `.claude/settings.json` changes is unguarded until restart).
    silently: check the remaining minutes in GitHub's billing settings
    before adding another scheduled workflow. A broken money journey is rolled back first and
    debugged second: promote the previous deployment in Vercel, then
-   `git revert` on master.
+   `git revert` on master. One floor on that, David's call 2026-10-29:
+   once a New stocks email has been sent, never promote a deployment
+   from before the release that added it (the email's unsubscribe link
+   and Settings switch do not exist there, so opt outs would fail). Set
+   `EMAIL_NEW_LISTINGS=off` in Vercel and redeploy to stop sending, then
+   fix forward.
 
 Standing rules that close past misses:
 

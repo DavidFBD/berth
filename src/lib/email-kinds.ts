@@ -10,8 +10,18 @@
  * The weekly summary (lib/server/weekly, Monday mornings) is off by
  * default: it is the one kind the person did not trigger, so it goes only
  * to someone who switched it on.
+ *
+ * New stocks (lib/server/new-listings) is marketing: an email naming stocks
+ * Berth added, written and sent by a staff admin (/staff/emails), never
+ * automatically. It is never sent as a service or security notice. Under
+ * the EU soft opt in (ePrivacy art. 13(2)) it is on by default only for
+ * someone who has a filled order AND accepted the 30 October 2026 terms,
+ * which told them of it (lib/server/email/store listingsDefaultOnSql), and
+ * off for everyone else until they switch it on; their own row always
+ * wins. Every one carries the one click unsubscribe. David's calls
+ * 2026-10-29.
  */
-export const EMAIL_KINDS = ["security", "account", "orders", "friends", "weekly"] as const;
+export const EMAIL_KINDS = ["security", "account", "orders", "friends", "weekly", "listings"] as const;
 export type EmailKind = (typeof EMAIL_KINDS)[number];
 
 /** The kinds sent whatever the email settings say: no switch, no unsubscribe link. */
@@ -22,7 +32,7 @@ export function isAlwaysSent(kind: EmailKind): kind is AlwaysSentKind {
   return (ALWAYS_SENT_KINDS as readonly string[]).includes(kind);
 }
 
-export const SWITCHABLE_KINDS = ["orders", "friends", "weekly"] as const;
+export const SWITCHABLE_KINDS = ["orders", "friends", "weekly", "listings"] as const;
 export type SwitchableKind = (typeof SWITCHABLE_KINDS)[number];
 
 /**
@@ -38,10 +48,16 @@ export function isRetiredKind(value: unknown): value is RetiredKind {
   return typeof value === "string" && (RETIRED_KINDS as readonly string[]).includes(value);
 }
 
+/**
+ * What a switch is with no row in email_prefs. `listings` is the default
+ * for someone the consent rule does not cover; readPrefs turns it on for
+ * someone it does (the soft opt in above).
+ */
 export const DEFAULT_EMAIL_PREFS: Readonly<Record<SwitchableKind, boolean>> = {
   orders: true,
   friends: true,
   weekly: false,
+  listings: false,
 };
 
 export type EmailPrefs = Record<SwitchableKind, boolean>;

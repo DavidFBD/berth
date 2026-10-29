@@ -207,6 +207,7 @@ export function NoticeEmail({ content, markUrl, unsubscribeUrl, contact }: Layou
               </Text>
             ) : null}
             <Hr style={{ borderColor: LINE, margin: "14px 0 10px" }} />
+            {content.kind === "listings" ? <Text style={{ ...small, fontSize: "12px" }}>{COPY.email.sender}</Text> : null}
             <Text style={{ ...small, fontSize: "12px" }}>{COPY.email.signoff}</Text>
           </Section>
         </Container>
@@ -228,6 +229,8 @@ export function noticeText({ content, unsubscribeUrl, contact }: Omit<LayoutProp
   lines.push("", `${content.button.label}: ${content.button.href}`, "", content.why);
   if (content.kind === "security") lines.push(`${COPY.email.notYou} ${contact}.`);
   else if (unsubscribeUrl) lines.push(`${COPY.email.unsubscribe}: ${unsubscribeUrl}`);
-  lines.push("", COPY.email.signoff);
+  lines.push("");
+  if (content.kind === "listings") lines.push(COPY.email.sender);
+  lines.push(COPY.email.signoff);
   return lines.join("\n");
 }

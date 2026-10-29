@@ -352,7 +352,7 @@ describe("the notices said once per account", () => {
   });
 
   it("are never due to an account made after the change, or one that accepted the terms they announce (2026-10-11)", async () => {
-    expect(await pendingNotices(await account({ createdAt: "2026-10-11T14:40:55Z" }))).toEqual([]);
+    expect(await pendingNotices(await account({ createdAt: "2026-10-31T14:40:55Z" }))).toEqual([]);
     const accepted = await account();
     await sql.query(`insert into terms_acceptances (user_id, version) values ($1, $2)`, [accepted, TERMS_VERSION]);
     expect(await pendingNotices(accepted)).toEqual([SOCIAL_NOTICE_ID]);

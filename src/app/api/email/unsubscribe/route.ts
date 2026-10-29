@@ -12,7 +12,9 @@ export const dynamic = "force-dynamic";
  * unsubscribe page's own form (`action=off` or `action=on`): the same
  * switch, then back to the page to say what happened. GET never changes
  * anything, since mail scanners open links: it only shows the page, where
- * a button confirms.
+ * a button confirms. A token past its 180 days still turns a kind off
+ * (never on), and the switch is saved on the account the email's account
+ * was merged into (setPref).
  */
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("t") ?? "";
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
   const form = await request.formData().catch(() => null);
   const oneClick = form?.get("List-Unsubscribe") === "One-Click";
   const action = form?.get("action");
-  const claims = await readUnsubscribeToken(token);
+  const claims = await readUnsubscribeToken(token, { allowExpired: true });
   if (!claims) {
     return oneClick ? new NextResponse(null, { status: 400 }) : pageRedirect(request, token);
   }
@@ -33,6 +35,9 @@ export async function POST(request: NextRequest) {
     return oneClick ? new NextResponse(null, { status: 200 }) : pageRedirect(request, token);
   }
   const enabled = !oneClick && action === "on";
+  // An old link may only turn a kind off. New stocks is marketing, so turning it on is the person's own act
+  // in Settings, never a button on a link anyone holding a forwarded email could press.
+  if (enabled && (claims.expired || claims.kind === "listings")) return pageRedirect(request, token);
   try {
     await setPref(claims.userId, claims.kind, enabled);
   } catch (error) {

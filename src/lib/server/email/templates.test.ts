@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { COPY } from "@/lib/copy";
 import { composeNotice, NOTICE_KIND, weeklyHasContent } from "./compose";
 import { renderSample, SAMPLE_NOTICES } from "./send";
 
@@ -68,6 +69,32 @@ describe("notice templates", () => {
     expect(content.subject).not.toContain("\n");
     expect(content.subject.length).toBeLessThan(110);
     expect(content.list).toEqual(["See what you own and your orders."]);
+  });
+
+  it("lists at most twelve new stocks by name, tells the rest as a count, and asks nothing of the reader", () => {
+    const names = Array.from({ length: 15 }, (_, index) => `Company ${index + 1}`);
+    const content = composeNotice({ type: "new_listings", names }, "https://www.berthmarkets.com");
+    expect(content.kind).toBe("listings");
+    expect(content.list).toEqual(names.slice(0, 12));
+    expect(content.after).toEqual(["And 3 more.", expect.stringContaining("not advising")]);
+    expect(content.subject).toBe("Berth lists 15 more stocks");
+    for (const name of names) expect(`${content.subject} ${content.preview}`).not.toContain(name);
+    expect(content.why).toBe(COPY.email.why.listings);
+    expect(content.after?.at(-1)).toContain("They are not the share");
+    for (const line of [content.subject, content.preview, content.heading, ...content.paragraphs, ...(content.after ?? []), content.button.label]) {
+      expect(line.toLowerCase()).not.toMatch(/\bbuy\b|\binvest\b/);
+    }
+    expect(composeNotice({ type: "new_listings", names: ["Apple"] }, "https://www.berthmarkets.com").paragraphs).toEqual([
+      "Berth now lists one more stock:",
+    ]);
+  });
+
+  it("names the sender on a New stocks email and on no other kind", async () => {
+    const listings = await renderSample({ type: "new_listings", names: ["Apple"] });
+    expect(listings.text).toContain(COPY.email.sender);
+    expect(listings.html).toContain("Write to us at support@berthmarkets.com");
+    const order = await renderSample({ type: "order_filled", side: "buy", name: "NVIDIA", price: "$198.20", received: "0.5 NVIDIA" });
+    expect(order.text).not.toContain("Sent by Berth");
   });
 
   it("leaves out a weekly section with nothing trusted to say", () => {

@@ -82,7 +82,27 @@ export type Notice =
       type: "feedback_fixed";
       excerpt: string;
     }
-  | WeeklyNotice;
+  | WeeklyNotice
+  | NewListingsNotice
+  | NewListingsTestNotice;
+
+/**
+ * New stocks (lib/server/new-listings): one batch of listings Berth added,
+ * by their plain names (never tickers), in the registry's order. Marketing,
+ * so it goes only with the switch on and always with the unsubscribe.
+ */
+export type NewListingsNotice = {
+  type: "new_listings";
+  names: string[];
+  /** The announcement's own words, as staff wrote them (lib/new-listings-draft). Absent: copy.ts's defaults. */
+  words?: { subject: string; preview: string; intro: string; extra: string };
+};
+
+/** Staff's own test of an announcement: the same email, its subject marked, sent to the staff member alone. */
+export type NewListingsTestNotice = Omit<NewListingsNotice, "type"> & { type: "new_listings_test" };
+
+/** At most this many names are listed; the rest are told as a count. */
+export const NEW_LISTINGS_MAX_NAMES = 12;
 
 /**
  * The weekly summary (lib/server/weekly), every value already formatted.
@@ -137,6 +157,8 @@ export const NOTICE_KIND: Readonly<Record<NoticeType, EmailKind>> = {
   // Who may send campaign money is a security matter for staff: no switch.
   payout_source_changed: "security",
   weekly: "weekly",
+  new_listings: "listings",
+  new_listings_test: "listings",
   budget_low: "security",
   staff_reveals: "security",
   quotes_down: "security",
@@ -345,6 +367,31 @@ export function composeNotice(notice: Notice, baseUrl: string): EmailContent {
     }
     case "weekly":
       return composeWeekly(notice, { kind, button, why });
+    case "new_listings":
+    case "new_listings_test": {
+      const words = email.newListings;
+      const names = notice.names.map((name) => plain(name));
+      const shown = names.slice(0, NEW_LISTINGS_MAX_NAMES);
+      const rest = names.length - shown.length;
+      const own = notice.words;
+      const subject = own ? plain(own.subject, 120) : words.subject(names, names.length);
+      // The extra paragraph is staff's own words, one paragraph per blank line.
+      const extra = (own?.extra ?? "")
+        .split(/\n\s*\n/)
+        .map((paragraph) => plain(paragraph, 600))
+        .filter((paragraph) => paragraph.length > 0);
+      return {
+        kind,
+        subject: notice.type === "new_listings_test" ? `Test: ${subject}` : subject,
+        preview: own ? plain(own.preview, 160) : words.preview(names, names.length),
+        heading: words.heading,
+        paragraphs: [own ? plain(own.intro, 240) : words.intro(names.length)],
+        list: shown,
+        after: [...(rest > 0 ? [words.more(rest)] : []), ...extra, words.notAdvice],
+        button,
+        why,
+      };
+    }
   }
 }
 

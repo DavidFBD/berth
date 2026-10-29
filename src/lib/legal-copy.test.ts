@@ -44,6 +44,30 @@ describe("the privacy policy", () => {
     }
   });
 
+  it("says what the New stocks email is, who gets it and how to stop it, and no longer says there is no marketing", () => {
+    const text = all(COPY.privacyPolicy as typeof COPY.termsOfUse);
+    const line = text.split("\n").find((l) => l.startsWith("New stocks:"));
+    expect(line).toBeDefined();
+    for (const part of ["filled an order", "30 October 2026 or later", "off for everyone else", "Settings", "turn it off", "stays off"]) expect(line).toContain(part);
+    expect(text).not.toContain("We send no marketing");
+    expect(text).toMatch(/legitimate interest in telling customers what else Berth lists/);
+    expect(text).toMatch(/For anyone else they are off, and rest on your consent/);
+  });
+
+  it("says the same thing about who gets it in the policy, the terms' list of changes, the why line and the in-app notice", () => {
+    const rule = "filled an order";
+    const privacy = all(COPY.privacyPolicy as typeof COPY.termsOfUse);
+    const terms = all(COPY.termsOfUse);
+    for (const text of [privacy, terms, COPY.email.why.listings, COPY.policyNotice.text]) {
+      expect(text).toContain(rule);
+      expect(text).toContain(`${LEGAL_EFFECTIVE_DATE} or later`);
+      expect(text).toContain("off for everyone else");
+    }
+    // The terms' list says the 30 October change is the email line and the privacy update, and that no term of use changed.
+    expect(terms).toContain("On 30 October 2026 no term of use changed");
+    expect(COPY.policyNotice.text).toContain("No term of use changed");
+  });
+
   it("describes recurring buys only as retired, with no reminder email left", () => {
     const text = all(COPY.privacyPolicy as typeof COPY.termsOfUse);
     const lines = text.split("\n").filter((line) => /recurring/i.test(line));
@@ -118,7 +142,6 @@ describe("Most held on Berth in the privacy policy, and the notice", () => {
     const line = text.split("\n").find((l) => l.startsWith("Most held on Berth is public too."));
     for (const part of ["rounded share", "never anything about one person", "at least 7 days old", "at least $10", "staff accounts are not counted", "at least 20 people", "fewer than 50 people", "Tuesday", "19 October 2026", "27 October 2026"])
       expect(line).toContain(part);
-    expect(new Date(`${LEGAL_EFFECTIVE_DATE} UTC`).getTime()).toBeLessThan(new Date("19 October 2026 UTC").getTime());
   });
 
   it("rests on legitimate interest, beside Most bought", () => {
@@ -126,9 +149,8 @@ describe("Most held on Berth in the privacy policy, and the notice", () => {
     expect(basis).toMatch(/legitimate interest/);
   });
 
-  it("is announced in the app with the policy's own date", () => {
+  it("is announced in the app with the policy's own date, and says what changed on that date", () => {
     expect(COPY.policyNotice.text).toContain(LEGAL_EFFECTIVE_DATE);
-    expect(COPY.policyNotice.text).toContain("Most held on Berth");
     expect(COPY.policyNotice.text).not.toMatch(/ [-–—] |—|–/);
   });
 });

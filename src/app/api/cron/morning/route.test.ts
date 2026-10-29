@@ -8,6 +8,9 @@ vi.mock("@/lib/server/campaigns/eligibility", () => ({ runCampaignStep: () => ru
 vi.mock("@/lib/server/invite-xp", () => ({ runInviteXpStep: async () => ({ recorded: 1, paid: 1, paidBefore: 0, refused: 0, capped: 0, waiting: 0 }) }));
 const runWeeklySummaries = vi.fn();
 vi.mock("@/lib/server/weekly", () => ({ runWeeklySummaries: () => runWeeklySummaries() }));
+vi.mock("@/lib/server/new-listings", () => ({
+  runNewListings: async () => ({ observed: "none", detected: 0, sending: { announcement: null, switchOn: true, sent: 0, notSent: 0, deferred: 0, finished: false } }),
+}));
 vi.mock("@/lib/server/staff/budgets", () => ({ runBudgetAlerts: async () => ({ low: 0, sent: 0, already: 0, failed: 0 }) }));
 const recordCronRun = vi.fn();
 // Never a real call to production from a test.
@@ -63,6 +66,7 @@ describe("GET /api/cron/morning", () => {
       inviteXp: { ok: true, result: { recorded: 1, paid: 1, paidBefore: 0, refused: 0, capped: 0, waiting: 0 } },
       emails: { ok: true, result: { retried: 0, sent: 0, gaveUp: 0 } },
       weekly: { ok: true, result: { week: "2026-W39", sent: 1, empty: 0, notSent: 0, deferred: 0 } },
+      listings: { ok: true, result: { observed: "none", detected: 0, sending: { announcement: null, switchOn: true, sent: 0, notSent: 0, deferred: 0, finished: false } } },
       budgets: { ok: true, result: { low: 0, sent: 0, already: 0, failed: 0 } },
       failed: false,
     });
