@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import type { MostBoughtResponse } from "@/lib/social-proof";
 
 /** The answer changes once a week; an hour is plenty. */
@@ -24,6 +25,7 @@ export function useMostBought(): MostBoughtResponse {
       return { rows: body.rows ?? [], days: body.days ?? 7, week: body.week };
     },
     staleTime: MOST_BOUGHT_REFETCH_MS,
+    gcTime: DISPLAY_GC_MS,
     refetchInterval: MOST_BOUGHT_REFETCH_MS,
   });
   return query.data ?? EMPTY;

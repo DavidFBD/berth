@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import type { TreasuryRateResponse } from "@/app/api/treasury-rate/route";
 
 /** The route caches for six hours; an hour between polls is plenty. */
@@ -22,6 +23,7 @@ export function useTreasuryRate() {
       return { ratePct: payload.ratePct, asOf: payload.asOf };
     },
     staleTime: TREASURY_RATE_REFETCH_MS,
+    gcTime: DISPLAY_GC_MS,
     refetchInterval: TREASURY_RATE_REFETCH_MS,
   });
 }

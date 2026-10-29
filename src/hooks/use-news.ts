@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import type { NewsColumnResponse } from "@/lib/news-stories";
 
 /** The route is CDN cached for a minute and the store changes a few times a day. */
@@ -55,6 +56,7 @@ export function useNews(symbol?: string): {
     queryKey: newsQueryKey(symbol),
     queryFn: () => read(symbol),
     staleTime: 60_000,
+    gcTime: DISPLAY_GC_MS,
     refetchInterval: NEWS_REFETCH_MS,
   });
   const [isRefreshing, setRefreshing] = useState(false);

@@ -4,6 +4,7 @@ import { acceptedFromAnswer, readAtConfirm, type TermsState } from "@/lib/terms-
 import { TERMS_VERSION } from "@/lib/legal-version";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import { useAccountHeaders } from "@/hooks/use-profile";
 import { announceRewards } from "@/components/xp-toast";
 import type { RewardList } from "@/lib/profile-types";
@@ -79,6 +80,7 @@ export function useMySocial(enabled = true, { prompt = true }: { prompt?: boolea
     queryKey: KEYS.me(key),
     enabled: enabled && key !== null,
     staleTime: 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: 1,
     queryFn: () => must(call<MySocial>("me")),
   });
@@ -100,6 +102,7 @@ export function useHandleCheck(value: string, enabled: boolean) {
     queryKey: ["social-check", key, settled.toLowerCase()],
     enabled: enabled && key !== null && settled === value && value.length > 0,
     staleTime: 30_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: () => must(call<HandleCheck>("check", { handle: settled })),
   });
@@ -273,6 +276,7 @@ export function useCompareFriends(enabled = true): CompareFriend[] {
     queryKey: KEYS.compareFriends(key),
     enabled: enabled && key !== null,
     staleTime: 5 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async () => (await quietRead<CompareFriendsResponse>(headers, "compare-friends", {}, { friends: [] })).friends ?? [],
   });
@@ -296,6 +300,7 @@ export function useFriendWeek(
     queryKey: KEYS.compareWeek(key, handle ?? "", range ?? "", from ?? ""),
     enabled: ready && key !== null,
     staleTime: 10 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async () => (await quietRead<FriendWeekResponse>(headers, "compare-week", { handle, range, from }, { week: null })).week ?? null,
   });
@@ -308,6 +313,7 @@ export function useFriendsList(enabled: boolean) {
     queryKey: KEYS.friends(key),
     enabled: enabled && key !== null,
     staleTime: 30_000,
+    gcTime: DISPLAY_GC_MS,
     retry: 1,
     queryFn: () => must(call<FriendsList>("friends")),
   });
@@ -336,6 +342,7 @@ export function useBlocked(enabled: boolean) {
     queryKey: KEYS.blocked(key),
     enabled: enabled && key !== null,
     staleTime: 30_000,
+    gcTime: DISPLAY_GC_MS,
     retry: 1,
     queryFn: async () => (await must(call<{ blocked: BlockedName[] }>("blocked"))).blocked,
   });
@@ -347,6 +354,7 @@ export function useFriendsBoard(enabled: boolean) {
     queryKey: KEYS.board(key),
     enabled: enabled && key !== null,
     staleTime: 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: 1,
     queryFn: () => must(call<FriendsBoard>("board")),
   });
@@ -365,6 +373,7 @@ export function useFriendsHolding(enabled = true): ReadonlyMap<string, FriendsHo
     queryKey: KEYS.holding(key),
     enabled: enabled && key !== null,
     staleTime: 5 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async (): Promise<FriendsHolding[]> => {
       const auth = await headers();
@@ -398,6 +407,7 @@ export function useAccountNotice(notice: string): { due: boolean; close: () => v
     queryKey: KEYS.notices(key),
     enabled: key !== null,
     staleTime: 10 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async () => {
       const { status, data } = await call<{ pending: string[] }>("notices");
@@ -430,6 +440,7 @@ export function useFirstFriend(enabled = true): {
     queryKey: KEYS.firstFriend(key),
     enabled: enabled && key !== null,
     staleTime: 5 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async (): Promise<FirstFriendAnswer> => {
       const { status, data } = await call<FirstFriendAnswer>("first-friend");
@@ -475,6 +486,7 @@ export function useCard(target: { handle: string } | { token: string }) {
     queryKey: KEYS.card(key, id),
     enabled: !privy.enabled || privy.ready,
     staleTime: 30_000,
+    gcTime: DISPLAY_GC_MS,
     // Find a friend caches the plain card under the same key: the page asks
     // again for its extras (CardAnswer.more) rather than show it without them.
     refetchOnMount: (query) => (query.state.data?.found && !query.state.data.more ? "always" : true),

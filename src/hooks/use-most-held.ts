@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import type { MostHeldResponse } from "@/lib/most-held";
 
 /** The answer changes once a week; an hour is plenty. */
@@ -24,6 +25,7 @@ export function useMostHeld(): MostHeldResponse {
       return { rows: Array.isArray(body.rows) ? body.rows : [], week: body.week };
     },
     staleTime: MOST_HELD_REFETCH_MS,
+    gcTime: DISPLAY_GC_MS,
     refetchInterval: MOST_HELD_REFETCH_MS,
   });
   return query.data ?? EMPTY;

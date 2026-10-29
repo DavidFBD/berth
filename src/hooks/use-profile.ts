@@ -5,6 +5,7 @@ import { isUnavailableResponse, noteUnavailable, unavailableReasonOf } from "@/l
 import { reportWithRetry } from "@/lib/pour-retry";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccountXAccount } from "@/hooks/use-wallet-restore";
 import { ChainKeys } from "@sodax/sdk";
@@ -225,6 +226,8 @@ function useRewardsQuery<TWire, TData = TWire>(
   options: {
     enabled?: boolean;
     staleTime: number;
+    /** Display-only reads keep their last answer a while after the screen closes. */
+    display?: boolean;
     body?: () => Record<string, unknown>;
     select?: (data: TWire) => TData;
     onData?: (data: TWire) => void;
@@ -245,6 +248,7 @@ function useRewardsQuery<TWire, TData = TWire>(
       : undefined,
     enabled: (options.enabled ?? true) && key !== null,
     staleTime: options.staleTime,
+    ...(options.display ? { gcTime: DISPLAY_GC_MS } : {}),
     retry: 1,
     queryFn: async (): Promise<TData> => {
       const data = await call<TWire>(
@@ -281,6 +285,7 @@ function profileOf(data: ProfileResponse): Profile {
 export function useProfile() {
   return useRewardsQuery<ProfileResponse, Profile>("profile", "/api/profile", {
     staleTime: 5 * 60_000,
+    display: true,
     // The pocketed invite code rides along; the server only binds it to an
     // account created this very request, then it's spent either way.
     // A campaign code (/c/<code>, lib/campaign-pocket) rides the same way.
@@ -394,6 +399,7 @@ export function useReferralPanel(enabled: boolean) {
   return useRewardsQuery<ReferralPanel>("referral-panel", "/api/referral/panel", {
     enabled,
     staleTime: 60_000,
+    display: true,
   });
 }
 
@@ -406,7 +412,7 @@ export function useOrders(enabled = true) {
   return useRewardsQuery<OrdersResponse, OrdersResponse["orders"]>(
     "orders",
     "/api/orders",
-    { enabled, staleTime: 5 * 60_000, select: (data) => data.orders },
+    { enabled, staleTime: 5 * 60_000, display: true, select: (data) => data.orders },
   );
 }
 
@@ -421,7 +427,7 @@ export function usePortfolioHistory(benchmark: BenchmarkSymbol, enabled = true) 
   return useRewardsQuery<PortfolioHistoryResponse>(
     "portfolio-history",
     `/api/portfolio/history?benchmark=${benchmark}`,
-    { enabled, staleTime: 60_000, keyParts: [benchmark], keepPrevious: true },
+    { enabled, staleTime: 60_000, display: true, keyParts: [benchmark], keepPrevious: true },
   );
 }
 
@@ -429,7 +435,7 @@ export function useXpHistory(enabled: boolean) {
   return useRewardsQuery<XpHistoryResponse, XpHistoryResponse["events"]>(
     "xp-history",
     "/api/xp/history",
-    { enabled, staleTime: 60_000, select: (data) => data.events },
+    { enabled, staleTime: 60_000, display: true, select: (data) => data.events },
   );
 }
 

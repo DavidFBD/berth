@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import { useAccount } from "@/hooks/use-account";
 import { useEmbeddedHoldings } from "@/hooks/use-embedded-holdings";
 import { useHubAccount } from "@/hooks/use-hub-account";
@@ -90,6 +91,7 @@ export function useNudge(): { nudge: Nudge | null; dismiss: () => void } {
     queryKey: ["nudge", query],
     enabled: query !== undefined,
     staleTime: 30 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     queryFn: async (): Promise<Nudge | null> => {
       const response = await fetch(`/api/nudge?${query}`);
       if (!response.ok) return null;
