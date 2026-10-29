@@ -224,6 +224,12 @@ Playwright browser each take gigabytes, so these are rules, not advice:
   or an open order drawer (it waits for them to close), no confetti, glow
   or gradient, the accent only on Nice, and no motion at all under
   prefers-reduced-motion. Nothing else may take the screen this way.
+- A third exception, David's call 2026-10-29: money figures that change while
+  in view (the account total and the order drawer's quote) roll their digits
+  to the new value, under 300 ms, up when rising and down when falling, ink
+  only, no colour flash, never on first paint, never idle, and instantly under
+  prefers-reduced-motion (`src/components/ui/rolling-number.tsx`, adapted from
+  SmoothUI, MIT).
 - Before 2026-09-14 this repo was LSTeaTime, a leveraged staking app in a
   tea-house voice. The tea is gone from the code; git history keeps it.
 

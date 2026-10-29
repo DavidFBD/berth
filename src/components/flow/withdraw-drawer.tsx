@@ -57,6 +57,7 @@ import { useLimitDraft, type LimitPrefill } from "@/hooks/use-limit-draft";
 import { LimitPlaced, LimitPriceFields, LimitSummary } from "./limit-price";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { usePourQuote } from "@/hooks/use-pour-quote";
+import { RollingNumber } from "@/components/ui/rolling-number";
 import { errorNumber, minimumToSign, refusalReason, refusalWords, type SignPlan } from "@/lib/quote-hold";
 import { outcomeHoldUntil } from "@/lib/gas-sponsor";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
@@ -1128,9 +1129,11 @@ export function WithdrawDrawer({
                             {copy.youllGetBack}
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
-                            {quotedWorthUsd !== undefined
-                              ? `≈ ${money.format(quotedWorthUsd)}`
-                              : `≈ ${formatTokenAmount(quote.quoted, outputToken.decimals)} ${outputToken.symbol}`}
+                            {quotedWorthUsd !== undefined ? (
+                              <>≈ <RollingNumber value={money.format(quotedWorthUsd)} /></>
+                            ) : (
+                              <>≈ <RollingNumber value={formatTokenAmount(quote.quoted, outputToken.decimals)} /> {outputToken.symbol}</>
+                            )}
                           </span>
                         </div>
                         {quotedWorthUsd !== undefined && (

@@ -19,6 +19,7 @@ import { shownPart } from "@/lib/last-known";
 import { useLastKnown, useOrders } from "@/hooks/use-profile";
 import { useCompareFriends, useMySocial } from "@/hooks/use-social";
 import { ThinkingOrb } from "@/components/ui/thinking-orb";
+import { RollingNumber } from "@/components/ui/rolling-number";
 import { formatUnits } from "viem";
 
 /** The account's figure in its three parts; undefined while a part loads. */
@@ -253,7 +254,7 @@ export function AccountTotalView({
             updating ? "text-muted-foreground" : "text-foreground",
           )}
         >
-          {money.format(total)}
+          <RollingNumber value={money.format(total)} />
         </p>
       )}
       {/* The parts as ruled boxes that always add up to the figure above. */}

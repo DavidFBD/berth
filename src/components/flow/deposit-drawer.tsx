@@ -58,6 +58,7 @@ import {
 import { useListingPrices } from "@/hooks/use-listing-prices";
 import { useLimitDraft, type LimitPrefill } from "@/hooks/use-limit-draft";
 import { usePourQuote } from "@/hooks/use-pour-quote";
+import { RollingNumber } from "@/components/ui/rolling-number";
 import { errorNumber, minimumToSign, refusalReason, refusalWords, type QuoteRefusal, type SignPlan } from "@/lib/quote-hold";
 import { outcomeHoldUntil } from "@/lib/gas-sponsor";
 import { useDelivery } from "@/hooks/use-delivery";
@@ -1147,7 +1148,7 @@ export function DepositDrawer({
                             {copy.youllHold}
                           </span>
                           <span className="font-medium text-foreground tabular-nums">
-                            ≈ {formatTokenAmount(quote.quoted, listing.decimals, 6)} {listing.symbol}
+                            ≈ <RollingNumber value={formatTokenAmount(quote.quoted, listing.decimals, 6)} /> {listing.symbol}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
