@@ -1166,7 +1166,8 @@ declare
 
 -- Email (docs/plans/recurring-email.md section 3, lib/server/email). What a
 -- person chose to get by mail, one row per switchable kind they changed;
--- no row means the default (orders and friends on, weekly off). Security
+-- no row means the default (orders and friends on, weekly off, listings on
+-- only with a filled order: lib/email-kinds). Security
 -- notices have no row: they cannot be switched off.
 create table if not exists email_prefs (
   user_id uuid not null references users(id) on delete cascade,
@@ -1327,9 +1328,13 @@ create unique index if not exists recurring_runs_limit_once on recurring_runs (l
 -- 'recurring'. One line body, for db:push's split.
 do $$ declare c record; begin for c in select conname from pg_constraint where conrelid = 'email_prefs'::regclass and contype = 'c' and conname <> 'email_prefs_kind_check' and pg_get_constraintdef(oid) ilike '%kind%' loop execute format('alter table email_prefs drop constraint %I', c.conname); end loop; end $$;
 
+-- 'listings' (2026-10-29) is the New stocks switch (lib/email-kinds,
+-- lib/server/new-listings): marketing, so a row is written only when a
+-- person turns it on or off; with no row it follows the soft opt in (on
+-- with a filled order, off without).
 alter table email_prefs drop constraint if exists email_prefs_kind_check;
 alter table email_prefs add constraint email_prefs_kind_check
-  check (kind in ('orders', 'friends', 'weekly', 'recurring'));
+  check (kind in ('orders', 'friends', 'weekly', 'recurring', 'listings'));
 
 -- The X column's own store (lib/server/x-store, lib/x-schedule). X bills
 -- every post it returns, once per UTC day per post, so the posts are kept
@@ -2288,3 +2293,51 @@ create table if not exists feedback (
 
 create index if not exists feedback_created_idx on feedback (created_at desc);
 create index if not exists feedback_user_idx on feedback (user_id, created_at desc);
+
+-- New stocks (lib/server/new-listings). Detection is automatic, sending is
+-- staff approved: nothing is emailed until a staff admin lines up an email
+-- and presses send (/staff/emails). listing_batches keeps the first morning's
+-- 'baseline' (every stock listing then live, announced to no one) and any
+-- batch an earlier build recorded. What counts as seen is all of those plus
+-- the detected symbols of every announcement that is not cancelled, so a
+-- listing is detected once. Never edit these tables by hand.
+create table if not exists listing_batches (
+  id text primary key check (id = 'baseline' or id ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
+  symbols text[] not null,
+  opened_at timestamptz not null default now()
+);
+
+-- One announcement is an email staff line up for the new stocks: the symbols
+-- detected, the ones chosen to name (staff may untick), and the words staff
+-- may edit (subject, preview line, intro, an extra paragraph). The risk line,
+-- the why line, the sender line and the unsubscribe are fixed in code and are
+-- not stored. Status: draft, sending (queued by a staff admin, sent over the
+-- mornings within the daily cap), done, cancelled. Each person gets at most
+-- one (email_sends type 'new_listings', ref '<announcement id>:<user id>').
+create table if not exists listing_announcements (
+  id uuid primary key default gen_random_uuid(),
+  detected text[] not null,
+  chosen text[] not null,
+  subject text not null default '',
+  preview text not null default '',
+  intro text not null default '',
+  extra text not null default '',
+  status text not null default 'draft' check (status in ('draft', 'sending', 'done', 'cancelled')),
+  created_by uuid references users(id) on delete set null,
+  queued_by uuid references users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  queued_at timestamptz,
+  finished_at timestamptz,
+  not_reached int
+);
+
+-- At most one announcement is open (a draft or being sent) at a time.
+create unique index if not exists listing_announcements_one_open on listing_announcements ((true)) where status in ('draft', 'sending');
+
+-- People staff took off an announcement's list.
+create table if not exists listing_announcement_exclusions (
+  announcement_id uuid not null references listing_announcements(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  primary key (announcement_id, user_id)
+);

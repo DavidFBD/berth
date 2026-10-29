@@ -201,14 +201,15 @@ describe("the week", () => {
     expect(snapshotDays(christmas)).toEqual({ from: "2026-12-21", to: "2026-12-28" });
   });
 
-  it("counts no week that began before the privacy policy in force took effect", () => {
-    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    const match = /^Effective (\d{1,2}) (\w+) (\d{4})\.$/.exec(COPY.privacyPolicy.status);
-    expect(match).not.toBeNull();
-    const [, day, month, year] = match!;
-    expect(months).toContain(month);
-    const effective = Date.UTC(Number(year), months.indexOf(month), Number(day));
-    expect(Date.parse(`${MOST_HELD_FIRST_WEEK}T00:00:00Z`)).toBeGreaterThanOrEqual(effective);
+  it("counts no week that began before the privacy policy disclosed Most held, and the policy in force still does", () => {
+    // The policy that first said so took effect on 8 October 2026 (TERMS_VERSION 2026-10-08). Later
+    // versions keep the paragraph unchanged (the 30 October one only adds the New stocks email), so
+    // the bar is when the disclosure began, not the date of the policy now in force.
+    const DISCLOSED_FROM = Date.UTC(2026, 9, 8);
+    expect(Date.parse(`${MOST_HELD_FIRST_WEEK}T00:00:00Z`)).toBeGreaterThanOrEqual(DISCLOSED_FROM);
+    const policy = JSON.stringify(COPY.privacyPolicy);
+    expect(policy).toContain("Most held on Berth is public too.");
+    expect(policy).toContain("The first week counted is the week of 19 October 2026");
   });
 });
 

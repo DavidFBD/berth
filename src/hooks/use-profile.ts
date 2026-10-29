@@ -526,7 +526,7 @@ export function useEmailSettings(enabled: boolean) {
     enabled,
     staleTime: 60_000,
     // Not deployed yet: no address, so the section offers to add one.
-    notFound: { address: null, deliverable: false, prefs: { orders: true, friends: true, weekly: false } },
+    notFound: { address: null, deliverable: false, prefs: { orders: true, friends: true, weekly: false, listings: false } },
   });
 }
 

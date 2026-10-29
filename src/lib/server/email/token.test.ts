@@ -50,6 +50,16 @@ describe("unsubscribe token", () => {
     expect(await readUnsubscribeToken(token, { env, now: later })).toBeNull();
   });
 
+  it("reads an expired but authentic token only when allowed, marked expired", async () => {
+    const now = new Date("2026-09-29T10:00:00Z");
+    const token = await issueUnsubscribeToken({ userId, kind: "listings" }, { env, now });
+    const later = new Date(now.getTime() + (UNSUBSCRIBE_TTL_DAYS + 200) * 86_400_000);
+    expect(await readUnsubscribeToken(token, { env, now: later, allowExpired: true })).toEqual({ userId, kind: "listings", expired: true });
+    expect(await readUnsubscribeToken(token, { env, now: later })).toBeNull();
+    // Altered or foreign tokens stay refused.
+    expect(await readUnsubscribeToken(token, { env: { EMAIL_TOKEN_SECRET: "another" } as unknown as NodeJS.ProcessEnv, now: later, allowExpired: true })).toBeNull();
+  });
+
   it("refuses junk", async () => {
     for (const junk of [undefined, null, "", "abc", "a.b.c.d.e", 42, "x".repeat(2000)]) {
       expect(await readUnsubscribeToken(junk, { env })).toBeNull();

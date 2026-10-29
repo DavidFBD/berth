@@ -15,10 +15,13 @@ import { focusAddEmail, useDrawerNav } from "@/components/account-drawer-nav";
  * account without an email is offered the add-email flow instead, which
  * lives in the same drawer (RewardsPanel, ADD_EMAIL_ANCHOR).
  *
- * The weekly summary (lib/server/weekly) is the one switch that starts
- * off: it is the only email the person did not cause.
+ * The weekly summary (lib/server/weekly) starts off: it is an email the
+ * person did not cause. New stocks (lib/server/new-listings) is marketing:
+ * on by default only for someone with a filled order (the soft opt in,
+ * lib/email-kinds), and shown as its own plain switch so it is as easy to
+ * turn off as it was to get.
  */
-const SHOWN_KINDS: readonly SwitchableKind[] = ["orders", "friends", "weekly"];
+const SHOWN_KINDS: readonly SwitchableKind[] = ["orders", "friends", "weekly", "listings"];
 
 export function EmailSection({
   heading = "caps",

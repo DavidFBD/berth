@@ -116,7 +116,7 @@ export function seedDrawer(client: QueryClient, scene: DrawerScene): void {
   const email: EmailSettingsResponse = {
     address: DEMO_EMAIL,
     deliverable: true,
-    prefs: { orders: true, friends: true, weekly: false },
+    prefs: { orders: true, friends: true, weekly: false, listings: true },
   };
   client.setQueryData(["profile", null], profile);
   client.setQueryData(["xp-history", null], history);

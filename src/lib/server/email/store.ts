@@ -1,5 +1,6 @@
 import { getSql } from "@/lib/server/db";
 import { emailValue } from "@/lib/server/identities";
+import { LISTINGS_NOTICE_VERSION } from "@/lib/legal-version";
 import {
   DEFAULT_EMAIL_PREFS,
   SWITCHABLE_KINDS,
@@ -24,6 +25,18 @@ import {
 export const primaryEmailSql = (user: string) =>
   `select value from user_identities where user_id = ${user} and kind = 'email' and is_primary limit 1`;
 
+/**
+ * A SQL boolean for "this account has a primary email a send could use":
+ * address shaped, and not on the suppression list. The picking queries use
+ * it so the counts staff see and the people a send reaches never include an
+ * address the send itself would refuse. `user` is the SQL expression for
+ * the account's id. Identities are stored trimmed and lowercased.
+ */
+export const usableAddressSql = (user: string) =>
+  `exists (select 1 from user_identities i where i.user_id = ${user} and i.kind = 'email' and i.is_primary
+     and btrim(i.value) ~ '^[^[:space:]@]+@[^[:space:]@]+$'
+     and not exists (select 1 from email_suppressions es where es.address = lower(btrim(i.value))))`;
+
 /** A stored address as a send reads it: normalised, or null when it is not an address at all. */
 export function sendableAddress(value: string | null | undefined): string | null {
   return emailValue(value);
@@ -44,8 +57,23 @@ export async function suppressedAmong(addresses: readonly string[]): Promise<Set
   return new Set(rows.map((row) => row.address));
 }
 
+/**
+ * The one rule for the New stocks switch's default (lib/email-kinds), as a
+ * SQL boolean for the account `user` (a SQL expression for its id): an
+ * order of the account's whose fill is recorded, as the order log counts a
+ * fill (lib/server/order-marks), AND an accepted version of the terms
+ * that is LISTINGS_NOTICE_VERSION or later, the one that told the person
+ * Berth may email them when it adds stocks (lib/legal-version). Versions
+ * are ISO dates, so text order is date order. readPrefs and every picking
+ * query (lib/server/new-listings) use only this, so they never disagree.
+ * A person's own email_prefs row always wins over it.
+ */
+export const listingsDefaultOnSql = (user: string) =>
+  `(exists (select 1 from orders where user_id = ${user} and (fill_tx is not null or filled_at is not null)) and exists (select 1 from terms_acceptances where user_id = ${user} and version >= '${LISTINGS_NOTICE_VERSION}'))`;
+
 export async function readPrefs(userId: string): Promise<EmailPrefs> {
-  const rows = (await getSql().query(`select kind, enabled from email_prefs where user_id = $1`, [userId])) as {
+  const sql = getSql();
+  const rows = (await sql.query(`select kind, enabled from email_prefs where user_id = $1`, [userId])) as {
     kind: string;
     enabled: boolean;
   }[];
@@ -53,10 +81,40 @@ export async function readPrefs(userId: string): Promise<EmailPrefs> {
   for (const row of rows) {
     if ((SWITCHABLE_KINDS as readonly string[]).includes(row.kind)) prefs[row.kind as SwitchableKind] = row.enabled;
   }
+  // Only a person with no row of their own for New stocks follows the default (their own row, either way, wins).
+  if (!rows.some((row) => row.kind === "listings")) {
+    const on = (await sql.query(`select ${listingsDefaultOnSql("$1::uuid")} as on`, [userId])) as { on: boolean }[];
+    prefs.listings = on[0]?.on === true;
+  }
   return prefs;
 }
 
-export async function setPref(userId: string, kind: SwitchableKind, enabled: boolean): Promise<void> {
+/**
+ * The account a switch belongs to now: an account merged away
+ * (users.retired_into) hands its switches to the one it was merged into,
+ * following the chain. An old email's link names the account it was sent
+ * to, and its opt out must land on the account that still gets mail.
+ */
+export async function survivingAccount(userId: string): Promise<string> {
+  let current = userId;
+  for (let hops = 0; hops < 10; hops += 1) {
+    const rows = (await getSql().query(`select retired_into from users where id = $1::uuid`, [current])) as { retired_into: string | null }[];
+    const next = rows[0]?.retired_into;
+    if (!next) return current;
+    current = next;
+  }
+  return current;
+}
+
+/**
+ * Saves a switch. Turning a kind OFF follows a merged account to the one
+ * that survives it (survivingAccount), so an old email's opt out lands on
+ * the account that still gets mail. Turning one ON acts only on the account
+ * the request was made for: a link in an old email must never switch mail
+ * on for a different account, which may use another address.
+ */
+export async function setPref(requestedUserId: string, kind: SwitchableKind, enabled: boolean): Promise<void> {
+  const userId = enabled ? requestedUserId : await survivingAccount(requestedUserId);
   await getSql().query(
     `insert into email_prefs (user_id, kind, enabled) values ($1, $2, $3)
      on conflict (user_id, kind) do update set enabled = excluded.enabled, updated_at = now()`,
@@ -161,15 +219,42 @@ export async function recordUnsent(userId: string, type: string, ref: string, re
   );
 }
 
-/** Sends claimed today (UTC), sent or pending; of one type when given. */
-export async function sendsToday(type?: string): Promise<number> {
+/** Sends claimed today (UTC), sent or pending; of one type (or any of several) when given. */
+export async function sendsToday(type?: string | readonly string[]): Promise<number> {
+  const types = type === undefined ? null : typeof type === "string" ? [type] : [...type];
   const rows = (await getSql().query(
     `select count(*)::int as n from email_sends
       where status in ('sent', 'pending') and created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'
-        ${type ? "and type = $1" : ""}`,
-    type ? [type] : [],
+        ${types ? "and type = any($1::text[])" : ""}`,
+    types ? [types] : [],
   )) as { n: number }[];
   return rows[0]?.n ?? 0;
+}
+
+/** The status of a New stocks announcement (listing_announcements), or null when there is none by that id. */
+export async function announcementStatus(id: string): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  const rows = (await getSql().query(`select status from listing_announcements where id = $1::uuid`, [id])) as { status: string }[];
+  return rows[0]?.status ?? null;
+}
+
+/** Whether staff took this person off a New stocks announcement's list (listing_announcement_exclusions). */
+export async function listingExcluded(announcementId: string, userId: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(announcementId)) return false;
+  const rows = (await getSql().query(
+    `select 1 from listing_announcement_exclusions where announcement_id = $1::uuid and user_id = $2::uuid`,
+    [announcementId, userId],
+  )) as unknown[];
+  return rows.length > 0;
+}
+
+/**
+ * A taken pending row that cannot be sent yet (today's share or the day's
+ * cap is full): left pending, its notice kept, for a later pass, and the try
+ * the pass counted for it handed back so waiting does not use it up.
+ */
+export async function holdPending(id: string, reason: string): Promise<void> {
+  await getSql().query(`update email_sends set attempts = greatest(attempts - 1, 0), error = $2 where id = $1 and status = 'pending'`, [id, reason.slice(0, 80)]);
 }
 
 export const STALE_PENDING_MINUTES = 10;

@@ -4,9 +4,9 @@ import { EmailSection } from "@/components/email-section";
 import type { EmailSettingsResponse } from "@/lib/email-kinds";
 
 const STATES: { label: string; demo: EmailSettingsResponse }[] = [
-  { label: "email account", demo: { address: "you@example.com", deliverable: true, prefs: { orders: true, friends: false, weekly: false } } },
-  { label: "wallet only account", demo: { address: null, deliverable: false, prefs: { orders: true, friends: true, weekly: false } } },
-  { label: "bounced address", demo: { address: "gone@example.com", deliverable: false, prefs: { orders: true, friends: true, weekly: false } } },
+  { label: "email account", demo: { address: "you@example.com", deliverable: true, prefs: { orders: true, friends: false, weekly: false, listings: true } } },
+  { label: "wallet only account", demo: { address: null, deliverable: false, prefs: { orders: true, friends: true, weekly: false, listings: false } } },
+  { label: "bounced address", demo: { address: "gone@example.com", deliverable: false, prefs: { orders: true, friends: true, weekly: false, listings: false } } },
 ];
 
 /** The Email section as the settings drawer shows it, one card per state. */

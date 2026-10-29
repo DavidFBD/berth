@@ -116,6 +116,58 @@ Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-toke
 Berth. Wall Street, in your wallet."
 `;
 
+exports[`notice templates > new-listings renders HTML and text without personal data 1`] = `
+"Subject: Berth lists 14 more stocks
+
+New on Berth
+
+Berth now lists 14 more stocks:
+
+* Apple
+* Microsoft
+* Amazon
+* Alphabet
+* Netflix
+* Coca-Cola
+* Visa
+* Walmart
+* Costco
+* Pfizer
+* Disney
+* Intel
+
+And 2 more.
+Berth is telling you what it now lists, not advising you on any of them. Stocks on Berth are tokens issued by others that track a share. They are not the share, and you can lose what you put in.
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because New stocks emails are on for you. They are on for anyone who has filled an order on Berth and accepted the terms of 30 October 2026 or later, and off for everyone else. Anyone can turn them on or off in Settings, and off with the link in each email.
+Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Sent by Berth, operated by David, an individual based in the Netherlands. Write to us at support@berthmarkets.com.
+Berth. Wall Street, in your wallet."
+`;
+
+exports[`notice templates > new-listings-one renders HTML and text without personal data 1`] = `
+"Subject: Berth lists one more stock
+
+New on Berth
+
+Berth now lists one more stock:
+
+* Apple
+
+Berth is telling you what it now lists, not advising you on any of them. Stocks on Berth are tokens issued by others that track a share. They are not the share, and you can lose what you put in.
+
+Open Berth: https://www.berthmarkets.com/
+
+You get this because New stocks emails are on for you. They are on for anyone who has filled an order on Berth and accepted the terms of 30 October 2026 or later, and off for everyone else. Anyone can turn them on or off in Settings, and off with the link in each email.
+Turn these off: https://www.berthmarkets.com/api/email/unsubscribe?t=sample-token
+
+Sent by Berth, operated by David, an individual based in the Netherlands. Write to us at support@berthmarkets.com.
+Berth. Wall Street, in your wallet."
+`;
+
 exports[`notice templates > order-expired renders HTML and text without personal data 1`] = `
 "Subject: Your NVIDIA buy order expired
 

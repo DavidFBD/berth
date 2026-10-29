@@ -101,10 +101,10 @@ describe("deliver", () => {
 
   it("follows the person's switch for orders and friends, never for security", async () => {
     const userId = await account();
-    expect(await readPrefs(userId)).toEqual({ orders: true, friends: true, weekly: false });
+    expect(await readPrefs(userId)).toEqual({ orders: true, friends: true, weekly: false, listings: false });
     // A switch for a retired kind (recurring, 2026-10-04) stays in the table and is never read back.
     await sql.query(`insert into email_prefs (user_id, kind, enabled) values ($1, 'recurring', false)`, [userId]);
-    expect(await readPrefs(userId)).toEqual({ orders: true, friends: true, weekly: false });
+    expect(await readPrefs(userId)).toEqual({ orders: true, friends: true, weekly: false, listings: false });
     await setPref(userId, "orders", false);
     expect(await deliver(filled(userId))).toBe("pref_off");
     expect(
@@ -139,7 +139,7 @@ describe("deliver", () => {
     expect(paid.headers["List-Unsubscribe"]).toBeUndefined();
     expect(paid.text).not.toContain("/api/email/unsubscribe");
     expect(paid.text).toContain("This is about money paid to your account.");
-    expect(await readPrefs(userId)).toEqual({ orders: false, friends: false, weekly: false });
+    expect(await readPrefs(userId)).toEqual({ orders: false, friends: false, weekly: false, listings: false });
   });
 
   it("sends nothing to an account without a verified primary email", async () => {
