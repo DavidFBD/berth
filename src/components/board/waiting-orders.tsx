@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createSingleFlight } from "@/lib/single-flight";
 import { toast } from "@/lib/toast";
 import { formatUnits } from "viem";
 import { CaretRight, Hourglass } from "@phosphor-icons/react";
@@ -261,7 +262,9 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
   useEffect(() => {
     if (shortfall) trackGasBlocked({ side: "cancel", chain: chainKey, shortfall });
   }, [shortfall, chainKey]);
-  const confirm = async () => {
+  // Taken synchronously on the tap: `cancel.isPending` lands a render late, and a second cancel would ask the wallet to sign twice.
+  const [flight] = useState(createSingleFlight);
+  const confirmOnce = async () => {
     if (!wallet.walletProvider || !wallet.address) return;
     onBusy(true);
     try {
@@ -292,7 +295,7 @@ function CancelCheck({ order, onBusy, onDone }: { order: LimitOrderView; onBusy:
       gasNote={gasNote}
       held={held}
       onKeep={onDone}
-      onConfirm={() => void confirm()}
+      onConfirm={() => void flight.run(confirmOnce)}
     />
   );
 }

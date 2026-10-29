@@ -2,6 +2,7 @@
 
 import { toast } from "@/lib/toast";
 import { useState } from "react";
+import { createSingleFlight } from "@/lib/single-flight";
 import { formatUnits } from "viem";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowsDownUp, CaretDown } from "@phosphor-icons/react";
@@ -490,7 +491,9 @@ export function WithdrawDrawer({
   const [preparing, setPreparing] = useState(false);
   // The amount whose fresh quote came back lower than shown: the new figure is on screen, a second tap goes.
   const [priceMovedFor, setPriceMovedFor] = useState<bigint | null>(null);
-  const handleWithdraw = async () => {
+  // Taken synchronously on the tap: `preparing` is state and lands a render late, so a double tap would read it false twice.
+  const [flight] = useState(createSingleFlight);
+  const withdrawOnce = async () => {
     if (preparing) return;
     const minOut = limit.active ? limitMin : quote.minOut;
     if (
@@ -572,6 +575,7 @@ export function WithdrawDrawer({
       ensureReady,
     });
   };
+  const handleWithdraw = () => flight.run(withdrawOnce);
 
   type Cta = {
     label: string;

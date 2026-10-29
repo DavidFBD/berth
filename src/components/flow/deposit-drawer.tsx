@@ -2,6 +2,7 @@
 
 import { NotHereDrawer, useAvailability } from "@/components/availability/availability";
 import { useState } from "react";
+import { createSingleFlight } from "@/lib/single-flight";
 import { toast } from "@/lib/toast";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowsDownUp, CaretDown, GasPump } from "@phosphor-icons/react";
@@ -584,7 +585,9 @@ export function DepositDrawer({
   const [preparing, setPreparing] = useState(false);
   // The amount whose fresh quote came back lower than shown: the new figure is on screen, a second tap goes.
   const [priceMovedFor, setPriceMovedFor] = useState<bigint | null>(null);
-  const handleDeposit = async () => {
+  // Taken synchronously on the tap: `preparing` is state and lands a render late, so a double tap would read it false twice.
+  const [flight] = useState(createSingleFlight);
+  const depositOnce = async () => {
     if (preparing) return;
     const minOut = limit.active ? limitMin : quote.minOut;
     if (
@@ -661,6 +664,7 @@ export function DepositDrawer({
       ensureReady,
     });
   };
+  const handleDeposit = () => flight.run(depositOnce);
 
   type Cta = {
     label: string;
