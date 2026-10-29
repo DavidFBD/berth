@@ -188,6 +188,15 @@ describe("the guard", () => {
     expect(postRefusals("Most held on Berth this week: SpaceX. Join through this link")).toHaveLength(1);
   });
 
+  it("does not take an ordinary word for a listing, but still hears the company", () => {
+    expect(postRefusals(`Prices went through ups and downs in a snap. See it on Berth. ${LINK}`)).toEqual([]);
+    expect(postRefusals(`Quantum computing was in the news. See it on Berth. ${LINK}`)).toEqual([]);
+    expect(postRefusals(`Snap Inc in the news. See it on Berth. ${LINK}`)).toEqual(["names Snap Inc beside a link or call to action"]);
+    expect(postRefusals(`UPS in the news. See it on Berth. ${LINK}`)).toEqual(["names UPS beside a link or call to action"]);
+    expect(postRefusals(`Quantum Computing Inc in the news. See it on Berth. ${LINK}`)).toEqual(["names Quantum Computing Inc beside a link or call to action"]);
+    expect(postRefusals(`Nvidia in the news. See it on Berth. ${LINK}`)).toEqual(["names Nvidia beside a link or call to action"]);
+  });
+
   it("lets a listing alone or a link alone through", () => {
     expect(postRefusals("NVIDIA was in the news today.")).toEqual([]);
     expect(postRefusals(`US stock markets close early on Friday 27 November, at 1pm New York time. See it on Berth. ${LINK}`)).toEqual([]);

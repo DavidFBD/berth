@@ -10,7 +10,7 @@ import {
 } from "@sodax/sdk";
 import type { SodaxWalletConfig } from "@sodax/wallet-sdk-react";
 import { fallback, http, type Transport } from "viem";
-import { TOKEN_LISTINGS, toXToken } from "@/lib/listings";
+import { ROBINHOOD_SPOKE_TABLE, TOKEN_LISTINGS, toXToken } from "@/lib/listings";
 
 /**
  * Partner fee on every vault swap (deposit + withdraw intents). Percentage is
@@ -265,8 +265,17 @@ export const sodaxConfig: SodaxOptions = {
   leverageYield: { vaults: VAULTS },
   // One failover round, not viem's three: React Query owns the retries above it.
   hub: { rpcUrls: HUB_RPC_URLS, rpcOptions: { retryCount: 1 } },
+  // The robinhood table carries the SDK's tokens plus the pinned ones it lacks
+  // (lib/listings PINNED_ROBINHOOD_TOKENS), keyed by symbol, in the chains
+  // config the ConfigService builds its lookups from. The swaps token list is
+  // left alone on purpose: the SDK keeps it as an array and its deep merge
+  // replaces arrays wholesale, so a record there would break `.find`.
   chains: {
     ...PINNED_EVM_RPCS,
+    [ChainKeys.ROBINHOOD_MAINNET]: {
+      ...PINNED_EVM_RPCS[ChainKeys.ROBINHOOD_MAINNET],
+      supportedTokens: ROBINHOOD_SPOKE_TABLE as unknown as Record<string, XToken>,
+    },
     [ChainKeys.SONIC_MAINNET]: {
       ...PINNED_EVM_RPCS[ChainKeys.SONIC_MAINNET],
       supportedTokens: SONIC_TOKEN_OVERRIDES,

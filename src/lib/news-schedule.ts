@@ -17,12 +17,16 @@ export type NewsSource = "nasdaq" | "edgar" | "marketaux" | "jev";
 
 /** Requests a day (Jev: input tokens a day). Generous against expected use, so a cap is a guard, not a throttle. */
 export const DEFAULT_CAPS: Readonly<Record<NewsSource, number>> = {
-  // 24 feeds a run, about 10 runs a day: 240 expected.
-  nasdaq: 400,
-  // 20 companies a run, the two crons and the slots: about 100 expected.
-  edgar: 300,
+  // One feed per listing a run, reserved all together: 45 a run (the stocks and funds, not cash), about
+  // 10 runs a day, 450 expected. 800 allows 17 runs, so a busy day still completes.
+  // Nasdaq publishes no rate limit for its keyless feeds.
+  nasdaq: 800,
+  // One request per company with a CIK (40 of the 45) each run in the two
+  // crons and the slots, about 10 runs a day: 400 expected, so 600. Spaced at
+  // 250 ms (EDGAR_SPACING_MS), 4 a second against the SEC's 10, whatever the cap.
+  edgar: 600,
   // Its Basic plan allows 2,500 a day (headers, 2026-10-02); this keeps 500 in hand.
-  // About 6 a run (24 listings, 4 a call), so 2,000 is a guard, never a throttle.
+  // About 12 a run (45 listings, 4 a call), so 2,000 is a guard, never a throttle.
   marketaux: 2000,
   // About $0.04 a day at $0.042 a million.
   jev: 1_000_000,
@@ -123,8 +127,8 @@ export const MARKETAUX_LOOKBACK_MS = 24 * 60 * 60 * 1000;
  * time after its stamp. What is asked twice costs only "known" items.
  */
 export const MARKETAUX_OVERLAP_MS = 2 * 60 * 60 * 1000;
-/** Requests one run may send, first pages and pages back together, under the caps. */
-export const MARKETAUX_REQUESTS_PER_RUN = 18;
+/** Requests one run may send, first pages and pages back together, under the caps: 12 first pages for 45 listings and 12 pages back, within the 30 a minute. */
+export const MARKETAUX_REQUESTS_PER_RUN = 24;
 
 /**
  * Whether this process may ingest on demand: production on Vercel, or a

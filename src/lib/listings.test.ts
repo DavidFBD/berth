@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ChainKeys, leverageYieldVaults, robinhoodSupportedTokens } from "@sodax/sdk";
+import { ChainKeys, Sodax, leverageYieldVaults, robinhoodSupportedTokens } from "@sodax/sdk";
+import { sodaxConfig } from "./sodax-config";
 import { getAddress, isAddress } from "viem";
 import { MARKET_ID_BY_SYMBOL, ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } from "./market-ids";
 import { TOPICS } from "./x-feed";
@@ -14,6 +15,8 @@ import {
   rowName,
   toXToken,
   vaultListing,
+  PINNED_ROBINHOOD_TOKENS,
+  ROBINHOOD_SPOKE_TABLE,
 } from "./listings";
 
 /**
@@ -23,7 +26,7 @@ import {
  * leans on, offline.
  */
 describe("token listings", () => {
-  it("carries the twenty four Robinhood tokens the solver trades on Sonic", () => {
+  it("carries the forty six Robinhood tokens the solver trades on Sonic", () => {
     expect(TOKEN_LISTINGS.map((listing) => listing.symbol)).toEqual([
       "SPCX",
       "NVDA",
@@ -49,6 +52,28 @@ describe("token listings", () => {
       "AMD",
       "INTC",
       "BABA",
+      "AMC",
+      "HIMS",
+      "LLY",
+      "COST",
+      "TTWO",
+      "RBLX",
+      "IBM",
+      "MRNA",
+      "LULU",
+      "SNAP",
+      "WYFI",
+      "RIVN",
+      "NFLX",
+      "BULL",
+      "QUBT",
+      "NET",
+      "SKHY",
+      "JNJ",
+      "UPS",
+      "DJT",
+      "RDDT",
+      "GLD",
     ]);
   });
 
@@ -81,6 +106,28 @@ describe("token listings", () => {
       AMD: "0xc8124Db156d8F6C7446C040c503FFEAe82383D1B",
       INTC: "0x5352F9Bf2f58720f8a8CC4D4eDEE56700Bd3d053",
       BABA: "0x1BeD0547D76F6424e9A3465b36F6dcDCF798A5cf",
+      AMC: "0x8f7357Ec98e6eBAE8Cfb75802AFFc7c9a774dFBd",
+      HIMS: "0xFb31A6c21439C1e3101e0470a9F3299ECB295b93",
+      LLY: "0xa6F481B22349DeA3739089e67D32A8A07078bB53",
+      COST: "0x6893A6c578f449AA0f748CA6B2A9Fc50Fed91C30",
+      TTWO: "0xd56534102359A4b69E81Cf6eFa6835EABd116c44",
+      RBLX: "0xC0D7a1f4cE9AaF981502DA15C8EbAEC21F1678Da",
+      IBM: "0x6cF19BAD00110C5F4f584b11d3ac935794AE1300",
+      MRNA: "0xd5fb16C3fAfaCa3032b0d715d00E72e11Dc799B6",
+      LULU: "0x44d7BeFa3fF3BE055910d7591aaA12FD6907F0eb",
+      SNAP: "0x5E0cBeCFAc572F6Ec0C254CAF9DE20D476814C9F",
+      WYFI: "0x94b01A709d83A871034B468a720a420abAa61F69",
+      RIVN: "0xd37e433ACd08911904Ce3368482E67D569811faC",
+      NFLX: "0xc866d70B8a4BAf9a200Fbe9b9db802A0dA32330A",
+      BULL: "0xd01969b6effb9c9AAE68F1B5a8505d5738dc29A3",
+      QUBT: "0x2A6B3ABB63f3b5f002B7683f4eb32f68e3e4103E",
+      NET: "0x4658eD29E62701242695a7aF0B534De56956432B",
+      SKHY: "0x72E4ad33c018016ee983c8d43C1F739Be1043c54",
+      JNJ: "0x34107FD696CCeFb833256C028c670aC95A4612A5",
+      UPS: "0x17b78F0626c85591D14E4DEFfe1AA14cb86d1A3D",
+      DJT: "0xeeb7355B245A50f7a91CFc7adbcE008E6c548960",
+      RDDT: "0x9106D29aee2bB2218ecb913aC2fAca242f315c9b",
+      GLD: "0x308f76Fc48196afb8C953f22d37d072eF3ceE0B8",
     });
   });
 
@@ -120,7 +167,7 @@ describe("token listings", () => {
 
   it("gives a short row name only where the full name would not fit, and keeps the full name for the rest", () => {
     const short = TOKEN_LISTINGS.filter((listing) => listing.shortName);
-    expect(Object.fromEntries(short.map((listing) => [listing.symbol, listing.shortName]))).toEqual({ TSM: "TSMC", AMD: "AMD" });
+    expect(Object.fromEntries(short.map((listing) => [listing.symbol, listing.shortName]))).toEqual({ TSM: "TSMC", AMD: "AMD", IBM: "IBM", UPS: "UPS" });
     for (const listing of short) expect(listing.shortName!.length).toBeLessThan(listing.name.length);
     const bySymbol = (symbol: string) => TOKEN_LISTINGS.find((listing) => listing.symbol === symbol)!;
     expect(rowName(bySymbol("AMD"))).toBe("AMD");
@@ -128,11 +175,11 @@ describe("token listings", () => {
     expect(rowName(bySymbol("NVDA"))).toBe("NVIDIA");
   });
 
-  it("has SGOV as the one cash listing and twenty three stocks", () => {
+  it("has SGOV as the one cash listing and forty five stocks", () => {
     expect(CASH_LISTING.symbol).toBe("SGOV");
     expect(CASH_LISTING.kind).toBe("cash");
     expect(CASH_LISTING.category).toBe("treasury");
-    expect(STOCK_LISTINGS).toHaveLength(23);
+    expect(STOCK_LISTINGS).toHaveLength(45);
     expect(STOCK_LISTINGS.every((listing) => listing.kind === "stock")).toBe(
       true,
     );
@@ -233,18 +280,29 @@ describe("isTokenListingAddress", () => {
  * without a topic the news column never files a post under it. The second
  * shelf (2026-09-30) is where forgetting one of these would have happened.
  */
+// The third shelf (2026-10-29) has no X topic yet: the company tier's query
+// fits X's 512 characters, and the press tier's three requests, only for the
+// first twenty four, and each added topic is a call on the capped X budget.
+// Their news still comes from the other sources; a topic per name is a
+// separate decision about that spend.
+const NO_TOPIC_YET = new Set(
+  "AMC HIMS LLY COST TTWO RBLX IBM MRNA LULU SNAP WYFI RIVN NFLX BULL QUBT NET SKHY JNJ UPS DJT RDDT GLD".split(" "),
+);
+
 describe("every listing is known to every per ticker table", () => {
   it("has a history id, a Robinhood Chain address, a topic and a mark if pinned", () => {
     for (const listing of TOKEN_LISTINGS) {
       expect(MARKET_ID_BY_SYMBOL[listing.symbol], listing.symbol).toMatch(
-        /-robinhood-tokenized-stock$/,
+        /-robinhood-token(ized-stock)?$/,
       );
       const address = ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[listing.symbol];
       expect(address && getAddress(address), listing.symbol).toBe(address);
-      expect(
-        TOPICS.some((topic) => topic.symbol === listing.symbol),
-        listing.symbol,
-      ).toBe(true);
+      if (!NO_TOPIC_YET.has(listing.symbol)) {
+        expect(
+          TOPICS.some((topic) => topic.symbol === listing.symbol),
+          listing.symbol,
+        ).toBe(true);
+      }
     }
     for (const symbol of Object.keys(LISTING_MARK_BY_SYMBOL)) {
       expect(TOKEN_LISTINGS.some((listing) => listing.symbol === symbol), symbol).toBe(true);
@@ -266,10 +324,18 @@ describe("every listing is known to every per ticker table", () => {
  * is what they are held to.
  */
 describe("the Robinhood Chain twin of every listing", () => {
-  it("carries all twenty four, each the pinned token and distinct from the Sonic listing", () => {
-    expect(TOKEN_LISTINGS).toHaveLength(24);
-    const spoke = robinhoodSupportedTokens as Record<string, { address: string; hubAsset: string; vault: string } | undefined>;
-    for (const listing of TOKEN_LISTINGS) {
+  // The first twenty four are in the SDK's robinhood spoke (rc.8); the
+  // twenty two of the third shelf are carried by the pin (PINNED_ROBINHOOD_TOKENS)
+  // until the SDK ships them. Together every listing has a twin.
+  const spoke = ROBINHOOD_SPOKE_TABLE;
+  const twinned = TOKEN_LISTINGS.filter((listing) => spoke[listing.symbol]);
+  const untwinned = TOKEN_LISTINGS.filter((listing) => !spoke[listing.symbol]);
+
+  it("carries the twin of every listing, each the pinned token and distinct from the Sonic listing", () => {
+    expect(TOKEN_LISTINGS).toHaveLength(46);
+    expect(twinned).toHaveLength(46);
+    expect(Object.keys(PINNED_ROBINHOOD_TOKENS)).toHaveLength(22);
+    for (const listing of twinned) {
       expect(listing.rhAddress, listing.symbol).toBeDefined();
       expect(listing.rhHubAsset, listing.symbol).toBeDefined();
       expect(listing.rhAddress, listing.symbol).toBe(ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[listing.symbol]);
@@ -283,13 +349,42 @@ describe("the Robinhood Chain twin of every listing", () => {
     }
   });
 
-  it("counts the Robinhood Chain token in the listing's own decimals, so an order's quantity reads the same on either chain", () => {
-    const spoke = robinhoodSupportedTokens as Record<string, { decimals: number } | undefined>;
-    for (const listing of TOKEN_LISTINGS) expect(spoke[listing.symbol]?.decimals, listing.symbol).toBe(listing.decimals);
+  it("leaves no listing without a twin (a listing with none would be delivered on Sonic only)", () => {
+    expect(untwinned.map((listing) => listing.symbol)).toEqual([]);
   });
 
-  it("has a distinct hub asset per listing", () => {
-    const hubAssets = TOKEN_LISTINGS.map((listing) => listing.rhHubAsset!.toLowerCase());
-    expect(new Set(hubAssets).size).toBe(TOKEN_LISTINGS.length);
+  it("lets an SDK entry win over the pin, through the SDK's own constructor", () => {
+    const sdk = robinhoodSupportedTokens as unknown as Record<string, { address: string }>;
+    // NVDA is the SDK's; pinning a wrong NVDA must not change the merged table.
+    expect(ROBINHOOD_SPOKE_TABLE.NVDA).toBe(sdk.NVDA);
+    const app = new Sodax(sodaxConfig);
+    const rh = app.config.spokeChainConfig[ChainKeys.ROBINHOOD_MAINNET].supportedTokens as Record<string, { address: string }>;
+    expect(rh.NVDA.address).toBe(sdk.NVDA.address);
+    expect(rh.NFLX.address).toBe(PINNED_ROBINHOOD_TOKENS.NFLX.address);
+    // And no pinned symbol is one the SDK carries yet (drop the pin when one is).
+    for (const symbol of Object.keys(PINNED_ROBINHOOD_TOKENS)) expect(sdk[symbol], symbol).toBeUndefined();
+  });
+
+  it("keeps the SDK's swap token list an array, and still resolves every pinned token", () => {
+    const app = new Sodax(sodaxConfig);
+    const bare = new Sodax();
+    const RH = ChainKeys.ROBINHOOD_MAINNET;
+    const list = app.config.getSupportedSwapTokensByChainId(RH);
+    expect(Array.isArray(list)).toBe(true);
+    expect(list).toEqual(bare.config.getSupportedSwapTokensByChainId(RH));
+    expect(() => list.find((token) => token.symbol === "NVDA")).not.toThrow();
+    for (const pinned of Object.values(PINNED_ROBINHOOD_TOKENS)) {
+      expect(app.config.isValidOriginalAssetAddress(RH, pinned.address), pinned.symbol).toBe(true);
+      expect(app.config.getSpokeTokenFromOriginalAssetAddress(RH, pinned.address)?.hubAsset, pinned.symbol).toBe(pinned.hubAsset);
+    }
+  });
+
+  it("counts the Robinhood Chain token in the listing's own decimals, so an order's quantity reads the same on either chain", () => {
+    for (const listing of twinned) expect(spoke[listing.symbol]?.decimals, listing.symbol).toBe(listing.decimals);
+  });
+
+  it("has a distinct hub asset per twinned listing", () => {
+    const hubAssets = twinned.map((listing) => listing.rhHubAsset!.toLowerCase());
+    expect(new Set(hubAssets).size).toBe(twinned.length);
   });
 });

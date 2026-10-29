@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CAPS, dailyCap, marketauxFetches, marketauxMode, newsIngestAllowedHere, newsVariesByReader } from "@/lib/news-schedule";
+import { SEC_CIK_BY_SYMBOL, STOCK_LISTINGS } from "@/lib/listings";
+import { DEFAULT_CAPS, MARKETAUX_PER_MINUTE, MARKETAUX_REQUESTS_PER_RUN, dailyCap, marketauxFetches, marketauxMode, newsIngestAllowedHere, newsVariesByReader } from "@/lib/news-schedule";
 
 describe("daily caps", () => {
   it("read each source's own variable, and fall back on anything not a sane number", () => {
@@ -45,5 +46,19 @@ describe("on-demand ingest", () => {
     expect(newsIngestAllowedHere({ NODE_ENV: "production", VERCEL_ENV: "preview" })).toBe(false);
     expect(newsIngestAllowedHere({ NODE_ENV: "development" })).toBe(false);
     expect(newsIngestAllowedHere({ NEWS_INGEST_LOCAL: "1" })).toBe(true);
+  });
+});
+
+describe("the default caps against every listing", () => {
+  const RUNS_A_DAY = 10;
+  it("let ten runs a day finish, since Nasdaq and EDGAR are reserved a listing at a time, all or nothing", () => {
+    expect(DEFAULT_CAPS.nasdaq).toBeGreaterThanOrEqual(STOCK_LISTINGS.length * RUNS_A_DAY);
+    expect(DEFAULT_CAPS.edgar).toBeGreaterThanOrEqual(Object.keys(SEC_CIK_BY_SYMBOL).length * RUNS_A_DAY);
+  });
+
+  it("let a Marketaux run ask every listing once and page back, inside its minute", () => {
+    expect(MARKETAUX_REQUESTS_PER_RUN).toBeGreaterThanOrEqual(Math.ceil(STOCK_LISTINGS.length / 4) * 2);
+    expect(MARKETAUX_REQUESTS_PER_RUN).toBeLessThanOrEqual(MARKETAUX_PER_MINUTE);
+    expect(DEFAULT_CAPS.marketaux).toBeGreaterThanOrEqual(MARKETAUX_REQUESTS_PER_RUN * RUNS_A_DAY);
   });
 });

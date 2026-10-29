@@ -10,13 +10,14 @@
 // Exit 1 on any drift, with every difference printed, so it can gate a
 // release. Read-only: no key, no wallet, no funds.
 import { createPublicClient, http, parseAbi } from "viem";
-import { Sodax, assetManagerAbi } from "@sodax/sdk";
+import { Sodax, assetManagerAbi, robinhoodSupportedTokens } from "@sodax/sdk";
 
 // Node strips the types from the .ts import (see the flag in package.json),
 // so the script reads the very table the app ships, not a copy of it.
 const { TOKEN_LISTINGS, CASH_LISTING, LISTING_MARK_BY_SYMBOL } = await import(
   "../src/lib/listings.ts"
 );
+const { PINNED_ROBINHOOD_TOKENS } = await import("../src/lib/listings.ts");
 const { ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL } = await import("../src/lib/market-ids.ts");
 
 const TOKENS_URL = "https://api.sodax.com/v1/swaps/tokens/sonic";
@@ -86,9 +87,11 @@ if (otherRwa.length > 0) {
 // 1b. The Robinhood Chain twins, where the dividend multiplier is read: the
 //     backend's robinhood spoke list names each one, and its vault is the
 //     listing on Sonic, so a wrong pin here shows as a mismatch.
+let liveTwins = [];
 const twinsResponse = await fetch(ROBINHOOD_TOKENS_URL, { signal: AbortSignal.timeout(20_000) });
 if (twinsResponse.ok) {
   const twins = await twinsResponse.json();
+  liveTwins = twins;
   const twinByVault = new Map(twins.map((token) => [lower(token.vault ?? ""), token]));
   for (const listing of TOKEN_LISTINGS) {
     const twin = twinByVault.get(lower(listing.address));
@@ -102,27 +105,62 @@ if (twinsResponse.ok) {
   note(`GET ${ROBINHOOD_TOKENS_URL} answered ${twinsResponse.status}`);
 }
 
-// 1b'. The installed SDK's robinhood spoke, which is what a buy delivered to
-//      Robinhood Chain is built against: each listing's rhAddress and
-//      rhHubAsset (lib/listings) must be the spoke token the SDK knows, and
-//      that token must vault into the listing on Sonic.
-const spokeTokens = new Sodax().config.getSupportedSwapTokensByChainId("robinhood");
-const spokeBySymbol = new Map(spokeTokens.map((token) => [token.symbol, token]));
+// 1b'. The installed SDK's robinhood spoke, plus the pin
+//      (PINNED_ROBINHOOD_TOKENS in lib/listings) for what the SDK lacks.
+//      Every listing must have a twin in one or the other, and its rhAddress
+//      and rhHubAsset must be that token, which must vault into the listing
+//      on Sonic. An SDK entry wins over the pin.
+// Read from the SDK's chains table (robinhoodSupportedTokens), the table the
+// ConfigService builds its lookups from, not the swaps list, which leaves out
+// tokens that are oracle priced only.
+const spokeBySymbol = new Map(Object.values(robinhoodSupportedTokens).map((token) => [token.symbol, token]));
+const liveBySymbol = new Map(liveTwins.map((token) => [token.symbol, token]));
+
+// The pin against the backend's live list: every field the app reads.
+for (const [symbol, entry] of Object.entries(PINNED_ROBINHOOD_TOKENS)) {
+  const served = liveBySymbol.get(symbol);
+  if (!served) {
+    note(`${symbol}: pinned for Robinhood Chain, but the backend's robinhood list no longer has it`);
+    continue;
+  }
+  for (const field of ["address", "hubAsset", "vault"]) {
+    if (lower(entry[field] ?? "") !== lower(served[field] ?? ""))
+      note(`${symbol}: pinned ${field} ${entry[field]}, backend serves ${served[field]}`);
+  }
+  if (entry.decimals !== served.decimals) note(`${symbol}: pinned decimals ${entry.decimals}, backend serves ${served.decimals}`);
+  if (entry.symbol !== symbol || served.symbol !== symbol) note(`${symbol}: pinned symbol ${entry.symbol}, backend serves ${served.symbol}`);
+}
+// The SDK's own entries against the backend too: an SDK that disagrees with
+// the live list is a failure, whoever is right.
+for (const [symbol, entry] of spokeBySymbol) {
+  const served = liveBySymbol.get(symbol);
+  if (!served) continue;
+  for (const field of ["address", "hubAsset", "vault"]) {
+    if (lower(String(entry[field] ?? "")) !== lower(served[field] ?? ""))
+      note(`${symbol}: the installed SDK's robinhood ${field} is ${entry[field]}, but the backend serves ${served[field]}; the SDK and the backend disagree`);
+  }
+}
+// Pinned entries the SDK now carries too: the SDK wins, so the pin can go.
+const pinRedundant = Object.keys(PINNED_ROBINHOOD_TOKENS).filter((symbol) => spokeBySymbol.has(symbol));
+if (pinRedundant.length > 0) {
+  console.log(`The installed SDK now carries these pinned Robinhood Chain tokens; drop them from PINNED_ROBINHOOD_TOKENS: ${pinRedundant.join(", ")}.`);
+}
+
 for (const listing of TOKEN_LISTINGS) {
-  const spoke = spokeBySymbol.get(listing.symbol);
+  const spoke = spokeBySymbol.get(listing.symbol) ?? PINNED_ROBINHOOD_TOKENS[listing.symbol];
   if (!spoke) {
-    note(`${listing.symbol}: the SDK's robinhood spoke has no token of this symbol`);
+    note(`${listing.symbol}: neither the SDK's robinhood spoke nor the pin has a token of this symbol`);
     continue;
   }
   if (!listing.rhAddress || lower(spoke.address) !== lower(listing.rhAddress))
-    note(`${listing.symbol}: rhAddress ${listing.rhAddress ?? "missing"}, SDK spoke has ${spoke.address}`);
+    note(`${listing.symbol}: rhAddress ${listing.rhAddress ?? "missing"}, spoke has ${spoke.address}`);
   if (!listing.rhHubAsset || lower(spoke.hubAsset) !== lower(listing.rhHubAsset))
-    note(`${listing.symbol}: rhHubAsset ${listing.rhHubAsset ?? "missing"}, SDK spoke has ${spoke.hubAsset}`);
+    note(`${listing.symbol}: rhHubAsset ${listing.rhHubAsset ?? "missing"}, spoke has ${spoke.hubAsset}`);
   if (lower(spoke.vault ?? "") !== lower(listing.address))
-    note(`${listing.symbol}: the SDK's robinhood token vaults into ${spoke.vault}, not the listing ${listing.address}`);
+    note(`${listing.symbol}: the robinhood token vaults into ${spoke.vault}, not the listing ${listing.address}`);
   const pinned = ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL[listing.symbol];
   if (pinned && lower(spoke.address) !== lower(pinned))
-    note(`${listing.symbol}: SDK spoke token ${spoke.address}, lib/market-ids pins ${pinned}`);
+    note(`${listing.symbol}: spoke token ${spoke.address}, lib/market-ids pins ${pinned}`);
 }
 
 // 1c. The solver oracle, which the board and the portfolio price from.

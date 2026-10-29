@@ -90,7 +90,7 @@ describe("reading the multipliers from Robinhood Chain", () => {
       }),
     );
     const read = await readMultiplierHistories(symbols, 0);
-    expect(Object.keys(read.histories).sort()).toEqual(symbols.slice(0, 12).sort());
+    expect(Object.keys(read.histories).sort()).toEqual(symbols.filter((symbol) => !second.includes(symbol)).sort());
     expect(read.failures.map((failure) => failure.split(":")[0]).sort()).toEqual([...second].sort());
     expect(read.failures[0]).toContain("503");
   });

@@ -59,6 +59,30 @@ export const MARKET_ID_BY_SYMBOL: Readonly<Record<string, string>> = {
   AMD: "amd-robinhood-tokenized-stock",
   INTC: "intel-robinhood-tokenized-stock",
   BABA: "alibaba-robinhood-tokenized-stock",
+  // The third shelf, verified 2026-10-29: each id is the one CoinGecko lists
+  // with platform `robinhood` at the address pinned below.
+  AMC: "amc-entertainment-holdings-inc-robinhood-token",
+  HIMS: "hims-hers-health-inc-robinhood-token",
+  LLY: "eli-lilly-robinhood-tokenized-stock",
+  COST: "costco-robinhood-tokenized-stock",
+  TTWO: "take-two-interactive-software-robinhood-tokenized-stock",
+  RBLX: "roblox-robinhood-tokenized-stock",
+  IBM: "international-business-machines-corporation-robinhood-token",
+  MRNA: "moderna-inc-robinhood-token",
+  LULU: "lululemon-robinhood-tokenized-stock",
+  SNAP: "snap-inc-robinhood-token",
+  WYFI: "whitefiber-inc-robinhood-token",
+  RIVN: "rivian-automotive-robinhood-tokenized-stock",
+  NFLX: "netflix-robinhood-tokenized-stock",
+  BULL: "webull-corporation-robinhood-token",
+  QUBT: "quantum-computing-robinhood-tokenized-stock",
+  NET: "cloudflare-inc-robinhood-token",
+  SKHY: "sk-hynix-robinhood-token",
+  JNJ: "johnson-johnson-robinhood-token",
+  UPS: "ups-robinhood-tokenized-stock",
+  DJT: "trump-media-technology-group-corp-robinhood-token",
+  RDDT: "reddit-robinhood-tokenized-stock",
+  GLD: "spdr-gold-shares-robinhood-token",
 };
 
 /**
@@ -97,6 +121,30 @@ export const ROBINHOOD_CHAIN_ADDRESS_BY_SYMBOL: Readonly<Record<string, `0x${str
   AMD: "0x86923f96303D656E4aa86D9d42D1e57ad2023fdC",
   INTC: "0xc72b96e0E48ecd4DC75E1e45396e26300BC39681",
   BABA: "0xad25Ac6C84D497db898fa1E8387bf6Af3532a1c4",
+  // The third shelf, 2026-10-29: the backend's `robinhood` token list, whose
+  // `vault` for each is the listing's Sonic address.
+  AMC: "0x05a3d1Cd21d0C88145E82600E62e7E496e0F222B",
+  HIMS: "0xCceE82fE024c36fA15E1005edE3E9e4787e23D09",
+  LLY: "0x8005d266423c7ea827372c9c864491e5786600ea",
+  COST: "0x4EA005168D7F09a7A0Ba9D1DEf21a479950E44C2",
+  TTWO: "0x5e81213613b6B86EaB4c6c50d718d34359459786",
+  RBLX: "0xF0C4BF4C582cb3836e98394b1d4e7B7281101bE8",
+  IBM: "0x980dcf6766FA79f5Cf0c4AAdb3ab477ff15a9619",
+  MRNA: "0x43B07D15cE533bEc5476d70C22a78a1B2B662155",
+  LULU: "0x4e62068525Ab11FE768e29dfD00ef909B9803016",
+  SNAP: "0xF6589F11Bc40b669e584073F428B05562F568733",
+  WYFI: "0x9e7ABD3C9139D14E4c86DcE0e455AAB7A0C2FB3E",
+  RIVN: "0xB1BF26c1D20ff267A4f93550d1E0d06ac40a114B",
+  NFLX: "0xE0444EF8BF4eD74f74FD73686e2ddF4C1c5591E8",
+  BULL: "0xceF9027c7d6985b85f0BA431125073529A947A68",
+  QUBT: "0x59818904ab4cE163b3cE4FfB64f2D6Ca02c434B4",
+  NET: "0x116F00968269B7bfbaD4109cE591d6E74c0601d4",
+  SKHY: "0x84CAb63bc87912E71ad199ff14A0bA45de68FeF8",
+  JNJ: "0x03DfbBE0AC4E7bCDaFd08eD41A400326B77D8c80",
+  UPS: "0xf23250dac154D05Bb671CB0d0eBEf3c635c79CE2",
+  DJT: "0x1D11f0496982706C5e14A514D4E79F2e6BdE4516",
+  RDDT: "0x05b37Fb53A299a1b874A619e1c4C404D52C36F4C",
+  GLD: "0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e",
 };
 
 /** CoinGecko id → ticker, to read a keyed upstream response back. */

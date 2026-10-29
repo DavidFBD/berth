@@ -165,6 +165,27 @@ describe("headlineNamesListing", () => {
   it("does not hear a ticker inside another word", () => {
     expect(headlineNamesListing("Mustang sales climb", "MU")).toBe(false);
   });
+
+  it("hears a company's name as the registry spells it, for listings with no X topic", () => {
+    expect(headlineNamesListing("Netflix Beats Estimates as Subscribers Climb", "NFLX")).toBe(true);
+    expect(headlineNamesListing("Costco Raises Its Membership Fee", "COST")).toBe(true);
+    expect(headlineNamesListing("Eli Lilly Wins Approval for a New Drug", "LLY")).toBe(true);
+    expect(headlineNamesListing("Cloudflare, Inc. Reports Record Revenue", "NET")).toBe(true);
+    expect(headlineNamesListing("Netflix Beats Estimates", "RBLX")).toBe(false);
+  });
+
+  it("does not take an ordinary word for a company's name", () => {
+    expect(headlineNamesListing("Why a Snap Decision Can Cost Investors", "SNAP")).toBe(false);
+    expect(headlineNamesListing("Snap Inc. Posts a Smaller Loss", "SNAP")).toBe(true);
+    expect(headlineNamesListing("Snapchat Adds a New Ad Format", "SNAP")).toBe(true);
+    expect(headlineNamesListing("Ups and Downs for Retail Stocks", "UPS")).toBe(false);
+    expect(headlineNamesListing("UPS Cuts Jobs as Parcel Volumes Fall", "UPS")).toBe(true);
+    expect(headlineNamesListing("United Parcel Service Raises Rates", "UPS")).toBe(true);
+    expect(headlineNamesListing("Quantum Computing Is the Next Big Bet", "QUBT")).toBe(false);
+    expect(headlineNamesListing("Quantum Computing Inc. Wins a Photonics Order", "QUBT")).toBe(true);
+    expect(headlineNamesListing("Markets Come Full Circle as Rates Settle", "CRCL")).toBe(false);
+    expect(headlineNamesListing("Circle Internet Group Posts Quarterly Results", "CRCL")).toBe(true);
+  });
 });
 
 describe("headlineVerdict", () => {

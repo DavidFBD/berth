@@ -86,9 +86,10 @@ import { useOutcomeHold } from "@/hooks/use-sponsor-refusals";
 import { useErrorReporter } from "@/hooks/use-error-reporter";
 import { LISTINGS_QUERY_KEY } from "@/hooks/use-hub-holdings";
 import type { PourReadiness } from "@/hooks/use-privy-evm-wallet";
-import { useAwardPour } from "@/hooks/use-profile";
+import { useAccountHeaders, useAwardPour } from "@/hooks/use-profile";
 import { useRecordLimitOrder } from "@/hooks/use-limit-orders";
 import { addPending } from "@/lib/limit-pending";
+import { shadowSubmit } from "@/lib/sodax-shadow";
 import { chainFamily, failureReason, track, type OrderType } from "@/lib/analytics";
 import type { Delivery } from "@/lib/delivery";
 import { asksAgain, buyDestination, robinhoodParams } from "@/lib/delivery-client";
@@ -407,6 +408,31 @@ function errorLine(error: unknown): string {
 type SentIntent = CreateVaultIntentResult<SpokeChainKey, boolean>;
 
 /**
+ * Attribution only (lib/sodax-shadow): tells SODAX, through our keyed
+ * route, about an order that has just been broadcast. Not awaited and never
+ * throws; the order's own relay, notify and status do not depend on it.
+ * Not called for a Bitcoin withdraw (nothing is broadcast, the signed
+ * payload goes to the relay under a derived id) and not for cancels (the
+ * backend has no cancel route).
+ */
+function attributeOrder(
+  created: SentIntent,
+  payload: LeverageYieldSwapPayload,
+  srcChainKey: SpokeChainKey,
+  headers: () => Promise<Record<string, string> | null>,
+) {
+  shadowSubmit({
+    tx: String(created.tx),
+    srcChainKey,
+    walletAddress: payload.params.srcAddress,
+    intent: created.intent,
+    relayData: created.relayData,
+    hubWalletSwap: payload.hubWalletSwap === true,
+    headers,
+  });
+}
+
+/**
  * Whether the screen says an earlier order may still go through: the
  * outcome hold is on (a sponsored send is out, or its outcome is unknown,
  * here, before a reload, or in another tab) and the screen is idle. A
@@ -500,6 +526,8 @@ export function useVaultAction(options?: {
   const buildWithdraw = useLeverageYieldWithdraw();
   const approve = useSwapApprove();
   const { mutate: awardPour } = useAwardPour();
+  // Attribution only: never asks a wallet for a signature (prompt: false). Memoized by the hook.
+  const { headers: attributionHeaders } = useAccountHeaders({ prompt: false });
   const recordLimitOrder = useRecordLimitOrder();
 
   const [step, setStep] = useState<PourStep>("idle");
@@ -919,6 +947,7 @@ export function useVaultAction(options?: {
       // it under the payload itself, so it could never be found.
       const onDemand =
         payload.hubWalletSwap === true && isBitcoinChainKeyType(srcChainKey);
+      if (!onDemand) attributeOrder(created.value, payload, srcChainKey, attributionHeaders);
       const identity = onDemand
         ? sodax.spoke.bitcoin.getOnDemandRelayIdentity(tx)
         : { srcTxHash: tx, data: relayData, pollTxHash: undefined };
@@ -1136,7 +1165,7 @@ export function useVaultAction(options?: {
       void done;
       return true;
     },
-    [advance, fail, queryClient, settleFailed, settleFilled, sodax],
+    [advance, attributionHeaders, fail, queryClient, settleFailed, settleFilled, sodax],
   );
 
   /**
@@ -1211,8 +1240,10 @@ export function useVaultAction(options?: {
       limit: LimitRun;
       run: number;
       pour: ActivePour | null;
+      payload: LeverageYieldSwapPayload;
     }): Promise<boolean> => {
       const { created, srcChainKey, run, pour } = input;
+      attributeOrder(created, input.payload, srcChainKey, attributionHeaders);
       const onScreen = () => runRef.current === run;
       const file = (context: ErrorReportContext) => {
         if (onScreen()) reportRef.current(context);
@@ -1273,7 +1304,7 @@ export function useVaultAction(options?: {
       );
       return true;
     },
-    [advance, queryClient, restLimit, sodax, tellSolver],
+    [advance, attributionHeaders, queryClient, restLimit, sodax, tellSolver],
   );
 
   /**
@@ -1302,7 +1333,7 @@ export function useVaultAction(options?: {
       const run = runRef.current;
       const pour = pourRef.current;
       const finish = (created: SentIntent) =>
-        finishLimit({ created, srcChainKey, direction: input.direction, limit: input.limit, run, pour });
+        finishLimit({ created, srcChainKey, direction: input.direction, limit: input.limit, run, pour, payload });
       const raced = await sendUnlessStalled(
         () => sodax.leverageYield.createVaultIntent({ ...payload, walletProvider, raw: false }),
         {
@@ -1391,6 +1422,7 @@ export function useVaultAction(options?: {
       let onHub;
       try {
         const created = raced.value;
+        if (created.ok) attributeOrder(created.value, payload, srcChainKey, attributionHeaders);
         onHub = await reachHub<SentIntent["intent"]>({
           created: created.ok
             ? { ok: true, value: { tx: String(created.value.tx), intent: created.value.intent, relayData: created.value.relayData } }
@@ -1451,7 +1483,7 @@ export function useVaultAction(options?: {
       });
       return true;
     },
-    [advance, fail, failStalled, queryClient, sendSlow, sodax, tellSolver],
+    [advance, attributionHeaders, fail, failStalled, queryClient, sendSlow, sodax, tellSolver],
   );
 
   /**
@@ -1536,7 +1568,7 @@ export function useVaultAction(options?: {
         // drawer quoted and showed Robinhood Chain; a buy quoted to the hub
         // goes to the hub with no request, as every buy did before.
         let toRobinhood: { address: Address; rhAddress: Address } | null = null;
-        if (args.delivery && asksAgain(args.delivery.quoted, !!args.limit)) {
+        if (args.delivery && asksAgain(args.delivery.quoted, !!args.limit, args.delivery.rhAddress)) {
           const run = runRef.current;
           const destination = buyDestination({
             quoted: args.delivery.quoted,

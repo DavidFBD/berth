@@ -1,6 +1,6 @@
 import { campaignLinkUrl, campaignUsd } from "@/lib/campaigns";
 import { COPY } from "@/lib/copy";
-import { TOKEN_LISTINGS } from "@/lib/listings";
+import { TOKEN_LISTINGS, hasOrdinaryName, listingNameForms } from "@/lib/listings";
 import { earlyCloses, marketHolidayNames, newYorkDate, nextOpen, sessionOn, shiftDate, type IsoDate } from "@/lib/market-calendar";
 
 /**
@@ -144,22 +144,24 @@ export function postProblems(text: string): string[] {
 const LISTING_TICKERS: ReadonlySet<string> = new Set(
   TOKEN_LISTINGS.flatMap((listing) => (listing.symbol.length === 5 ? [listing.symbol, listing.symbol.slice(0, 4)] : [listing.symbol])),
 );
-const LISTING_NAMES: readonly string[] = [
-  ...new Set(
-    TOKEN_LISTINGS.flatMap((listing) => [listing.name, listing.shortName, listing.issuerName.split(" • ")[0]])
-      .filter((name): name is string => Boolean(name && name.trim()))
-      .map((name) => name.trim().toLowerCase()),
-  ),
+const plainNames = (listing: (typeof TOKEN_LISTINGS)[number]): string[] =>
+  [listing.name, listing.shortName, listing.issuerName.split(" • ")[0]].filter((name): name is string => Boolean(name && name.trim())).map((name) => name.trim());
+/** Read in any case, except where the name is also an ordinary word ("snap", "ups", "quantum computing"): that one counts only as written, capitalised, or in a company form. */
+const ANY_CASE_NAMES: readonly string[] = [...new Set(TOKEN_LISTINGS.filter((listing) => !hasOrdinaryName(listing)).flatMap(plainNames).map((name) => name.toLowerCase()))];
+const AS_WRITTEN_NAMES: readonly string[] = [
+  ...new Set(TOKEN_LISTINGS.filter(hasOrdinaryName).flatMap((listing) => [...plainNames(listing), ...listingNameForms(listing)])),
 ];
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const NAME_PATTERN = new RegExp(`(?<![\\p{L}\\p{N}])(?:${[...LISTING_NAMES].sort((a, b) => b.length - a.length).map(escape).join("|")})(?![\\p{L}\\p{N}])`, "iu");
+const NAME_BOUNDS = (forms: readonly string[]) => `(?<![\\p{L}\\p{N}])(?:${[...forms].sort((a, b) => b.length - a.length).map(escape).join("|")})(?![\\p{L}\\p{N}])`;
+const NAME_PATTERN = new RegExp(NAME_BOUNDS(ANY_CASE_NAMES), "iu");
+const AS_WRITTEN_PATTERN = new RegExp(NAME_BOUNDS(AS_WRITTEN_NAMES), "u");
 
 /** The listing a post names, by ticker (as written, in capitals) or by name (any case), or null. */
 export function namedListing(text: string): string | null {
   const words = text.replace(URL_PATTERN, " ");
   const ticker = (words.match(/\$?\b[A-Z]{1,5}\b/g) ?? []).map((word) => word.replace("$", "")).find((word) => LISTING_TICKERS.has(word));
   if (ticker) return ticker;
-  return words.match(NAME_PATTERN)?.[0] ?? null;
+  return words.match(NAME_PATTERN)?.[0] ?? words.match(AS_WRITTEN_PATTERN)?.[0] ?? null;
 }
 
 /** A call to action: Berth's own (COPY.xAutopost) and the usual ones in any words. */

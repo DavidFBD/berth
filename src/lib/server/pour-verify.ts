@@ -1,5 +1,5 @@
 import { Sodax, type Intent } from "@sodax/sdk";
-import { sodaxConfig } from "@/lib/sodax-config";
+import { serverSodaxConfig } from "@/lib/server/sodax-server";
 import { ROUTE_READ, hubRpc } from "@/lib/server/hub-rpc";
 import { listListings } from "@/lib/listings";
 import { listingOfIntent, type IntentListing } from "@/lib/orders";
@@ -35,7 +35,7 @@ let instance: Sodax | undefined;
 
 /** Module singleton: the config is static and the SDK client is stateless. */
 export function getSodax(): Sodax {
-  instance ??= new Sodax(sodaxConfig);
+  instance ??= new Sodax(serverSodaxConfig());
   return instance;
 }
 

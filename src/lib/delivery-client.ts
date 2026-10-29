@@ -120,8 +120,8 @@ export async function askDelivery({
  * (quoted to the hub, a limit buy, a vault deposit) makes no request and
  * goes where it always went.
  */
-export function asksAgain(quoted: Delivery | undefined, limit: boolean): boolean {
-  return !limit && quoted?.chainKey === "robinhood";
+export function asksAgain(quoted: Delivery | undefined, limit: boolean, rhAddress: Address | undefined): boolean {
+  return !limit && !!rhAddress && quoted?.chainKey === "robinhood";
 }
 
 /** Where one buy goes, as the order machine settles it. */

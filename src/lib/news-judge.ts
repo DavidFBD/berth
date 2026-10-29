@@ -6,6 +6,7 @@ import type {
   ScoreAnswer,
   ScoreQuestion,
 } from "@/lib/server/jev";
+import { CAPITALS_ONLY_FORMS, STOCK_LISTINGS, listingNameForms } from "@/lib/listings";
 import { namesListingInContext } from "@/lib/x-feed";
 
 /**
@@ -56,6 +57,28 @@ export const LISTING_BRIEFS: Readonly<Record<string, string>> = {
   AMD: "AMD (Advanced Micro Devices), the maker of processors and AI chips",
   INTC: "Intel, the processor maker and chip foundry",
   BABA: "Alibaba, the Chinese e-commerce and cloud company",
+  AMC: "AMC Entertainment, the movie theatre chain",
+  HIMS: "Hims & Hers Health, the telehealth and wellness company",
+  LLY: "Eli Lilly, the drug maker behind Zepbound and Mounjaro",
+  COST: "Costco, the warehouse retailer",
+  TTWO: "Take-Two Interactive, the video game publisher behind Grand Theft Auto",
+  RBLX: "Roblox, the online games platform",
+  IBM: "IBM, the enterprise software, hybrid cloud and quantum computing company",
+  MRNA: "Moderna, the mRNA vaccine and drug developer",
+  LULU: "Lululemon, the athletic apparel brand",
+  SNAP: "Snap, the maker of Snapchat",
+  WYFI: "WhiteFiber, the AI cloud and data centre infrastructure company",
+  RIVN: "Rivian, the electric truck and van maker",
+  NFLX: "Netflix, the streaming service",
+  BULL: "Webull, the online brokerage",
+  QUBT: "Quantum Computing Inc., the photonic quantum hardware company",
+  NET: "Cloudflare, the internet security and network company",
+  SKHY: "SK hynix, the South Korean memory chip maker",
+  JNJ: "Johnson & Johnson, the pharmaceutical and medical device company",
+  UPS: "UPS, the package delivery and logistics company",
+  DJT: "Trump Media & Technology Group, the owner of Truth Social",
+  RDDT: "Reddit, the online communities platform",
+  GLD: "a gold fund: news about the price of gold",
 };
 
 export type Tier = "company" | "press";
@@ -266,13 +289,24 @@ export function keepHeadline(answers: HeadlineAnswers, named = true): boolean {
  */
 const HEADLINE_ABOUT_NAMED = 0.35;
 const HEADLINE_ABOUT_UNNAMED = 0.7;
-const FUND_SYMBOLS = new Set(["SPY", "QQQ", "SGOV", "USO", "SLV"]);
+const FUND_SYMBOLS = new Set(["SPY", "QQQ", "SGOV", "USO", "SLV", "GLD"]);
 
-/** Whether a headline names the listing it was filed under, by any of its words or its bare ticker. */
+/**
+ * Whether a headline names the listing it was filed under: by any of its
+ * words (x-feed topics), its bare ticker, or the company's own name as the
+ * registry spells it ("Netflix beats estimates"), whole words only. A name
+ * that is also an ordinary word counts only in its company forms.
+ */
 export function headlineNamesListing(title: string, symbol: string): boolean {
   if (FUND_SYMBOLS.has(symbol)) return true;
   if (namesListingInContext(title, symbol)) return true;
-  return new RegExp(`\\b${symbol}\\b`).test(title);
+  if (new RegExp(`\\b${symbol}\\b`).test(title)) return true;
+  const listing = STOCK_LISTINGS.find((candidate) => candidate.symbol === symbol);
+  if (!listing) return false;
+  return listingNameForms(listing).some((form) => {
+    const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, CAPITALS_ONLY_FORMS.has(form) ? "u" : "iu").test(title);
+  });
 }
 
 /** Jev's reading of a kept headline in the reader's three words, as the posts carry it. */

@@ -140,13 +140,17 @@ describe("robinhoodParams", () => {
 
 describe("asksAgain", () => {
   it("asks the route again only for a market buy quoted to Robinhood Chain", () => {
-    expect(asksAgain(ROBINHOOD, false)).toBe(true);
+    expect(asksAgain(ROBINHOOD, false, RH_TOKEN)).toBe(true);
   });
 
   it("makes no request for a hub buy, a limit buy, or a buy with no delivery at all", () => {
-    expect(asksAgain(hubDelivery("not_listed"), false)).toBe(false);
-    expect(asksAgain(hubDelivery("read_failed"), false)).toBe(false);
-    expect(asksAgain(ROBINHOOD, true)).toBe(false);
-    expect(asksAgain(undefined, false)).toBe(false);
+    expect(asksAgain(hubDelivery("not_listed"), false, RH_TOKEN)).toBe(false);
+    expect(asksAgain(hubDelivery("read_failed"), false, RH_TOKEN)).toBe(false);
+    expect(asksAgain(ROBINHOOD, true, RH_TOKEN)).toBe(false);
+    expect(asksAgain(undefined, false, RH_TOKEN)).toBe(false);
+  });
+
+  it("makes no request for a listing with no token on Robinhood Chain, which goes to the hub whatever the answer", () => {
+    expect(asksAgain(ROBINHOOD, false, undefined)).toBe(false);
   });
 });

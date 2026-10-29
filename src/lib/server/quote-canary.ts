@@ -1,6 +1,6 @@
 import { Sodax } from "@sodax/sdk";
 import { getSql } from "@/lib/server/db";
-import { sodaxConfig } from "@/lib/sodax-config";
+import { serverSodaxConfig } from "@/lib/server/sodax-server";
 import { isOpen } from "@/lib/market-calendar";
 import {
   fetchHubPrices,
@@ -95,7 +95,7 @@ export function exampleLine(row: SmokeRow | undefined): string {
 }
 
 function canarySodax(): Sodax {
-  return new Sodax({ ...sodaxConfig, apiKey: process.env.SODAX_API_KEY || undefined });
+  return new Sodax(serverSodaxConfig());
 }
 
 export async function lastCanaryRuns(limit = 8): Promise<CanaryRun[]> {

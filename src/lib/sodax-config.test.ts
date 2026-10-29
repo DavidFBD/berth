@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ChainKeys, Sodax, sonicSupportedTokens } from "@sodax/sdk";
 import { DEPOSIT_SOURCE_CHAINS, getDepositTokens } from "./chains";
-import { TOKEN_LISTINGS } from "./listings";
+import { PINNED_ROBINHOOD_TOKENS, ROBINHOOD_SPOKE_TABLE, TOKEN_LISTINGS } from "./listings";
 import { getPinnedRpcUrls, sodaxConfig } from "./sodax-config";
 
 /**
@@ -170,5 +170,33 @@ describe("Robinhood Chain RPC failover", () => {
       rpcUrl: "https://robinhood-rpc.publicnode.com",
     });
     expect(sodaxConfig.chains?.[ChainKeys.ROBINHOOD_MAINNET]).not.toHaveProperty("rpcUrls");
+  });
+});
+
+/**
+ * The twenty two Robinhood Chain tokens @sodax/sdk 2.2.0-rc.8 lacks are
+ * carried by the pin (lib/listings), and the ConfigService, whose lookup
+ * tables are built once in its constructor, must accept them on a plain
+ * sodaxConfig instance: the browser, the server and the scripts all agree.
+ */
+describe("sodaxConfig Robinhood Chain pinned tokens", () => {
+  const sodax = new Sodax(sodaxConfig);
+  const nflx = PINNED_ROBINHOOD_TOKENS.NFLX;
+
+  it("resolves a pinned symbol as a Robinhood Chain token with its hub asset", () => {
+    expect(sodax.config.isValidOriginalAssetAddress(ChainKeys.ROBINHOOD_MAINNET, nflx.address)).toBe(true);
+    expect(
+      sodax.config.getSpokeTokenFromOriginalAssetAddress(ChainKeys.ROBINHOOD_MAINNET, nflx.address)?.hubAsset.toLowerCase(),
+    ).toBe(nflx.hubAsset.toLowerCase());
+  });
+
+  it("resolves every pinned symbol, and still resolves the SDK's own", () => {
+    for (const token of Object.values(ROBINHOOD_SPOKE_TABLE)) {
+      expect(sodax.config.isValidOriginalAssetAddress(ChainKeys.ROBINHOOD_MAINNET, token.address), token.symbol).toBe(true);
+    }
+  });
+
+  it("does not know the pinned token on a plain SDK instance, which is why the pin exists", () => {
+    expect(new Sodax().config.isValidOriginalAssetAddress(ChainKeys.ROBINHOOD_MAINNET, nflx.address)).toBe(false);
   });
 });

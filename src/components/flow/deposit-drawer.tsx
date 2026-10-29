@@ -452,7 +452,10 @@ export function DepositDrawer({
   const liveQuote = usePourQuote({
     // A buy waits for where it is delivered, so its quote is taken to the
     // token it will actually receive.
-    enabled: open && !!listing && !!token && !tooSmall && (!isBuy || delivery.settled),
+    // A stock with no token on Robinhood Chain is quoted to Sonic whatever the
+    // delivery answer, so it does not wait for it.
+    enabled:
+      open && !!listing && !!token && !tooSmall && (!isBuy || delivery.settled || (listing.kind === "stock" && !listing.rhAddress)),
     src: token ? { address: token.address, chainKey: srcChainKey } : null,
     dst: robinhoodToken
       ? { address: robinhoodToken, chainKey: ChainKeys.ROBINHOOD_MAINNET }

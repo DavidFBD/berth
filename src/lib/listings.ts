@@ -22,8 +22,8 @@ import type { CompanyMarkId } from "@/components/company-marks";
  * either static table (`sonicSupportedTokens`, `getSupportedSolverTokens`),
  * and the SDK config is a module constant frozen at first render, so the
  * table has to exist at import time. The backend does serve them
- * (`GET /v1/swaps/tokens/sonic` lists 63 tokens on 2026-09-30, these
- * twenty four among them, each flagged `isRwa`),
+ * (`GET /v1/swaps/tokens/sonic` lists 85 tokens on 2026-10-29, these
+ * forty six among them, each flagged `isRwa`),
  * and `pnpm listings:verify` diffs this file against that live list AND
  * against `symbol()` / `decimals()` read on chain, so drift fails loudly
  * instead of shipping.
@@ -99,14 +99,70 @@ export type VaultListing = {
 
 export type Listing = TokenListing | VaultListing;
 
+type RobinhoodTokenEntry = {
+  symbol: string;
+  isRwa?: boolean;
+  name: string;
+  decimals: number;
+  address: string;
+  chainKey: string;
+  hubAsset: string;
+  vault: string;
+};
+
 /**
- * The SDK's robinhood spoke entry for a ticker (rc.8 carries all twenty
- * four), read here rather than from lib/market-ids so this module keeps no
+ * Robinhood Chain tokens the live backend serves (`GET
+ * /v1/swaps/tokens/robinhood`) but @sodax/sdk 2.2.0-rc.8's built-in
+ * `robinhoodSupportedTokens` does not carry yet: the twenty two of the third
+ * shelf. This table bridges until the SDK ships them, in the SDK's own entry
+ * shape, keyed by symbol. `pnpm listings:verify` diffs it against the live
+ * list (address, hubAsset, vault, decimals, symbol) and fails on drift, and
+ * reports any entry the SDK now carries too, so the pin can be dropped.
+ */
+export const PINNED_ROBINHOOD_TOKENS: Readonly<Record<string, RobinhoodTokenEntry>> = {
+  AMC: { symbol: "AMC", isRwa: true, name: "AMC Entertainment", decimals: 18, address: "0x05a3d1Cd21d0C88145E82600E62e7E496e0F222B", chainKey: "robinhood", hubAsset: "0x21cb0fab867942b44da9e2ff15dd865fb0d1a79e", vault: "0x8f7357Ec98e6eBAE8Cfb75802AFFc7c9a774dFBd" },
+  HIMS: { symbol: "HIMS", isRwa: true, name: "Hims & Hers Health", decimals: 18, address: "0xCceE82fE024c36fA15E1005edE3E9e4787e23D09", chainKey: "robinhood", hubAsset: "0x88422f01ba064aae528af488d3165b89b0e36467", vault: "0xFb31A6c21439C1e3101e0470a9F3299ECB295b93" },
+  LLY: { symbol: "LLY", isRwa: true, name: "Eli Lilly", decimals: 18, address: "0x8005d266423c7ea827372c9c864491e5786600ea", chainKey: "robinhood", hubAsset: "0x6ece6a22ea9ded1b146ba9e435bb31709a5e69b4", vault: "0xa6F481B22349DeA3739089e67D32A8A07078bB53" },
+  COST: { symbol: "COST", isRwa: true, name: "Costco", decimals: 18, address: "0x4EA005168D7F09a7A0Ba9D1DEf21a479950E44C2", chainKey: "robinhood", hubAsset: "0xd6f93276dec116a3a0226a55266b90a03559adde", vault: "0x6893A6c578f449AA0f748CA6B2A9Fc50Fed91C30" },
+  TTWO: { symbol: "TTWO", isRwa: true, name: "Take-Two Interactive Software", decimals: 18, address: "0x5e81213613b6B86EaB4c6c50d718d34359459786", chainKey: "robinhood", hubAsset: "0x125f946c4a7a82f6d1d14b82ae5ec6508a2a19e9", vault: "0xd56534102359A4b69E81Cf6eFa6835EABd116c44" },
+  RBLX: { symbol: "RBLX", isRwa: true, name: "Roblox", decimals: 18, address: "0xF0C4BF4C582cb3836e98394b1d4e7B7281101bE8", chainKey: "robinhood", hubAsset: "0x22f63920a0c17f2565d01b88915a6f4281e41a95", vault: "0xC0D7a1f4cE9AaF981502DA15C8EbAEC21F1678Da" },
+  IBM: { symbol: "IBM", isRwa: true, name: "IBM", decimals: 18, address: "0x980dcf6766FA79f5Cf0c4AAdb3ab477ff15a9619", chainKey: "robinhood", hubAsset: "0x3602c728c42bcf17d69b8a102e602c8a8fee3062", vault: "0x6cF19BAD00110C5F4f584b11d3ac935794AE1300" },
+  MRNA: { symbol: "MRNA", isRwa: true, name: "Moderna", decimals: 18, address: "0x43B07D15cE533bEc5476d70C22a78a1B2B662155", chainKey: "robinhood", hubAsset: "0xda1db915a200f77cc4c7623b57fbe09f707fe7c9", vault: "0xd5fb16C3fAfaCa3032b0d715d00E72e11Dc799B6" },
+  LULU: { symbol: "LULU", isRwa: true, name: "Lululemon", decimals: 18, address: "0x4e62068525Ab11FE768e29dfD00ef909B9803016", chainKey: "robinhood", hubAsset: "0x42bc735dd95fca1719ba88682ef87c664a68fc08", vault: "0x44d7BeFa3fF3BE055910d7591aaA12FD6907F0eb" },
+  SNAP: { symbol: "SNAP", isRwa: true, name: "Snap", decimals: 18, address: "0xF6589F11Bc40b669e584073F428B05562F568733", chainKey: "robinhood", hubAsset: "0x77b96d73980b6cafe2b698a8c6adcb446de59653", vault: "0x5E0cBeCFAc572F6Ec0C254CAF9DE20D476814C9F" },
+  WYFI: { symbol: "WYFI", isRwa: true, name: "WhiteFiber, Inc.", decimals: 18, address: "0x9e7ABD3C9139D14E4c86DcE0e455AAB7A0C2FB3E", chainKey: "robinhood", hubAsset: "0xb78266b11eff88e4b2bbfe653d636fa9d5fab5dd", vault: "0x94b01A709d83A871034B468a720a420abAa61F69" },
+  RIVN: { symbol: "RIVN", isRwa: true, name: "Rivian Automotive", decimals: 18, address: "0xB1BF26c1D20ff267A4f93550d1E0d06ac40a114B", chainKey: "robinhood", hubAsset: "0x39f3b4c27d01db634315801a9263b50dcb9fe927", vault: "0xd37e433ACd08911904Ce3368482E67D569811faC" },
+  NFLX: { symbol: "NFLX", isRwa: true, name: "Netflix", decimals: 18, address: "0xE0444EF8BF4eD74f74FD73686e2ddF4C1c5591E8", chainKey: "robinhood", hubAsset: "0xbab4c41f3829dbd17c2e3cbd9b5fb11adbd487aa", vault: "0xc866d70B8a4BAf9a200Fbe9b9db802A0dA32330A" },
+  BULL: { symbol: "BULL", isRwa: true, name: "Webull", decimals: 18, address: "0xceF9027c7d6985b85f0BA431125073529A947A68", chainKey: "robinhood", hubAsset: "0xbf7a5f902583144beb36d666fd7704b27d22c7c6", vault: "0xd01969b6effb9c9AAE68F1B5a8505d5738dc29A3" },
+  QUBT: { symbol: "QUBT", isRwa: true, name: "Quantum Computing", decimals: 18, address: "0x59818904ab4cE163b3cE4FfB64f2D6Ca02c434B4", chainKey: "robinhood", hubAsset: "0x5e9f6b86b806c1602429bf9362b3eec8aa4f9235", vault: "0x2A6B3ABB63f3b5f002B7683f4eb32f68e3e4103E" },
+  NET: { symbol: "NET", isRwa: true, name: "Cloudflare, Inc. Class A common stock", decimals: 18, address: "0x116F00968269B7bfbaD4109cE591d6E74c0601d4", chainKey: "robinhood", hubAsset: "0xcc519c76fda41c3894021cd411d7df141a5c94e1", vault: "0x4658eD29E62701242695a7aF0B534De56956432B" },
+  SKHY: { symbol: "SKHY", isRwa: true, name: "SK hynix Inc. American Depositary Shares", decimals: 18, address: "0x84CAb63bc87912E71ad199ff14A0bA45de68FeF8", chainKey: "robinhood", hubAsset: "0x04e561fb6e22b5e6bf2f4c5134afb3dad2265aa0", vault: "0x72E4ad33c018016ee983c8d43C1F739Be1043c54" },
+  JNJ: { symbol: "JNJ", isRwa: true, name: "Johnson & Johnson", decimals: 18, address: "0x03DfbBE0AC4E7bCDaFd08eD41A400326B77D8c80", chainKey: "robinhood", hubAsset: "0x42f1912c483e1974ca7601e4e02164e0dfb57ceb", vault: "0x34107FD696CCeFb833256C028c670aC95A4612A5" },
+  UPS: { symbol: "UPS", isRwa: true, name: "UPS", decimals: 18, address: "0xf23250dac154D05Bb671CB0d0eBEf3c635c79CE2", chainKey: "robinhood", hubAsset: "0xdb3394a4b4c8d1dd145945eb706624e307919051", vault: "0x17b78F0626c85591D14E4DEFfe1AA14cb86d1A3D" },
+  DJT: { symbol: "DJT", isRwa: true, name: "Trump Media & Technology Group", decimals: 18, address: "0x1D11f0496982706C5e14A514D4E79F2e6BdE4516", chainKey: "robinhood", hubAsset: "0x2027aa4839be98f9021c1608754cd793833e24ea", vault: "0xeeb7355B245A50f7a91CFc7adbcE008E6c548960" },
+  RDDT: { symbol: "RDDT", isRwa: true, name: "Reddit", decimals: 18, address: "0x05b37Fb53A299a1b874A619e1c4C404D52C36F4C", chainKey: "robinhood", hubAsset: "0xec85b1ac463f8987c72d13dd3df4e4dc2f263dcf", vault: "0x9106D29aee2bB2218ecb913aC2fAca242f315c9b" },
+  GLD: { symbol: "GLD", isRwa: true, name: "SPDR Gold Trust", decimals: 18, address: "0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e", chainKey: "robinhood", hubAsset: "0xe72fa58dc1ab501d530fbc98de2973f9cfaf37bc", vault: "0x308f76Fc48196afb8C953f22d37d072eF3ceE0B8" },
+};
+
+/**
+ * What the SDK ships, with the pin under it: an SDK entry for the same
+ * symbol always wins, so a later SDK bump takes over silently and correctly.
+ * Spread into the SDK config's robinhood tables (lib/sodax-config) so every
+ * Sodax instance resolves the same tokens.
+ */
+export const ROBINHOOD_SPOKE_TABLE: Readonly<Record<string, RobinhoodTokenEntry>> = {
+  ...PINNED_ROBINHOOD_TOKENS,
+  ...(robinhoodSupportedTokens as unknown as Record<string, RobinhoodTokenEntry>),
+};
+
+/**
+ * The robinhood spoke entry for a ticker (the SDK's, else the pin above),
+ * read here rather than from lib/market-ids so this module keeps no
  * local imports: `pnpm listings:verify` loads it straight into Node. The
  * listings test holds every address to the pinned table, and the entry's
  * `vault` to the listing's own Sonic address.
  */
-const ROBINHOOD_SPOKE_TOKENS = robinhoodSupportedTokens as Readonly<
+const ROBINHOOD_SPOKE_TOKENS = ROBINHOOD_SPOKE_TABLE as Readonly<
   Record<string, { address: string; hubAsset: string } | undefined>
 >;
 
@@ -134,8 +190,8 @@ const robinhood = (
 
 /**
  * The Robinhood tokens the solver trades on Sonic, in the order the backend
- * lists them: thirteen as of 2026-09-16, twenty four as of 2026-09-30.
- * Twenty three are stocks and ETFs; SGOV is cash. Addresses are EIP-55 as
+ * lists them: thirteen as of 2026-09-16, twenty four as of 2026-09-30, forty
+ * six as of 2026-10-29. Forty five are stocks and ETFs; SGOV is cash. Addresses are EIP-55 as
  * the backend serves them.
  */
 export const TOKEN_LISTINGS: readonly TokenListing[] = [
@@ -347,6 +403,195 @@ export const TOKEN_LISTINGS: readonly TokenListing[] = [
     "equity",
     "0x1BeD0547D76F6424e9A3465b36F6dcDCF798A5cf",
   ),
+  // The third shelf, pinned 2026-10-29: twenty two more, the rest of what the
+  // backend serves on Sonic as Robinhood tokens (forty six in all), each read
+  // from `/v1/swaps/tokens/sonic` with its Robinhood Chain twin on `/robinhood`.
+  // SDK 2.2.0-rc.8 does not yet carry their robinhood spoke entries, so each
+  // takes its `rhAddress` and `rhHubAsset` from PINNED_ROBINHOOD_TOKENS and
+  // can be delivered on Robinhood Chain like the rest.
+  robinhood(
+    "stock",
+    "AMC",
+    "AMC Entertainment",
+    "AMC Entertainment • Robinhood Token",
+    "equity",
+    "0x8f7357Ec98e6eBAE8Cfb75802AFFc7c9a774dFBd",
+  ),
+  robinhood(
+    "stock",
+    "HIMS",
+    "Hims & Hers Health",
+    "Hims & Hers Health • Robinhood Token",
+    "equity",
+    "0xFb31A6c21439C1e3101e0470a9F3299ECB295b93",
+  ),
+  robinhood(
+    "stock",
+    "LLY",
+    "Eli Lilly",
+    "Eli Lilly • Robinhood Token",
+    "equity",
+    "0xa6F481B22349DeA3739089e67D32A8A07078bB53",
+  ),
+  robinhood(
+    "stock",
+    "COST",
+    "Costco",
+    "Costco • Robinhood Token",
+    "equity",
+    "0x6893A6c578f449AA0f748CA6B2A9Fc50Fed91C30",
+  ),
+  robinhood(
+    "stock",
+    "TTWO",
+    "Take-Two Interactive",
+    "Take-Two Interactive Software • Robinhood Token",
+    "equity",
+    "0xd56534102359A4b69E81Cf6eFa6835EABd116c44",
+  ),
+  robinhood(
+    "stock",
+    "RBLX",
+    "Roblox",
+    "Roblox • Robinhood Token",
+    "equity",
+    "0xC0D7a1f4cE9AaF981502DA15C8EbAEC21F1678Da",
+  ),
+  {
+    ...robinhood(
+      "stock",
+      "IBM",
+      "International Business Machines",
+      "IBM • Robinhood Token",
+      "equity",
+      "0x6cF19BAD00110C5F4f584b11d3ac935794AE1300",
+    ),
+    // The company's own everyday name, which is also its ticker.
+    shortName: "IBM",
+  },
+  robinhood(
+    "stock",
+    "MRNA",
+    "Moderna",
+    "Moderna • Robinhood Token",
+    "equity",
+    "0xd5fb16C3fAfaCa3032b0d715d00E72e11Dc799B6",
+  ),
+  robinhood(
+    "stock",
+    "LULU",
+    "Lululemon",
+    "Lululemon • Robinhood Token",
+    "equity",
+    "0x44d7BeFa3fF3BE055910d7591aaA12FD6907F0eb",
+  ),
+  robinhood(
+    "stock",
+    "SNAP",
+    "Snap",
+    "Snap • Robinhood Token",
+    "equity",
+    "0x5E0cBeCFAc572F6Ec0C254CAF9DE20D476814C9F",
+  ),
+  robinhood(
+    "stock",
+    "WYFI",
+    "WhiteFiber",
+    "WhiteFiber, Inc. • Robinhood Token",
+    "equity",
+    "0x94b01A709d83A871034B468a720a420abAa61F69",
+  ),
+  robinhood(
+    "stock",
+    "RIVN",
+    "Rivian",
+    "Rivian Automotive • Robinhood Token",
+    "equity",
+    "0xd37e433ACd08911904Ce3368482E67D569811faC",
+  ),
+  robinhood(
+    "stock",
+    "NFLX",
+    "Netflix",
+    "Netflix • Robinhood Token",
+    "equity",
+    "0xc866d70B8a4BAf9a200Fbe9b9db802A0dA32330A",
+  ),
+  robinhood(
+    "stock",
+    "BULL",
+    "Webull",
+    "Webull • Robinhood Token",
+    "equity",
+    "0xd01969b6effb9c9AAE68F1B5a8505d5738dc29A3",
+  ),
+  robinhood(
+    "stock",
+    "QUBT",
+    "Quantum Computing Inc",
+    "Quantum Computing • Robinhood Token",
+    "equity",
+    "0x2A6B3ABB63f3b5f002B7683f4eb32f68e3e4103E",
+  ),
+  robinhood(
+    "stock",
+    "NET",
+    "Cloudflare",
+    "Cloudflare, Inc. Class A common stock • Robinhood Token",
+    "equity",
+    "0x4658eD29E62701242695a7aF0B534De56956432B",
+  ),
+  robinhood(
+    "stock",
+    "SKHY",
+    "SK hynix",
+    "SK hynix Inc. American Depositary Shares • Robinhood Token",
+    "equity",
+    "0x72E4ad33c018016ee983c8d43C1F739Be1043c54",
+  ),
+  robinhood(
+    "stock",
+    "JNJ",
+    "Johnson & Johnson",
+    "Johnson & Johnson • Robinhood Token",
+    "equity",
+    "0x34107FD696CCeFb833256C028c670aC95A4612A5",
+  ),
+  {
+    ...robinhood(
+      "stock",
+      "UPS",
+      "United Parcel Service",
+      "UPS • Robinhood Token",
+      "equity",
+      "0x17b78F0626c85591D14E4DEFfe1AA14cb86d1A3D",
+    ),
+    shortName: "UPS",
+  },
+  robinhood(
+    "stock",
+    "DJT",
+    "Trump Media",
+    "Trump Media & Technology Group • Robinhood Token",
+    "equity",
+    "0xeeb7355B245A50f7a91CFc7adbcE008E6c548960",
+  ),
+  robinhood(
+    "stock",
+    "RDDT",
+    "Reddit",
+    "Reddit • Robinhood Token",
+    "equity",
+    "0x9106D29aee2bB2218ecb913aC2fAca242f315c9b",
+  ),
+  robinhood(
+    "stock",
+    "GLD",
+    "Gold Trust",
+    "SPDR Gold Trust • Robinhood Token",
+    "etf",
+    "0x308f76Fc48196afb8C953f22d37d072eF3ceE0B8",
+  ),
 ];
 
 /**
@@ -357,7 +602,7 @@ export const TOKEN_LISTINGS: readonly TokenListing[] = [
  * which is deliberate for GME, MU, SNDK, AMZN, MSFT and TSM (no Simple Icons
  * mark), for COIN, AMD and INTC (wordmarks only, illegible at tile size),
  * for BABA (only the marks of two subsidiaries, Alibaba.com and
- * Alibaba Cloud, not the group's) and for the five funds (no issuer mark
+ * Alibaba Cloud, not the group's) and for GLD and the other funds (no issuer mark
  * that clearly represents the fund itself). Alphabet draws Google's G: the
  * holding company has no mark of its own, and the G is how the share is
  * shown wherever it is quoted.
@@ -372,6 +617,12 @@ export const LISTING_MARK_BY_SYMBOL: Readonly<Record<string, CompanyMarkId>> = {
   META: "meta",
   CRCL: "circle",
   PLTR: "palantir",
+  NFLX: "netflix",
+  RDDT: "reddit",
+  SNAP: "snap",
+  NET: "cloudflare",
+  RBLX: "roblox",
+  UPS: "ups",
 };
 
 /** The stocks and ETFs on offer: every token listing that is not cash. */
@@ -398,6 +649,39 @@ export const CASH_LISTING: TokenListing = (() => {
  * so hub asset and vault are the token itself (matches the backend's
  * hub-asset table for every one of these).
  */
+/**
+ * Names that are also ordinary words ("a snap decision", "ups and downs",
+ * "quantum computing" the field). For these a plain name alone does not
+ * name the company: only the forms below do, matched whole. A form written
+ * in CAPITALS_ONLY_FORMS ("UPS") is matched in capitals only.
+ */
+const ORDINARY_WORD_FORMS: Readonly<Record<string, readonly string[]>> = {
+  SNAP: ["Snap Inc", "Snapchat"],
+  UPS: ["UPS", "United Parcel Service"],
+  QUBT: ["Quantum Computing Inc"],
+  MSTR: ["Strategy Inc", "MicroStrategy"],
+  META: ["Meta Platforms", "Facebook"],
+  CRCL: ["Circle Internet", "Circle Internet Group"],
+};
+
+export const CAPITALS_ONLY_FORMS: ReadonlySet<string> = new Set(["UPS"]);
+
+/**
+ * Every way a person might write a listing's company: its name, its short
+ * name and its issuer's name without the wrapper ("Micron Technology"), or,
+ * where the name is also an ordinary word, only the forms that are not.
+ * The ticker is not among them.
+ */
+export function listingNameForms(listing: TokenListing): readonly string[] {
+  const forms = ORDINARY_WORD_FORMS[listing.symbol];
+  if (forms) return forms;
+  const names = [listing.name, listing.shortName, listing.issuerName.split(" • ")[0]];
+  return [...new Set(names.filter((name): name is string => Boolean(name && name.trim())).map((name) => name.trim()))];
+}
+
+/** Whether a listing's plain name is also an ordinary word (see ORDINARY_WORD_FORMS). */
+export const hasOrdinaryName = (listing: TokenListing): boolean => listing.symbol in ORDINARY_WORD_FORMS;
+
 /** What a narrow board row calls a listing: its short name where it has one. */
 export function rowName(listing: TokenListing): string {
   return listing.shortName ?? listing.name;
@@ -465,7 +749,7 @@ export function isTokenListingAddress(address: string): boolean {
 /**
  * Each listed company's SEC Central Index Key, for its filings on EDGAR
  * (lib/server/news-sources/edgar). Read from sec.gov/files/company_tickers.json
- * on 2026-10-02 and checked against each company's name there. The funds are
+ * on 2026-10-02 and checked against each company's name there. The funds (GLD among them) are
  * trusts whose filings say nothing to a holder of the token, so they have none.
  */
 export const SEC_CIK_BY_SYMBOL: Readonly<Record<string, number>> = {
@@ -488,4 +772,25 @@ export const SEC_CIK_BY_SYMBOL: Readonly<Record<string, number>> = {
   AMD: 2488,
   INTC: 50863,
   BABA: 1577552,
+  AMC: 1411579,
+  HIMS: 1773751,
+  LLY: 59478,
+  COST: 909832,
+  TTWO: 946581,
+  RBLX: 1315098,
+  IBM: 51143,
+  MRNA: 1682852,
+  LULU: 1397187,
+  SNAP: 1564408,
+  WYFI: 2042022,
+  RIVN: 1874178,
+  NFLX: 1065280,
+  BULL: 1866364,
+  QUBT: 1758009,
+  NET: 1477333,
+  SKHY: 2120882,
+  JNJ: 200406,
+  UPS: 1090727,
+  DJT: 1849635,
+  RDDT: 1713445,
 };
