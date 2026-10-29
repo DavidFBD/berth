@@ -275,6 +275,22 @@ export type Copy = {
     totalUnreadShort: string;
     totalUnread: string;
   };
+  /** The command menu (components/command-menu): search, Command K. */
+  commandMenu: {
+    title: string;
+    placeholder: string;
+    empty: string;
+    stocksHeading: string;
+    pagesHeading: string;
+    pageBoard: string;
+    pageAccount: string;
+    pageFriends: string;
+    pageAsk: string;
+    hintMove: string;
+    hintOpen: string;
+    hintClose: string;
+    openHint: string;
+  };
   /**
    * The signed-in home's one next step per state (components/home-next-step):
    * add money, buy the first stock, or buy more; and the short list of what
@@ -3465,6 +3481,21 @@ export const COPY: Copy = {
     totalUnreadShort: "Without Robinhood Chain",
     totalUnread:
       "Your wallet on Robinhood Chain could not be read just now, so this total leaves out what is there. Berth will try again shortly.",
+  },
+  commandMenu: {
+    title: "Search Berth",
+    placeholder: "Search a company",
+    empty: "Nothing matches that.",
+    stocksHeading: "Stocks and funds",
+    pagesHeading: "Go to",
+    pageBoard: "All stocks and funds",
+    pageAccount: "Account",
+    pageFriends: "Friends",
+    pageAsk: "Ask Berth",
+    hintMove: "to move",
+    hintOpen: "to open",
+    hintClose: "to close",
+    openHint: "Search",
   },
   calmHome: {
     addTitle: "Add money to begin",

@@ -9,6 +9,7 @@ import { AccountButton, AddMoneyDrawer, useAssistantReachable, useEmailSession }
 import { BerthMark } from "@/components/berth-mark";
 import { BetaPill } from "@/components/ui/beta-pill";
 import { InfoDrawer } from "@/components/info-drawer";
+import { CommandHint, CommandMenu } from "@/components/command-menu";
 import { useCopy } from "@/components/settings-provider";
 import {
   AccountTotal,
@@ -512,6 +513,7 @@ function SignedInHome() {
     }
   };
 
+  const [commandOpen, setCommandOpen] = useState(false);
   const anyDrawerOpen =
     chatOpen || buyOpen || sellOpen || withdrawOpen || walletOpen || accountOpen ||
     boardOpen || newsOpen || aiOpen || addMoneyOpen;
@@ -671,7 +673,7 @@ function SignedInHome() {
       ) : (
       <>
       <div className={cn(BOARD_PAGE, askAvailable !== false && DOCK_CLEARANCE)}>
-        <HomeHeader onOpenChat={askAvailable === false ? () => openChat() : undefined}>
+        <HomeHeader onOpenChat={askAvailable === false ? () => openChat() : undefined} onOpenCommandMenu={() => setCommandOpen(true)}>
           <AccountButton
             open={accountOpen}
             onOpenChange={onAccountOpenChange}
@@ -893,6 +895,15 @@ function SignedInHome() {
           }
         />
 
+        <CommandMenu
+          open={commandOpen}
+          onOpenChange={setCommandOpen}
+          onBuy={openBuy}
+          onOpenBoard={openBoard}
+          onOpenAccount={() => openAccount()}
+          onOpenFriends={openAccountForFriends}
+          onOpenAsk={askAvailable ? () => openChat() : undefined}
+        />
         <DraftLinkOpener onBuy={openDraftBuy} onSell={openDraftSell} />
         <DepositDrawer
           listing={buyListing}
@@ -1065,7 +1076,7 @@ export function HomeTracks({
  * carries its button while neither is shown, for an account whose Assistant
  * is still locked: the sheet it opens says what unlocks it.
  */
-export function HomeHeader({ onOpenChat, children }: { onOpenChat?: () => void; children: React.ReactNode }) {
+export function HomeHeader({ onOpenChat, onOpenCommandMenu, children }: { onOpenChat?: () => void; onOpenCommandMenu?: () => void; children: React.ReactNode }) {
   const copy = useCopy();
   return (
     <header className="group/bar sticky top-0 z-10 -mx-4 mb-4 flex h-14 items-center justify-between border-b border-border bg-background px-4 lg:-mx-10 lg:mb-7 lg:h-[60px] lg:px-10">
@@ -1076,6 +1087,7 @@ export function HomeHeader({ onOpenChat, children }: { onOpenChat?: () => void; 
         <BetaPill />
       </div>
       <div className="flex min-w-0 items-center gap-2">
+        {onOpenCommandMenu && <CommandHint onOpen={onOpenCommandMenu} />}
         {onOpenChat && <ChatButton onOpen={onOpenChat} />}
         <InfoDrawer />
         {children}
