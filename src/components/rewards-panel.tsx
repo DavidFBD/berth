@@ -366,6 +366,8 @@ export function AddEmailBlock({ hasEmail }: { hasEmail: boolean }) {
                     name="code"
                     inputMode="numeric"
                     autoComplete="one-time-code"
+                    pattern="[0-9]*"
+                    maxLength={6}
                     placeholder={copy.addEmailCodePlaceholder}
                     aria-label={copy.addEmailCodePlaceholder}
                     aria-invalid={link.error === "codeWrong" || undefined}
