@@ -1,5 +1,6 @@
 "use client";
 
+import { defaultSellDestination } from "@/lib/sell-destination";
 import { toast } from "@/lib/toast";
 import { useState } from "react";
 import { formatUnits } from "viem";
@@ -114,6 +115,7 @@ export function WithdrawDrawer({
   onAddWallet,
   robinhoodSell,
   robinhoodPaused = false,
+  defaultDestination = false,
 }: {
   listing: Listing | null;
   open: boolean;
@@ -172,6 +174,11 @@ export function WithdrawDrawer({
    * from (lib/robinhood-sell robinhoodSellPaused): a calm line says so.
    */
   robinhoodPaused?: boolean;
+  /**
+   * A sell or take out: start with USDC on Base in the person's own wallet
+   * (lib/sell-destination) instead of asking where to. Not the vault path.
+   */
+  defaultDestination?: boolean;
 }) {
   const [dstChainKey, setDstChainKey] = useState<SpokeChainKey | null>(null);
   const [outputToken, setOutputToken] = useState<XToken | null>(null);
@@ -188,6 +195,20 @@ export function WithdrawDrawer({
   // Optional: send to somebody else's address (e.g. an exchange deposit
   // address — the no-bank-rails cash-out path). null = own wallet.
   const [customRecipient, setCustomRecipient] = useState<string | null>(null);
+  // True while the destination is the default nobody has picked over.
+  const [usingDefaultDest, setUsingDefaultDest] = useState(false);
+  const [defaultDestTaken, setDefaultDestTaken] = useState(false);
+  // Render time, as the deposit drawer picks its source: once per opening
+  // of a fresh sheet, and never over a choice the person made.
+  if (open && defaultDestination && !defaultDestTaken && !dstChainKey && !outputToken) {
+    setDefaultDestTaken(true);
+    const fallback = defaultSellDestination();
+    if (fallback) {
+      setDstChainKey(fallback.chainKey);
+      setOutputToken(fallback.token);
+      setUsingDefaultDest(true);
+    }
+  }
 
   const isSell = !!listing && listing.kind !== "vault";
   // Only a stock sold from the wallet on Robinhood Chain, signed there.
@@ -1029,8 +1050,21 @@ export function WithdrawDrawer({
                   </p>
                 )}
 
-                {/* Destination chain + token */}
-                <button
+                {/* The default destination: one quiet line, the picker a tap away. */}
+                {usingDefaultDest && dstChainKey && outputToken && customRecipient === null ? (
+                  <div className="flex items-center justify-between gap-3 px-1" data-testid="default-destination">
+                    <span className="text-sm text-muted-foreground">{copy.sellDefaultDestination}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      className="py-1 text-xs font-bold text-muted-foreground transition-[transform,color] duration-150 ease-lift hover:text-foreground active:scale-[0.97]"
+                    >
+                      {copy.sellChangeDestination}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                                <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
                   className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-[transform,background-color] duration-150 ease-lift hover:bg-muted active:bg-muted active:scale-[0.99]"
@@ -1058,9 +1092,12 @@ export function WithdrawDrawer({
                   <CaretDown className="size-4 text-muted-foreground" />
                 </button>
 
+                  </>
+                )}
+
                 {/* Cash-out path: send to a different address (e.g. an
                     exchange deposit address) instead of your own wallet. */}
-                {dstChainKey && outputToken && (
+                {dstChainKey && outputToken && !usingDefaultDest && (
                   <div data-ph-block className="flex flex-col gap-1.5">
                     {usingCustom ? (
                       <>
@@ -1224,6 +1261,7 @@ export function WithdrawDrawer({
         onSelect={(chainKey, selected) => {
           setDstChainKey(chainKey);
           setOutputToken(selected);
+          setUsingDefaultDest(false);
         }}
       />
     </>

@@ -1178,6 +1178,7 @@ function SellHost({
       sourceIsHome={!fromRobinhood && source?.isHome !== false}
       // Nothing to sell from but a wallet on Robinhood Chain that may not be offered: said, never a dead Sell.
       robinhoodPaused={robinhoodSellPaused(snapshot, sellFromWallet)}
+      defaultDestination
       signerLinked={account.signerLinked}
       onAddWallet={addWallet.canSign ? () => void addWallet.add() : undefined}
     />
