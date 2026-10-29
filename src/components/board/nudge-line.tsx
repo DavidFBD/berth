@@ -123,7 +123,7 @@ export function NudgeLineView({
             size="icon-xs"
             onClick={onDismiss}
             aria-label={copy.nudgeDismissLabel}
-            className="text-muted-foreground"
+            className="hit text-muted-foreground"
           >
             <X weight="duotone" aria-hidden />
           </Button>
