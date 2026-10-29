@@ -23,6 +23,8 @@ import { CompanyMark } from "@/components/company-marks";
 import { changeDirection, formatPercentChange, type ChangeDirection } from "@/lib/performance";
 import { formatUnits, parseUnits } from "viem";
 import { cn } from "@/lib/utils";
+import { OTHER_TONE, allocationSegments } from "@/lib/allocation";
+import { AllocationStrip, AllocationSwatch } from "@/components/board/allocation-strip";
 
 const BENCHMARK = TOKEN_LISTINGS.find((listing) => listing.symbol === "SPY");
 
@@ -260,6 +262,16 @@ export function HoldingsView({
   const [open, toggle, listId] = useDisclosure("holdings");
   const holdsAnything = !loading && rows.length > 0;
   const shown = open ? rows : rows.slice(0, HOLDINGS_SHOWN);
+  // The strip needs every holding's value: one unknown hides it, never a
+  // guessed share. Positions only, cash is not in these rows.
+  const allocation =
+    holdsAnything && rows.length >= 2 && rows.every((row) => row.worth !== undefined)
+      ? allocationSegments(
+          rows.map((row) => ({ key: row.listing.address, name: rowName(row.listing), valueUsd: row.worth as number })),
+          copy.holdingsShareOther,
+        )
+      : undefined;
+  const showStrip = allocation !== undefined && allocation.segments.length > 0;
 
   return (
     <section data-ph-mask>
@@ -302,6 +314,15 @@ export function HoldingsView({
         </p>
       ) : (
         <>
+          {showStrip && (
+            <AllocationStrip
+              segments={allocation.segments}
+              caption={copy.holdingsShareLabel}
+              label={`${copy.holdingsShareLabel}: ${allocation.segments
+                .map((segment) => copy.holdingsSharePart(segment.name, segment.percent))
+                .join(", ")}`}
+            />
+          )}
           <ul id={listId} className="divide-y divide-border border-t border-border">
             {shown.map(({ listing, balance, worth, move, comparison, robinhood, returned }) => {
               const split = holdingSplitAmounts(balance, robinhood, returned);
@@ -313,7 +334,10 @@ export function HoldingsView({
               >
                 <TickerTile symbol={listing.symbol} />
                 <div className="min-w-0 flex-1">
-                  <div title={listing.name} className="truncate text-[14.5px] leading-snug font-medium text-foreground">{rowName(listing)}</div>
+                  <div title={listing.name} className="flex min-w-0 items-center gap-1.5 text-[14.5px] leading-snug font-medium text-foreground">
+                    {showStrip && <AllocationSwatch tone={allocation.toneByKey[listing.address] ?? OTHER_TONE} />}
+                    <span className="truncate">{rowName(listing)}</span>
+                  </div>
                   <div className="money truncate text-xs text-muted-foreground">
                     {formatTokenAmount(balance, listing.decimals, 6)} {listing.symbol}
                   </div>

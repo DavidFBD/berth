@@ -436,6 +436,11 @@ export type Copy = {
   holdingsWalletsNote: string;
   /** Disclosures: closed, then open. */
   holdingsAll: (count: number) => string;
+  /** Caption over the allocation strip, and the name of its merged last segment. */
+  holdingsShareLabel: string;
+  holdingsShareOther: string;
+  /** Spoken form of one segment, "NVIDIA 42 percent"; the strip's label joins them. */
+  holdingsSharePart: (name: string, percent: number) => string;
   disclosureFewer: string;
   /** Between a holding's change and the S&P 500 fund's: "+6.4% vs +1.9%". */
   holdingVs: string;
@@ -3531,6 +3536,9 @@ export const COPY: Copy = {
   holdingsCashIncluded: "Includes your parked cash.",
   holdingsWalletsNote: "Money waiting in your wallets is not counted.",
   holdingsAll: (count) => `All ${count} holdings`,
+  holdingsShareLabel: "Share of holdings",
+  holdingsShareOther: "Other",
+  holdingsSharePart: (name, percent) => `${name} ${percent} percent`,
   disclosureFewer: "Fewer",
   holdingVs: "vs",
   cashCounts: "Counts toward What you own.",
