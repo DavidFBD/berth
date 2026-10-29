@@ -145,7 +145,7 @@ export function AccountDrawerScreens({
       }
       const url = new URL(window.location.href);
       url.searchParams.set(DRAWER_RETURN_PARAM, view);
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(window.history.state, "", url);
     },
     askEmail: () => {
       setEmailAsked(true);

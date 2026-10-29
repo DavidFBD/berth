@@ -71,5 +71,5 @@ export function clearDrawerReturn() {
   const url = new URL(window.location.href);
   if (!url.searchParams.has(DRAWER_RETURN_PARAM_LOCAL)) return;
   url.searchParams.delete(DRAWER_RETURN_PARAM_LOCAL);
-  window.history.replaceState(null, "", url);
+  window.history.replaceState(window.history.state, "", url);
 }

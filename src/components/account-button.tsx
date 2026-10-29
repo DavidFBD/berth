@@ -254,13 +254,13 @@ function useDrawerReturn(open: () => void, isOpen: boolean): ReturnState {
     }
     if (result.strip) {
       url.searchParams.delete(DRAWER_RETURN_PARAM);
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(window.history.state, "", url);
     }
     // An email's `?open=friends` (lib/drawer-return resolveLink): the drawer on Friends, the parameter gone.
     const link = resolveLink(url.searchParams.get(DRAWER_LINK_PARAM));
     if (link.strip) {
       url.searchParams.delete(DRAWER_LINK_PARAM);
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(window.history.state, "", url);
     }
     const opened = result.open ?? (link.open ? { view: link.open, scroll: null } : null);
     if (!opened) return;

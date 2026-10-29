@@ -5,6 +5,7 @@ import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer"
 
 import { cn } from "@/lib/utils"
 import { useDrawerSide } from "@/hooks/use-drawer-side"
+import { useBackToClose } from "@/hooks/use-back-to-close"
 
 type DrawerContextProps = {
   hasSnapPoints: boolean
@@ -41,10 +42,32 @@ function Drawer({
   showSwipeHandle = false,
   snapPoints,
   swipeDirection,
+  backCloses = true,
+  open,
+  onOpenChange,
   ...props
 }: DrawerPrimitive.Root.Props & {
   showSwipeHandle?: boolean
+  /** The back button, edge swipe and back gesture close this drawer. */
+  backCloses?: boolean
 }) {
+  // Every drawer is controlled by its caller; the history hook needs to know
+  // whether it is open and to close it through the caller's own handler (which
+  // is where a signing drawer refuses to close).
+  const openRef = React.useRef(onOpenChange)
+  React.useEffect(() => {
+    openRef.current = onOpenChange
+  })
+  useBackToClose(
+    open === true,
+    () =>
+      openRef.current?.(
+        false,
+        // The caller's handler reads only the boolean today.
+        undefined as unknown as Parameters<NonNullable<typeof onOpenChange>>[1]
+      ),
+    backCloses
+  )
   const hasSnapPoints = snapPoints != null && snapPoints.length > 0
   const responsiveSide = useDrawerSide()
   const direction = swipeDirection ?? (hasSnapPoints ? "down" : responsiveSide)
@@ -63,6 +86,8 @@ function Drawer({
       <DrawerPrimitive.Root
         data-slot="drawer"
         modal={modal}
+        open={open}
+        onOpenChange={onOpenChange}
         snapPoints={snapPoints}
         swipeDirection={direction}
         {...props}
