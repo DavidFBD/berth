@@ -265,7 +265,7 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
 
 function Requests({ people, demo }: { people: Person[]; demo: boolean }) {
   const copy = useCopy().social;
-  const action = useSocialAction();
+  const action = useSocialAction({ toastAnswers: true });
   const act = (handle: string, which: "accept" | "decline") => {
     if (demo) return;
     action.mutate({ kind: "friend", handle, action: which });

@@ -565,7 +565,7 @@ export type CardActionVars =
  * replaces the cached card where one comes back, and the lists it touches
  * are refetched on their next open.
  */
-export function useSocialAction() {
+export function useSocialAction({ toastAnswers = false }: { toastAnswers?: boolean } = {}) {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
   return useMutation({
@@ -584,11 +584,12 @@ export function useSocialAction() {
       }
       return { previous: answering ? previous : undefined };
     },
-    // The toasts live here, not in per-call callbacks: answering the last
-    // request unmounts the list that called mutate, and v5 drops those.
+    // The requests list asks for its toasts here, not in per-call callbacks:
+    // answering the last request unmounts it, and v5 drops those. Profile
+    // pages and find a friend keep their own toasts, so they leave this off.
     onError: (_error: unknown, vars: CardActionVars, context: { previous: FriendsList | undefined } | undefined) => {
       if (context?.previous) queryClient.setQueryData(KEYS.friends(key), context.previous);
-      if (vars.kind === "friend" && !vars.token && (vars.action === "accept" || vars.action === "decline")) toast.error(COPY.social.actionFailed);
+      if (toastAnswers && vars.kind === "friend" && !vars.token && (vars.action === "accept" || vars.action === "decline")) toast.error(COPY.social.actionFailed);
     },
     mutationFn: async (vars: CardActionVars): Promise<{ done: boolean; card: CardAnswer | null }> => {
       if (vars.kind === "salute") {
@@ -607,7 +608,7 @@ export function useSocialAction() {
       return { done: true, card: null };
     },
     onSuccess: (result, vars) => {
-      if (vars.kind === "friend" && !vars.token && vars.action === "accept" && result.done) toast.success(COPY.social.youAreFriends(vars.handle));
+      if (toastAnswers && vars.kind === "friend" && !vars.token && vars.action === "accept" && result.done) toast.success(COPY.social.youAreFriends(vars.handle));
       if (result.card) {
         const next = result.card;
         queryClient.setQueryData<CardAnswer>(KEYS.card(key, vars.handle), (previous) => carryMore(previous, next));
