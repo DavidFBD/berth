@@ -210,7 +210,7 @@ export function WaitingOrdersDrawer({
     if (!next) setCancelling(null);
   };
   return (
-    <Drawer open={open} onOpenChange={change} disablePointerDismissal={busy}>
+    <Drawer open={open} onOpenChange={change} locked={busy} disablePointerDismissal={busy}>
       {/* A cancel is signed here: the level-up takeover waits until it closes (lib/level-up). */}
       <DrawerContent data-order-drawer="">
         <DrawerHeader>
