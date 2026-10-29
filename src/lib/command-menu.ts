@@ -66,9 +66,9 @@ export function isCommandMenuKey(event: KeyLike, apple: boolean): boolean {
   return apple ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 }
 
-/** The label the hint chip shows. */
-export function shortcutLabel(apple: boolean): string {
-  return apple ? "⌘K" : "Ctrl K";
+/** The label the hint chip shows; `otherLabel` is the words for Control K, from COPY. */
+export function shortcutLabel(apple: boolean, otherLabel: string): string {
+  return apple ? "⌘K" : otherLabel;
 }
 
 /** The slice of an element the typing check reads. */

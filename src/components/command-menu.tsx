@@ -159,6 +159,7 @@ export function CommandMenu({
         <Dialog.Popup
           initialFocus={inputRef}
           aria-label={text.title}
+          data-command-menu=""
           className="fixed top-[14vh] left-1/2 z-50 flex max-h-[70vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground outline-none"
         >
           <Dialog.Title className="sr-only">{text.title}</Dialog.Title>

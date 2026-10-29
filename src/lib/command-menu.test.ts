@@ -74,8 +74,8 @@ describe("the shortcut key", () => {
     expect(isApplePlatform("iPhone")).toBe(true);
     expect(isApplePlatform("Win32")).toBe(false);
     expect(isApplePlatform(undefined)).toBe(false);
-    expect(shortcutLabel(true)).toBe("⌘K");
-    expect(shortcutLabel(false)).toBe("Ctrl K");
+    expect(shortcutLabel(true, "Ctrl K")).toBe("⌘K");
+    expect(shortcutLabel(false, "Ctrl K")).toBe("Ctrl K");
   });
 });
 
@@ -106,6 +106,10 @@ describe("typing targets and shortcutAction", () => {
   it("is ignored while typing or while a signing window or order drawer holds the screen", () => {
     expect(shortcutAction({ ...base, target: input() })).toBe("ignore");
     expect(shortcutAction({ ...base, busy: true })).toBe("ignore");
+  });
+
+  it("is ignored while any other dialog is open (the caller passes busy)", () => {
+    expect(shortcutAction({ ...base, busy: true, target: null })).toBe("ignore");
   });
 
   it("closes an open menu even from its own search box or over a busy screen", () => {
