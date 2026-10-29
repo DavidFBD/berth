@@ -30,7 +30,7 @@ export function CommandHint({ onOpen }: { onOpen: () => void }) {
       aria-label={copy.commandMenu.openHint}
       className="hidden items-center gap-1 rounded-full border border-border px-2 py-1 text-[11px] leading-none text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)_and_(pointer:fine)]:inline-flex"
     >
-      <kbd className="money font-mono">{shortcutLabel(apple)}</kbd>
+      <kbd className="money font-mono">{shortcutLabel(apple, copy.commandMenu.shortcutOther)}</kbd>
     </button>
   );
 }
@@ -87,7 +87,7 @@ export function CommandMenu({
         apple,
         open: openRef.current,
         target: document.activeElement,
-        busy: stageBusy(document),
+        busy: stageBusy(document) || document.querySelector('[role="dialog"]') !== null,
       });
       if (action === "ignore") return;
       event.preventDefault();

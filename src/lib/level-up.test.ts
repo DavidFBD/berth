@@ -71,6 +71,8 @@ describe("never over a signature or an order", () => {
   it("waits while an order drawer or Privy's window is open", () => {
     expect(STAGE_BUSY_SELECTOR).toContain("[data-order-drawer]");
     expect(stageBusy(doc("[data-order-drawer]"))).toBe(true);
+    expect(STAGE_BUSY_SELECTOR).toContain("[data-command-menu]");
+    expect(stageBusy(doc("[data-command-menu]"))).toBe(true);
     expect(stageBusy(doc("#privy-dialog"))).toBe(true);
     expect(stageBusy(doc(null))).toBe(false);
     expect(stageBusy(undefined)).toBe(false);
