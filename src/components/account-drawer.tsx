@@ -47,6 +47,7 @@ import { writeMark } from "@/lib/drawer-return";
 import { useFriendsList, useMySocial } from "@/hooks/use-social";
 import { rankForXp, XP_ACTIONS } from "@/lib/xp";
 import { cn } from "@/lib/utils";
+import { stateForUrlReplace } from "@/lib/sheet-history";
 
 /**
  * The account drawer, in two levels (field feedback, 2026-10-01: a new
@@ -145,7 +146,7 @@ export function AccountDrawerScreens({
       }
       const url = new URL(window.location.href);
       url.searchParams.set(DRAWER_RETURN_PARAM, view);
-      window.history.replaceState(window.history.state, "", url);
+      window.history.replaceState(stateForUrlReplace(window.history.state), "", url);
     },
     askEmail: () => {
       setEmailAsked(true);

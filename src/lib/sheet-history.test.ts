@@ -49,6 +49,11 @@ function setup() {
     },
     refire: () => run(60),
     pending: () => pending,
+    /** The person lands directly on an older entry (a stale one). */
+    landOn(i: number) {
+      index = i;
+      keeper.popstate();
+    },
   };
 }
 
@@ -65,7 +70,7 @@ describe("sheet history", () => {
   it("keeps Next's own state when it pushes", () => {
     const t = setup();
     sheet(t.keeper, "a");
-    expect(t.entries[1]).toMatchObject({ __NA: true, tree: "page", berthDepth: 1 });
+    expect(t.entries[1]).toMatchObject({ __NA: true, tree: "page", berthSheets: { depth: 1 } });
   });
 
   it("closes the sheet on back, and does not call go itself", () => {
@@ -148,10 +153,71 @@ describe("sheet history", () => {
     expect(t.index()).toBe(0);
     t.refire();
     expect(t.index()).toBe(1);
-    expect(t.entries[1]).toMatchObject({ berthDepth: 1 });
+    expect(t.entries[1]).toMatchObject({ berthSheets: { depth: 1 } });
     // The next back asks again.
     t.back();
     expect(locked.asked).toBe(2);
+  });
+
+  it("puts a locked sheet back inside the popstate, without asking it or waiting", () => {
+    const t = setup();
+    const state = { open: true, asked: 0, locked: true };
+    t.keeper.open("a", () => { state.asked += 1; }, () => state.open, () => state.locked);
+    expect(t.keeper.anyLocked()).toBe(true);
+    t.back();
+    expect(state.asked).toBe(0);
+    expect(t.index()).toBe(1);
+    // A second press straight after is held too, with no timer in between.
+    t.back();
+    expect(state.asked).toBe(0);
+    expect(t.index()).toBe(1);
+    state.locked = false;
+    expect(t.keeper.anyLocked()).toBe(false);
+    t.back();
+    expect(state.asked).toBe(1);
+  });
+
+  it("closes the picker over a locked sheet and keeps the locked one", () => {
+    const t = setup();
+    const a = { open: true, asked: 0 };
+    t.keeper.open("a", () => { a.asked += 1; }, () => a.open, () => true);
+    const b = sheet(t.keeper, "b");
+    t.back(2);
+    expect(b.closes).toBe(1);
+    expect(a.asked).toBe(0);
+    expect(t.index()).toBe(1);
+  });
+
+  it("ignores a stale marker left by an earlier sheet after navigating away and back", () => {
+    const t = setup();
+    const first = sheet(t.keeper, "a");
+    const staleIndex = t.index();
+    t.navigate();
+    first.open = false;
+    t.keeper.release("a");
+    t.settle();
+    // Back lands on the old entry, still carrying its marker; the sheet reopens.
+    t.landOn(staleIndex);
+    const again = sheet(t.keeper, "a2");
+    expect(t.index()).toBe(staleIndex + 1);
+    t.back();
+    // One press closes the sheet; it is not eaten by the stale marker.
+    expect(again.closes).toBe(1);
+  });
+
+  it("treats a marker from before a reload as the base page", () => {
+    const t = setup();
+    sheet(t.keeper, "a");
+    // A reload: a fresh keeper over the same history, whose entry still has a marker.
+    const reloaded = createSheetHistory(
+      { getState: () => t.entries[t.index()], push: () => {}, go: () => {} },
+      () => {},
+    );
+    const b = { closes: 0, open: true };
+    reloaded.open("b", () => { b.closes += 1; }, () => b.open);
+    // The stale marker (depth 1, old token) does not hold the new sheet open.
+    reloaded.popstate();
+    expect(b.closes).toBe(1);
   });
 
   it("leaves a strict-mode close and reopen with one entry to pop", () => {

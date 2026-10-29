@@ -43,6 +43,7 @@ function Drawer({
   snapPoints,
   swipeDirection,
   backCloses = true,
+  locked = false,
   open,
   onOpenChange,
   ...props
@@ -50,6 +51,8 @@ function Drawer({
   showSwipeHandle?: boolean
   /** The back button, edge swipe and back gesture close this drawer. */
   backCloses?: boolean
+  /** The caller refuses to close right now (a signature is being prepared or in flight): back is held at once. */
+  locked?: boolean
 }) {
   // Every drawer is controlled by its caller; the history hook needs to know
   // whether it is open and to close it through the caller's own handler (which
@@ -66,7 +69,8 @@ function Drawer({
         // The caller's handler reads only the boolean today.
         undefined as unknown as Parameters<NonNullable<typeof onOpenChange>>[1]
       ),
-    backCloses
+    backCloses,
+    locked
   )
   const hasSnapPoints = snapPoints != null && snapPoints.length > 0
   const responsiveSide = useDrawerSide()

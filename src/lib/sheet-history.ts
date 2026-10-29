@@ -2,7 +2,7 @@
  * The history bookkeeping behind "back closes the sheet".
  *
  * A sheet that opens pushes one history entry whose state carries
- * `berthDepth`, its place in the stack of open sheets (1 for the first, 2 for
+ * `berthSheets`, its place in the stack of open sheets (1 for the first, 2 for
  * a picker over it). The browser's back button, the iOS edge swipe and the
  * Android back gesture then pop that entry, and a popstate whose depth is
  * lower than the sheets still open closes them, top first. When a sheet
@@ -16,9 +16,16 @@
  * then nothing here ever calls back: the depth is read from the state at the
  * moment of closing, never remembered, so a route change is never undone.
  *
- * A sheet that refuses to close (a signature is in flight) is asked once and,
- * if it is still open a moment later, its entry is pushed again, so the page
- * stays and the sheet stays.
+ * A sheet that says it is locked (a signature is being prepared or in
+ * flight) is not asked: its entry is pushed again inside the popstate handler
+ * itself, so the page stays and a second press within a moment cannot leave.
+ * A sheet that refuses without saying so is asked once and, if it is still
+ * open a moment later, its entry is pushed again.
+ *
+ * Markers carry a token minted when the stack goes from empty to one sheet.
+ * An entry with another token (left behind by a navigation and a back, or by
+ * a reload) counts as the base page, so a stale marker never matches the
+ * depth of a sheet opened since.
  *
  * Pure: the browser arrives through `HistoryPort`, so the rules are testable
  * without a window.
@@ -36,29 +43,44 @@ type Entry = {
   id: string;
   close: () => void;
   stillOpen: () => boolean;
+  /** True while the sheet refuses to close (a signature is being prepared or in flight). */
+  locked: () => boolean;
   closed: boolean;
 };
 
-const MARKER = "berthDepth";
+const MARKER = "berthSheets";
 
-function depthOf(state: unknown): number {
+type Marker = { token: string; depth: number };
+
+function markerOf(state: unknown): Marker | null {
   if (state && typeof state === "object") {
-    const depth = (state as Record<string, unknown>)[MARKER];
-    if (typeof depth === "number" && depth > 0) return depth;
+    const marker = (state as Record<string, unknown>)[MARKER];
+    if (marker && typeof marker === "object") {
+      const { token, depth } = marker as Record<string, unknown>;
+      if (typeof token === "string" && typeof depth === "number" && depth > 0) return { token, depth };
+    }
   }
-  return 0;
+  return null;
 }
 
 /** The state to push: Next's own object kept whole, plus the marker. */
-export function withDepth(state: unknown, depth: number): Record<string, unknown> {
+export function withDepth(state: unknown, token: string, depth: number): Record<string, unknown> {
   const base = state && typeof state === "object" ? (state as Record<string, unknown>) : {};
-  return { ...base, [MARKER]: depth };
+  return { ...base, [MARKER]: { token, depth } };
+}
+
+let tokenCount = 0;
+function mintToken(): string {
+  tokenCount += 1;
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}${tokenCount}`;
 }
 
 export type SheetHistory = {
-  open(id: string, close: () => void, stillOpen: () => boolean): void;
+  open(id: string, close: () => void, stillOpen: () => boolean, locked?: () => boolean): void;
   release(id: string): void;
   popstate(): void;
+  /** Whether any open sheet refuses to close right now (for a beforeunload guard). */
+  anyLocked(): boolean;
 };
 
 export function createSheetHistory(
@@ -66,6 +88,14 @@ export function createSheetHistory(
   schedule: (fn: () => void, ms: number) => void,
 ): SheetHistory {
   const stack: Entry[] = [];
+  // Minted when the stack goes from empty to one sheet. A marker from another
+  // token (an entry left by an earlier session of sheets, or by a reload) is a
+  // stale one and counts as depth 0, the base page.
+  let token: string | null = null;
+  const depthOf = (state: unknown): number => {
+    const marker = markerOf(state);
+    return marker && marker.token === token ? marker.depth : 0;
+  };
   // Depth levels a go() has been asked for and popstate has not yet confirmed.
   let inflight = 0;
 
@@ -80,25 +110,37 @@ export function createSheetHistory(
     // Zero when the state has no marker (a navigation replaced it) or when
     // the entries were already popped by the person.
     const owed = depthOf(port.getState()) - inflight - stack.length;
+    if (stack.length === 0) token = null;
     if (owed > 0) {
       inflight += owed;
       port.go(-owed);
     }
   };
 
-  const reassert = (entry: Entry) => {
-    if (entry.closed || !stack.includes(entry)) return;
-    if (!entry.stillOpen()) return;
-    // It refused. Put back whatever the pop took, so the page stays put.
-    for (let depth = depthOf(port.getState()) + 1; depth <= stack.length; depth += 1) {
-      port.push(withDepth(port.getState(), depth));
+  /** Push entries until history holds `target` levels again. */
+  const restore = (target: number) => {
+    if (token === null) return;
+    for (let depth = depthOf(port.getState()) + 1; depth <= target; depth += 1) {
+      port.push(withDepth(port.getState(), token, depth));
     }
   };
 
+  const reassert = (entry: Entry) => {
+    if (entry.closed || !stack.includes(entry)) return;
+    if (!entry.stillOpen()) return;
+    // It refused without saying so up front. Put back whatever the pop took.
+    restore(stack.length);
+  };
+
   return {
-    open(id, close, stillOpen) {
-      stack.push({ id, close, stillOpen, closed: false });
-      port.push(withDepth(port.getState(), stack.length));
+    open(id, close, stillOpen, locked = () => false) {
+      if (stack.length === 0 || token === null) token = mintToken();
+      stack.push({ id, close, stillOpen, locked, closed: false });
+      port.push(withDepth(port.getState(), token, stack.length));
+    },
+
+    anyLocked() {
+      return stack.some((entry) => !entry.closed && entry.locked());
     },
 
     release(id) {
@@ -114,13 +156,29 @@ export function createSheetHistory(
     popstate() {
       inflight = 0;
       const depth = depthOf(port.getState());
-      // Entries above the new depth lost their history entry: ask the live
-      // ones to close, top first.
-      const asked: Entry[] = [];
+      // A locked sheet (known up front, so no wait and no user activation
+      // needed) is put back at once, and nothing under it is asked either.
+      let lockedAt = -1;
       for (let index = stack.length - 1; index >= depth; index -= 1) {
+        if (!stack[index].closed && stack[index].locked()) {
+          lockedAt = index;
+          break;
+        }
+      }
+      // Entries above the new depth lost their history entry: ask the live
+      // ones above any locked sheet to close, top first.
+      const asked: Entry[] = [];
+      for (let index = stack.length - 1; index > lockedAt && index >= depth; index -= 1) {
         const entry = stack[index];
         if (entry.closed) continue;
         asked.push(entry);
+      }
+      if (lockedAt >= 0) {
+        // Entries above it close; its own and those below keep their places.
+        for (const entry of asked) entry.close();
+        for (const entry of asked) schedule(() => reassert(entry), 60);
+        restore(lockedAt + 1);
+        return;
       }
       // Entries already closed above the depth have no entry left to pop.
       for (const entry of asked) entry.close();
@@ -129,4 +187,18 @@ export function createSheetHistory(
       while (stack.length > depth && stack[stack.length - 1].closed) stack.pop();
     },
   };
+}
+
+/**
+ * The state to hand to history.replaceState when only the address changes:
+ * everything kept (our marker included) except Next's two keys, so Next's
+ * patched replaceState re-adds them from the current entry and also syncs its
+ * own URL (usePathname and useSearchParams). Passing them through would make
+ * Next treat the call as its own and skip the sync.
+ */
+export function stateForUrlReplace(state: unknown): Record<string, unknown> {
+  const base = state && typeof state === "object" ? { ...(state as Record<string, unknown>) } : {};
+  delete base.__NA;
+  delete base.__PRIVATE_NEXTJS_INTERNALS_TREE;
+  return base;
 }

@@ -2,6 +2,7 @@
 
 import { createContext, useContext } from "react";
 import { DRAWER_RETURN_KEY as DRAWER_RETURN_KEY_LOCAL, DRAWER_RETURN_PARAM as DRAWER_RETURN_PARAM_LOCAL, type DrawerView } from "@/lib/drawer-return";
+import { stateForUrlReplace } from "@/lib/sheet-history";
 
 /**
  * The account drawer's screens: the first one (who you are, the next step,
@@ -71,5 +72,5 @@ export function clearDrawerReturn() {
   const url = new URL(window.location.href);
   if (!url.searchParams.has(DRAWER_RETURN_PARAM_LOCAL)) return;
   url.searchParams.delete(DRAWER_RETURN_PARAM_LOCAL);
-  window.history.replaceState(window.history.state, "", url);
+  window.history.replaceState(stateForUrlReplace(window.history.state), "", url);
 }

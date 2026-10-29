@@ -10,6 +10,7 @@
  */
 
 import { normalizeInviteCode } from "@/lib/invite-code";
+import { stateForUrlReplace } from "@/lib/sheet-history";
 
 const STORAGE_KEY = "lsteatime.ref";
 const PARAM = "ref";
@@ -56,7 +57,7 @@ export function stripReferralParam(): void {
     const url = new URL(window.location.href);
     if (!url.searchParams.has(PARAM)) return;
     url.searchParams.delete(PARAM);
-    window.history.replaceState(null, "", url.toString());
+    window.history.replaceState(stateForUrlReplace(window.history.state), "", url.toString());
   } catch {
     // A visible ?ref= is cosmetic; nothing worth breaking over.
   }
