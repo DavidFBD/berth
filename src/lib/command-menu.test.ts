@@ -21,8 +21,14 @@ describe("searchListings", () => {
   const set = [fake("MSTR", "Strategy"), fake("TSLA", "Tesla"), fake("TSM", "Taiwan Semiconductor"), fake("NVDA", "NVIDIA"), fake("AMD", "Advanced Micro Devices")];
 
   it("ranks a name prefix above a word prefix above a ticker above a substring", () => {
-    const listings = [fake("XYZ", "Retail Micro"), fake("MICRO", "Zeta"), fake("ABC", "Micro One"), fake("DEF", "Alphamicro")];
-    expect(searchListings(listings, "micro").map((l) => l.symbol)).toEqual(["ABC", "XYZ", "MICRO", "DEF"]);
+    const listings = [fake("XYZ", "Retail Micro"), fake("MICROX", "Zeta"), fake("ABC", "Micro One"), fake("DEF", "Alphamicro")];
+    expect(searchListings(listings, "micro").map((l) => l.symbol)).toEqual(["ABC", "XYZ", "MICROX", "DEF"]);
+  });
+
+  it("ranks an exact ticker first, even above a name that starts with it", () => {
+    const listings = [fake("NETA", "Netflix"), fake("NET", "Cloudflare")];
+    expect(searchListings(listings, "net").map((l) => l.symbol)).toEqual(["NET", "NETA"]);
+    expect(searchListings(listings, "Net")[0].name).toBe("Cloudflare");
   });
 
   it("is case-insensitive and matches names and tickers", () => {
@@ -47,7 +53,8 @@ describe("searchListings", () => {
 
   it("names the rank", () => {
     expect(rankOf(fake("AMD", "Advanced Micro Devices"), "micro")).toBe("word-prefix");
-    expect(rankOf(fake("AMD", "Advanced Micro Devices"), "amd")).toBe("ticker");
+    expect(rankOf(fake("AMD", "Advanced Micro Devices"), "amd")).toBe("exact-ticker");
+    expect(rankOf(fake("AMD", "Advanced Micro Devices"), "am")).toBe("ticker");
     expect(rankOf(fake("AMD", "Advanced Micro Devices"), "vanced")).toBe("substring");
     expect(rankOf(fake("AMD", "Advanced Micro Devices"), "")).toBeNull();
   });

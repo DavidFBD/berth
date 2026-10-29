@@ -290,6 +290,11 @@ export type Copy = {
     hintOpen: string;
     hintClose: string;
     openHint: string;
+    listLabel: string;
+    keyMove: string;
+    keyEnter: string;
+    keyEsc: string;
+    shortcutOther: string;
   };
   /**
    * The signed-in home's one next step per state (components/home-next-step):
@@ -3484,7 +3489,7 @@ export const COPY: Copy = {
   },
   commandMenu: {
     title: "Search Berth",
-    placeholder: "Search a company",
+    placeholder: "Find a stock, a fund or a page",
     empty: "Nothing matches that.",
     stocksHeading: "Stocks and funds",
     pagesHeading: "Go to",
@@ -3496,6 +3501,11 @@ export const COPY: Copy = {
     hintOpen: "to open",
     hintClose: "to close",
     openHint: "Search",
+    listLabel: "Stocks, funds and pages",
+    keyMove: "↑↓",
+    keyEnter: "Enter",
+    keyEsc: "Esc",
+    shortcutOther: "Ctrl K",
   },
   calmHome: {
     addTitle: "Add money to begin",

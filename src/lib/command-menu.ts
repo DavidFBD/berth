@@ -7,9 +7,9 @@ import { listingNameForms, type TokenListing } from "@/lib/listings";
  */
 
 /** How well a query matched, best first. */
-export type MatchRank = "name-prefix" | "word-prefix" | "ticker" | "substring";
+export type MatchRank = "exact-ticker" | "name-prefix" | "word-prefix" | "ticker" | "substring";
 
-const RANK_ORDER: Record<MatchRank, number> = { "name-prefix": 0, "word-prefix": 1, ticker: 2, substring: 3 };
+const RANK_ORDER: Record<MatchRank, number> = { "exact-ticker": 0, "name-prefix": 1, "word-prefix": 2, ticker: 3, substring: 4 };
 
 const fold = (text: string) => text.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").trim();
 
@@ -20,18 +20,19 @@ const wordsOf = (name: string) => fold(name).split(/[^\p{L}\p{N}]+/u).filter(Boo
 export function rankOf(listing: TokenListing, query: string): MatchRank | null {
   const q = fold(query);
   if (!q) return null;
+  const symbol = listing.symbol.toLowerCase();
+  if (symbol === q) return "exact-ticker";
   const forms = [...new Set([listing.name, ...listingNameForms(listing)])];
   const folded = forms.map(fold);
   if (folded.some((name) => name.startsWith(q))) return "name-prefix";
   if (forms.some((name) => wordsOf(name).some((word) => word.startsWith(q)))) return "word-prefix";
-  const symbol = listing.symbol.toLowerCase();
-  if (symbol === q || symbol.startsWith(q)) return "ticker";
+  if (symbol.startsWith(q)) return "ticker";
   if (folded.some((name) => name.includes(q)) || symbol.includes(q)) return "substring";
   return null;
 }
 
 /**
- * Listings for a query: name prefix, then word prefix, then ticker, then
+ * Listings for a query: an exact ticker, then name prefix, then word prefix, then ticker, then
  * substring; the registry's order breaks ties. An empty query returns the
  * first `limit` listings in registry order, so the menu is never blank.
  */

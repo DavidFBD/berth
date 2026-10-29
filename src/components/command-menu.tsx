@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExtern
 import { Dialog } from "@base-ui/react/dialog";
 import { CompanyMark } from "@/components/company-marks";
 import { useCopy } from "@/components/settings-provider";
-import { STOCK_LISTINGS, LISTING_MARK_BY_SYMBOL, type TokenListing } from "@/lib/listings";
+import { STOCK_LISTINGS, LISTING_MARK_BY_SYMBOL, rowName, type TokenListing } from "@/lib/listings";
 import { stageBusy } from "@/lib/level-up";
 import { isApplePlatform, moveIndex, searchListings, shortcutAction, shortcutLabel } from "@/lib/command-menu";
 
@@ -72,6 +72,9 @@ export function CommandMenu({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  // A chosen row opens a drawer in the same commit; focus must not go back to
+  // the page behind it and fight the drawer for it.
+  const chosenRef = useRef(false);
   const listId = useId();
   const optionId = (index: number) => `${listId}-opt-${index}`;
 
@@ -97,6 +100,14 @@ export function CommandMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [apple, onOpenChange]);
 
+  // Whatever closed the palette, the next opening starts clean.
+  useEffect(() => {
+    if (open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuery("");
+    setActive(0);
+  }, [open]);
+
   const rows = useMemo<Row[]>(() => {
     const q = query.trim().toLowerCase();
     const stocks = searchListings(STOCK_LISTINGS, query, q ? 8 : 5).map<Row>((listing) => ({
@@ -117,6 +128,7 @@ export function CommandMenu({
   const choose = useCallback(
     (row: Row | undefined) => {
       if (!row) return;
+      chosenRef.current = true;
       onOpenChange(false);
       if (row.kind === "stock") onBuy(row.listing);
       else row.run();
@@ -146,18 +158,16 @@ export function CommandMenu({
   return (
     <Dialog.Root
       open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next);
-        if (!next) {
-          setQuery("");
-          setActive(0);
-        }
-      }}
+      onOpenChange={onOpenChange}
     >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/30" />
         <Dialog.Popup
-          initialFocus={inputRef}
+          initialFocus={() => {
+            chosenRef.current = false;
+            return inputRef.current;
+          }}
+          finalFocus={() => !chosenRef.current}
           aria-label={text.title}
           data-command-menu=""
           className="fixed top-[14vh] left-1/2 z-50 flex max-h-[70vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground outline-none"
@@ -183,7 +193,7 @@ export function CommandMenu({
             onKeyDown={onInputKey}
             className="w-full border-b border-border bg-transparent px-4 py-3 text-base outline-none placeholder:text-muted-foreground"
           />
-          <ul id={listId} role="listbox" aria-label={text.stocksHeading} className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          <ul id={listId} role="listbox" aria-label={text.listLabel} className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {rows.length === 0 && <li role="presentation" className="px-3 py-6 text-center text-sm text-muted-foreground">{text.empty}</li>}
             {rows.map((row, index) => {
               const mark = row.kind === "stock" ? LISTING_MARK_BY_SYMBOL[row.listing.symbol] : undefined;
@@ -204,7 +214,7 @@ export function CommandMenu({
                         <span aria-hidden className="money flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[8.5px] font-medium text-secondary-foreground">
                           {mark ? <CompanyMark id={mark} className="size-3.5" /> : row.listing.symbol.slice(0, 4)}
                         </span>
-                        <span className="min-w-0 truncate">{row.listing.name}</span>
+                        <span className="min-w-0 truncate">{rowName(row.listing)}</span>
                         <span className="money ml-auto shrink-0 text-xs text-muted-foreground">{row.listing.symbol}</span>
                       </>
                     ) : (
@@ -216,9 +226,9 @@ export function CommandMenu({
             })}
           </ul>
           <div aria-hidden className="flex items-center gap-4 border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-1.5"><Kbd>{"↑↓"}</Kbd>{text.hintMove}</span>
-            <span className="flex items-center gap-1.5"><Kbd>Enter</Kbd>{text.hintOpen}</span>
-            <span className="flex items-center gap-1.5"><Kbd>Esc</Kbd>{text.hintClose}</span>
+            <span className="flex items-center gap-1.5"><Kbd>{text.keyMove}</Kbd>{text.hintMove}</span>
+            <span className="flex items-center gap-1.5"><Kbd>{text.keyEnter}</Kbd>{text.hintOpen}</span>
+            <span className="flex items-center gap-1.5"><Kbd>{text.keyEsc}</Kbd>{text.hintClose}</span>
           </div>
         </Dialog.Popup>
       </Dialog.Portal>
