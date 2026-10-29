@@ -5,6 +5,8 @@ import { TERMS_VERSION } from "@/lib/legal-version";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DISPLAY_GC_MS } from "@/lib/query-freshness";
+import { toast } from "@/lib/toast";
+import { COPY } from "@/lib/copy";
 import { useAccountHeaders } from "@/hooks/use-profile";
 import { announceRewards } from "@/components/xp-toast";
 import type { RewardList } from "@/lib/profile-types";
@@ -102,7 +104,6 @@ export function useHandleCheck(value: string, enabled: boolean) {
     queryKey: ["social-check", key, settled.toLowerCase()],
     enabled: enabled && key !== null && settled === value && value.length > 0,
     staleTime: 30_000,
-    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: () => must(call<HandleCheck>("check", { handle: settled })),
   });
@@ -176,15 +177,19 @@ function useOptimisticSwitch(field: SwitchField) {
   const queryClient = useQueryClient();
   const { key } = useSocialCall();
   return {
-    onMutate: async (value: boolean): Promise<{ previous: MySocial | undefined }> => {
+    onMutate: async (value: boolean): Promise<{ had: boolean; before: boolean | undefined }> => {
       await queryClient.cancelQueries({ queryKey: KEYS.me(key) });
       const previous = queryClient.getQueryData<MySocial>(KEYS.me(key));
       if (previous) queryClient.setQueryData<MySocial>(KEYS.me(key), { ...previous, [field]: value });
-      return { previous };
+      return { had: Boolean(previous), before: previous?.[field] };
     },
-    onError: (_error: unknown, _value: boolean, context: { previous: MySocial | undefined } | undefined) => {
-      if (context?.previous) queryClient.setQueryData(KEYS.me(key), context.previous);
+    // Only this switch goes back: another that succeeded meanwhile stays.
+    onError: (_error: unknown, _value: boolean, context: { had: boolean; before: boolean | undefined } | undefined) => {
+      if (!context?.had || context.before === undefined) return;
+      const before = context.before;
+      queryClient.setQueryData<MySocial>(KEYS.me(key), (old) => (old ? { ...old, [field]: before } : old));
     },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: KEYS.me(key) }),
   };
 }
 
@@ -579,8 +584,15 @@ export function useSocialAction() {
       }
       return { previous: answering ? previous : undefined };
     },
-    onError: (_error: unknown, _vars: CardActionVars, context: { previous: FriendsList | undefined } | undefined) => {
+    // The toasts live here, not in per-call callbacks: answering the last
+    // request unmounts the list that called mutate, and v5 drops those.
+    onSuccess: (result: { done: boolean; card: CardAnswer | null }, vars: CardActionVars) => {
+      const byName = vars.kind === "friend" && !vars.token;
+      if (byName && vars.action === "accept" && result.done) toast.success(COPY.social.youAreFriends(vars.handle));
+    },
+    onError: (_error: unknown, vars: CardActionVars, context: { previous: FriendsList | undefined } | undefined) => {
       if (context?.previous) queryClient.setQueryData(KEYS.friends(key), context.previous);
+      if (vars.kind === "friend" && !vars.token && (vars.action === "accept" || vars.action === "decline")) toast.error(COPY.social.actionFailed);
     },
     mutationFn: async (vars: CardActionVars): Promise<{ done: boolean; card: CardAnswer | null }> => {
       if (vars.kind === "salute") {

@@ -268,15 +268,7 @@ function Requests({ people, demo }: { people: Person[]; demo: boolean }) {
   const action = useSocialAction();
   const act = (handle: string, which: "accept" | "decline") => {
     if (demo) return;
-    action.mutate(
-      { kind: "friend", handle, action: which },
-      {
-        onSuccess: (result) => {
-          if (which === "accept" && result.done) toast.success(copy.youAreFriends(handle));
-        },
-        onError: () => toast.error(copy.actionFailed),
-      },
-    );
+    action.mutate({ kind: "friend", handle, action: which });
   };
   return (
     <div className="flex flex-col gap-1 px-3 py-2.5">
