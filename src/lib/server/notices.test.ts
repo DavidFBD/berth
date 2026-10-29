@@ -10,10 +10,10 @@ import { POLICY_NOTICE_ID, SOCIAL_NOTICE_ID } from "@/lib/social-proof";
 const NOW = Date.parse("2026-10-11T12:00:00Z");
 const USER = "a1b2c3d4-0000-4000-8000-000000000001";
 
-/** An account created after every dated notice, so only the feedback ask can be due. */
+/** An account created after every dated notice (the policy notice follows TERMS_VERSION), so only the feedback ask can be due. */
 function row(overrides: Record<string, unknown> = {}) {
   return {
-    created_at: "2026-10-09T08:00:00Z",
+    created_at: "2026-10-31T08:00:00Z",
     share_holdings: false,
     seen: [],
     accepted: [],

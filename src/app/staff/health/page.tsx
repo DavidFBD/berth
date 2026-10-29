@@ -104,7 +104,7 @@ export default async function StaffHealthPage() {
   const words = COPY.staff;
   const h = words.health;
   const health = await readHealth();
-  const capFor = (type: string) => (type === "weekly" ? health.email.caps.weekly : null);
+  const capFor = (type: string) => (type === "weekly" ? health.email.caps.weekly : type === "new_listings" ? health.email.caps.listings : null);
 
   return (
     <StaffShell staff={staff} active="health">

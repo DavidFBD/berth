@@ -411,6 +411,7 @@ export function AddEmailBlock({ hasEmail }: { hasEmail: boolean }) {
                     aria-label={copy.addEmailTitle}
                     disabled={link.state !== "email"}
                   />
+                  <p className="text-xs text-muted-foreground">{copy.addEmailNote}</p>
                   <div className="flex gap-2">
                     <Button
                       type="submit"
