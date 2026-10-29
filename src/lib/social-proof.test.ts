@@ -312,7 +312,7 @@ describe("the words", () => {
     expect(COPY.social.shareHoldingsSub).toMatch(/Off unless you turn it on/);
     expect(COPY.firstPath.usernameSub).not.toMatch(/never shows .*what you own/);
     expect(COPY.social.hideSub).toMatch(/do not see what you hold/);
-    expect(COPY.privacyPolicy.status).toBe("Effective 8 October 2026.");
+    expect(COPY.privacyPolicy.status).toBe(`Effective ${LEGAL_EFFECTIVE_DATE}.`);
     expect(COPY.social.shareHoldingsSub).toMatch(/including friends you add later/);
   });
 
@@ -394,8 +394,8 @@ describe("dated account notices (2026-10-11)", () => {
   it("never tells an account created on or after the terms' date that the terms are new", () => {
     expect(ACCOUNT_NOTICE_RULES[POLICY_NOTICE_ID].effectiveFrom).toBe(TERMS_VERSION);
     expect(COPY.policyNotice.text).toContain(LEGAL_EFFECTIVE_DATE);
-    // A fresh account made through /c/launch on 11 October.
-    expect(dueNotices(account("2026-10-11T14:40:55Z"))).toEqual([]);
+    // A fresh account made through /c/launch after the terms' date.
+    expect(dueNotices(account("2026-10-31T14:40:55Z"))).toEqual([]);
     expect(dueNotices(account(`${TERMS_VERSION}T00:00:00Z`))).not.toContain(POLICY_NOTICE_ID);
     expect(dueNotices(account("2026-10-07T23:59:59Z"))).toContain(POLICY_NOTICE_ID);
   });

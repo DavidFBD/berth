@@ -16,12 +16,13 @@ import { describe, expect, it } from "vitest";
  *   proxy guards with a Privy token check and which checks again itself.
  * - the proxy covers both trees.
  *
- * The campaigns route gates on lib/server/staff-auth requireStaff, which
- * reads the same staff session; it is listed by path below.
+ * The campaigns and emails routes gate on lib/server/staff-auth requireStaff
+ * (and requireFreshStaff for what sends), which read the same staff session;
+ * they are listed by path below.
  */
 
 const ROOT = process.cwd();
-const ALLOWED_UNWRAPPED = new Set(["src/app/api/staff/session/route.ts POST", "src/app/api/staff/campaigns/route.ts POST"]);
+const ALLOWED_UNWRAPPED = new Set(["src/app/api/staff/session/route.ts POST", "src/app/api/staff/campaigns/route.ts POST", "src/app/api/staff/emails/route.ts POST"]);
 const ALLOWED_PAGES_WITHOUT_GATE = new Set<string>([]);
 
 function files(dir: string): string[] {

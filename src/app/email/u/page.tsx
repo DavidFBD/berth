@@ -24,10 +24,14 @@ export const metadata: Metadata = {
 export default async function UnsubscribePage({ searchParams }: { searchParams: Promise<{ t?: string; s?: string }> }) {
   const { t = "", s } = await searchParams;
   const words = COPY.email.unsubscribePage;
-  const claims = await readUnsubscribeToken(t);
+  const claims = await readUnsubscribeToken(t, { allowExpired: true });
   const action = `/api/email/unsubscribe?t=${encodeURIComponent(t)}`;
   const retired = claims !== null && "retired" in claims;
   const kind = claims && !("retired" in claims) ? words.kindName[claims.kind] : null;
+  // Turning back on is offered here only where it is safe: not for an old link, and never for New stocks
+  // (marketing), which is turned on in Settings, by the person signed in.
+  const canTurnBackOn = claims !== null && !("retired" in claims) && !claims.expired && claims.kind !== "listings";
+  const settingsOnly = claims !== null && !("retired" in claims) && !canTurnBackOn;
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col px-5 pt-10 pb-[max(env(safe-area-inset-bottom),3rem)] sm:pt-14">
@@ -45,13 +49,15 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
         ) : s === "off" ? (
           <>
             <p className="text-[15px] leading-relaxed text-foreground">{words.done(kind)}</p>
-            <p className="text-sm text-muted-foreground">{words.doneSub}</p>
-            <form method="post" action={action}>
-              <input type="hidden" name="action" value="on" />
-              <button type="submit" className={cn(buttonVariants({ variant: "outline" }), "rounded-full")}>
-                {words.turnBackOn}
-              </button>
-            </form>
+            <p className="text-sm text-muted-foreground">{settingsOnly ? words.doneSettingsOnly : words.doneSub}</p>
+            {canTurnBackOn ? (
+              <form method="post" action={action}>
+                <input type="hidden" name="action" value="on" />
+                <button type="submit" className={cn(buttonVariants({ variant: "outline" }), "rounded-full")}>
+                  {words.turnBackOn}
+                </button>
+              </form>
+            ) : null}
           </>
         ) : s === "on" ? (
           <p className="text-[15px] leading-relaxed text-foreground">{words.backOn(kind)}</p>

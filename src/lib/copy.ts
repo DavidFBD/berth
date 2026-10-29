@@ -1203,6 +1203,8 @@ export type Copy = {
   /** Offered only to a wallet account, which has no email of its own. */
   addEmailTitle: string;
   addEmailSub: (amount: number) => string;
+  /** Under the email field: what else the address may be used for, and where to turn it off. */
+  addEmailNote: string;
   addEmailPlaceholder: string;
   addEmailContinue: string;
   /** While the wallet is being asked to prove it owns the address. */
@@ -2386,9 +2388,11 @@ export type EmailCopy = {
   securityWhy: string;
   /** Account notices (a campaign reward paid): sent whatever the settings say. */
   accountWhy: string;
-  why: Record<"orders" | "friends" | "weekly", string>;
+  why: Record<"orders" | "friends" | "weekly" | "listings", string>;
   unsubscribe: string;
   signoff: string;
+  /** On marketing email only (New stocks): who sends it and where to write, from PRIVACY_OPERATOR. */
+  sender: string;
   /** With its article, as a sentence opens: "An EVM", "A Solana". */
   family: Record<"evm" | "solana" | "bitcoin", string>;
   walletAdded: { subject: string; heading: string; body: (family: string, address: string) => string };
@@ -2470,6 +2474,21 @@ export type EmailCopy = {
   };
   campaignPaid: { subject: (amount: string) => string; heading: string; body: (amount: string, chain: string) => string; after: string };
   /**
+   * New stocks (lib/server/new-listings): marketing, sent only with the
+   * switch on, one email per batch of listings Berth added. Names, never
+   * tickers, and no call to act on any of them: the stocks are told as
+   * news about Berth, with the not advice line.
+   */
+  newListings: {
+    subject: (names: readonly string[], count: number) => string;
+    heading: string;
+    intro: (count: number) => string;
+    /** The line after the listed names when some are left out. */
+    more: (count: number) => string;
+    notAdvice: string;
+    preview: (names: readonly string[], count: number) => string;
+  };
+  /**
    * The weekly summary (lib/server/weekly): opt in, Monday mornings, the
    * week before. Every number in it is one the app already shows; a
    * section with nothing trusted to say is left out, never guessed.
@@ -2518,7 +2537,7 @@ export type EmailCopy = {
     sectionLabel: string;
     goesTo: (address: string) => string;
     securityAlways: string;
-    kinds: Record<"orders" | "friends" | "weekly", { label: string; sub: string }>;
+    kinds: Record<"orders" | "friends" | "weekly" | "listings", { label: string; sub: string }>;
     addEmail: string;
     addEmailSub: string;
     undeliverable: string;
@@ -2526,12 +2545,14 @@ export type EmailCopy = {
   };
   unsubscribePage: {
     title: string;
-    kindName: Record<"orders" | "friends" | "weekly", string>;
+    kindName: Record<"orders" | "friends" | "weekly" | "listings", string>;
     confirm: (kind: string) => string;
     confirmSub: string;
     confirmButton: string;
     done: (kind: string) => string;
     doneSub: string;
+    /** For an old link and for New stocks: turning it back on is done in Settings, signed in. */
+    doneSettingsOnly: string;
     turnBackOn: string;
     backOn: (kind: string) => string;
     invalid: string;
@@ -2564,9 +2585,109 @@ export const STAFF_COPY = {
     campaigns: "Campaigns",
     posts: "Posts",
     feedback: "Feedback",
+    emails: "Emails",
     audit: "Audit",
   },
   signOut: "Leave staff area",
+  /** /staff/emails (lib/server/new-listings): the New stocks email, lined up and sent by a person. */
+  emails: {
+    title: "Emails",
+    sub: "Berth spots new stocks by itself. Nothing is emailed until one of us lines an email up and presses send.",
+    loading: "Reading the emails",
+    failed: "That did not go through. Try again.",
+    nothingNew: "No new stocks since the last email",
+    notProduction: "This is not the live site. You can read here, but lining up, testing and sending work only on the live site.",
+    noBaseline: "Berth has not recorded which stocks it already knew. That happens the first time this page opens on the live site.",
+    lineUp: (count: number) => (count === 1 ? "1 new stock detected. Line up an email" : `${count} new stocks detected. Line up an email`),
+    detectedHeading: "Detected",
+    switchOff: "EMAIL_NEW_LISTINGS is off. Nothing is sent, and send is refused, until it is switched back on.",
+    today: (used: number, cap: number) => `Today's share for these emails: ${used} of ${cap} used.`,
+    recent: (date: string, until: string) => `The last New stocks email was queued on ${date}. A new one cannot be queued before ${until}, 7 days after it.`,
+    draftHeading: "Draft",
+    subject: "Subject",
+    preview: "Preview line",
+    intro: "Intro",
+    extra: "Extra paragraph, optional",
+    extraHint: "Plain words. A blank line starts a new paragraph. No links.",
+    saving: "Saving",
+    saved: "Saved",
+    stocks: "Stocks the email names",
+    fixedHeading: "Fixed lines, always in the email",
+    fixedSender: "Sender line",
+    fixedRisk: "Risk line",
+    fixedWhy: "Why you got it",
+    fixedUnsubscribe: "And a link to turn these emails off",
+    previewHeading: "Preview",
+    previewLoading: "Rendering",
+    recipientsHeading: "Who it goes to",
+    recipientsSub: "Everyone with New stocks on, a usable verified email, and no New stocks email from Berth in the last 7 days, oldest accounts first. Untick a person to take them off this email.",
+    recipientsCut: (shown: number, total: number) => `Showing the first ${shown} of ${total}. Everyone on the list is counted, and everyone not taken off gets the email.`,
+    noRecipients: "Nobody would get it yet.",
+    colPerson: "Person",
+    colAddress: "Address",
+    colWhy: "Why",
+    colSend: "Send",
+    noName: "No username",
+    test: "Send me a test",
+    testSent: "A test went to your own address.",
+    sendTo: (count: number) => (count === 1 ? "Send to 1 person" : `Send to ${count} people`),
+    confirm: (count: number, cap: number) =>
+      `Send to ${count} ${count === 1 ? "person" : "people"}? Pressing send queues it and sends up to ${cap} of them right now, the most the day's share allows, oldest accounts first. Press "Send today's share now" again on each later day for the next ${cap}, and the morning run adds a few more. Whoever is not reached within 7 days is not written to. You can stop it while it sends.`,
+    confirmYes: "Yes, send",
+    confirmNo: "Not yet",
+    cancelDraft: "Cancel draft",
+    stopSending: "Stop sending",
+    sendingHeading: "Sending",
+    sendingNote: (cap: number) =>
+      `Each press of "Send today's share now" sends up to the day's share (${cap}) at once, and the morning run adds a few more. It ends when everyone has it. Whoever is not reached within 7 days is not written to.`,
+    sendNow: "Send today's share now",
+    sendNowWait: "Sending. This takes up to 20 seconds.",
+    sentNow: (count: number) => (count === 0 ? "Nothing went out just now." : `${count} went out just now.`),
+    shareUsed: "Today's share is used. Press again tomorrow, or let the morning run carry on.",
+    progress: { sent: "Sent", waiting: "Waiting", notSent: "Not sent", notReached: "Not reached" },
+    /** Why a send did not go (email_sends.error), counted under "Not sent". */
+    notSentReasons: {
+      pref_off: "turned it off",
+      suppressed: "address suppressed",
+      no_address: "no usable address",
+      switch_off: "sending was switched off",
+      announcement_closed: "stopped by staff",
+      build: "could not be built, tried again",
+      other: "other",
+    } as Record<string, string>,
+    started: (count: number) =>
+      count === 0
+        ? `Queued. Nothing went out just now. Press "Send today's share now" to send, the morning run adds a few more.`
+        : `Queued. ${count} went out just now. Press "Send today's share now" on later days, the morning run adds a few more.`,
+    historyHeading: "Earlier emails",
+    historyNone: "None yet.",
+    status: { draft: "Draft", sending: "Sending", done: "Done", cancelled: "Cancelled" },
+    historyRow: (date: string, stocks: number) => `${date}, ${stocks === 1 ? "1 stock" : `${stocks} stocks`}`,
+    refusals: {
+      nothing_new: "Nothing new to announce.",
+      open_exists: "An email is already lined up or being sent.",
+      not_draft: "That is no longer a draft.",
+      not_open: "That is already finished.",
+      changed: "The draft changed since you looked at it. Read it again, then press send.",
+      too_soon: "Another New stocks email reached people less than 7 days ago. A new one can be queued 7 days after it.",
+      sending: "Nobody can be put back on a list once sending has started. Taking people off still works.",
+      not_sending: "No email is being sent.",
+      share_used: "Today's share is used. Press again tomorrow.",
+      invalid: "Fix what is marked first.",
+      switch_off: "EMAIL_NEW_LISTINGS is off.",
+      not_production: "This only works on the live site. Here you can read and edit, not line up, test or send.",
+      unknown_stock: "That stock is not in this email.",
+      not_found: "That could not be found.",
+      closed: "That is closed.",
+      no_stocks: "No stock is ticked.",
+      off: "Sending is off.",
+      daily_volume: "Today's share is used up. Try again tomorrow.",
+      no_address: "Your account has no verified email.",
+      suppressed: "Your address is on the suppression list.",
+      error: "That did not go through. Try again.",
+      bad_input: "That did not go through. Try again.",
+    } as Record<string, string>,
+  },
   /** /staff/feedback (lib/server/feedback): what people wrote from the feedback sheet. */
   feedback: {
     title: "Feedback",
@@ -2792,7 +2913,7 @@ export const STAFF_COPY = {
     primaryEmail: "Sends go to",
     noEmail: "No verified email.",
     prefs: "Switches",
-    pref: { orders: "Orders", friends: "Friends", weekly: "Weekly" },
+    pref: { orders: "Orders", friends: "Friends", weekly: "Weekly", listings: "New stocks" },
     on: "On",
     off: "Off",
     suppressed: (reason: string) => `Suppressed, ${reason}`,
@@ -2872,6 +2993,7 @@ export const STAFF_COPY = {
       recurring: "Recurring",
       emails: "Email retry",
       weekly: "Weekly summary",
+      listings: "New stocks",
       budgets: "Budget alerts",
       marks: "Marks",
       orderMarks: "Order prices",
@@ -3589,6 +3711,7 @@ export const COPY: Copy = {
       "You sign every order yourself. Berth never holds your keys or your money.",
       "The stocks are tokens issued by others that track a share. They are not the share, and you can lose what you put in.",
       `Berth takes a ${feePct} fee on every order.`,
+      "Berth may email you when it adds stocks. You can turn that off in Settings, under Email.",
     ],
     read: "The full text:",
     terms: "Terms of use",
@@ -3602,7 +3725,7 @@ export const COPY: Copy = {
     failed: "That did not save. Try again.",
   },
   policyNotice: {
-    text: `Our terms and privacy policy are new from ${LEGAL_EFFECTIVE_DATE}. They say more plainly what Berth is and is not, and from the week of 19 October the board shows Most held on Berth: a rounded share of the people who hold each stock or fund, never who.`,
+    text: `Berth's terms and privacy policy carry a new date, ${LEGAL_EFFECTIVE_DATE}. No term of use changed. What is new is one email: Berth may email you when it adds stocks, and the privacy policy now says so. That email is on for anyone who has filled an order and accepted the terms of ${LEGAL_EFFECTIVE_DATE} or later, and off for everyone else. You can turn it on or off under Email in Settings, and off with the link in each email.`,
     terms: "Terms",
     privacy: "Privacy",
     dismiss: "Got it",
@@ -4088,6 +4211,7 @@ export const COPY: Copy = {
   newFace: "Change avatar",
   addEmailTitle: "Add an email to your account",
   addEmailSub: (amount) => `+${amount} XP. Your wallet stays the key to your account.`,
+  addEmailNote: "Berth may email you when it adds stocks. You can turn that off any time in Settings, under Email.",
   addEmailPlaceholder: "you@example.com",
   addEmailContinue: "Continue",
   addEmailSigning: "Confirm in your wallet, so we know the account is yours.",
@@ -4469,9 +4593,11 @@ export const COPY: Copy = {
       orders: "You get this because emails about your orders are on.",
       friends: "You get this because friend emails are on.",
       weekly: "You get this because the weekly summary is on.",
+      listings: "You get this because New stocks emails are on for you. They are on for anyone who has filled an order on Berth and accepted the terms of 30 October 2026 or later, and off for everyone else. Anyone can turn them on or off in Settings, and off with the link in each email.",
     },
     unsubscribe: "Turn these off",
     signoff: "Berth. Wall Street, in your wallet.",
+    sender: `Sent by Berth, operated by ${PRIVACY_OPERATOR.description}. Write to us at ${PRIVACY_OPERATOR.email}.`,
     family: { evm: "An EVM", solana: "A Solana", bitcoin: "A Bitcoin" },
     walletAdded: {
       subject: "A wallet was added to your Berth account",
@@ -4588,6 +4714,15 @@ export const COPY: Copy = {
       body: (amount, chain) => `${amount} in USDC was sent to your Berth account on ${chain}, for opening your account through a Berth offer and staying.`,
       after: "It is yours to keep, spend or take out, like any other money in your wallet.",
     },
+    newListings: {
+      subject: (_names, count) => (count === 1 ? "Berth lists one more stock" : `Berth lists ${count} more stocks`),
+      heading: "New on Berth",
+      intro: (count) => (count === 1 ? "Berth now lists one more stock:" : `Berth now lists ${count} more stocks:`),
+      more: (count) => `And ${count} more.`,
+      notAdvice:
+        "Berth is telling you what it now lists, not advising you on any of them. Stocks on Berth are tokens issued by others that track a share. They are not the share, and you can lose what you put in.",
+      preview: (_names, count) => (count === 1 ? "One more stock is now on Berth. What it is, and what to know first." : `${count} more stocks are now on Berth. What they are, and what to know first.`),
+    },
     weeklySummary: {
       subject: (weekOf) => `Your Berth week of ${weekOf}`,
       heading: "Your week",
@@ -4636,6 +4771,7 @@ export const COPY: Copy = {
         orders: { label: "Orders", sub: "When a limit order fills or expires." },
         friends: { label: "Friends", sub: "When someone asks to be your friend." },
         weekly: { label: "Weekly summary", sub: "On Mondays, your week beside the S&P 500 ETF." },
+        listings: { label: "New stocks", sub: "Berth's own emails when it adds stocks. On if you have filled an order and accepted the terms of 30 October 2026 or later, off for everyone else. You can turn it on or off here." },
       },
       addEmail: "Add an email to get notices",
       addEmailSub: "Security and order notices, by mail.",
@@ -4644,12 +4780,13 @@ export const COPY: Copy = {
     },
     unsubscribePage: {
       title: "Email settings",
-      kindName: { orders: "order", friends: "friend", weekly: "weekly summary" },
+      kindName: { orders: "order", friends: "friend", weekly: "weekly summary", listings: "new stock" },
       confirm: (kind) => `Turn off ${kind} emails?`,
       confirmSub: "Security notices still reach you whatever you choose here.",
       confirmButton: "Turn off",
       done: (kind) => `${kind.charAt(0).toUpperCase()}${kind.slice(1)} emails are off.`,
       doneSub: "Security notices still reach you. You can turn this back on here or in Berth's settings.",
+      doneSettingsOnly: "Security notices still reach you. To turn this back on, sign in to Berth and open Settings, under Email.",
       turnBackOn: "Turn back on",
       backOn: (kind) => `${kind.charAt(0).toUpperCase()}${kind.slice(1)} emails are on again.`,
       invalid: "This link no longer works. You can change your email settings in Berth.",
@@ -4716,7 +4853,7 @@ export const COPY: Copy = {
           "Security, abuse limits, error reports, the check of an order before a reward is paid for it, and the record of what staff at Berth did: our legitimate interest in a service that is safe, works and is used fairly.",
           "The check of the country your connection comes from: our legal obligations under sanctions law, and our legitimate interest in offering Berth only where we have chosen to offer it.",
           "Records of orders and the fees they paid: our legal obligations under tax and accounting law.",
-          "Email. Security notices rest on our legitimate interest in telling you when your account changes. Order and friend notices are part of the service you asked for, and you can turn them off. The weekly summary rests on your consent, given when you turn it on.",
+          "Email. Security notices rest on our legitimate interest in telling you when your account changes. Order and friend notices are part of the service you asked for, and you can turn them off. The weekly summary rests on your consent, given when you turn it on. New stocks emails, which are marketing, rest on our legitimate interest in telling customers what else Berth lists, as the law on email allows for existing customers, for someone who has filled an order on Berth and accepted the terms of 30 October 2026 or later, and you can object at any time by turning them off. For anyone else they are off, and rest on your consent, given when you turn them on in Settings.",
           "Campaign rewards: necessary to pay a reward under the campaign's rules. The checks against abuse rest on our legitimate interest in paying each reward once, to the right person.",
           "Usage statistics and product analytics: your consent, which you give and take back under Help improve Berth. That one choice also covers what analytics keeps in your browser.",
           "Showing your friends what you hold: your consent, which you give and take back with its switch.",
@@ -4798,7 +4935,7 @@ export const COPY: Copy = {
         id: "email",
         heading: "Email from Berth",
         body: [
-          "If your account has a verified email address, Berth sends it short notices about your account. We send no marketing.",
+          "If your account has a verified email address, Berth sends it short notices about your account. One kind of email is marketing, New stocks, described below, and you can turn it off at any time.",
         ],
         list: [
           "Security notices: a wallet added to or removed from your account, two accounts merged, an AI connected. These always go out, because they are how you would learn that someone else is using your account. They never ask you for a code or a password.",
@@ -4806,6 +4943,7 @@ export const COPY: Copy = {
           "Order notices: a limit order filled, or expired and the money came back. On unless you turn them off.",
           "Friend notices: someone asked to be your friend, at most one email a day. On unless you turn them off.",
           "The weekly summary: on Mondays, what your account was worth at the week's last close, its change beside the S&P 500 ETF, what you hold and how each moved, what filled and which limit orders expired, and how many new friends and Salutes you had. Off unless you turn it on.",
+          "New stocks: when Berth adds stocks, one email naming them, written and sent by a person on our team, so not on a fixed day, and over a few mornings when many people are due one. On if you have filled an order on Berth and accepted the terms of 30 October 2026 or later, and off for everyone else until both are true, unless you have turned it on or off yourself. You can turn it on or off in Settings, under Email. Every email has a link to turn it off, and once you turn it off it stays off.",
         ],
         after: [
           "We do not track whether you open an email or click its links. Every notice other than a security or account notice has a link to turn that kind off, and you can change them all under Email in the app's settings. If mail to your address bounces or is reported as spam, we stop sending to it.",
@@ -4957,6 +5095,7 @@ export const COPY: Copy = {
           "Compare with friends can now draw a friend's line over the last 14, 30 or 90 days as well as the last week and since your first buys, and only over a span your own record already covers.",
           "On 11 October 2026 the names of the privacy switches in this policy were made to match the app: Hide my profile, Show me on shared links, Share my holdings with friends and Compare weeks with friends. What each one does has not changed.",
           "On 11 October 2026, Turn on all friend features: one button that turns on all four switches, which stay separate, and a one time XP bonus the first time all four are on, which stays yours whatever you turn off later.",
+          "On 30 October 2026, New stocks emails: Berth may email you when it adds stocks. They are on for someone who has filled an order and accepted the terms of 30 October 2026 or later, and off for everyone else. Anyone can turn them on or off under Email in Settings, and off with the link in each one. The sections on the legal basis for email and on email from Berth say so.",
         ],
       },
       {
@@ -5237,7 +5376,7 @@ export const COPY: Copy = {
       {
         id: "what-changed",
         heading: `What changed on ${LEGAL_EFFECTIVE_DATE}`,
-        body: ["The first change below is new on 8 October 2026. The others came on 6 October 2026."],
+        body: ["The first change below is new on 8 October 2026. A line that begins with a date is new on that date. The others came on 6 October 2026."],
         list: [
           "A stock bought at the market price lands as the issuer's own token in your own wallet on Robinhood Chain, which only your keys control, instead of in your Berth account, where Robinhood offers its tokens.",
           "Berth now says plainly that it is not a broker, an exchange, an investment firm or an adviser, and does not check whether an order suits you.",
@@ -5249,6 +5388,7 @@ export const COPY: Copy = {
           "Liability is rewritten to keep every right consumer law gives you.",
           "Governing law and the courts for disputes are stated: the Netherlands, without taking away the protection of the law where you live.",
           "Campaigns now reward the new account opened through a campaign's own link, paid to that account. Inviting someone with your own invite link or invite code never earns money.",
+          "On 30 October 2026 no term of use changed. The privacy policy now says that Berth may email you when it adds stocks: that email is on for someone who has filled an order and accepted the terms of 30 October 2026 or later, and off for everyone else, and anyone can turn it on or off under Email in Settings, and off with the link in each one.",
         ],
       },
       {

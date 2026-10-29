@@ -3,10 +3,11 @@ import { render } from "@react-email/render";
 import { emailBaseUrl, emailFrom, emailMarkUrl, emailReplyTo, emailSendingOn } from "@/lib/server/email/config";
 import { composeNotice, NOTICE_KIND, type EmailContent, type Notice } from "@/lib/server/email/compose";
 import { resendTransport, type EmailTransport, type OutgoingEmail } from "@/lib/server/email/resend";
-import { claimSend, finishSend, isSuppressed, primaryEmail, readPrefs, sendsToday, takeOnePending, takeStalePending, type PendingRow } from "@/lib/server/email/store";
+import { announcementStatus, claimSend, finishSend, holdPending, isSuppressed, listingExcluded, primaryEmail, readPrefs, sendsToday, takeOnePending, takeStalePending, type PendingRow } from "@/lib/server/email/store";
 import { NoticeEmail, noticeText } from "@/lib/server/email/template";
 import { issueUnsubscribeToken } from "@/lib/server/email/token";
 import { weeklyRefCurrent } from "@/lib/weekly-window";
+import { announcementOfRef, newListingsSwitchOn } from "@/lib/new-listings-window";
 import { isAlwaysSent } from "@/lib/email-kinds";
 
 /**
@@ -90,6 +91,20 @@ export function weeklyDailyCap(env: NodeJS.ProcessEnv = process.env): number {
   const cap = dailyCap(env);
   const left = cap - reservedDailyRoom(env);
   return Math.max(0, Math.min(wantedShare(env.EMAIL_WEEKLY_DAILY_CAP, Math.floor(cap / 4)), left));
+}
+
+/**
+ * The New stocks email's own share of the day (lib/server/new-listings):
+ * a quarter of the daily cap, like the weekly summary's, and never into
+ * the reserved quarter or the weekly share, so on a Monday the two
+ * together still leave order and friend notices their room. A batch
+ * reaches the rest of its people on the mornings after.
+ * EMAIL_LISTINGS_DAILY_CAP overrides it within those bounds.
+ */
+export function listingsDailyCap(env: NodeJS.ProcessEnv = process.env): number {
+  const cap = dailyCap(env);
+  const left = cap - reservedDailyRoom(env) - weeklyDailyCap(env);
+  return Math.max(0, Math.min(wantedShare(env.EMAIL_LISTINGS_DAILY_CAP, Math.floor(cap / 4)), left));
 }
 
 /** Waits before each retry of a rate limited send. */
@@ -213,12 +228,37 @@ async function sendClaimed(sendId: string, input: NoticeInput, to: string): Prom
   return "failed";
 }
 
+/** The New stocks types that share the day's listings cap: real sends and staff's tests. */
+export const LISTINGS_TYPES = ["new_listings", "new_listings_test"] as const;
+
+/**
+ * Staff's test of an announcement: sent only to `userId`'s own primary
+ * email, whatever their switches say, never to anyone else. Counts against
+ * the day's New stocks share, is recorded in email_sends under its own type
+ * ("new_listings_test") and obeys the kill switch.
+ */
+export async function deliverTest(input: NoticeInput): Promise<DeliverOutcome> {
+  if (!sendingAllowed() || !newListingsSwitchOn()) return "off";
+  const to = await primaryEmail(input.userId);
+  if (!to) return "no_address";
+  if (await isSuppressed(to)) return "suppressed";
+  if ((await sendsToday(LISTINGS_TYPES)) >= listingsDailyCap() || (await sendsToday()) >= dailyCap()) return "daily_volume";
+  const claim = await claimSend(input.userId, input.notice.type, input.ref, input.notice);
+  if (typeof claim === "string") return claim;
+  return sendClaimed(claim.id, input, to);
+}
+
 export async function deliver(input: NoticeInput): Promise<DeliverOutcome> {
   if (!sendingAllowed()) return "off";
   const checked = await recipient(input);
   if (typeof checked === "string") return checked;
   if (!isAlwaysSent(NOTICE_KIND[input.notice.type]) && (await sendsToday()) >= dailyCap()) return "daily_volume";
   if (input.notice.type === "weekly" && (await sendsToday("weekly")) >= weeklyDailyCap()) return "daily_volume";
+  if (input.notice.type === "new_listings") {
+    // The kill switch (EMAIL_NEW_LISTINGS=off) and the day's share, tests counted with the real sends.
+    if (!newListingsSwitchOn()) return "off";
+    if ((await sendsToday(LISTINGS_TYPES)) >= listingsDailyCap()) return "daily_volume";
+  }
   const claim = await claimSend(input.userId, input.notice.type, input.ref, input.notice);
   if (typeof claim === "string") return claim;
   return sendClaimed(claim.id, input, checked.to);
@@ -232,7 +272,8 @@ export type RetrySummary = { retried: number; sent: number; gaveUp: number };
  * checked again against the person's switches and address and sent, at
  * most `limit` a pass. A row past its last attempt is given up, and so is
  * a weekly summary whose week is over (it goes out Monday to Thursday
- * only, lib/weekly-window), so "your week of" never arrives late.
+ * only, lib/weekly-window), so "your week of" never arrives late, and a
+ * New stocks email whose batch is past its week (lib/new-listings-window).
  */
 export async function retryPendingSends({ limit = 20, now = new Date() }: { limit?: number; now?: Date } = {}): Promise<RetrySummary> {
   if (!sendingAllowed()) return { retried: 0, sent: 0, gaveUp: 0 };
@@ -252,6 +293,32 @@ async function resendRow(row: PendingRow, now: Date): Promise<DeliverOutcome | "
   if (row.type === "weekly" && !weeklyRefCurrent(row.ref, now)) {
     await finishSend(row.id, { ok: false, error: "week_past" });
     return "week_past";
+  }
+  // New stocks: the kill switch stops retries too, and a row of an announcement that is done or cancelled is let go.
+  if (row.type === "new_listings_test") {
+    await finishSend(row.id, { ok: false, error: "test_past" });
+    return "week_past";
+  }
+  if (row.type === "new_listings") {
+    if (!newListingsSwitchOn()) {
+      await finishSend(row.id, { ok: false, error: "switch_off" });
+      return "off";
+    }
+    if ((await announcementStatus(announcementOfRef(row.ref))) !== "sending") {
+      await finishSend(row.id, { ok: false, error: "announcement_closed" });
+      return "week_past";
+    }
+    // Staff took them off its list after the row was claimed.
+    if (await listingExcluded(announcementOfRef(row.ref), row.user_id)) {
+      await finishSend(row.id, { ok: false, error: "pref_off" });
+      return "pref_off";
+    }
+    // The day's New stocks share and the day's cap hold for a retry as for a first send. The taken row is
+    // pending and counted in today's sends itself, so it is over only when others already filled them.
+    if ((await sendsToday(LISTINGS_TYPES)) > listingsDailyCap() || (await sendsToday()) > dailyCap()) {
+      await holdPending(row.id, "daily_volume");
+      return "daily_volume";
+    }
   }
   // A budget alert is about its own day: the next day sends its own.
   if (row.type === "budget_low" && !row.ref.includes(`:${now.toISOString().slice(0, 10)}:`)) {
@@ -357,6 +424,14 @@ export const SAMPLE_NOTICES: readonly { name: string; notice: Notice }[] = [
       friends: { added: 1, salutes: 3 },
     },
   },
+  {
+    name: "new-listings",
+    notice: {
+      type: "new_listings",
+      names: ["Apple", "Microsoft", "Amazon", "Alphabet", "Netflix", "Coca-Cola", "Visa", "Walmart", "Costco", "Pfizer", "Disney", "Intel", "Uber", "Shopify"],
+    },
+  },
+  { name: "new-listings-one", notice: { type: "new_listings", names: ["Apple"] } },
   {
     name: "weekly-summary-first-week",
     notice: {

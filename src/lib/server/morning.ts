@@ -3,6 +3,7 @@ import { runCampaignStep, type CampaignStepSummary } from "@/lib/server/campaign
 import { runInviteXpStep, type InviteXpSummary } from "@/lib/server/invite-xp";
 import { retryPendingSends, type RetrySummary } from "@/lib/server/email/send";
 import { runWeeklySummaries, type WeeklyRunSummary } from "@/lib/server/weekly";
+import { runNewListings, type NewListingsRunSummary } from "@/lib/server/new-listings";
 import { runBudgetAlerts, type BudgetAlertSummary } from "@/lib/server/staff/budgets";
 
 /**
@@ -32,6 +33,15 @@ import { runBudgetAlerts, type BudgetAlertSummary } from "@/lib/server/staff/bud
  *    budget is whatever the run has left, at most WEEKLY_BUDGET_MS: on a
  *    slow morning it sends fewer, and the rest go the next morning. It
  *    never counts as a failure of the run.
+ * 3b. New stocks (lib/server/new-listings): new listings are detected (the
+ *    baseline is recorded in production, nothing else is written), and the
+ *    announcement a staff admin queued is sent on, within its own share of
+ *    the day's cap, until nobody is left or its days are over. Nothing is
+ *    ever sent that staff did not approve, and nothing at all while
+ *    EMAIL_NEW_LISTINGS is "off". After the weekly stage, never beside it
+ *    (the same Resend rate limit), in what the run has left, at most
+ *    NEW_LISTINGS_BUDGET_MS; whoever it did not reach goes the next
+ *    morning. Never a failure of the run.
  * 4. Budgets: when a paid service runs low (lib/server/staff/budgets), one
  *    email to each staff admin, once per service a day. Last, in at most
  *    BUDGET_ALERTS_BUDGET_MS of what the run has left (the weekly stage
@@ -54,6 +64,13 @@ export const INVITE_XP_BUDGET_MS = 4_000;
 export const EMAILS_BUDGET_MS = 10_000;
 /** The weekly stage's most; it gets less when the stages before it ran long (RUN_BUDGET_MS). */
 export const WEEKLY_BUDGET_MS = 10_000;
+/** The New stocks stage's most; it gets less when the stages before it ran long. */
+export const NEW_LISTINGS_BUDGET_MS = 8_000;
+/**
+ * It starts nobody new this long before its budget ends: one marketing send
+ * can take several seconds (reads, render, the transport and its 429 waits).
+ */
+export const NEW_LISTINGS_MARGIN_MS = 5_000;
 /** The budget alert stage: a few sums and, on a bad day, a few security notices. */
 export const BUDGET_ALERTS_BUDGET_MS = 4_000;
 /** The whole run's time, inside the route's sixty seconds (maxDuration) with room to answer. */
@@ -69,6 +86,7 @@ export type MorningSummary = {
   inviteXp: Stage<InviteXpSummary>;
   emails: Stage<RetrySummary>;
   weekly: Stage<WeeklyRunSummary>;
+  listings: Stage<NewListingsRunSummary>;
   budgets: Stage<BudgetAlertSummary>;
   failed: boolean;
 };
@@ -97,6 +115,7 @@ export async function runMorning({
   inviteXp = () => runInviteXpStep({ now, deadline: Date.now() + INVITE_XP_BUDGET_MS - 1_000 }),
   emails = () => retryPendingSends(),
   weekly = (budgetMs) => runWeeklySummaries({ now, deadline: Date.now() + budgetMs - WEEKLY_MARGIN_MS }),
+  listings = (budgetMs) => runNewListings({ now, deadline: Date.now() + budgetMs - NEW_LISTINGS_MARGIN_MS }),
   budgetAlerts = () => runBudgetAlerts({ now }),
   budgets = { holds: HOLDS_BUDGET_MS, emails: EMAILS_BUDGET_MS, weekly: WEEKLY_BUDGET_MS, run: RUN_BUDGET_MS },
   clock = Date.now,
@@ -108,6 +127,8 @@ export async function runMorning({
   emails?: () => Promise<RetrySummary>;
   /** Given its budget, so it stops starting new summaries in time. */
   weekly?: (budgetMs: number) => Promise<WeeklyRunSummary>;
+  /** Given its budget, so it stops starting new sends in time. */
+  listings?: (budgetMs: number) => Promise<NewListingsRunSummary>;
   budgetAlerts?: () => Promise<BudgetAlertSummary>;
   budgets?: { holds: number; campaigns?: number; inviteXp?: number; emails: number; weekly: number; run?: number };
   clock?: () => number;
@@ -124,6 +145,10 @@ export async function runMorning({
   // No time at all: the weekly stage is not started (not even its reads); the summaries go another morning.
   const weeklyStage: Stage<WeeklyRunSummary> =
     weeklyBudget > 0 ? await stage(() => weekly(weeklyBudget), weeklyBudget) : { ok: false, error: "no time left" };
+  // After the weekly stage, in what the run has left less the budget alerts' share.
+  const listingsBudget = Math.max(0, Math.min(NEW_LISTINGS_BUDGET_MS, run - (clock() - started) - BUDGET_ALERTS_BUDGET_MS));
+  const listingsStage: Stage<NewListingsRunSummary> =
+    listingsBudget > 0 ? await stage(() => listings(listingsBudget), listingsBudget) : { ok: false, error: "no time left" };
   // Last, in what is left of the run (never past it), so recording the run
   // still fits inside the function's sixty seconds.
   const budgetAlertsBudget = Math.max(0, Math.min(BUDGET_ALERTS_BUDGET_MS, run - (clock() - started)));
@@ -134,6 +159,7 @@ export async function runMorning({
   if (!inviteXpStage.ok) console.warn("[cron/morning] invite xp step failed:", inviteXpStage.error);
   if (!emailStage.ok) console.warn("[cron/morning] email retry failed:", emailStage.error);
   if (!weeklyStage.ok) console.warn("[cron/morning] weekly summary failed:", weeklyStage.error);
+  if (!listingsStage.ok) console.warn("[cron/morning] new stocks failed:", listingsStage.error);
   if (!budgetStage.ok) console.warn("[cron/morning] budget alerts failed:", budgetStage.error);
-  return { holds: holdStage, campaigns: campaignStage, inviteXp: inviteXpStage, emails: emailStage, weekly: weeklyStage, budgets: budgetStage, failed: !holdStage.ok };
+  return { holds: holdStage, campaigns: campaignStage, inviteXp: inviteXpStage, emails: emailStage, weekly: weeklyStage, listings: listingsStage, budgets: budgetStage, failed: !holdStage.ok };
 }
