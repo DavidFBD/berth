@@ -165,10 +165,35 @@ function useSettleSwitch() {
   };
 }
 
+type SwitchField = "visible" | "linkFace" | "shareHoldings" | "shareWeek";
+
+/**
+ * A privacy switch flips on screen the moment it is tapped and flips back if
+ * the server refuses. Not money, not a signature: only the viewer's own
+ * social settings. The server's answer (onSuccess settle) still wins.
+ */
+function useOptimisticSwitch(field: SwitchField) {
+  const queryClient = useQueryClient();
+  const { key } = useSocialCall();
+  return {
+    onMutate: async (value: boolean): Promise<{ previous: MySocial | undefined }> => {
+      await queryClient.cancelQueries({ queryKey: KEYS.me(key) });
+      const previous = queryClient.getQueryData<MySocial>(KEYS.me(key));
+      if (previous) queryClient.setQueryData<MySocial>(KEYS.me(key), { ...previous, [field]: value });
+      return { previous };
+    },
+    onError: (_error: unknown, _value: boolean, context: { previous: MySocial | undefined } | undefined) => {
+      if (context?.previous) queryClient.setQueryData(KEYS.me(key), context.previous);
+    },
+  };
+}
+
 export function useSetVisible() {
   const { call } = useSocialCall();
   const settle = useSettleSwitch();
+  const optimistic = useOptimisticSwitch("visible");
   return useMutation({
+    ...optimistic,
     mutationFn: (visible: boolean) => must(call<WithBonus>("visibility", { visible })),
     onSuccess: (data) => void settle(data),
   });
@@ -177,7 +202,9 @@ export function useSetVisible() {
 export function useSetLinkFace() {
   const { call } = useSocialCall();
   const settle = useSettleSwitch();
+  const optimistic = useOptimisticSwitch("linkFace");
   return useMutation({
+    ...optimistic,
     mutationFn: (on: boolean) => must(call<WithBonus>("link-face", { on })),
     onSuccess: (data) => void settle(data),
   });
@@ -187,7 +214,9 @@ export function useSetShareHoldings() {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
   const settle = useSettleSwitch();
+  const optimistic = useOptimisticSwitch("shareHoldings");
   return useMutation({
+    ...optimistic,
     mutationFn: (on: boolean) => must(call<WithBonus>("share-holdings", { on })),
     onSuccess: (data, on) => {
       settle(data);
@@ -203,7 +232,9 @@ export function useSetShareWeek() {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
   const settle = useSettleSwitch();
+  const optimistic = useOptimisticSwitch("shareWeek");
   return useMutation({
+    ...optimistic,
     mutationFn: (on: boolean) => must(call<WithBonus>("share-week", { on })),
     onSuccess: (data) => {
       settle(data);
@@ -533,6 +564,24 @@ export function useSocialAction() {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
   return useMutation({
+    // Answering a request by name clears it from the list at once; a refusal puts it back.
+    onMutate: async (vars: CardActionVars): Promise<{ previous: FriendsList | undefined }> => {
+      const answering = vars.kind === "friend" && !vars.token && (vars.action === "accept" || vars.action === "decline");
+      const previous = queryClient.getQueryData<FriendsList>(KEYS.friends(key));
+      if (answering && previous) {
+        await queryClient.cancelQueries({ queryKey: KEYS.friends(key) });
+        const person = previous.incoming.find((p) => p.handle === vars.handle);
+        queryClient.setQueryData<FriendsList>(KEYS.friends(key), {
+          ...previous,
+          incoming: previous.incoming.filter((p) => p.handle !== vars.handle),
+          friends: vars.action === "accept" && person ? [...previous.friends, person] : previous.friends,
+        });
+      }
+      return { previous: answering ? previous : undefined };
+    },
+    onError: (_error: unknown, _vars: CardActionVars, context: { previous: FriendsList | undefined } | undefined) => {
+      if (context?.previous) queryClient.setQueryData(KEYS.friends(key), context.previous);
+    },
     mutationFn: async (vars: CardActionVars): Promise<{ done: boolean; card: CardAnswer | null }> => {
       if (vars.kind === "salute") {
         const card = await must(call<CardAnswer>("salute", { handle: vars.handle, on: vars.on }));
