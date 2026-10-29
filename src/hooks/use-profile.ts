@@ -412,7 +412,7 @@ export function useOrders(enabled = true) {
   return useRewardsQuery<OrdersResponse, OrdersResponse["orders"]>(
     "orders",
     "/api/orders",
-    { enabled, staleTime: 5 * 60_000, display: true, select: (data) => data.orders },
+    { enabled, staleTime: 5 * 60_000, select: (data) => data.orders },
   );
 }
 
