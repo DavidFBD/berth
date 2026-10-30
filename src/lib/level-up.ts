@@ -89,9 +89,10 @@ export const SETTLED_S = Math.max(
   TAKEOVER.action.delay + TAKEOVER.action.duration,
 );
 
-/** What holds the takeover back: a signing window (Privy) or an order drawer. */
+/** What holds the takeover back: a signing window (Privy), an order drawer or the command menu. */
 export const STAGE_BUSY_SELECTOR = [
   "[data-order-drawer]",
+  "[data-command-menu]",
   "#privy-dialog",
   '[id^="privy-dialog"]',
   '#privy-modal-root [role="dialog"]',
