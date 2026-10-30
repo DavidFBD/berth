@@ -232,4 +232,54 @@ describe("sheet history", () => {
     t.settle();
     expect(t.pending()).toBe(-2);
   });
+
+  it("unwinds a sheet that closed as another opened over it in one back", () => {
+    // The command palette closes and the buy drawer opens in the same commit.
+    const t = setup();
+    sheet(t.keeper, "palette");
+    t.keeper.release("palette");
+    const drawer = sheet(t.keeper, "drawer");
+    t.settle();
+    expect(t.pending()).toBe(null);
+    expect(t.index()).toBe(2);
+    t.back();
+    expect(drawer.closes).toBe(1);
+    t.keeper.release("drawer");
+    t.settle();
+    // The palette's entry goes with it: no dead back press left behind.
+    expect(t.pending()).toBe(-1);
+    t.land();
+    expect(t.index()).toBe(0);
+  });
+
+  it("keeps a sheet that opens while its own pop is still travelling", () => {
+    // The palette closes, and the chat sheet mounts a moment later, after the
+    // flush asked for go(-1) but before that traversal landed.
+    const t = setup();
+    sheet(t.keeper, "palette");
+    t.keeper.release("palette");
+    t.settle();
+    expect(t.pending()).toBe(-1);
+    const chat = sheet(t.keeper, "chat");
+    t.land();
+    expect(chat.closes).toBe(0);
+    expect(t.index()).toBe(1);
+    expect(t.entries[1]).toMatchObject({ berthSheets: { depth: 1 } });
+    // And back closes it as usual.
+    t.back();
+    expect(chat.closes).toBe(1);
+  });
+
+  it("drops a sheet that opened and closed while a pop was travelling", () => {
+    const t = setup();
+    sheet(t.keeper, "palette");
+    t.keeper.release("palette");
+    t.settle();
+    sheet(t.keeper, "blink");
+    t.keeper.release("blink");
+    t.settle();
+    t.land();
+    expect(t.index()).toBe(0);
+    expect(t.entries.length).toBe(2);
+  });
 });

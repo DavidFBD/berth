@@ -46,6 +46,8 @@ type Entry = {
   /** True while the sheet refuses to close (a signature is being prepared or in flight). */
   locked: () => boolean;
   closed: boolean;
+  /** False for a sheet opened while our own go() was still travelling: its entry waits for the popstate. */
+  pushed: boolean;
 };
 
 const MARKER = "berthSheets";
@@ -109,7 +111,7 @@ export function createSheetHistory(
     // How many of our entries still sit in history above what is open now.
     // Zero when the state has no marker (a navigation replaced it) or when
     // the entries were already popped by the person.
-    const owed = depthOf(port.getState()) - inflight - stack.length;
+    const owed = depthOf(port.getState()) - inflight - stack.filter((entry) => entry.pushed).length;
     if (stack.length === 0) token = null;
     if (owed > 0) {
       inflight += owed;
@@ -125,18 +127,36 @@ export function createSheetHistory(
     }
   };
 
+  /**
+   * Give the sheets opened while a go() travelled their entries now it has
+   * landed. Pushed before it landed, the traversal would have come down on a
+   * stale entry and closed them the moment they opened.
+   */
+  const pushWaiting = () => {
+    for (let index = stack.length - 1; index >= 0; index -= 1) {
+      if (!stack[index].pushed && stack[index].closed) stack.splice(index, 1);
+    }
+    stack.forEach((entry, index) => {
+      if (entry.pushed || token === null) return;
+      entry.pushed = true;
+      port.push(withDepth(port.getState(), token, index + 1));
+    });
+  };
+
   const reassert = (entry: Entry) => {
     if (entry.closed || !stack.includes(entry)) return;
     if (!entry.stillOpen()) return;
-    // It refused without saying so up front. Put back whatever the pop took.
-    restore(stack.length);
+    // It refused without saying so up front. Put back whatever the pop took,
+    // for the sheets that hold entries; any still waiting get theirs on landing.
+    restore(stack.filter((candidate) => candidate.pushed).length);
   };
 
   return {
     open(id, close, stillOpen, locked = () => false) {
       if (stack.length === 0 || token === null) token = mintToken();
-      stack.push({ id, close, stillOpen, locked, closed: false });
-      port.push(withDepth(port.getState(), token, stack.length));
+      const pushed = inflight === 0;
+      stack.push({ id, close, stillOpen, locked, closed: false, pushed });
+      if (pushed) port.push(withDepth(port.getState(), token, stack.length));
     },
 
     anyLocked() {
@@ -160,7 +180,7 @@ export function createSheetHistory(
       // needed) is put back at once, and nothing under it is asked either.
       let lockedAt = -1;
       for (let index = stack.length - 1; index >= depth; index -= 1) {
-        if (!stack[index].closed && stack[index].locked()) {
+        if (stack[index].pushed && !stack[index].closed && stack[index].locked()) {
           lockedAt = index;
           break;
         }
@@ -170,7 +190,7 @@ export function createSheetHistory(
       const asked: Entry[] = [];
       for (let index = stack.length - 1; index > lockedAt && index >= depth; index -= 1) {
         const entry = stack[index];
-        if (entry.closed) continue;
+        if (entry.closed || !entry.pushed) continue;
         asked.push(entry);
       }
       if (lockedAt >= 0) {
@@ -178,6 +198,7 @@ export function createSheetHistory(
         for (const entry of asked) entry.close();
         for (const entry of asked) schedule(() => reassert(entry), 60);
         restore(lockedAt + 1);
+        pushWaiting();
         return;
       }
       // Entries already closed above the depth have no entry left to pop.
@@ -185,6 +206,7 @@ export function createSheetHistory(
       for (const entry of asked) schedule(() => reassert(entry), 60);
       // Drop closed entries from the top that history no longer holds.
       while (stack.length > depth && stack[stack.length - 1].closed) stack.pop();
+      pushWaiting();
     },
   };
 }

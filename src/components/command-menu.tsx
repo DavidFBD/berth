@@ -5,6 +5,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { CompanyMark } from "@/components/company-marks";
 import { useCopy } from "@/components/settings-provider";
 import { STOCK_LISTINGS, LISTING_MARK_BY_SYMBOL, rowName, type TokenListing } from "@/lib/listings";
+import { useBackToClose } from "@/hooks/use-back-to-close";
 import { stageBusy } from "@/lib/level-up";
 import { isApplePlatform, moveIndex, searchListings, shortcutAction, shortcutLabel } from "@/lib/command-menu";
 
@@ -99,6 +100,11 @@ export function CommandMenu({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [apple, onOpenChange]);
+
+  // Back closes the palette like any sheet: it is a Dialog, not the shared
+  // Drawer, so it asks for the same history entry itself.
+  const closePalette = useCallback(() => onOpenChange(false), [onOpenChange]);
+  useBackToClose(open, closePalette);
 
   // Whatever closed the palette, the next opening starts clean.
   useEffect(() => {
