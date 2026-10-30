@@ -44,6 +44,7 @@ import { useSignOut } from "@/hooks/use-wallet-restore";
 import { AccountDrawerScreens } from "@/components/account-drawer";
 import type { DrawerView } from "@/components/account-drawer-nav";
 import { DRAWER_LINK_PARAM, DRAWER_RETURN_KEY, DRAWER_RETURN_PARAM, NO_RETURN, initialScreen, readMark, resolveLink, resolveReturn, waitingInDrawer, type ReturnState } from "@/lib/drawer-return";
+import { stateForUrlReplace } from "@/lib/sheet-history";
 
 /**
  * Header account entry point. Email login (Privy) is the default; the
@@ -254,13 +255,13 @@ function useDrawerReturn(open: () => void, isOpen: boolean): ReturnState {
     }
     if (result.strip) {
       url.searchParams.delete(DRAWER_RETURN_PARAM);
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(stateForUrlReplace(window.history.state), "", url);
     }
     // An email's `?open=friends` (lib/drawer-return resolveLink): the drawer on Friends, the parameter gone.
     const link = resolveLink(url.searchParams.get(DRAWER_LINK_PARAM));
     if (link.strip) {
       url.searchParams.delete(DRAWER_LINK_PARAM);
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(stateForUrlReplace(window.history.state), "", url);
     }
     const opened = result.open ?? (link.open ? { view: link.open, scroll: null } : null);
     if (!opened) return;

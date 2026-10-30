@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "@/lib/toast";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createSingleFlight } from "@/lib/single-flight";
 import { formatUnits } from "viem";
 import { AnimatePresence, motion } from "motion/react";
@@ -59,6 +59,7 @@ import { LimitPlaced, LimitPriceFields, LimitSummary } from "./limit-price";
 import { useCopy, useMoney } from "@/components/settings-provider";
 import { usePourQuote } from "@/hooks/use-pour-quote";
 import { RollingNumber } from "@/components/ui/rolling-number";
+import { createSignAttempt, refusesClose } from "@/lib/sign-attempt";
 import { errorNumber, minimumToSign, refusalReason, refusalWords, type SignPlan } from "@/lib/quote-hold";
 import { outcomeHoldUntil } from "@/lib/gas-sponsor";
 import { useUsdPrices } from "@/hooks/use-usd-prices";
@@ -449,11 +450,24 @@ export function WithdrawDrawer({
     setCustomRecipient(null);
   };
 
+  // Busy on Sell from the tap until the order starts: the fresh quote.
+  const [preparing, setPreparing] = useState(false);
+  // Held shut from the tap on the button until the order is running: the
+  // terms and the fresh quote are awaited first, and a drawer closed in that
+  // gap would still go on to sign with nothing watching (lib/sign-attempt).
+  const [signAttempt] = useState(createSignAttempt);
+  const closeRefused = refusesClose({ locked: action.locked, preparing });
   const handleOpenChange = (next: boolean) => {
-    if (!next && action.locked) return;
+    if (!next && closeRefused) return;
+    if (!next) signAttempt.cancel();
     onOpenChange(next);
     if (!next) finish();
   };
+  useEffect(() => {
+    // Closed from outside (the host sets open false), or unmounted.
+    if (!open) signAttempt.cancel();
+    return () => signAttempt.cancel();
+  }, [open, signAttempt]);
 
   const handleMax = () => {
     if (availableShares <= 0n) return;
@@ -487,8 +501,6 @@ export function WithdrawDrawer({
     }
   };
 
-  // Busy on Sell from the tap until the order starts: the fresh quote.
-  const [preparing, setPreparing] = useState(false);
   // The amount whose fresh quote came back lower than shown: the new figure is on screen, a second tap goes.
   const [priceMovedFor, setPriceMovedFor] = useState<bigint | null>(null);
   // Taken synchronously on the tap: `preparing` is state and lands a render late, so a double tap would read it false twice.
@@ -511,6 +523,7 @@ export function WithdrawDrawer({
     }
     setPreparing(true);
     setPriceMovedFor(null);
+    const attempt = signAttempt.begin();
     let plan: SignPlan;
     try {
       // What is signed is the minimum the person saw, and only while a quote
@@ -528,6 +541,9 @@ export function WithdrawDrawer({
     } finally {
       setPreparing(false);
     }
+    // The drawer closed or unmounted while the terms and the quote were awaited:
+    // nothing is watching, so nothing is signed (lib/sign-attempt).
+    if (!signAttempt.current(attempt)) return;
     if (plan.kind === "moved") {
       // An earlier run's error would sit under the new figure as if this tap failed.
       if (action.error) action.reset();
@@ -724,7 +740,8 @@ export function WithdrawDrawer({
       <Drawer
         open={open}
         onOpenChange={handleOpenChange}
-        disablePointerDismissal={action.locked}
+        locked={closeRefused}
+        disablePointerDismissal={closeRefused}
       >
         {/* An order drawer: the level-up takeover waits until it closes (lib/level-up). */}
         <DrawerContent data-order-drawer="">
