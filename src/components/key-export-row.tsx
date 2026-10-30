@@ -40,7 +40,7 @@ export function AdvancedSection({ evmAddress }: { evmAddress?: string }) {
         aria-expanded={open}
         aria-controls={ADVANCED_PANEL_ID}
         onClick={() => setOpen((current) => !current)}
-        className="flex items-center gap-1.5 self-start text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground transition-colors hover:text-foreground"
+        className="hit-y flex items-center gap-1.5 self-start text-[11.5px] font-bold tracking-(--tracking-caps) uppercase text-muted-foreground transition-colors hover:text-foreground"
       >
         {copy.advancedSectionLabel}
         <CaretDown

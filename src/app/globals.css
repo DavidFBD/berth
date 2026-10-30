@@ -355,6 +355,32 @@ p {
   --shadow-float: 0 12px 45px 0 rgb(0 0 0 / 0.5);
 }
 
+/* Hit slop: a control keeps its look and gets a 44px tap box. The ::after is
+   invisible, centred on the control, at least 44px each way. `hit-y` grows
+   only the height, for wide text buttons that sit beside neighbours. Needs a
+   positioned parent (the class sets it) and a control with no ::after of its own. */
+@layer components {
+  .hit,
+  .hit-y {
+    position: relative;
+  }
+  .hit::after,
+  .hit-y::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+  .hit::after {
+    width: max(100%, 44px);
+  }
+  .hit-y::after {
+    width: 100%;
+  }
+}
+
 .shadow-sheet {
   box-shadow: var(--shadow-sheet);
 }

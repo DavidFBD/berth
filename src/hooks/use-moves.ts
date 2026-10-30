@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import type { MoveNews, MovesResponse } from "@/app/api/moves/route";
 
 /** The marks change once a day and the posts a few times a day (lib/x-schedule); half an hour is plenty. */
@@ -19,6 +20,7 @@ export function useMoves(): ReadonlyMap<string, MoveNews> {
       return ((await response.json()) as MovesResponse).moves ?? [];
     },
     staleTime: MOVES_REFETCH_MS,
+    gcTime: DISPLAY_GC_MS,
     refetchInterval: MOVES_REFETCH_MS,
   });
   return new Map((query.data ?? []).map((move) => [move.symbol, move]));

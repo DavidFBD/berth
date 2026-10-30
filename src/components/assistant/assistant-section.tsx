@@ -190,7 +190,7 @@ export function AssistantSection({
                 <button
                   type="button"
                   aria-expanded={setupFor === chosen.id}
-                  className="flex items-center gap-1 self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  className="hit-y flex items-center gap-1 self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                   onClick={() => setSetupFor((current) => (current === chosen.id ? null : chosen.id))}
                 >
                   {copy.assistantSetupAgain}

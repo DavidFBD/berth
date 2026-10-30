@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
 import type {
   ListingPerformance,
   ListingPerformanceResponse,
@@ -42,6 +43,7 @@ export function useListingPerformance(): ListingPerformances {
       return payload ?? empty;
     },
     staleTime: PERFORMANCE_REFETCH_MS,
+    gcTime: DISPLAY_GC_MS,
     refetchInterval: PERFORMANCE_REFETCH_MS,
   });
 

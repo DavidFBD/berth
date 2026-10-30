@@ -58,7 +58,7 @@ export function WelcomePage({
           <BetaPill />
         </span>
         {onSignIn && (
-          <button type="button" onClick={onSignIn} className={cn(PILL, "h-8 px-3.5 text-[13px] font-normal")}>
+          <button type="button" onClick={onSignIn} className={cn(PILL, "hit-y h-8 px-3.5 text-[13px] font-normal")}>
             {copy.signIn}
           </button>
         )}

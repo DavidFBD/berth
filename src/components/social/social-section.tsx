@@ -265,18 +265,10 @@ function Named({ social, demo, initialFold }: { social: MySocial; demo?: SocialD
 
 function Requests({ people, demo }: { people: Person[]; demo: boolean }) {
   const copy = useCopy().social;
-  const action = useSocialAction();
+  const action = useSocialAction({ toastAnswers: true });
   const act = (handle: string, which: "accept" | "decline") => {
     if (demo) return;
-    action.mutate(
-      { kind: "friend", handle, action: which },
-      {
-        onSuccess: (result) => {
-          if (which === "accept" && result.done) toast.success(copy.youAreFriends(handle));
-        },
-        onError: () => toast.error(copy.actionFailed),
-      },
-    );
+    action.mutate({ kind: "friend", handle, action: which });
   };
   return (
     <div className="flex flex-col gap-1 px-3 py-2.5">
@@ -629,7 +621,7 @@ function PrivacySwitch({
         aria-controls={detailsOpen ? detailsId : undefined}
         aria-label={copy.detailsLabel(title)}
         onClick={onDetails}
-        className="-mx-1 mt-0.5 inline-flex min-h-7 w-fit items-center gap-1 rounded-md px-1 text-xs text-muted-foreground underline-offset-2 transition-colors duration-150 ease-lift hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="hit-y -mx-1 mt-0.5 inline-flex min-h-7 w-fit items-center gap-1 rounded-md px-1 text-xs text-muted-foreground underline-offset-2 transition-colors duration-150 ease-lift hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       >
         {copy.details}
         <CaretDown className={cn("size-3 transition-transform", detailsOpen && "rotate-180")} aria-hidden />

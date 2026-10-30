@@ -47,7 +47,7 @@ export function AskCard({ onOpen }: { onOpen: (prompt?: string) => void }) {
               key={prompt}
               type="button"
               onClick={() => onOpen(prompt)}
-              className="h-8 rounded-full border border-border bg-card px-3 text-[13px] text-secondary-foreground outline-none transition-colors duration-150 ease-lift hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="hit-y h-8 rounded-full border border-border bg-card px-3 text-[13px] text-secondary-foreground outline-none transition-colors duration-150 ease-lift hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               {prompt}
             </button>

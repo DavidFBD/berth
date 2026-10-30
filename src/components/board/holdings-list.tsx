@@ -394,7 +394,7 @@ export function HoldingsView({
                     (plan P3a), one place at a time, which the sheet asks. */}
                 {/* Held only as returned from a sell: nothing a sell here can spend. */}
                 {balance > (returned ?? 0n) && (
-                  <Button variant="outline" size="xs" disabled={updating} onClick={() => onSell(listing)}>
+                  <Button variant="outline" size="xs" className="hit-y" disabled={updating} onClick={() => onSell(listing)}>
                     {copy.sell}
                   </Button>
                 )}

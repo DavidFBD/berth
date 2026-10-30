@@ -161,7 +161,7 @@ function SoundPill({ muted, onToggle }: { muted: boolean; onToggle: () => void }
       type="button"
       onClick={onToggle}
       aria-pressed={!muted}
-      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-input bg-card px-3 text-[13px] text-foreground outline-none transition-colors duration-150 ease-lift hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="hit-y inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-input bg-card px-3 text-[13px] text-foreground outline-none transition-colors duration-150 ease-lift hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       <Glyph weight="duotone" className="size-4" aria-hidden />
       {muted ? copy.soundOn : copy.soundOff}

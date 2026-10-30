@@ -105,7 +105,7 @@ export function CampaignLineView({
         <button
           type="button"
           onClick={onAcceptTerms}
-          className="shrink-0 text-xs text-foreground underline underline-offset-4"
+          className="hit-y shrink-0 text-xs text-foreground underline underline-offset-4"
           data-testid="campaign-accept-terms"
         >
           {copy.acceptTerms}

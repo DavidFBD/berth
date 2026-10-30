@@ -4,6 +4,9 @@ import { acceptedFromAnswer, readAtConfirm, type TermsState } from "@/lib/terms-
 import { TERMS_VERSION } from "@/lib/legal-version";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DISPLAY_GC_MS } from "@/lib/query-freshness";
+import { toast } from "@/lib/toast";
+import { COPY } from "@/lib/copy";
 import { useAccountHeaders } from "@/hooks/use-profile";
 import { announceRewards } from "@/components/xp-toast";
 import type { RewardList } from "@/lib/profile-types";
@@ -79,6 +82,7 @@ export function useMySocial(enabled = true, { prompt = true }: { prompt?: boolea
     queryKey: KEYS.me(key),
     enabled: enabled && key !== null,
     staleTime: 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: 1,
     queryFn: () => must(call<MySocial>("me")),
   });
@@ -162,10 +166,39 @@ function useSettleSwitch() {
   };
 }
 
+type SwitchField = "visible" | "linkFace" | "shareHoldings" | "shareWeek";
+
+/**
+ * A privacy switch flips on screen the moment it is tapped and flips back if
+ * the server refuses. Not money, not a signature: only the viewer's own
+ * social settings. The server's answer (onSuccess settle) still wins.
+ */
+function useOptimisticSwitch(field: SwitchField) {
+  const queryClient = useQueryClient();
+  const { key } = useSocialCall();
+  return {
+    onMutate: async (value: boolean): Promise<{ had: boolean; before: boolean | undefined }> => {
+      await queryClient.cancelQueries({ queryKey: KEYS.me(key) });
+      const previous = queryClient.getQueryData<MySocial>(KEYS.me(key));
+      if (previous) queryClient.setQueryData<MySocial>(KEYS.me(key), { ...previous, [field]: value });
+      return { had: Boolean(previous), before: previous?.[field] };
+    },
+    // Only this switch goes back: another that succeeded meanwhile stays.
+    onError: (_error: unknown, _value: boolean, context: { had: boolean; before: boolean | undefined } | undefined) => {
+      if (!context?.had || context.before === undefined) return;
+      const before = context.before;
+      queryClient.setQueryData<MySocial>(KEYS.me(key), (old) => (old ? { ...old, [field]: before } : old));
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: KEYS.me(key) }),
+  };
+}
+
 export function useSetVisible() {
   const { call } = useSocialCall();
   const settle = useSettleSwitch();
+  const optimistic = useOptimisticSwitch("visible");
   return useMutation({
+    ...optimistic,
     mutationFn: (visible: boolean) => must(call<WithBonus>("visibility", { visible })),
     onSuccess: (data) => void settle(data),
   });
@@ -174,7 +207,9 @@ export function useSetVisible() {
 export function useSetLinkFace() {
   const { call } = useSocialCall();
   const settle = useSettleSwitch();
+  const optimistic = useOptimisticSwitch("linkFace");
   return useMutation({
+    ...optimistic,
     mutationFn: (on: boolean) => must(call<WithBonus>("link-face", { on })),
     onSuccess: (data) => void settle(data),
   });
@@ -184,7 +219,9 @@ export function useSetShareHoldings() {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
   const settle = useSettleSwitch();
+  const optimistic = useOptimisticSwitch("shareHoldings");
   return useMutation({
+    ...optimistic,
     mutationFn: (on: boolean) => must(call<WithBonus>("share-holdings", { on })),
     onSuccess: (data, on) => {
       settle(data);
@@ -200,7 +237,9 @@ export function useSetShareWeek() {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
   const settle = useSettleSwitch();
+  const optimistic = useOptimisticSwitch("shareWeek");
   return useMutation({
+    ...optimistic,
     mutationFn: (on: boolean) => must(call<WithBonus>("share-week", { on })),
     onSuccess: (data) => {
       settle(data);
@@ -273,6 +312,7 @@ export function useCompareFriends(enabled = true): CompareFriend[] {
     queryKey: KEYS.compareFriends(key),
     enabled: enabled && key !== null,
     staleTime: 5 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async () => (await quietRead<CompareFriendsResponse>(headers, "compare-friends", {}, { friends: [] })).friends ?? [],
   });
@@ -296,6 +336,7 @@ export function useFriendWeek(
     queryKey: KEYS.compareWeek(key, handle ?? "", range ?? "", from ?? ""),
     enabled: ready && key !== null,
     staleTime: 10 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async () => (await quietRead<FriendWeekResponse>(headers, "compare-week", { handle, range, from }, { week: null })).week ?? null,
   });
@@ -308,6 +349,7 @@ export function useFriendsList(enabled: boolean) {
     queryKey: KEYS.friends(key),
     enabled: enabled && key !== null,
     staleTime: 30_000,
+    gcTime: DISPLAY_GC_MS,
     retry: 1,
     queryFn: () => must(call<FriendsList>("friends")),
   });
@@ -336,6 +378,7 @@ export function useBlocked(enabled: boolean) {
     queryKey: KEYS.blocked(key),
     enabled: enabled && key !== null,
     staleTime: 30_000,
+    gcTime: DISPLAY_GC_MS,
     retry: 1,
     queryFn: async () => (await must(call<{ blocked: BlockedName[] }>("blocked"))).blocked,
   });
@@ -347,6 +390,7 @@ export function useFriendsBoard(enabled: boolean) {
     queryKey: KEYS.board(key),
     enabled: enabled && key !== null,
     staleTime: 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: 1,
     queryFn: () => must(call<FriendsBoard>("board")),
   });
@@ -365,6 +409,7 @@ export function useFriendsHolding(enabled = true): ReadonlyMap<string, FriendsHo
     queryKey: KEYS.holding(key),
     enabled: enabled && key !== null,
     staleTime: 5 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async (): Promise<FriendsHolding[]> => {
       const auth = await headers();
@@ -398,6 +443,7 @@ export function useAccountNotice(notice: string): { due: boolean; close: () => v
     queryKey: KEYS.notices(key),
     enabled: key !== null,
     staleTime: 10 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async () => {
       const { status, data } = await call<{ pending: string[] }>("notices");
@@ -430,6 +476,7 @@ export function useFirstFriend(enabled = true): {
     queryKey: KEYS.firstFriend(key),
     enabled: enabled && key !== null,
     staleTime: 5 * 60_000,
+    gcTime: DISPLAY_GC_MS,
     retry: false,
     queryFn: async (): Promise<FirstFriendAnswer> => {
       const { status, data } = await call<FirstFriendAnswer>("first-friend");
@@ -475,6 +522,7 @@ export function useCard(target: { handle: string } | { token: string }) {
     queryKey: KEYS.card(key, id),
     enabled: !privy.enabled || privy.ready,
     staleTime: 30_000,
+    gcTime: DISPLAY_GC_MS,
     // Find a friend caches the plain card under the same key: the page asks
     // again for its extras (CardAnswer.more) rather than show it without them.
     refetchOnMount: (query) => (query.state.data?.found && !query.state.data.more ? "always" : true),
@@ -517,10 +565,32 @@ export type CardActionVars =
  * replaces the cached card where one comes back, and the lists it touches
  * are refetched on their next open.
  */
-export function useSocialAction() {
+export function useSocialAction({ toastAnswers = false }: { toastAnswers?: boolean } = {}) {
   const queryClient = useQueryClient();
   const { key, call } = useSocialCall();
   return useMutation({
+    // Answering a request by name clears it from the list at once; a refusal puts it back.
+    onMutate: async (vars: CardActionVars): Promise<{ previous: FriendsList | undefined }> => {
+      const answering = vars.kind === "friend" && !vars.token && (vars.action === "accept" || vars.action === "decline");
+      const previous = queryClient.getQueryData<FriendsList>(KEYS.friends(key));
+      if (answering && previous) {
+        await queryClient.cancelQueries({ queryKey: KEYS.friends(key) });
+        const person = previous.incoming.find((p) => p.handle === vars.handle);
+        queryClient.setQueryData<FriendsList>(KEYS.friends(key), {
+          ...previous,
+          incoming: previous.incoming.filter((p) => p.handle !== vars.handle),
+          friends: vars.action === "accept" && person ? [...previous.friends, person] : previous.friends,
+        });
+      }
+      return { previous: answering ? previous : undefined };
+    },
+    // The requests list asks for its toasts here, not in per-call callbacks:
+    // answering the last request unmounts it, and v5 drops those. Profile
+    // pages and find a friend keep their own toasts, so they leave this off.
+    onError: (_error: unknown, vars: CardActionVars, context: { previous: FriendsList | undefined } | undefined) => {
+      if (context?.previous) queryClient.setQueryData(KEYS.friends(key), context.previous);
+      if (toastAnswers && vars.kind === "friend" && !vars.token && (vars.action === "accept" || vars.action === "decline")) toast.error(COPY.social.actionFailed);
+    },
     mutationFn: async (vars: CardActionVars): Promise<{ done: boolean; card: CardAnswer | null }> => {
       if (vars.kind === "salute") {
         const card = await must(call<CardAnswer>("salute", { handle: vars.handle, on: vars.on }));
@@ -538,6 +608,7 @@ export function useSocialAction() {
       return { done: true, card: null };
     },
     onSuccess: (result, vars) => {
+      if (toastAnswers && vars.kind === "friend" && !vars.token && vars.action === "accept" && result.done) toast.success(COPY.social.youAreFriends(vars.handle));
       if (result.card) {
         const next = result.card;
         queryClient.setQueryData<CardAnswer>(KEYS.card(key, vars.handle), (previous) => carryMore(previous, next));
