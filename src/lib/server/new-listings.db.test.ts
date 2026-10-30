@@ -85,13 +85,17 @@ afterEach(() => {
 });
 
 let people = 0;
+/**
+ * Each account a millisecond later than the last: PGlite's clock ticks in
+ * whole milliseconds, so accounts made back to back would share created_at
+ * and the send order (created_at, then id) would fall to their random ids.
+ */
 async function account(email: string | null): Promise<string> {
   people += 1;
-  const rows = (await sql.query(`insert into users (privy_did, wallet_address, email) values ($1, $2, $3) returning id`, [
-    `did:privy:listings-${people}`,
-    `0x${String(people).padStart(40, "0")}`,
-    email,
-  ])) as { id: string }[];
+  const rows = (await sql.query(
+    `insert into users (privy_did, wallet_address, email, created_at) values ($1, $2, $3, now() + $4::int * interval '1 millisecond') returning id`,
+    [`did:privy:listings-${people}`, `0x${String(people).padStart(40, "0")}`, email, people],
+  )) as { id: string }[];
   const id = rows[0].id;
   if (email) {
     await sql.query(
